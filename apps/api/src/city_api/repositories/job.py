@@ -124,8 +124,7 @@ def _to_schema(job: JobModel) -> Job:
         result=job.result,
         error=job.error,
         created_at=_ensure_utc(job.created_at),
-        started_at=_ensure_utc(
-            job.claimed_at
-        ),  # Map claimed_at to started_at for schema compatibility
+        # Map claimed_at to started_at for schema compatibility
+        started_at=_ensure_utc(job.claimed_at),
         completed_at=_ensure_utc(job.completed_at),
     )
