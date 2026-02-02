@@ -57,7 +57,7 @@ class TileLock(Base):
         ForeignKey("tiles.id", ondelete="CASCADE"),
         primary_key=True,
     )
-    session_id: Mapped[uuid.UUID] = mapped_column(UUID(as_uuid=True), nullable=False)
+    user_id: Mapped[uuid.UUID] = mapped_column(UUID(as_uuid=True), nullable=False)
     locked_at: Mapped[datetime] = mapped_column(
         DateTime(timezone=True), server_default=func.now(), nullable=False
     )
