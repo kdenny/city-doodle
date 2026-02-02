@@ -1,7 +1,9 @@
 """FastAPI application entry point."""
 
 from fastapi import FastAPI
+from fastapi.middleware.cors import CORSMiddleware
 
+from city_api.config import settings
 from city_api.routers import auth_router
 from city_api.routes import jobs_router, locks_router, tiles_router, worlds_router
 from city_api.schemas import (
@@ -13,6 +15,19 @@ app = FastAPI(
     title="City Doodle API",
     description="Backend API for City Doodle - a lo-fi vector city builder",
     version="0.1.0",
+)
+
+# CORS middleware - allow frontend origins
+origins = list(settings.cors_origins)
+if settings.frontend_url and settings.frontend_url not in origins:
+    origins.append(settings.frontend_url)
+
+app.add_middleware(
+    CORSMiddleware,
+    allow_origins=origins,
+    allow_credentials=True,
+    allow_methods=["*"],
+    allow_headers=["*"],
 )
 
 app.include_router(auth_router)
