@@ -1,6 +1,13 @@
-import { useEffect, useRef, useState } from "react";
+import { useEffect, useRef, useState, useCallback } from "react";
 import { Application, Container, Graphics } from "pixi.js";
 import { Viewport } from "pixi-viewport";
+import {
+  TerrainLayer,
+  generateMockTerrain,
+  DEFAULT_LAYER_VISIBILITY,
+  type LayerVisibility,
+} from "./layers";
+import { LayerControls } from "./LayerControls";
 
 // Tile size in world coordinates
 const TILE_SIZE = 256;
@@ -10,13 +17,37 @@ const WORLD_SIZE = TILE_SIZE * WORLD_TILES;
 
 interface MapCanvasProps {
   className?: string;
+  seed?: number;
 }
 
-export function MapCanvas({ className }: MapCanvasProps) {
+export function MapCanvas({ className, seed = 12345 }: MapCanvasProps) {
   const containerRef = useRef<HTMLDivElement>(null);
   const appRef = useRef<Application | null>(null);
   const viewportRef = useRef<Viewport | null>(null);
+  const terrainLayerRef = useRef<TerrainLayer | null>(null);
+  const gridContainerRef = useRef<Container | null>(null);
   const [isReady, setIsReady] = useState(false);
+  const [layerVisibility, setLayerVisibility] = useState<LayerVisibility>(
+    DEFAULT_LAYER_VISIBILITY
+  );
+
+  // Handle layer visibility changes
+  const handleVisibilityChange = useCallback(
+    (visibility: LayerVisibility) => {
+      setLayerVisibility(visibility);
+
+      // Update terrain layer visibility
+      if (terrainLayerRef.current) {
+        terrainLayerRef.current.setVisibility(visibility);
+      }
+
+      // Update grid visibility
+      if (gridContainerRef.current) {
+        gridContainerRef.current.visible = visibility.grid;
+      }
+    },
+    []
+  );
 
   useEffect(() => {
     const container = containerRef.current;
@@ -24,6 +55,7 @@ export function MapCanvas({ className }: MapCanvasProps) {
 
     let app: Application | null = null;
     let viewport: Viewport | null = null;
+    let terrainLayer: TerrainLayer | null = null;
 
     const init = async () => {
       // Create PixiJS application
@@ -64,9 +96,21 @@ export function MapCanvas({ className }: MapCanvasProps) {
       // Center the viewport on the world
       viewport.moveCenter(WORLD_SIZE / 2, WORLD_SIZE / 2);
 
-      // Create tile grid
+      // Create and add terrain layer (below grid)
+      terrainLayer = new TerrainLayer();
+      viewport.addChild(terrainLayer.getContainer());
+
+      // Generate and set terrain data
+      const terrainData = generateMockTerrain(WORLD_SIZE, seed);
+      terrainLayer.setData(terrainData);
+      terrainLayer.setVisibility(layerVisibility);
+      terrainLayerRef.current = terrainLayer;
+
+      // Create tile grid (above terrain)
       const gridContainer = new Container();
+      gridContainer.label = "grid";
       viewport.addChild(gridContainer);
+      gridContainerRef.current = gridContainer;
 
       // Draw tile grid
       const grid = new Graphics();
@@ -133,13 +177,30 @@ export function MapCanvas({ className }: MapCanvasProps) {
 
     // Cleanup
     return () => {
+      if (terrainLayer) {
+        terrainLayer.destroy();
+        terrainLayerRef.current = null;
+      }
       if (app) {
         app.destroy(true, { children: true });
         appRef.current = null;
         viewportRef.current = null;
+        gridContainerRef.current = null;
       }
     };
-  }, []);
+  }, [seed]);
+
+  // Update visibility when state changes (after initial mount)
+  useEffect(() => {
+    if (isReady) {
+      if (terrainLayerRef.current) {
+        terrainLayerRef.current.setVisibility(layerVisibility);
+      }
+      if (gridContainerRef.current) {
+        gridContainerRef.current.visible = layerVisibility.grid;
+      }
+    }
+  }, [layerVisibility, isReady]);
 
   return (
     <div
@@ -150,6 +211,12 @@ export function MapCanvas({ className }: MapCanvasProps) {
         <div className="absolute inset-0 flex items-center justify-center bg-gray-100">
           <span className="text-gray-500">Loading canvas...</span>
         </div>
+      )}
+      {isReady && (
+        <LayerControls
+          visibility={layerVisibility}
+          onChange={handleVisibilityChange}
+        />
       )}
     </div>
   );
