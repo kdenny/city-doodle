@@ -1,10 +1,78 @@
 # Claude.md - AI Agent Instructions
 
-This file contains instructions for AI agents (Claude, GPT, etc.) working on projects that use this boilerplate.
+This file contains instructions for AI agents (Claude, GPT, etc.) working on City Doodle.
+
+---
+
+## Project Overview
+
+**City Doodle** is a lo-fi vector city builder — a lightweight planning sim disguised as a map doodle. Users generate believable terrain, place districts and infrastructure, simulate growth over discrete time steps, and export compelling artifacts (PNGs + GIF timelapses).
+
+### Tech Stack
+- **Backend:** FastAPI (Python) with separate worker process for heavy generation
+- **Frontend:** React + TypeScript + PixiJS (WebGL) for clean vector rendering
+- **Database:** Postgres (Neon)
+- **Deployment:** Vercel (web app), Fly.io (API + worker)
+
+### Key Features (V1)
+- Server-side terrain generation (3×3 tile neighborhoods, seamless borders)
+- Tile locking for concurrent editing
+- Seed placement with snap-to-geometry (districts, POIs, transit)
+- Organic city growth simulation (1/5/10 year steps)
+- VMT-lite metrics (Vehicle Miles Traveled, transit ridership proxy)
+- Historic district preservation (no redevelopment during growth)
+- Replay timelapse + GIF/PNG export
+- Handwritten-style labels with deterministic placement
+- Personality sliders (Grid↔Organic, Sprawl↔Compact, etc.)
+
+### Monorepo Structure
+```
+/apps/web      - React TS frontend
+/apps/api      - FastAPI backend
+/apps/worker   - Python worker for heavy jobs
+/packages/shared - Shared types + geometry schemas
+```
+
+### Detailed Specs
+See the prompt files in the repo root for full specifications:
+- `01_lofi_city_builder_overview_tests (1).md` - Product overview + testable functionality
+- `02_ai_coding_assistant_prompt_milestones.md` - V1 milestone plan
+- `03_v2_improvements_milestones.md` - V2 roadmap (needs system, 3D view, multiplayer)
+
+---
+
+## README Maintenance
+
+Keep the project **README.md** accurate so humans and agents can onboard quickly.
+
+### When a new app is initialized (from a prompt or setup)
+
+After creating or configuring a new project, update **README.md** with:
+
+- **App name and description** – What the project does and who it's for
+- **Tech stack** – Frameworks, runtimes, databases, deployment (align with Project Overview in this file)
+- **Setup instructions** – Prerequisites, install steps, env vars, how to run locally
+- **Project structure** – Short overview of key directories (e.g. `api/`, `ui/`, `scripts/`)
+
+If the user ran `bin/vibe setup`, remind them to update README as part of the "next steps" (see setup wizard).
+
+### Continuous maintenance
+
+As the project evolves, keep README in sync:
+
+- **New features** – Document user-facing or notable capabilities
+- **Setup steps** – Refine when install/run steps change
+- **Architecture changes** – Update structure or diagrams when layout or responsibilities change
+
+When you add a new top-level area (e.g. a new app, service, or major script), add a brief note to README and to the Project Overview above.
+
+See `recipes/agents/readme-maintenance.md` for the full guide.
+
+---
 
 ## Configuration Reference
 
-The canonical configuration is in `.vibe/config.json`. Key fields:
+The canonical configuration is in `.vibe/config.json`. Key fields (actual values are populated in the config file):
 
 ```json
 {
@@ -19,6 +87,8 @@ The canonical configuration is in `.vibe/config.json`. Key fields:
   }
 }
 ```
+
+> **Note:** The empty strings shown above are placeholders. See `.vibe/config.json` for the actual configured values (GitHub owner/repo, Linear team, etc.).
 
 ---
 
@@ -60,11 +130,39 @@ See `recipes/agents/human-required-work.md` for the full guide.
 3. **Ask with options** - Provide 2-3 specific options, not open-ended questions
 4. **Document assumptions** - Note any assumptions in code comments or PR description
 
+### File Editing
+
+**No files in this repo are protected.** You may edit any file freely. Do not treat any path as read-only or off-limits; apply changes wherever they are needed to complete the task.
+
 ---
 
 ## Ticket Management
 
+### "Do this ticket {ticket}" – What it means
+
+When the user says **"do this ticket PROJ-123"** (or simply **"do PROJ-123"**), that means:
+
+1. **Create a fresh worktree** – Use `bin/vibe do PROJ-123` to create a dedicated worktree. Do all work there, not in the main checkout.
+2. **Rebase onto latest main** – Fetch origin and run `git rebase origin/main` to ensure the branch is up to date before starting work.
+3. **Do the work** – Implement the ticket requirements.
+4. **Open a PR when complete** – Commit, push, and open a PR (title with ticket ref, risk label, etc.). Do not leave the work only local.
+
+So: **"do {ticket}"** = **fresh worktree + rebase + do the work + open a PR.**
+
+### Ticketing System (Linear) Must Be Configured First
+
+Before creating, listing, or fetching tickets, a tracker (e.g. Linear) must be configured in `.vibe/config.json`. If you or the user runs `bin/ticket create`, `bin/ticket list`, or `bin/ticket get` without a tracker configured:
+
+- The CLI **pauses** and prints: "No ticketing system (e.g. Linear) is configured. Set up a tracker before creating or viewing tickets."
+- It then prompts: **"Run tracker setup now?"** (default: yes).
+- If the user confirms, it runs the tracker wizard (Linear/Shortcut/None), saves config, and the ticket command proceeds.
+- If the user declines, it exits with a hint to run `bin/vibe setup` or `bin/vibe setup --wizard tracker` when ready.
+
+When writing tickets or advising the user to create tickets, either ensure the project has already run `bin/vibe setup` (or `bin/vibe setup --wizard tracker`), or expect the interactive prompt and let the user complete it.
+
 ### Starting Work on a Ticket
+
+When asked to "do" a ticket, follow the steps in ["Do this ticket"](#do-this-ticket-ticket--what-it-means) above.
 
 ```bash
 # Use the vibe CLI to create a worktree
@@ -79,9 +177,52 @@ This creates:
 
 When creating tickets programmatically:
 1. Use descriptive titles: "Verb + Object" format
-2. Add appropriate labels (type, risk, area)
+2. **Apply labels** (see [Label checklist](#label-checklist-for-ticket-creation) below)
 3. Include acceptance criteria
-4. Link related tickets
+4. Link related tickets with **correct blocking direction** (see [Blocking relationships](#blocking-relationships) below)
+
+#### Blocking relationships
+
+Direction matters. The **prerequisite** (foundation) ticket **blocks** the dependent ticket — not the other way around.
+
+- **"A blocks B"** = B cannot start until A is done. (A is the prerequisite.)
+- **"A is blocked by B"** = A cannot start until B is done. (B is the prerequisite.)
+
+**CORRECT:** "Initialize monorepo" BLOCKS "Set up React app"
+(React app depends on monorepo being done first.)
+
+**WRONG:** "Initialize monorepo" BLOCKED BY "Set up React app"
+(That would mean monorepo can't start until React is done — backwards.)
+
+When linking: set the **foundation ticket** as blocking the **dependent ticket(s)**. Do not set the foundation as "blocked by" the later tickets.
+
+See `recipes/tickets/creating-tickets.md` for full guidance.
+
+#### Label checklist for ticket creation
+
+When creating a ticket, assign:
+
+- **Type** (exactly one): Bug, Feature, Chore, Refactor
+- **Risk** (exactly one): Low Risk, Medium Risk, High Risk
+- **Area** (at least one): Frontend, Backend, Infra, Docs
+
+Optional: **HUMAN**, **Milestone**, **Blocked** (see [Special Labels](#special-labels)).
+
+#### Priority (Linear): use the Priority field, not labels
+
+**Do not use P0, P1, P2, or P3 as labels.** Linear has a native **Priority** field. Set priority via that field so it works with Linear's priority views and filters.
+
+When creating or updating tickets, set the **Priority** field (not a label) using this mapping:
+
+| If you mean | Set Linear Priority to |
+|-------------|-------------------------|
+| P0 / critical | **Urgent** |
+| P1 / high | **High** |
+| P2 / medium | **Medium** |
+| P3 / low | **Low** |
+| No priority | **No Priority** |
+
+Labels in `.vibe/config.json` are for **type**, **risk**, and **area** only. Do not add P0/P1/P2/P3 to the label config.
 
 ### Ticket Status Updates
 
@@ -94,32 +235,57 @@ Update ticket status as work progresses:
 
 ## Worktree Management
 
+**Agent rule:** When the user asks to clean up worktrees, branches, or "tidy up" local state, follow the [Cleaning Up Worktrees](#cleaning-up-worktrees--follow-this-order) steps (remove worktrees first, then delete branches, then run `bin/vibe doctor`). Do not skip steps.
+
 ### Creating Worktrees
 
 ```bash
 bin/vibe do PROJ-123
 ```
 
-### Cleaning Up Worktrees
+This creates a worktree (path from config, typically `../<repo>-worktrees/PROJ-123`) and a branch for that ticket.
 
-After a PR is merged:
-```bash
-git worktree remove ../project-worktrees/PROJ-123
-```
+### When to Clean Up Worktrees
+
+**Clean up a worktree when:**
+- The PR for that ticket has been **merged** to main (or the branch is no longer needed), or
+- The user asks to "clean up branches/worktrees" or "tidy up".
+
+**Do not remove a worktree** while the branch is still in use (open PR, WIP, or user is working there).
+
+### Cleaning Up Worktrees — Follow This Order
+
+Agents and users **must** do these steps in order whenever cleaning up after a merged PR or doing a general cleanup:
+
+1. **Remove the worktree** (from the **main** repo checkout, not from inside the worktree):
+   ```bash
+   git worktree remove <path-to-worktree>
+   ```
+   Path is usually relative to the repo root, e.g. `../<repo>-worktrees/PROJ-123`. Use `git worktree list` to see exact paths. If the worktree has uncommitted changes and you're sure they're not needed: `git worktree remove --force <path>`.
+
+2. **Delete the local branch** (only after the worktree is removed):
+   ```bash
+   git branch -d PROJ-123
+   ```
+   Use `-D` if the branch was merged via a merge commit and git reports "not fully merged".
+
+3. **Sync local state** so `.vibe/local_state.json` matches reality:
+   ```bash
+   bin/vibe doctor
+   ```
+
+### One-Time Cleanup of Multiple Worktrees/Branches
+
+When the user asks to "clean up local branches and worktrees":
+
+1. From the **main** repo, run `git worktree list` and note every worktree that is **not** the main repo.
+2. For each such worktree: `git worktree remove <path>` (or `--force` if needed).
+3. Delete obsolete local branches (e.g. merged feature branches): `git branch -d <branch>` or `git branch -D <branch>`.
+4. Run `bin/vibe doctor` to fix `.vibe/local_state.json`.
 
 ### Active Worktree State
 
-Worktrees are tracked in `.vibe/local_state.json`:
-```json
-{
-  "active_worktrees": [
-    "../project-worktrees/PROJ-123",
-    "../project-worktrees/PROJ-456"
-  ]
-}
-```
-
-Clean up stale entries with `bin/vibe doctor`.
+Worktrees are tracked in `.vibe/local_state.json` (gitignored). Stale entries cause confusion; **always run `bin/vibe doctor`** after adding or removing worktrees so that state stays accurate.
 
 ---
 
@@ -130,7 +296,7 @@ Before opening a PR, ensure:
 ### Required
 - [ ] Branch follows naming convention (`{PROJ}-{num}`)
 - [ ] Rebased onto latest main (`git rebase origin/main`)
-- [ ] All tests pass locally
+- [ ] All tests pass locally (if they exist)
 - [ ] PR title includes ticket reference
 - [ ] Risk label selected (Low/Medium/High Risk)
 
@@ -177,6 +343,13 @@ Before opening a PR, ensure:
 | **Milestone** | Part of a larger feature |
 | **Blocked** | Waiting on external dependency |
 
+### Milestones
+
+- **Option A (recommended):** Use the **Milestone** label on tickets that are part of a larger feature, and link related tickets (blocks/blocked-by or parent/child). Keeps 1 ticket = 1 PR and works across trackers.
+- **Option B:** Use Linear/Shortcut native milestones when the team already plans with them.
+
+See `recipes/tickets/creating-tickets.md` for details.
+
 ---
 
 ## GitHub Actions Results
@@ -195,9 +368,9 @@ When a workflow fails, check:
    - Missing risk label
    - Branch naming violation
 
-3. **tests.yml**
+3. **tests.yml** (if tests exist)
    - Test failure (check output for details)
-   - No tests detected (may be intentional)
+   - No tests detected (may be intentional for new projects)
 
 ### Responding to CI Failures
 
@@ -209,7 +382,7 @@ When a workflow fails, check:
 **Missing labels:**
 1. Add the required label via GitHub UI or `gh pr edit`
 
-**Test failures:**
+**Test failures** (if the project has tests):
 1. Read the failure output
 2. Fix the failing test or the code
 3. Push the fix
@@ -235,6 +408,7 @@ When implementing specific features, consult these recipes:
 - `recipes/architecture/alternatives-analysis.md` - Documenting options
 
 ### Tickets
+- `recipes/tickets/creating-tickets.md` - Creating tickets (blocking, labels, milestones)
 - `recipes/tickets/linear-setup.md` - Linear configuration
 - `recipes/tickets/shortcut.md` - Shortcut (stub)
 
@@ -252,8 +426,12 @@ bin/doctor                  # Alias for doctor
 bin/ticket list             # List tickets
 bin/ticket get PROJ-123     # Get ticket details
 bin/ticket create "Title"   # Create ticket
+bin/ticket update PROJ-123 --status "In Progress"  # Update ticket
+bin/ticket close PROJ-123   # Close ticket (Done)
+bin/ticket close PROJ-123 --cancel  # Close ticket (Canceled)
+bin/ticket comment PROJ-123 "message"  # Add comment
 
-# Working on tickets
+# Working on tickets ("do this ticket" = fresh worktree + rebase + open PR when done)
 bin/vibe do PROJ-123        # Create worktree for ticket
 
 # Secrets
@@ -309,7 +487,7 @@ git commit -m "PROJ-456: Fix null pointer in auth flow"
 # 1. Check what failed
 gh pr checks
 
-# 2. If tests failed, run locally
+# 2. If tests failed (and the project has tests), run locally
 pytest  # or npm test, etc.
 
 # 3. If secret scanning failed
@@ -329,7 +507,52 @@ git push
 4. **Don't commit secrets** - Even for "testing"
 5. **Don't skip risk labels** - Every PR needs one
 6. **Don't create PRs without ticket references** - Link to tickets
-7. **Don't work in the main checkout** - Use worktrees
+7. **Don't work in the main checkout** - Use worktrees for ticket work
+8. **Don't leave merged worktrees around** - After a PR is merged, remove the worktree, delete the local branch, and run `bin/vibe doctor`
+9. **Don't use `cd path && command`** - Use absolute paths instead (see below)
+
+---
+
+## Efficient Command Execution
+
+**Prefer absolute paths over `cd && command` patterns.** This is faster and avoids working directory issues.
+
+### Bad (inefficient)
+```bash
+cd /path/to/worktree && git push -u origin branch-name
+cd /path/to/worktree && gh pr create --title "..." --body "..."
+```
+
+### Good (efficient)
+```bash
+git -C /path/to/worktree push -u origin branch-name
+gh pr create --repo owner/repo --head branch-name --title "..." --body "..."
+```
+
+### Common commands with absolute paths
+
+| Command | Absolute path version |
+|---------|----------------------|
+| `cd dir && git ...` | `git -C /absolute/path ...` |
+| `cd dir && npm ...` | `npm --prefix /absolute/path ...` |
+| `cd dir && pytest` | `pytest /absolute/path/tests` |
+| `cd dir && gh pr create` | `gh pr create --repo owner/repo --head branch` |
+
+### When working in worktrees
+
+Instead of:
+```bash
+cd ../city-doodle-worktrees/CITY-123 && git push -u origin CITY-123
+cd ../city-doodle-worktrees/CITY-123 && gh pr create ...
+```
+
+Use:
+```bash
+git -C ../city-doodle-worktrees/CITY-123 push -u origin CITY-123
+gh pr create --repo kdenny/city-doodle --head CITY-123 --title "..." --body "..."
+```
+
+This eliminates sequential commands and shell resets between operations.
 
 ---
 
@@ -351,8 +574,11 @@ git rebase --continue
 
 ### Worktree in Bad State
 ```bash
-# Force remove
-git worktree remove --force ../project-worktrees/PROJ-123
-# Recreate
+# From the main repo: force remove the worktree
+git worktree remove --force <path-from-git-worktree-list>
+# Delete the branch if needed
+git branch -D PROJ-123
+# Recreate if you still need to work on that ticket
 bin/vibe do PROJ-123
 ```
+See [Cleaning Up Worktrees](#cleaning-up-worktrees--follow-this-order) for the full cleanup procedure.
