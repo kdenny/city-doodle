@@ -3,14 +3,12 @@
 from fastapi import FastAPI
 
 from city_api.routers import auth_router
-from city_api.routes import worlds_router
+from city_api.routes import tiles_router, worlds_router
 from city_api.schemas import (
     District,
     DistrictCreate,
     Job,
     JobCreate,
-    Tile,
-    TileCreate,
     TileLock,
     TileLockCreate,
 )
@@ -23,6 +21,7 @@ app = FastAPI(
 
 app.include_router(auth_router)
 app.include_router(worlds_router)
+app.include_router(tiles_router)
 
 
 @app.get("/")
@@ -35,29 +34,6 @@ async def root():
 async def health():
     """Health check endpoint."""
     return {"status": "healthy"}
-
-
-# =============================================================================
-# Tile endpoints (stubs - implementation in CITY-9)
-# =============================================================================
-
-
-@app.post("/tiles", response_model=Tile, tags=["tiles"])
-async def create_tile(tile: TileCreate) -> Tile:
-    """Create a new tile."""
-    raise NotImplementedError("Endpoint not yet implemented")
-
-
-@app.get("/worlds/{world_id}/tiles", response_model=list[Tile], tags=["tiles"])
-async def list_tiles(world_id: str) -> list[Tile]:
-    """List all tiles in a world."""
-    raise NotImplementedError("Endpoint not yet implemented")
-
-
-@app.get("/tiles/{tile_id}", response_model=Tile, tags=["tiles"])
-async def get_tile(tile_id: str) -> Tile:
-    """Get a tile by ID."""
-    raise NotImplementedError("Endpoint not yet implemented")
 
 
 # =============================================================================
