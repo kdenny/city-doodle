@@ -32,4 +32,13 @@ describe("App", () => {
     );
     expect(screen.getByRole("link", { name: /about/i })).toBeInTheDocument();
   });
+
+  it("has navigation link to editor", () => {
+    render(
+      <BrowserRouter>
+        <App />
+      </BrowserRouter>
+    );
+    expect(screen.getByRole("link", { name: /editor/i })).toBeInTheDocument();
+  });
 });
