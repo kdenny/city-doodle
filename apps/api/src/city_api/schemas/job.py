@@ -49,6 +49,7 @@ class Job(BaseModel):
     """A background processing job."""
 
     id: UUID
+    user_id: UUID
     type: JobType
     status: JobStatus = JobStatus.PENDING
     tile_id: UUID | None = None
