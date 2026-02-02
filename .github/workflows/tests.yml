@@ -91,7 +91,7 @@ jobs:
     env:
       DATABASE_URL: postgresql+asyncpg://test:test@localhost:5432/city_doodle_test
       DATABASE_URL_SYNC: postgresql://test:test@localhost:5432/city_doodle_test
-      AUTH_MODE: dev
+      AUTH_MODE: production
       VITE_API_URL: http://localhost:8001
     steps:
       - name: Checkout

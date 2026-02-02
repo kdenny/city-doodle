@@ -6,7 +6,7 @@
  */
 
 import { test as base } from "@playwright/test";
-import type { APIRequestContext } from "@playwright/test";
+import type { APIRequestContext, APIResponse } from "@playwright/test";
 
 const API_URL = "http://localhost:8001";
 
@@ -46,7 +46,7 @@ export interface ApiFixture {
     token: string,
     path: string,
     options?: { method?: string; data?: unknown }
-  ) => Promise<Response>;
+  ) => Promise<APIResponse>;
 }
 
 function createApiFixture(request: APIRequestContext): ApiFixture {
@@ -147,7 +147,7 @@ function createApiFixture(request: APIRequestContext): ApiFixture {
       token: string,
       path: string,
       options?: { method?: string; data?: unknown }
-    ): Promise<Response> {
+    ): Promise<APIResponse> {
       const url = path.startsWith("http") ? path : `${API_URL}${path}`;
       const method = options?.method ?? "GET";
 
@@ -183,4 +183,4 @@ export const test = base.extend<{ api: ApiFixture }>({
 });
 
 export { expect } from "@playwright/test";
-export type { Response } from "@playwright/test";
+export type { APIResponse } from "@playwright/test";

@@ -123,14 +123,14 @@ test.describe("World List", () => {
     const user = await auth.registerUser();
     await api.createWorld(user.token!, "Delete Me");
 
+    // Set up dialog handler BEFORE navigating (best practice for timing)
+    page.on("dialog", (dialog) => dialog.accept());
+
     await auth.setAuthInBrowser(page, user.token!);
     await page.goto("/worlds");
 
     // Should see the world
     await expect(page.getByText("Delete Me")).toBeVisible();
-
-    // Accept the confirmation dialog
-    page.on("dialog", (dialog) => dialog.accept());
 
     // Click delete
     await page.getByRole("button", { name: "Delete" }).click();

@@ -87,7 +87,7 @@ export default defineConfig({
         DATABASE_URL_SYNC:
           process.env.DATABASE_URL_SYNC ||
           "postgresql://localhost/city_doodle_test",
-        AUTH_MODE: "dev",
+        AUTH_MODE: "production",
         PYTHONPATH: "./src",
       },
     },
