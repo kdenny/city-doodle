@@ -275,8 +275,21 @@ When creating a ticket, assign:
 - **Type** (exactly one): Bug, Feature, Chore, Refactor
 - **Risk** (exactly one): Low Risk, Medium Risk, High Risk
 - **Area** (at least one): Frontend, Backend, Infra, Docs
+- **Milestone** (for backlog items): v1, v2, or Future
 
-Optional: **HUMAN ‼️**, **Milestone**, **Blocked** (see [Special Labels](#special-labels)).
+Optional: **HUMAN ‼️**, **Blocked** (see [Special Labels](#special-labels)).
+
+#### Milestone labels
+
+Use milestone labels to indicate when work should be completed:
+
+| Label | Meaning | Examples |
+|-------|---------|----------|
+| **v1** | Core MVP functionality | Auth, basic CRUD, core rendering, export |
+| **v2** | Enhanced features | 3D views, advanced simulation, better tools |
+| **Future** | Nice-to-have, post-v2 | Multiplayer, advanced collaboration, polish |
+
+Apply milestone labels to all backlog tickets so the board can be filtered by release.
 
 #### Priority (Linear): use the Priority field, not labels
 
@@ -300,6 +313,36 @@ Update ticket status as work progresses:
 - **Todo** → **In Progress**: When starting work
 - **In Progress** → **In Review**: When PR is opened
 - **In Review** → **Done**: When PR is merged
+
+### Ticket Hygiene
+
+**Keep the board clean and accurate.** Stale or inaccurate tickets slow everyone down.
+
+#### When completing work
+- **Always close tickets** when the work is done — don't leave them in "In Review" after merge
+- **Update descriptions** if requirements changed during implementation
+- **Add comments** explaining any deviations from the original plan
+
+#### When fixing bugs silently discovered
+If you discover and fix a bug while working on something else:
+1. **Create a ticket retroactively** documenting what was broken and how it was fixed
+2. **Link it to the PR** that contains the fix
+3. **Close the ticket** immediately (it's already done)
+
+This maintains a searchable history of all fixes.
+
+#### Periodic board review
+Regularly check for:
+- **Stale tickets** — Backlog items that are no longer relevant (cancel them)
+- **Duplicate tickets** — Same work described twice (cancel the duplicate, link to canonical)
+- **Missing labels** — All tickets should have type, risk, area, and milestone labels
+- **Orphaned tickets** — In Progress tickets with no recent activity (investigate)
+- **Completed but open** — Work that's done but ticket wasn't closed (close it)
+
+#### Silently fixing issues
+**Never fix an issue without a ticket trail.** Even quick fixes need documentation:
+- Create ticket → Link to PR → Close ticket
+- Or: Create ticket retrospectively with "Already fixed in PR #X" → Close immediately
 
 ---
 

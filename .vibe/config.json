@@ -34,7 +34,8 @@
     "type": ["Bug", "Feature", "Chore", "Refactor"],
     "risk": ["Low Risk", "Medium Risk", "High Risk"],
     "area": ["Frontend", "Backend", "Infra", "Docs"],
-    "special": ["HUMAN ‼️", "Milestone", "Blocked"]
+    "milestone": ["v1", "v2", "Future"],
+    "special": ["HUMAN ‼️", "Blocked"]
   },
   "security": {
     "secret_scanner": "gitleaks",
