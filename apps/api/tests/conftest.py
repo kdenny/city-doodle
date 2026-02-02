@@ -2,7 +2,7 @@
 
 import pytest
 from city_api.main import app
-from city_api.repositories import world_repository
+from city_api.repositories import tile_repository, world_repository
 from httpx import ASGITransport, AsyncClient
 
 
@@ -17,8 +17,12 @@ async def client():
 
 
 @pytest.fixture(autouse=True)
-def clear_world_repository():
-    """Clear the world repository before each test."""
+def clear_repositories():
+    """Clear all repositories before each test."""
     world_repository._worlds.clear()
+    tile_repository._tiles.clear()
+    tile_repository._coord_index.clear()
     yield
     world_repository._worlds.clear()
+    tile_repository._tiles.clear()
+    tile_repository._coord_index.clear()
