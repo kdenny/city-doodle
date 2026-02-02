@@ -4,9 +4,11 @@ import logging
 from uuid import UUID
 
 from fastapi import APIRouter, Depends, HTTPException, status
+from sqlalchemy.ext.asyncio import AsyncSession
 
+from city_api.database import get_db
 from city_api.dependencies import get_current_user
-from city_api.repositories import lock_repository
+from city_api.repositories import lock as lock_repo
 from city_api.schemas import TileLock, TileLockCreate
 
 logger = logging.getLogger(__name__)
@@ -18,6 +20,7 @@ router = APIRouter(prefix="/tiles", tags=["tile-locks"])
 async def acquire_lock(
     tile_id: UUID,
     lock_request: TileLockCreate | None = None,
+    db: AsyncSession = Depends(get_db),
     user_id: UUID = Depends(get_current_user),
 ) -> TileLock:
     """
@@ -30,10 +33,10 @@ async def acquire_lock(
     """
     duration = lock_request.duration_seconds if lock_request else None
 
-    lock = lock_repository.acquire(tile_id, user_id, duration)
+    lock = await lock_repo.acquire_lock(db, tile_id, user_id, duration)
     if lock is None:
         # Get existing lock info for error message
-        existing_lock = lock_repository.get(tile_id)
+        existing_lock = await lock_repo.get_lock(db, tile_id)
         if existing_lock:
             logger.info(
                 "Lock conflict: tile_id=%s requester=%s holder=%s expires=%s",
@@ -64,6 +67,7 @@ async def acquire_lock(
 @router.delete("/{tile_id}/lock", status_code=status.HTTP_204_NO_CONTENT)
 async def release_lock(
     tile_id: UUID,
+    db: AsyncSession = Depends(get_db),
     user_id: UUID = Depends(get_current_user),
 ) -> None:
     """
@@ -72,9 +76,9 @@ async def release_lock(
     Only the user who holds the lock can release it.
     Returns 404 if the tile is not locked or locked by another user.
     """
-    released = lock_repository.release(tile_id, user_id)
+    released = await lock_repo.release_lock(db, tile_id, user_id)
     if not released:
-        existing_lock = lock_repository.get(tile_id)
+        existing_lock = await lock_repo.get_lock(db, tile_id)
         if existing_lock and existing_lock.user_id != user_id:
             logger.warning(
                 "Unauthorized lock release: tile_id=%s holder=%s requester=%s",
@@ -96,6 +100,7 @@ async def release_lock(
 @router.get("/{tile_id}/lock", response_model=TileLock | None)
 async def get_lock(
     tile_id: UUID,
+    db: AsyncSession = Depends(get_db),
     user_id: UUID = Depends(get_current_user),
 ) -> TileLock | None:
     """
@@ -103,13 +108,14 @@ async def get_lock(
 
     Returns the lock details if locked, null if not locked.
     """
-    return lock_repository.get(tile_id)
+    return await lock_repo.get_lock(db, tile_id)
 
 
 @router.post("/{tile_id}/lock/heartbeat", response_model=TileLock)
 async def heartbeat_lock(
     tile_id: UUID,
     duration_seconds: int = 300,
+    db: AsyncSession = Depends(get_db),
     user_id: UUID = Depends(get_current_user),
 ) -> TileLock:
     """
@@ -118,9 +124,9 @@ async def heartbeat_lock(
     Use this endpoint to keep a lock active while the user is editing.
     Returns 404 if the lock doesn't exist or is held by another user.
     """
-    lock = lock_repository.extend(tile_id, user_id, duration_seconds)
+    lock = await lock_repo.extend_lock(db, tile_id, user_id, duration_seconds)
     if lock is None:
-        existing_lock = lock_repository.get(tile_id)
+        existing_lock = await lock_repo.get_lock(db, tile_id)
         if existing_lock and existing_lock.user_id != user_id:
             logger.warning(
                 "Unauthorized lock extend: tile_id=%s holder=%s requester=%s",

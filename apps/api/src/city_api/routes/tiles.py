@@ -8,12 +8,9 @@ from sqlalchemy.ext.asyncio import AsyncSession
 
 from city_api.database import get_db
 from city_api.dependencies import get_current_user
-<<<<<<< HEAD
-from city_api.repositories import lock_repository, tile_repository, world_repository
-=======
+from city_api.repositories import lock as lock_repo
 from city_api.repositories import tile as tile_repo
 from city_api.repositories import world as world_repo
->>>>>>> bab391d (CITY-94: Convert world and tile repositories to use database)
 from city_api.schemas import Tile, TileUpdate
 
 logger = logging.getLogger(__name__)
@@ -142,7 +139,7 @@ async def update_tile(
         )
 
     # Verify user holds an active lock on this tile
-    lock = lock_repository.get(tile_id)
+    lock = await lock_repo.get_lock(db, tile_id)
     if lock is None or lock.user_id != user_id:
         raise HTTPException(
             status_code=status.HTTP_409_CONFLICT,

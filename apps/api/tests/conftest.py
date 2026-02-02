@@ -1,29 +1,25 @@
 """Pytest configuration and fixtures for API tests."""
 
 import asyncio
+import os
 from collections.abc import AsyncGenerator
 
 import pytest
-<<<<<<< HEAD
+from city_api.database import Base, get_db
 from city_api.main import app
-from city_api.repositories import lock_repository, tile_repository, world_repository
-=======
->>>>>>> bab391d (CITY-94: Convert world and tile repositories to use database)
 from httpx import ASGITransport, AsyncClient
 from sqlalchemy import text
 from sqlalchemy.ext.asyncio import AsyncSession, async_sessionmaker, create_async_engine
 
-from city_api.database import Base, get_db
-from city_api.main import app
-
-# Use SQLite in-memory for fast, isolated tests
-TEST_DATABASE_URL = "sqlite+aiosqlite:///:memory:"
+# Use PostgreSQL for tests (from env var in CI, or local default)
+TEST_DATABASE_URL = os.environ.get(
+    "TEST_DATABASE_URL",
+    "postgresql+asyncpg://localhost/city_doodle_test",
+)
 
 # Create test engine
 test_engine = create_async_engine(TEST_DATABASE_URL, echo=False)
-test_session_factory = async_sessionmaker(
-    test_engine, class_=AsyncSession, expire_on_commit=False
-)
+test_session_factory = async_sessionmaker(test_engine, class_=AsyncSession, expire_on_commit=False)
 
 
 async def override_get_db() -> AsyncGenerator[AsyncSession, None]:
@@ -80,24 +76,9 @@ async def client():
     # Clean up overrides
     app.dependency_overrides.clear()
 
-<<<<<<< HEAD
-@pytest.fixture(autouse=True)
-def clear_repositories():
-    """Clear all repositories before each test."""
-    world_repository._worlds.clear()
-    tile_repository._tiles.clear()
-    tile_repository._coord_index.clear()
-    lock_repository._locks.clear()
-    yield
-    world_repository._worlds.clear()
-    tile_repository._tiles.clear()
-    tile_repository._coord_index.clear()
-    lock_repository._locks.clear()
-=======
 
 @pytest.fixture
 async def db_session() -> AsyncGenerator[AsyncSession, None]:
     """Provide a database session for tests that need direct DB access."""
     async with test_session_factory() as session:
         yield session
->>>>>>> bab391d (CITY-94: Convert world and tile repositories to use database)

@@ -38,9 +38,7 @@ async def get_tile_schema(db: AsyncSession, tile_id: UUID) -> Tile | None:
     return _to_schema(tile)
 
 
-async def get_tile_by_coords(
-    db: AsyncSession, world_id: UUID, tx: int, ty: int
-) -> Tile | None:
+async def get_tile_by_coords(db: AsyncSession, world_id: UUID, tx: int, ty: int) -> Tile | None:
     """Get a tile by world and coordinates."""
     result = await db.execute(
         select(TileModel).where(
@@ -80,9 +78,7 @@ async def list_tiles_by_world(
     return [_to_schema(t) for t in tiles]
 
 
-async def update_tile(
-    db: AsyncSession, tile_id: UUID, tile_update: TileUpdate
-) -> Tile | None:
+async def update_tile(db: AsyncSession, tile_id: UUID, tile_update: TileUpdate) -> Tile | None:
     """Update a tile. Returns None if tile not found."""
     result = await db.execute(select(TileModel).where(TileModel.id == tile_id))
     tile = result.scalar_one_or_none()
@@ -100,9 +96,7 @@ async def update_tile(
     return _to_schema(tile)
 
 
-async def get_or_create_tile(
-    db: AsyncSession, world_id: UUID, tx: int, ty: int
-) -> Tile:
+async def get_or_create_tile(db: AsyncSession, world_id: UUID, tx: int, ty: int) -> Tile:
     """Get a tile by coordinates, creating it if it doesn't exist."""
     tile = await get_tile_by_coords(db, world_id, tx, ty)
     if tile is not None:
@@ -117,7 +111,9 @@ def _to_schema(tile: TileModel) -> Tile:
         world_id=tile.world_id,
         tx=tile.tx,
         ty=tile.ty,
-        terrain_data=TerrainData.model_validate(tile.terrain_data) if tile.terrain_data else TerrainData(),
+        terrain_data=TerrainData.model_validate(tile.terrain_data)
+        if tile.terrain_data
+        else TerrainData(),
         features=TileFeatures.model_validate(tile.features) if tile.features else TileFeatures(),
         created_at=tile.created_at,
         updated_at=tile.updated_at,

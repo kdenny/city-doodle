@@ -13,6 +13,13 @@ DEFAULT_LOCK_DURATION = 300  # 5 minutes
 MAX_LOCK_DURATION = 3600  # 1 hour
 
 
+def _ensure_utc(dt: datetime) -> datetime:
+    """Ensure datetime is timezone-aware (UTC). SQLite returns naive datetimes."""
+    if dt.tzinfo is None:
+        return dt.replace(tzinfo=UTC)
+    return dt
+
+
 async def acquire_lock(
     db: AsyncSession,
     tile_id: UUID,
@@ -35,7 +42,7 @@ async def acquire_lock(
     existing = result.scalar_one_or_none()
 
     if existing is not None:
-        if existing.user_id != user_id and existing.expires_at > now:
+        if existing.user_id != user_id and _ensure_utc(existing.expires_at) > now:
             return None  # Locked by someone else
 
         # Either expired or same user - update the lock
@@ -86,7 +93,7 @@ async def get_lock(db: AsyncSession, tile_id: UUID) -> TileLock | None:
 
     # Check if expired
     now = datetime.now(UTC)
-    if lock.expires_at <= now:
+    if _ensure_utc(lock.expires_at) <= now:
         # Clean up expired lock
         await db.execute(delete(TileLockModel).where(TileLockModel.tile_id == tile_id))
         await db.commit()
@@ -117,7 +124,7 @@ async def extend_lock(
         return None
 
     now = datetime.now(UTC)
-    if lock.expires_at <= now:
+    if _ensure_utc(lock.expires_at) <= now:
         return None  # Expired
 
     duration = min(duration_seconds, MAX_LOCK_DURATION)
@@ -132,6 +139,6 @@ def _to_schema(lock: TileLockModel) -> TileLock:
     return TileLock(
         tile_id=lock.tile_id,
         user_id=lock.user_id,
-        locked_at=lock.locked_at,
-        expires_at=lock.expires_at,
+        locked_at=_ensure_utc(lock.locked_at),
+        expires_at=_ensure_utc(lock.expires_at),
     )

@@ -11,9 +11,14 @@ from city_api.models import World as WorldModel
 from city_api.schemas import World, WorldCreate, WorldSettings
 
 
-async def create_world(
-    db: AsyncSession, world_create: WorldCreate, user_id: UUID
-) -> World:
+def _ensure_utc(dt: datetime) -> datetime:
+    """Ensure datetime is timezone-aware (UTC). SQLite returns naive datetimes."""
+    if dt.tzinfo is None:
+        return dt.replace(tzinfo=UTC)
+    return dt
+
+
+async def create_world(db: AsyncSession, world_create: WorldCreate, user_id: UUID) -> World:
     """Create a new world."""
     now = datetime.now(UTC)
 
@@ -47,9 +52,7 @@ async def get_world(db: AsyncSession, world_id: UUID) -> WorldModel | None:
     return result.scalar_one_or_none()
 
 
-async def get_world_for_user(
-    db: AsyncSession, world_id: UUID, user_id: UUID
-) -> World | None:
+async def get_world_for_user(db: AsyncSession, world_id: UUID, user_id: UUID) -> World | None:
     """Get a world by ID if owned by user."""
     result = await db.execute(
         select(WorldModel).where(WorldModel.id == world_id, WorldModel.user_id == user_id)
@@ -99,5 +102,5 @@ def _to_schema(world: WorldModel) -> World:
         name=world.name,
         seed=world.seed,
         settings=WorldSettings.model_validate(world.settings),
-        created_at=world.created_at,
+        created_at=_ensure_utc(world.created_at),
     )
