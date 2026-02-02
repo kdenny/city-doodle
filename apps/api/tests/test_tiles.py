@@ -251,7 +251,7 @@ class TestGetTile:
 
 
 class TestUpdateTile:
-    """Tests for POST /tiles/{tile_id} endpoint."""
+    """Tests for PATCH /tiles/{tile_id} endpoint."""
 
     @pytest.mark.asyncio
     async def test_update_tile_terrain_data(self, client: AsyncClient, world_id: str):
@@ -264,7 +264,7 @@ class TestUpdateTile:
         tile_id = create_response.json()["id"]
 
         # Update terrain data
-        response = await client.post(
+        response = await client.patch(
             f"/tiles/{tile_id}",
             json={
                 "terrain_data": {
@@ -291,7 +291,7 @@ class TestUpdateTile:
         tile_id = create_response.json()["id"]
 
         # Update features
-        response = await client.post(
+        response = await client.patch(
             f"/tiles/{tile_id}",
             json={
                 "features": {
@@ -311,7 +311,7 @@ class TestUpdateTile:
     async def test_update_tile_not_found(self, client: AsyncClient):
         """Return 404 for non-existent tile."""
         fake_tile_id = "00000000-0000-0000-0000-000000000000"
-        response = await client.post(
+        response = await client.patch(
             f"/tiles/{fake_tile_id}",
             json={"terrain_data": {"elevation": []}},
             headers={"X-User-Id": TEST_USER_ID},
@@ -331,7 +331,7 @@ class TestUpdateTile:
         tile_id = create_response.json()["id"]
 
         # Try to update as test user
-        response = await client.post(
+        response = await client.patch(
             f"/tiles/{tile_id}",
             json={"terrain_data": {"elevation": []}},
             headers={"X-User-Id": TEST_USER_ID},
