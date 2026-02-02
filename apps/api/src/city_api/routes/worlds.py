@@ -1,5 +1,6 @@
 """World CRUD endpoints."""
 
+import logging
 from uuid import UUID
 
 from fastapi import APIRouter, Depends, HTTPException, status
@@ -7,6 +8,8 @@ from fastapi import APIRouter, Depends, HTTPException, status
 from city_api.dependencies import get_current_user
 from city_api.repositories import world_repository
 from city_api.schemas import World, WorldCreate
+
+logger = logging.getLogger(__name__)
 
 router = APIRouter(prefix="/worlds", tags=["worlds"])
 
@@ -47,6 +50,7 @@ async def get_world(
     # Check if world exists at all
     world_data = world_repository.get(world_id)
     if world_data is None:
+        logger.warning("World not found: world_id=%s user_id=%s", world_id, user_id)
         raise HTTPException(
             status_code=status.HTTP_404_NOT_FOUND,
             detail=f"World {world_id} not found",
@@ -54,6 +58,12 @@ async def get_world(
 
     # Check ownership
     if world_data["user_id"] != user_id:
+        logger.warning(
+            "Unauthorized world access: world_id=%s owner=%s requester=%s",
+            world_id,
+            world_data["user_id"],
+            user_id,
+        )
         raise HTTPException(
             status_code=status.HTTP_403_FORBIDDEN,
             detail="You don't have access to this world",
@@ -76,6 +86,7 @@ async def delete_world(
     # Check if world exists at all
     world_data = world_repository.get(world_id)
     if world_data is None:
+        logger.warning("World not found for delete: world_id=%s user_id=%s", world_id, user_id)
         raise HTTPException(
             status_code=status.HTTP_404_NOT_FOUND,
             detail=f"World {world_id} not found",
@@ -83,6 +94,12 @@ async def delete_world(
 
     # Check ownership
     if world_data["user_id"] != user_id:
+        logger.warning(
+            "Unauthorized world delete: world_id=%s owner=%s requester=%s",
+            world_id,
+            world_data["user_id"],
+            user_id,
+        )
         raise HTTPException(
             status_code=status.HTTP_403_FORBIDDEN,
             detail="You don't have access to this world",

@@ -1,5 +1,6 @@
 """Tile locking endpoints."""
 
+import logging
 from uuid import UUID
 
 from fastapi import APIRouter, Depends, HTTPException, status
@@ -7,6 +8,8 @@ from fastapi import APIRouter, Depends, HTTPException, status
 from city_api.dependencies import get_current_user
 from city_api.repositories import lock_repository
 from city_api.schemas import TileLock, TileLockCreate
+
+logger = logging.getLogger(__name__)
 
 router = APIRouter(prefix="/tiles", tags=["tile-locks"])
 
@@ -32,6 +35,13 @@ async def acquire_lock(
         # Get existing lock info for error message
         existing_lock = lock_repository.get(tile_id)
         if existing_lock:
+            logger.info(
+                "Lock conflict: tile_id=%s requester=%s holder=%s expires=%s",
+                tile_id,
+                user_id,
+                existing_lock.user_id,
+                existing_lock.expires_at,
+            )
             raise HTTPException(
                 status_code=status.HTTP_409_CONFLICT,
                 detail={
@@ -40,6 +50,9 @@ async def acquire_lock(
                     "expires_at": existing_lock.expires_at.isoformat(),
                 },
             )
+        logger.warning(
+            "Lock acquisition failed unexpectedly: tile_id=%s user_id=%s", tile_id, user_id
+        )
         raise HTTPException(
             status_code=status.HTTP_409_CONFLICT,
             detail="Failed to acquire lock",
@@ -63,10 +76,17 @@ async def release_lock(
     if not released:
         existing_lock = lock_repository.get(tile_id)
         if existing_lock and existing_lock.user_id != user_id:
+            logger.warning(
+                "Unauthorized lock release: tile_id=%s holder=%s requester=%s",
+                tile_id,
+                existing_lock.user_id,
+                user_id,
+            )
             raise HTTPException(
                 status_code=status.HTTP_403_FORBIDDEN,
                 detail="Lock is held by another user",
             )
+        logger.info("Release attempted on unlocked tile: tile_id=%s user_id=%s", tile_id, user_id)
         raise HTTPException(
             status_code=status.HTTP_404_NOT_FOUND,
             detail="No active lock on this tile",
@@ -102,10 +122,17 @@ async def heartbeat_lock(
     if lock is None:
         existing_lock = lock_repository.get(tile_id)
         if existing_lock and existing_lock.user_id != user_id:
+            logger.warning(
+                "Unauthorized lock extend: tile_id=%s holder=%s requester=%s",
+                tile_id,
+                existing_lock.user_id,
+                user_id,
+            )
             raise HTTPException(
                 status_code=status.HTTP_403_FORBIDDEN,
                 detail="Lock is held by another user",
             )
+        logger.info("Heartbeat on unlocked tile: tile_id=%s user_id=%s", tile_id, user_id)
         raise HTTPException(
             status_code=status.HTTP_404_NOT_FOUND,
             detail="No active lock to extend",
