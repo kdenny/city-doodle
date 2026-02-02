@@ -81,11 +81,11 @@ class WorldRepository:
         """Convert internal data to World model."""
         return World(
             id=world_data["id"],
+            user_id=world_data["user_id"],
             name=world_data["name"],
             seed=world_data["seed"],
             settings=world_data["settings"],
             created_at=world_data["created_at"],
-            updated_at=world_data["updated_at"],
         )
 
 
