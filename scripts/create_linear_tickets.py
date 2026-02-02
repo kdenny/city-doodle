@@ -44,7 +44,7 @@ class TicketDef:
     linear_uuid: str | None = None  # Internal UUID
 
 
-def execute_query(query: str, variables: dict = None) -> dict:
+def execute_query(query: str, variables: dict | None = None) -> dict:
     """Execute GraphQL query against Linear API."""
     payload = {"query": query}
     if variables:
