@@ -79,7 +79,7 @@ async def get_tile(
     return tile_repository._to_model(tile_data)
 
 
-@router.post("/tiles/{tile_id}", response_model=Tile)
+@router.patch("/tiles/{tile_id}", response_model=Tile)
 async def update_tile(
     tile_id: UUID,
     tile_update: TileUpdate,
