@@ -47,7 +47,7 @@ It is meant to be **referenced as source material** that agents replicate into n
 ├── README.md
 ├── Claude.md
 ├── .vibe/
-│   ├── config.json
+│   ├── config.json             # must include boilerplate.issues_url (canonical: https://github.com/kdenny/vibe-code-boilerplate/issues)
 │   ├── local_state.json        # gitignored
 │   ├── secrets.allowlist.json
 │   └── grandfathered_tickets.md   # completed tickets from Linear/Shortcut that existed before boilerplate was added
@@ -104,6 +104,7 @@ Each recipe = one focused problem. **Markdown, copy-paste friendly.** No prose f
 **`/recipes/agents/`**
 - `asking-clarifying-questions.md` — Examples of good vs bad clarifying questions
 - `human-required-work.md` — When to apply the HUMAN label; how to pause safely without blocking progress
+- `boilerplate-feedback.md` — When and how to file issues in the boilerplate repo (broken CLAUDE.md or recipes); `vibe boilerplate-issue` command
 
 **`/recipes/workflows/`**
 - `git-worktrees.md` — Why they exist; how `vibe do <ticket>` works; how cleanup happens
@@ -250,6 +251,22 @@ Create GitHub Issues **in this repo** (the boilerplate repo) as a backlog of boi
 
 ---
 
+## BOILERPLATE REPO ISSUES (FEEDBACK LOOP)
+
+Every project built from this boilerplate must have the **native ability** to open and file issues in the boilerplate repo. This enables agents to report broken or inconsistent boilerplate content without the user having to ask.
+
+**Canonical URL:** `https://github.com/kdenny/vibe-code-boilerplate/issues`
+
+**Requirements:**
+- **Config:** `.vibe/config.json` must include a `boilerplate` object with `issues_url` set to the canonical URL above (so projects know where to report).
+- **Command:** A `vibe boilerplate-issue` (or equivalent) command that opens the boilerplate repo’s **new issue** page in the browser. It must accept optional `--title` and `--body` so an agent can pre-fill the issue (e.g. from a template). If the environment cannot open a browser, print the URL (with optional query params for title/body).
+- **Agent rule (no user prompt required):** When you find something **broken, inconsistent, or misleading** in:
+  - **Claude.md** (or the project’s main agent contract file), or
+  - **Any file under `recipes/`**
+  you must **automatically** open or file an issue in the boilerplate repo. Include: what is broken, where (file + section or recipe path), and optional suggested fix. Do **not** wait for the user to ask; do this as part of fixing or working around the problem.
+
+---
+
 ## ENV + SECRETS
 
 - `.env.example` is committed
@@ -311,6 +328,7 @@ Claude.md must:
   - How to open PRs
   - How to parse GHA results
 - Document **all labels** and update them as they evolve
+- **Boilerplate feedback:** Include the boilerplate repo issues URL (`https://github.com/kdenny/vibe-code-boilerplate/issues`) and the rule: when you find something broken or inconsistent in Claude.md or any file under `recipes/`, automatically file an issue there (e.g. via `vibe boilerplate-issue --title "..." --body "..."`) without waiting for the user to ask.
 
 Tone: **authoritative, unambiguous**
 

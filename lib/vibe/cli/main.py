@@ -79,6 +79,56 @@ def pr() -> None:
     sys.exit(1)
 
 
+BOILERPLATE_ISSUES_URL = "https://github.com/kdenny/vibe-code-boilerplate/issues"
+BOILERPLATE_NEW_ISSUE_URL = "https://github.com/kdenny/vibe-code-boilerplate/issues/new"
+
+
+@main.command()
+@click.option("--title", "-t", help="Pre-fill issue title")
+@click.option("--body", "-b", help="Pre-fill issue body (or path to file with body)")
+@click.option("--print-only", is_flag=True, help="Print URL only, do not open browser")
+def boilerplate_issue(title: str | None, body: str | None, print_only: bool) -> None:
+    """Open the boilerplate repo's new-issue page (for reporting broken CLAUDE.md or recipes)."""
+    from urllib.parse import quote
+
+    try:
+        from lib.vibe.config import load_config
+
+        config = load_config()
+        base = (config.get("boilerplate") or {}).get("issues_url") or BOILERPLATE_ISSUES_URL
+        new_issue = base.rstrip("/").replace("/issues", "") + "/issues/new"
+    except Exception:
+        new_issue = BOILERPLATE_NEW_ISSUE_URL
+
+    params = []
+    if title:
+        params.append(f"title={quote(title)}")
+    if body:
+        if body.startswith("@") or "/" in body:
+            try:
+                with open(body.lstrip("@"), "r") as f:
+                    body = f.read()
+            except OSError:
+                pass
+        params.append(f"body={quote(body)}")
+    if params:
+        new_issue += "?" + "&".join(params)
+
+    if print_only:
+        click.echo(new_issue)
+        return
+
+    try:
+        import webbrowser
+
+        webbrowser.open(new_issue)
+        click.echo("Opened boilerplate repo new-issue page in your browser.")
+        click.echo("If it did not open, use: " + new_issue)
+    except Exception:
+        click.echo("Could not open browser. File an issue manually at:")
+        click.echo(new_issue)
+
+
 @main.group()
 def secrets() -> None:
     """Manage secrets and environment variables."""
