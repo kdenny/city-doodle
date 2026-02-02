@@ -61,11 +61,19 @@ jobs:
       - name: Checkout
         uses: actions/checkout@v4
 
-      - name: Check for TypeScript/Node.js code
+      - name: Find Node.js projects
         id: check
         run: |
-          if [ -f "package.json" ]; then
+          # Check for package.json in monorepo locations
+          NODE_DIRS=""
+          for dir in . apps/web apps/api packages/*; do
+            if [ -f "$dir/package.json" ] && [ -f "$dir/package-lock.json" ]; then
+              NODE_DIRS="$NODE_DIRS $dir"
+            fi
+          done
+          if [ -n "$NODE_DIRS" ]; then
             echo "has_node=true" >> $GITHUB_OUTPUT
+            echo "node_dirs=$NODE_DIRS" >> $GITHUB_OUTPUT
           else
             echo "has_node=false" >> $GITHUB_OUTPUT
           fi
@@ -75,20 +83,19 @@ jobs:
         uses: actions/setup-node@v4
         with:
           node-version: '20'
-          cache: 'npm'
 
-      - name: Install dependencies
+      - name: Install and lint
         if: steps.check.outputs.has_node == 'true'
-        run: npm ci
-
-      - name: Run eslint
-        if: steps.check.outputs.has_node == 'true'
-        run: npm run lint --if-present
-
-      - name: Run tsc (type check)
-        if: steps.check.outputs.has_node == 'true'
-        run: npm run typecheck --if-present || npx tsc --noEmit 2>/dev/null || echo "No TypeScript config found"
+        run: |
+          for dir in ${{ steps.check.outputs.node_dirs }}; do
+            echo "=== Linting $dir ==="
+            cd "$dir"
+            npm ci
+            npm run lint --if-present
+            npm run typecheck --if-present || npx tsc --noEmit 2>/dev/null || echo "No TypeScript config"
+            cd - > /dev/null
+          done
 
       - name: Skip (no Node.js)
         if: steps.check.outputs.has_node != 'true'
-        run: echo "No package.json found, skipping TypeScript lint checks."
+        run: echo "No package.json with lock file found, skipping TypeScript lint checks."
