@@ -6,9 +6,8 @@ from typing import TYPE_CHECKING
 
 from sqlalchemy import DateTime, ForeignKey, Index, Integer, Uuid, func
 from sqlalchemy.orm import Mapped, mapped_column, relationship
-from sqlalchemy.types import JSON
 
-from city_api.database import Base
+from city_api.database import Base, JSONVariant
 
 if TYPE_CHECKING:
     from city_api.models.world import World
@@ -25,8 +24,8 @@ class Tile(Base):
     )
     tx: Mapped[int] = mapped_column(Integer, nullable=False)
     ty: Mapped[int] = mapped_column(Integer, nullable=False)
-    terrain_data: Mapped[dict] = mapped_column(JSON, nullable=False, default=dict)
-    features: Mapped[dict] = mapped_column(JSON, nullable=False, default=dict)
+    terrain_data: Mapped[dict] = mapped_column(JSONVariant, nullable=False, default=dict)
+    features: Mapped[dict] = mapped_column(JSONVariant, nullable=False, default=dict)
     version: Mapped[int] = mapped_column(Integer, nullable=False, default=1)
     created_at: Mapped[datetime] = mapped_column(
         DateTime(timezone=True), server_default=func.now(), nullable=False

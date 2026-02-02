@@ -2,8 +2,14 @@
 
 from collections.abc import AsyncGenerator
 
+from sqlalchemy import JSON
+from sqlalchemy.dialects.postgresql import JSONB
 from sqlalchemy.ext.asyncio import AsyncSession, async_sessionmaker, create_async_engine
 from sqlalchemy.orm import DeclarativeBase
+
+# Database-agnostic JSON type: JSONB on Postgres, JSON on SQLite/others
+# This allows tests to use SQLite while production uses Postgres JSONB
+JSONVariant = JSON().with_variant(JSONB(), "postgresql")
 
 
 class Base(DeclarativeBase):

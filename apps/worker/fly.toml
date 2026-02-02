@@ -1,11 +1,14 @@
 # Fly.io configuration for City Doodle Worker
 # See https://fly.io/docs/reference/configuration/ for all options
+#
+# Required secrets (set via `flyctl secrets set`):
+#   DATABASE_URL - Postgres connection string
 
 app = "city-doodle-worker"
 primary_region = "iad"
 
 [build]
-  builder = "paketobuildpacks/builder:base"
+  dockerfile = "Dockerfile"
 
 [env]
   LOG_LEVEL = "info"

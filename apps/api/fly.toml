@@ -1,15 +1,23 @@
 # Fly.io configuration for City Doodle API
 # See https://fly.io/docs/reference/configuration/ for all options
+#
+# Required secrets (set via `flyctl secrets set`):
+#   DATABASE_URL      - Postgres connection string (asyncpg format)
+#   DATABASE_URL_SYNC - Postgres connection string (psycopg2 format, for migrations)
 
 app = "city-doodle-api"
 primary_region = "iad"
 
 [build]
-  builder = "paketobuildpacks/builder:base"
+  dockerfile = "Dockerfile"
+
+[deploy]
+  release_command = "alembic upgrade head"
 
 [env]
   PORT = "8080"
   LOG_LEVEL = "info"
+  AUTH_MODE = "production"
 
 [http_service]
   internal_port = 8080
