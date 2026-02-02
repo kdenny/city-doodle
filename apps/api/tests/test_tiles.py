@@ -254,14 +254,63 @@ class TestUpdateTile:
     """Tests for PATCH /tiles/{tile_id} endpoint."""
 
     @pytest.mark.asyncio
-    async def test_update_tile_terrain_data(self, client: AsyncClient, world_id: str):
-        """Update tile terrain data."""
+    async def test_update_tile_requires_lock(self, client: AsyncClient, world_id: str):
+        """Update tile without lock should return 409 Conflict."""
         # Create a tile
         create_response = await client.post(
             f"/worlds/{world_id}/tiles?tx=0&ty=0",
             headers={"X-User-Id": TEST_USER_ID},
         )
         tile_id = create_response.json()["id"]
+
+        # Try to update without acquiring a lock
+        response = await client.patch(
+            f"/tiles/{tile_id}",
+            json={"terrain_data": {"elevation": [[1.0]]}},
+            headers={"X-User-Id": TEST_USER_ID},
+        )
+        assert response.status_code == 409
+        assert "locked" in response.json()["detail"].lower()
+
+    @pytest.mark.asyncio
+    async def test_update_tile_with_other_users_lock(self, client: AsyncClient, world_id: str):
+        """Update tile with another user's lock should return 409."""
+        # Create a tile
+        create_response = await client.post(
+            f"/worlds/{world_id}/tiles?tx=0&ty=0",
+            headers={"X-User-Id": TEST_USER_ID},
+        )
+        tile_id = create_response.json()["id"]
+
+        # Another user acquires the lock
+        await client.post(
+            f"/tiles/{tile_id}/lock",
+            headers={"X-User-Id": OTHER_USER_ID},
+        )
+
+        # Try to update as test user (doesn't hold the lock)
+        response = await client.patch(
+            f"/tiles/{tile_id}",
+            json={"terrain_data": {"elevation": [[1.0]]}},
+            headers={"X-User-Id": TEST_USER_ID},
+        )
+        assert response.status_code == 409
+
+    @pytest.mark.asyncio
+    async def test_update_tile_terrain_data(self, client: AsyncClient, world_id: str):
+        """Update tile terrain data with valid lock."""
+        # Create a tile
+        create_response = await client.post(
+            f"/worlds/{world_id}/tiles?tx=0&ty=0",
+            headers={"X-User-Id": TEST_USER_ID},
+        )
+        tile_id = create_response.json()["id"]
+
+        # Acquire a lock
+        await client.post(
+            f"/tiles/{tile_id}/lock",
+            headers={"X-User-Id": TEST_USER_ID},
+        )
 
         # Update terrain data
         response = await client.patch(
@@ -282,13 +331,19 @@ class TestUpdateTile:
 
     @pytest.mark.asyncio
     async def test_update_tile_features(self, client: AsyncClient, world_id: str):
-        """Update tile features."""
+        """Update tile features with valid lock."""
         # Create a tile
         create_response = await client.post(
             f"/worlds/{world_id}/tiles?tx=0&ty=0",
             headers={"X-User-Id": TEST_USER_ID},
         )
         tile_id = create_response.json()["id"]
+
+        # Acquire a lock
+        await client.post(
+            f"/tiles/{tile_id}/lock",
+            headers={"X-User-Id": TEST_USER_ID},
+        )
 
         # Update features
         response = await client.patch(
@@ -330,7 +385,14 @@ class TestUpdateTile:
         )
         tile_id = create_response.json()["id"]
 
+        # Other user acquires lock on their tile
+        await client.post(
+            f"/tiles/{tile_id}/lock",
+            headers={"X-User-Id": OTHER_USER_ID},
+        )
+
         # Try to update as test user
+        # (world access check runs before lock check)
         response = await client.patch(
             f"/tiles/{tile_id}",
             json={"terrain_data": {"elevation": []}},

@@ -6,7 +6,7 @@ from uuid import UUID
 from fastapi import APIRouter, Depends, HTTPException, Query, status
 
 from city_api.dependencies import get_current_user
-from city_api.repositories import tile_repository, world_repository
+from city_api.repositories import lock_repository, tile_repository, world_repository
 from city_api.schemas import Tile, TileUpdate
 
 logger = logging.getLogger(__name__)
@@ -105,8 +105,8 @@ async def update_tile(
     """
     Update a tile.
 
-    Note: In production, this requires a valid lock (implemented in CITY-10).
-    For now, we just verify world ownership.
+    Requires the user to hold an active lock on the tile.
+    Returns 409 Conflict if the tile is not locked or locked by another user.
     """
     tile_data = tile_repository.get(tile_id)
     if tile_data is None:
@@ -130,7 +130,13 @@ async def update_tile(
             detail="You don't have access to this tile",
         )
 
-    # TODO: Check for valid lock (CITY-10)
+    # Verify user holds an active lock on this tile
+    lock = lock_repository.get(tile_id)
+    if lock is None or lock.user_id != user_id:
+        raise HTTPException(
+            status_code=status.HTTP_409_CONFLICT,
+            detail="Tile must be locked for editing",
+        )
 
     updated_tile = tile_repository.update(tile_id, tile_update)
     if updated_tile is None:

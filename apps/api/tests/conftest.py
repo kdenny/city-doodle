@@ -2,7 +2,7 @@
 
 import pytest
 from city_api.main import app
-from city_api.repositories import tile_repository, world_repository
+from city_api.repositories import lock_repository, tile_repository, world_repository
 from httpx import ASGITransport, AsyncClient
 
 
@@ -22,7 +22,9 @@ def clear_repositories():
     world_repository._worlds.clear()
     tile_repository._tiles.clear()
     tile_repository._coord_index.clear()
+    lock_repository._locks.clear()
     yield
     world_repository._worlds.clear()
     tile_repository._tiles.clear()
     tile_repository._coord_index.clear()
+    lock_repository._locks.clear()
