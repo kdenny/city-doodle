@@ -227,9 +227,21 @@ Labels in `.vibe/config.json` are for **type**, **risk**, and **area** only. Do 
 ### Ticket Status Updates
 
 Update ticket status as work progresses:
-- **Todo** → **In Progress**: When starting work
+- **Todo/Backlog** → **In Progress**: When starting work
 - **In Progress** → **In Review**: When PR is opened
 - **In Review** → **Done**: When PR is merged
+
+**IMPORTANT:** Always update ticket status manually when opening or merging PRs:
+
+```bash
+# When opening a PR
+bin/ticket update PROJ-123 --status "In Review"
+
+# When PR is merged
+bin/ticket update PROJ-123 --status "Done"
+```
+
+GitHub Actions workflows (`pr-opened.yml`, `pr-merged.yml`) can automate this if `LINEAR_API_KEY` is configured as a repository secret. Until then, agents must update status manually to keep the board accurate.
 
 ---
 
