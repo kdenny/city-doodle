@@ -276,6 +276,71 @@ Update ticket status as work progresses:
 - **In Progress** → **In Review**: When PR is opened
 - **In Review** → **Done**: When PR is merged
 
+### Finding Actionable Tickets
+
+When asked to "find unblocked tickets" or "look for work to do", follow this systematic triage process:
+
+#### Step 1: Filter for candidates
+
+```bash
+bin/ticket list --status "Todo,Backlog"
+```
+
+Exclude tickets that are:
+- Already **Done**, **Deployed**, **Canceled**, or **In Progress**
+- Labeled **HUMAN** (requires human action)
+- Blocked by other tickets (check `blockedBy` relationships)
+
+#### Step 2: Validate each candidate
+
+For each potential ticket, fetch details and check:
+
+| Issue | Detection | Action |
+|-------|-----------|--------|
+| Actually blocked | Depends on work that doesn't exist yet | Add blocking relationship to prerequisite ticket |
+| Already completed | Work already exists in codebase | Cancel ticket with comment explaining it's done |
+| Requires human action | Needs external access, secrets, decisions | Add **HUMAN** label |
+| Missing HUMAN label | Title starts with "HUMAN:" | Add **HUMAN** label for consistency |
+| Stale/obsolete | Requirements no longer make sense | Cancel with explanation |
+
+#### Step 3: Fix ticket hygiene issues
+
+Before picking a ticket, fix any issues found:
+- Add missing blocking relationships
+- Cancel completed tickets (with comment)
+- Add **HUMAN** labels where needed
+- Update stale descriptions
+
+#### Step 4: Pick highest-priority actionable ticket
+
+Priority order:
+1. **Milestone priority** - v1 before v2/Future
+2. **Ticket number** - Lower numbers first (within same milestone)
+3. **Foundation work** - Prerequisites before dependent work
+4. **Risk level** - Lower risk first (for quick wins)
+
+#### Example triage report
+
+```
+## Ticket Triage Report
+
+### Actionable (3)
+1. PROJ-101 - Add user authentication (Medium Risk, Backend)
+2. PROJ-105 - Create API endpoint for /users (Low Risk, Backend)
+3. PROJ-108 - Add input validation (Low Risk, Backend)
+
+### Fixed during triage
+- PROJ-102: Added blocking relationship (blocked by PROJ-101)
+- PROJ-106: Canceled - feature already exists in codebase
+- PROJ-107: Added HUMAN label - requires AWS account setup
+
+### Still blocked (2)
+- PROJ-102 - Add login page (blocked by PROJ-101)
+- PROJ-110 - Deploy to production (blocked by PROJ-108, PROJ-109)
+
+**Recommendation:** Start with PROJ-105 (lowest risk, no blockers)
+```
+
 ### HUMAN Follow-Up for Deployment Infrastructure
 
 When a deployment infrastructure ticket is completed (e.g. added `fly.toml`, `vercel.json`, `.env.example`), create a **HUMAN-labeled follow-up ticket** so a human can set up production accounts and deploy. Use:
