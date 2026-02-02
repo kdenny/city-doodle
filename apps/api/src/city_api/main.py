@@ -3,6 +3,7 @@
 from fastapi import FastAPI
 
 from city_api.routers import auth_router
+from city_api.routes import worlds_router
 from city_api.schemas import (
     District,
     DistrictCreate,
@@ -12,8 +13,6 @@ from city_api.schemas import (
     TileCreate,
     TileLock,
     TileLockCreate,
-    World,
-    WorldCreate,
 )
 
 app = FastAPI(
@@ -23,6 +22,7 @@ app = FastAPI(
 )
 
 app.include_router(auth_router)
+app.include_router(worlds_router)
 
 
 @app.get("/")
@@ -35,29 +35,6 @@ async def root():
 async def health():
     """Health check endpoint."""
     return {"status": "healthy"}
-
-
-# =============================================================================
-# World endpoints (stubs - implementation in CITY-8)
-# =============================================================================
-
-
-@app.post("/worlds", response_model=World, tags=["worlds"])
-async def create_world(world: WorldCreate) -> World:
-    """Create a new world."""
-    raise NotImplementedError("Endpoint not yet implemented")
-
-
-@app.get("/worlds", response_model=list[World], tags=["worlds"])
-async def list_worlds() -> list[World]:
-    """List all worlds for the current user."""
-    raise NotImplementedError("Endpoint not yet implemented")
-
-
-@app.get("/worlds/{world_id}", response_model=World, tags=["worlds"])
-async def get_world(world_id: str) -> World:
-    """Get a world by ID."""
-    raise NotImplementedError("Endpoint not yet implemented")
 
 
 # =============================================================================
