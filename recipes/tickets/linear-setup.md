@@ -89,7 +89,7 @@ Create these labels in Linear to match the vibe conventions:
 - **Docs** - Documentation
 
 ### Special Labels
-- **HUMAN** - Requires human decision/action
+- **HUMAN ‼️** - Requires human decision/action
 - **Milestone** - Part of a larger feature
 - **Blocked** - Waiting on external dependency
 
