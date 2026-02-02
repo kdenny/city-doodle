@@ -1,0 +1,19 @@
+{
+  "name": "city-doodle",
+  "version": "0.1.0",
+  "private": true,
+  "description": "A lo-fi vector city builder - lightweight planning sim disguised as a map doodle",
+  "workspaces": [
+    "apps/web",
+    "packages/shared"
+  ],
+  "scripts": {
+    "dev": "npm run dev --workspace=apps/web",
+    "build": "npm run build --workspace=apps/web",
+    "lint": "npm run lint --workspaces --if-present",
+    "typecheck": "npm run typecheck --workspaces --if-present"
+  },
+  "engines": {
+    "node": ">=18.0.0"
+  }
+}
