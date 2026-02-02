@@ -22,6 +22,7 @@ def get_engine():
     global _engine
     if _engine is None:
         from city_api.config import settings
+
         _engine = create_async_engine(settings.database_url, echo=False)
     return _engine
 
