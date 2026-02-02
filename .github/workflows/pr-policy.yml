@@ -25,14 +25,25 @@ jobs:
             const body = context.payload.pull_request.body || '';
             const branch = context.payload.pull_request.head.ref;
 
-            // Patterns to match ticket references
+            // Standard patterns to match ticket references
             const patterns = [
-              /[A-Z]+-\d+/,           // PROJ-123
-              /\#\d+/,                 // #123
-              /issues\/\d+/,           // issues/123
+              /[A-Z]+-\d+/,           // PROJ-123 (Linear, Jira)
+              /SC-\d+/i,              // SC-12345 (Shortcut)
+              /\#\d+/,                // #123 (GitHub issues)
+              /issues\/\d+/,          // issues/123 (GitHub)
             ];
 
-            const hasTicket = patterns.some(p =>
+            // Grandfathered patterns for legacy tickets
+            // Add custom patterns here for pre-existing ticket formats
+            const grandfatheredPatterns = [
+              /\[LEGACY-\d+\]/i,      // [LEGACY-123]
+              /BACKLOG-\d+/i,         // BACKLOG-123
+              /^\d+-/,                // 123-description (numeric prefix)
+            ];
+
+            const allPatterns = [...patterns, ...grandfatheredPatterns];
+
+            const hasTicket = allPatterns.some(p =>
               p.test(title) || p.test(body) || p.test(branch)
             );
 
@@ -92,16 +103,32 @@ jobs:
             const branch = context.payload.pull_request.head.ref;
 
             // Skip for common branch names
-            const skipBranches = ['main', 'master', 'develop', 'staging'];
+            const skipBranches = ['main', 'master', 'develop', 'staging', 'release', 'hotfix'];
             if (skipBranches.includes(branch)) {
               return;
             }
 
-            // Check for ticket reference pattern
-            const pattern = /^[A-Z]+-\d+/;
+            // Standard branch patterns
+            const standardPatterns = [
+              /^[A-Z]+-\d+/,          // PROJ-123 (Linear, Jira)
+              /^SC-\d+/i,             // SC-12345 (Shortcut)
+              /^\d+-/,                // 123-description (GitHub issue)
+            ];
 
-            if (!pattern.test(branch)) {
-              core.warning(`Branch name "${branch}" doesn't follow convention. Expected: PROJ-123 or PROJ-123-description`);
+            // Grandfathered branch patterns for legacy projects
+            const grandfatheredPatterns = [
+              /^feature\//,           // feature/some-name
+              /^bugfix\//,            // bugfix/some-name
+              /^hotfix\//,            // hotfix/some-name
+              /^fix\//,               // fix/some-name
+              /^chore\//,             // chore/some-name
+            ];
+
+            const allPatterns = [...standardPatterns, ...grandfatheredPatterns];
+            const matchesPattern = allPatterns.some(p => p.test(branch));
+
+            if (!matchesPattern) {
+              core.warning(`Branch name "${branch}" doesn't follow convention. Expected: PROJ-123, SC-12345, or feature/description`);
             }
 
       - name: Post summary comment

@@ -1,90 +1,180 @@
 # Shortcut Setup
 
-## When to Use This Recipe
+Set up Shortcut.com as your ticket tracking system.
 
-Use this recipe when you need to:
-- Set up Shortcut as your ticket tracking system
-- Understand the current integration status
+## Prerequisites
 
-## Current Status
+- Shortcut account with API access
+- Admin or member permissions to generate API tokens
 
-**⚠️ Shortcut integration is not yet implemented.**
+## Setup Steps
 
-This is tracked in GitHub issue #1.
+### 1. Generate an API Token
 
-## Planned Features
+1. Go to [Shortcut Settings → API Tokens](https://app.shortcut.com/settings/account/api-tokens)
+2. Click **Generate Token**
+3. Give it a descriptive name (e.g., "Vibe Code Boilerplate")
+4. Copy the token (you won't see it again)
 
-When implemented, Shortcut integration will support:
+### 2. Configure Environment
 
-- API authentication
-- Creating and updating stories
-- Listing stories with filters
-- Label management
-- Workflow state mapping
-- GitHub integration
+Add the token to your local environment:
 
-## Workaround
-
-Until Shortcut integration is complete, you can:
-
-### Option 1: Use Linear Instead
-Linear is fully supported. See `recipes/tickets/linear-setup.md`.
-
-### Option 2: Manual Workflow
-1. Create tickets directly in Shortcut
-2. Use the ticket ID in your branch names manually:
-   ```bash
-   git checkout -b sc-12345-feature-name
-   ```
-3. Reference ticket in PR descriptions:
-   ```markdown
-   Closes [sc-12345](https://app.shortcut.com/yourorg/story/12345)
-   ```
-
-### Option 3: Shortcut GitHub Integration
-Enable Shortcut's native GitHub integration:
-1. In Shortcut: Settings → Integrations → GitHub
-2. Connect your GitHub organization
-3. Branch names with `sc-12345` will auto-link
-
-## Contributing
-
-If you'd like to help implement Shortcut integration:
-
-1. Check GitHub issue #1 for current status
-2. Reference the Linear implementation in `lib/vibe/trackers/linear.py`
-3. Shortcut API docs: https://developer.shortcut.com/api/rest/v3
-
-### Implementation Outline
-
-```python
-# lib/vibe/trackers/shortcut.py
-
-class ShortcutTracker(TrackerBase):
-    def authenticate(self, api_token: str) -> bool:
-        # POST to /api/v3/member
-        pass
-
-    def get_ticket(self, story_id: str) -> Ticket:
-        # GET /api/v3/stories/{story_id}
-        pass
-
-    def list_tickets(self, ...) -> list[Ticket]:
-        # POST /api/v3/search/stories
-        pass
-
-    def create_ticket(self, ...) -> Ticket:
-        # POST /api/v3/stories
-        pass
+```bash
+# Add to .env.local (gitignored)
+echo "SHORTCUT_API_TOKEN=your-token-here" >> .env.local
 ```
 
-## Timeline
+### 3. Run Setup Wizard
 
-Check GitHub issue #1 for updates on implementation timeline.
+```bash
+bin/vibe setup --wizard tracker
+```
 
-## Extension Points
+Select **Shortcut** when prompted.
 
-When implemented:
-- Custom field mapping
-- Milestone/Epic integration
-- Iteration support
+### 4. Configure GitHub Actions (Optional)
+
+For automatic ticket status updates on PR events:
+
+1. Add repository secret `SHORTCUT_API_TOKEN`:
+   - Settings → Secrets and variables → Actions → New repository secret
+
+2. Update workflow files to use Shortcut:
+
+```yaml
+# .github/workflows/pr-merged.yml
+env:
+  SHORTCUT_API_TOKEN: ${{ secrets.SHORTCUT_API_TOKEN }}
+```
+
+## Configuration
+
+In `.vibe/config.json`:
+
+```json
+{
+  "tracker": {
+    "type": "shortcut",
+    "config": {
+      "deployed_state": "Done"
+    }
+  }
+}
+```
+
+## Branch Naming
+
+Shortcut story IDs are numeric. Branch naming convention:
+
+```
+SC-12345          # Shortcut story ID
+SC-12345-feature  # With description
+```
+
+The `SC-` prefix is optional but recommended for clarity.
+
+## CLI Commands
+
+```bash
+# List stories
+bin/ticket list
+
+# Get story details
+bin/ticket get SC-12345
+bin/ticket get 12345
+
+# Create story
+bin/ticket create "Add login button" --labels "Feature,Frontend"
+
+# Update story status
+bin/ticket update SC-12345 --status "Done"
+
+# List labels
+bin/ticket labels
+```
+
+## Workflow States
+
+Common Shortcut workflow states:
+
+| State | Description |
+|-------|-------------|
+| Backlog | Not started |
+| Unstarted | Ready to start |
+| Started | In progress |
+| Ready for Review | PR opened |
+| Done | Completed |
+
+Map these to your workflow in `.vibe/config.json`:
+
+```json
+{
+  "tracker": {
+    "type": "shortcut",
+    "config": {
+      "in_review_state": "Ready for Review",
+      "deployed_state": "Done"
+    }
+  }
+}
+```
+
+## Shortcut Native GitHub Integration
+
+Shortcut offers built-in GitHub integration:
+
+1. In Shortcut: Settings → Integrations → GitHub
+2. Connect your GitHub organization
+3. Branches with story IDs auto-link
+
+This works alongside the boilerplate's status updates.
+
+## Story Types
+
+Shortcut supports different story types:
+
+- **Feature** - New functionality
+- **Bug** - Something broken
+- **Chore** - Maintenance, cleanup
+
+When creating tickets via CLI, specify type:
+
+```bash
+bin/ticket create "Fix login issue" --type bug
+```
+
+## Troubleshooting
+
+### "SHORTCUT_API_TOKEN not set"
+
+Ensure the token is in your environment:
+
+```bash
+# Check if set
+echo $SHORTCUT_API_TOKEN
+
+# Set for current session
+export SHORTCUT_API_TOKEN=your-token
+```
+
+### "Story not found"
+
+- Verify the story ID is correct
+- Ensure your token has access to the workspace
+- Check if the story was archived
+
+### "Invalid workflow state"
+
+Workflow state names must match exactly. List available states:
+
+```bash
+# This will show the states for your workspace
+bin/ticket list  # Look at status column for valid values
+```
+
+## Related
+
+- [linear-setup.md](linear-setup.md) - Alternative: Linear configuration
+- [creating-tickets.md](creating-tickets.md) - Ticket creation best practices
+- [../workflows/pr-merge-linear.md](../workflows/pr-merge-linear.md) - Automatic status updates
