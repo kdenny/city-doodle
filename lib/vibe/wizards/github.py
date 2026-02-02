@@ -125,6 +125,25 @@ def _configure_repo(config: dict[str, Any]) -> None:
     config["github"]["repo"] = click.prompt("Repository name")
 
 
+def try_auto_configure_github(config: dict[str, Any]) -> bool:
+    """
+    Auto-configure GitHub from gh CLI and git remote (no prompts).
+
+    Sets config["github"] with auth_method, owner, repo when both gh is
+    authenticated and origin remote points to GitHub. Returns True if
+    configuration was applied.
+    """
+    if not check_gh_cli_auth():
+        return False
+    owner, repo = _detect_remote()
+    if not owner or not repo:
+        return False
+    config["github"]["auth_method"] = "gh_cli"
+    config["github"]["owner"] = owner
+    config["github"]["repo"] = repo
+    return True
+
+
 def _detect_remote() -> tuple[str | None, str | None]:
     """Detect GitHub owner/repo from git remote."""
     try:

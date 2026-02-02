@@ -13,9 +13,9 @@
     "config": {}
   },
   "github": {
-    "auth_method": null,
-    "owner": "",
-    "repo": ""
+    "auth_method": "gh_cli",
+    "owner": "kdenny",
+    "repo": "vibe-code-boilerplate"
   },
   "branching": {
     "pattern": "{PROJ}-{num}",
@@ -28,10 +28,28 @@
     "auto_cleanup": true
   },
   "labels": {
-    "type": ["Bug", "Feature", "Chore", "Refactor"],
-    "risk": ["Low Risk", "Medium Risk", "High Risk"],
-    "area": ["Frontend", "Backend", "Infra", "Docs"],
-    "special": ["HUMAN", "Milestone", "Blocked"]
+    "type": [
+      "Bug",
+      "Feature",
+      "Chore",
+      "Refactor"
+    ],
+    "risk": [
+      "Low Risk",
+      "Medium Risk",
+      "High Risk"
+    ],
+    "area": [
+      "Frontend",
+      "Backend",
+      "Infra",
+      "Docs"
+    ],
+    "special": [
+      "HUMAN",
+      "Milestone",
+      "Blocked"
+    ]
   },
   "security": {
     "secret_scanner": "gitleaks",
