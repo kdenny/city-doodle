@@ -28,15 +28,13 @@ class ShortcutTracker(TrackerBase):
     def authenticate(self, **kwargs: Any) -> bool:
         """Authenticate with Shortcut API."""
         raise NotImplementedError(
-            "Shortcut integration is not yet implemented. "
-            "See GitHub issue #1 for tracking."
+            "Shortcut integration is not yet implemented. See GitHub issue #1 for tracking."
         )
 
     def get_ticket(self, ticket_id: str) -> Ticket | None:
         """Fetch a single ticket by ID."""
         raise NotImplementedError(
-            "Shortcut integration is not yet implemented. "
-            "See GitHub issue #1 for tracking."
+            "Shortcut integration is not yet implemented. See GitHub issue #1 for tracking."
         )
 
     def list_tickets(
@@ -47,8 +45,7 @@ class ShortcutTracker(TrackerBase):
     ) -> list[Ticket]:
         """List tickets with optional filters."""
         raise NotImplementedError(
-            "Shortcut integration is not yet implemented. "
-            "See GitHub issue #1 for tracking."
+            "Shortcut integration is not yet implemented. See GitHub issue #1 for tracking."
         )
 
     def create_ticket(
@@ -59,8 +56,7 @@ class ShortcutTracker(TrackerBase):
     ) -> Ticket:
         """Create a new ticket."""
         raise NotImplementedError(
-            "Shortcut integration is not yet implemented. "
-            "See GitHub issue #1 for tracking."
+            "Shortcut integration is not yet implemented. See GitHub issue #1 for tracking."
         )
 
     def update_ticket(
@@ -73,20 +69,17 @@ class ShortcutTracker(TrackerBase):
     ) -> Ticket:
         """Update an existing ticket."""
         raise NotImplementedError(
-            "Shortcut integration is not yet implemented. "
-            "See GitHub issue #1 for tracking."
+            "Shortcut integration is not yet implemented. See GitHub issue #1 for tracking."
         )
 
     def comment_ticket(self, ticket_id: str, body: str) -> None:
         """Add a comment to a ticket."""
         raise NotImplementedError(
-            "Shortcut integration is not yet implemented. "
-            "See GitHub issue #1 for tracking."
+            "Shortcut integration is not yet implemented. See GitHub issue #1 for tracking."
         )
 
     def validate_config(self) -> tuple[bool, list[str]]:
         """Validate Shortcut configuration."""
         return False, [
-            "Shortcut integration is not yet implemented. "
-            "See GitHub issue #1 for tracking."
+            "Shortcut integration is not yet implemented. See GitHub issue #1 for tracking."
         ]

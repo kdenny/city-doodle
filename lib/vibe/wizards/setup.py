@@ -175,9 +175,13 @@ def run_setup(force: bool = False) -> bool:
             next_num += 1
         click.echo(f"  {next_num}. Optional: run 'bin/vibe setup -w tracker' to add Linear")
         next_num += 1
-        click.echo(f"  {next_num}. Fill in the Project Overview in CLAUDE.md (for AI agent context)")
+        click.echo(
+            f"  {next_num}. Fill in the Project Overview in CLAUDE.md (for AI agent context)"
+        )
         next_num += 1
-        click.echo(f"  {next_num}. Update README.md with app name, description, tech stack, and setup instructions")
+        click.echo(
+            f"  {next_num}. Update README.md with app name, description, tech stack, and setup instructions"
+        )
         next_num += 1
         click.echo(f"  {next_num}. Check recipes/ for best practices")
         click.echo()
@@ -245,7 +249,9 @@ def run_setup(force: bool = False) -> bool:
     click.echo("  1. Run 'bin/doctor' to verify your setup")
     click.echo("  2. Review .vibe/config.json and adjust as needed")
     click.echo("  3. Fill in the Project Overview in CLAUDE.md (for AI agent context)")
-    click.echo("  4. Update README.md with app name, description, tech stack, and setup instructions")
+    click.echo(
+        "  4. Update README.md with app name, description, tech stack, and setup instructions"
+    )
     click.echo("  5. Check out the recipes/ directory for best practices")
     click.echo()
 
