@@ -1,13 +1,24 @@
 # City Doodle
 
-A lo-fi vector city builder — a lightweight planning sim disguised as a map doodle.
+A lo-fi vector city builder — a lightweight planning sim disguised as a map doodle. Generate believable terrain, place districts and infrastructure, simulate organic city growth over time, and export beautiful artifacts.
+
+## Features
+
+- **Terrain Generation**: Server-side procedural terrain with seamless 3×3 tile neighborhoods
+- **City Building**: Place districts, POIs, and transit with snap-to-geometry
+- **Growth Simulation**: Watch your city evolve over 1, 5, or 10 year time steps
+- **Metrics**: VMT-lite tracking (Vehicle Miles Traveled, transit ridership proxy)
+- **Historic Preservation**: Mark districts as historic to prevent redevelopment
+- **Export**: PNG snapshots and GIF timelapses of your city's evolution
+- **Handwritten Labels**: Charming map labels with deterministic placement
+- **Personality Sliders**: Customize city character (Grid↔Organic, Sprawl↔Compact, etc.)
 
 ## Architecture
 
 ```
 city-doodle/
 ├── apps/
-│   ├── web/          # React + TypeScript + Vite frontend
+│   ├── web/          # React + TypeScript + PixiJS frontend
 │   ├── api/          # FastAPI backend
 │   └── worker/       # Python worker for heavy generation tasks
 ├── packages/
@@ -18,10 +29,13 @@ city-doodle/
 
 ### Tech Stack
 
-- **Frontend**: React + TypeScript + PixiJS (WebGL) for clean vector rendering
-- **Backend**: FastAPI (Python) with separate worker process for heavy generation
-- **Database**: Postgres (Neon)
-- **Deployment**: Vercel (web app), Fly.io (API + worker)
+| Layer | Technology |
+|-------|------------|
+| **Frontend** | React + TypeScript + Vite + PixiJS (WebGL) |
+| **Backend** | FastAPI (Python 3.11+) |
+| **Worker** | Python background jobs for terrain generation |
+| **Database** | PostgreSQL (Neon) |
+| **Deployment** | Vercel (web), Fly.io (API + worker) |
 
 ## Getting Started
 
@@ -34,12 +48,16 @@ city-doodle/
 ### Installation
 
 ```bash
-# Install Node dependencies (web app + shared types)
+# Install Node dependencies
 npm install
 
+# Create Python virtual environment
+python3 -m venv .venv
+source .venv/bin/activate  # On Windows: .venv\Scripts\activate
+
 # Install Python packages in development mode
-pip install -e .
-pip install -e apps/api
+pip install -e ".[dev]"
+pip install -e "apps/api[dev]"
 pip install -e apps/worker
 pip install -e packages/shared
 ```
@@ -50,13 +68,50 @@ pip install -e packages/shared
 # Web app (development server)
 npm run dev
 
-# API server
-cd apps/api && uvicorn city_api.main:app --reload
+# API server (activate venv first)
+source .venv/bin/activate
+uvicorn city_api.main:app --reload --app-dir apps/api/src
 
 # Worker
+source .venv/bin/activate
 python -m city_worker.main
 ```
 
-## Development
+### Running Tests
 
-See [CLAUDE.md](./CLAUDE.md) for development workflows and AI agent instructions.
+```bash
+# Python tests (API)
+source .venv/bin/activate
+pytest apps/api/tests -v
+
+# TypeScript tests (Web)
+npm test --workspace=apps/web
+```
+
+## API Documentation
+
+When the API server is running, visit:
+- **Swagger UI**: http://localhost:8000/docs
+- **ReDoc**: http://localhost:8000/redoc
+
+## Project Documentation
+
+| Document | Description |
+|----------|-------------|
+| [CLAUDE.md](./CLAUDE.md) | AI agent instructions and development workflows |
+| [01_lofi_city_builder_overview_tests.md](./01_lofi_city_builder_overview_tests%20(1).md) | Product overview and testable functionality |
+| [02_ai_coding_assistant_prompt_milestones.md](./02_ai_coding_assistant_prompt_milestones.md) | V1 milestone plan |
+| [03_v2_improvements_milestones.md](./03_v2_improvements_milestones.md) | V2 roadmap (needs system, 3D view, multiplayer) |
+
+## Development Workflow
+
+This project uses a ticket-driven development workflow with Linear for issue tracking. See [CLAUDE.md](./CLAUDE.md) for:
+
+- Creating and working on tickets
+- Git worktree workflow for parallel development
+- PR guidelines and CI requirements
+- Label conventions (type, risk, area)
+
+## License
+
+MIT
