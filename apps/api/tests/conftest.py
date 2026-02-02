@@ -17,8 +17,14 @@ TEST_DATABASE_URL = os.environ.get(
     "postgresql+asyncpg://localhost/city_doodle_test",
 )
 
-# Create test engine
-test_engine = create_async_engine(TEST_DATABASE_URL, echo=False)
+# Create test engine with pool_pre_ping to handle stale connections
+test_engine = create_async_engine(
+    TEST_DATABASE_URL,
+    echo=False,
+    pool_pre_ping=True,
+    pool_size=5,
+    max_overflow=10,
+)
 test_session_factory = async_sessionmaker(test_engine, class_=AsyncSession, expire_on_commit=False)
 
 
@@ -49,15 +55,24 @@ async def setup_test_db():
 @pytest.fixture(autouse=True)
 async def clear_tables():
     """Clear all tables before each test."""
-    async with test_session_factory() as session:
-        # Delete in order respecting foreign keys
-        await session.execute(text("DELETE FROM tile_locks"))
-        await session.execute(text("DELETE FROM jobs"))
-        await session.execute(text("DELETE FROM tiles"))
-        await session.execute(text("DELETE FROM worlds"))
-        await session.execute(text("DELETE FROM sessions"))
-        await session.execute(text("DELETE FROM users"))
-        await session.commit()
+    # Use a raw connection to avoid session state issues
+    async with test_engine.connect() as conn:
+        # Use TRUNCATE CASCADE for efficient cleanup (Postgres-specific)
+        if "postgresql" in TEST_DATABASE_URL:
+            await conn.execute(
+                text(
+                    "TRUNCATE users, sessions, worlds, tiles, tile_locks, jobs RESTART IDENTITY CASCADE"
+                )
+            )
+        else:
+            # Fallback for SQLite (manual delete order)
+            await conn.execute(text("DELETE FROM tile_locks"))
+            await conn.execute(text("DELETE FROM jobs"))
+            await conn.execute(text("DELETE FROM tiles"))
+            await conn.execute(text("DELETE FROM worlds"))
+            await conn.execute(text("DELETE FROM sessions"))
+            await conn.execute(text("DELETE FROM users"))
+        await conn.commit()
     yield
 
 
