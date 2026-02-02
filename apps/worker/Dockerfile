@@ -22,5 +22,4 @@ RUN pip install --no-cache-dir -e .
 # Set environment variables
 ENV PYTHONUNBUFFERED=1
 
-# Run the worker
-CMD ["python", "-m", "city_worker.main"]
+# Note: The run command is defined in fly.toml [processes] section
