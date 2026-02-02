@@ -3,14 +3,12 @@
 from fastapi import FastAPI
 
 from city_api.routers import auth_router
-from city_api.routes import tiles_router, worlds_router
+from city_api.routes import locks_router, tiles_router, worlds_router
 from city_api.schemas import (
     District,
     DistrictCreate,
     Job,
     JobCreate,
-    TileLock,
-    TileLockCreate,
 )
 
 app = FastAPI(
@@ -22,6 +20,7 @@ app = FastAPI(
 app.include_router(auth_router)
 app.include_router(worlds_router)
 app.include_router(tiles_router)
+app.include_router(locks_router)
 
 
 @app.get("/")
@@ -34,29 +33,6 @@ async def root():
 async def health():
     """Health check endpoint."""
     return {"status": "healthy"}
-
-
-# =============================================================================
-# Tile locking endpoints (stubs - implementation in CITY-10)
-# =============================================================================
-
-
-@app.post("/tiles/locks", response_model=TileLock, tags=["tile-locks"])
-async def acquire_lock(lock: TileLockCreate) -> TileLock:
-    """Acquire a lock on a tile for editing."""
-    raise NotImplementedError("Endpoint not yet implemented")
-
-
-@app.delete("/tiles/{tile_id}/lock", tags=["tile-locks"])
-async def release_lock(tile_id: str) -> dict:
-    """Release a lock on a tile."""
-    raise NotImplementedError("Endpoint not yet implemented")
-
-
-@app.get("/tiles/{tile_id}/lock", response_model=TileLock | None, tags=["tile-locks"])
-async def get_lock(tile_id: str) -> TileLock | None:
-    """Get the current lock on a tile."""
-    raise NotImplementedError("Endpoint not yet implemented")
 
 
 # =============================================================================
