@@ -186,9 +186,11 @@ export const worlds = {
 // ============================================================================
 
 export const tiles = {
-  /** Create a new tile */
+  /** Create or get a tile at the specified coordinates */
   async create(data: TileCreate): Promise<Tile> {
-    return request<Tile>("POST", "/tiles", { body: data });
+    return request<Tile>("POST", `/worlds/${data.world_id}/tiles`, {
+      params: { tx: data.tx, ty: data.ty },
+    });
   },
 
   /** List tiles in a world */
