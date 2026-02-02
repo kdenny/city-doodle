@@ -42,17 +42,13 @@ class JobRepository:
 
     def list_by_user(self, user_id: UUID, limit: int = 50) -> list[Job]:
         """List jobs for a user, most recent first."""
-        user_jobs = [
-            job for job in self._jobs.values() if job["user_id"] == user_id
-        ]
+        user_jobs = [job for job in self._jobs.values() if job["user_id"] == user_id]
         user_jobs.sort(key=lambda j: j["created_at"], reverse=True)
         return [self._to_model(job) for job in user_jobs[:limit]]
 
     def list_by_tile(self, tile_id: UUID, limit: int = 50) -> list[Job]:
         """List jobs for a tile, most recent first."""
-        tile_jobs = [
-            job for job in self._jobs.values() if job["tile_id"] == tile_id
-        ]
+        tile_jobs = [job for job in self._jobs.values() if job["tile_id"] == tile_id]
         tile_jobs.sort(key=lambda j: j["created_at"], reverse=True)
         return [self._to_model(job) for job in tile_jobs[:limit]]
 
