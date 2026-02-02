@@ -14,8 +14,8 @@ config = context.config
 if config.config_file_name is not None:
     fileConfig(config.config_file_name)
 
-from city_api.database import Base
-from city_api.models import World, Tile, TileLock, Job, User, Session
+from city_api.database import Base  # noqa: E402
+from city_api.models import Job, Session, Tile, TileLock, User, World  # noqa: E402, F401
 
 target_metadata = Base.metadata
 

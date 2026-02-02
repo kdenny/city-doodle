@@ -64,9 +64,9 @@ jobs:
       - name: Find Node.js projects
         id: check
         run: |
-          # Check for package.json in monorepo locations
+          # Check for package.json in monorepo app/package locations (not root)
           NODE_DIRS=""
-          for dir in . apps/web apps/api packages/*; do
+          for dir in apps/* packages/*; do
             if [ -f "$dir/package.json" ] && [ -f "$dir/package-lock.json" ]; then
               NODE_DIRS="$NODE_DIRS $dir"
             fi
