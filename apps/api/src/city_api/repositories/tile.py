@@ -1,5 +1,6 @@
 """Tile repository - data access for tiles."""
 
+from datetime import UTC, datetime
 from uuid import UUID
 
 from sqlalchemy import and_, select
@@ -7,6 +8,13 @@ from sqlalchemy.ext.asyncio import AsyncSession
 
 from city_api.models import Tile as TileModel
 from city_api.schemas import TerrainData, Tile, TileCreate, TileFeatures, TileUpdate
+
+
+def _ensure_utc(dt: datetime) -> datetime:
+    """Ensure datetime is timezone-aware (UTC). SQLite returns naive datetimes."""
+    if dt.tzinfo is None:
+        return dt.replace(tzinfo=UTC)
+    return dt
 
 
 async def create_tile(db: AsyncSession, tile_create: TileCreate) -> Tile:
@@ -115,6 +123,6 @@ def _to_schema(tile: TileModel) -> Tile:
         if tile.terrain_data
         else TerrainData(),
         features=TileFeatures.model_validate(tile.features) if tile.features else TileFeatures(),
-        created_at=tile.created_at,
-        updated_at=tile.updated_at,
+        created_at=_ensure_utc(tile.created_at),
+        updated_at=_ensure_utc(tile.updated_at),
     )

@@ -10,6 +10,15 @@ from city_api.models import Job as JobModel
 from city_api.schemas import Job, JobCreate, JobStatus
 
 
+def _ensure_utc(dt: datetime | None) -> datetime | None:
+    """Ensure datetime is timezone-aware (UTC). SQLite returns naive datetimes."""
+    if dt is None:
+        return None
+    if dt.tzinfo is None:
+        return dt.replace(tzinfo=UTC)
+    return dt
+
+
 async def create_job(db: AsyncSession, job_create: JobCreate, user_id: UUID) -> Job:
     """Create a new job."""
     job = JobModel(
@@ -114,7 +123,9 @@ def _to_schema(job: JobModel) -> Job:
         params=job.params,
         result=job.result,
         error=job.error,
-        created_at=job.created_at,
-        started_at=job.claimed_at,  # Map claimed_at to started_at for schema compatibility
-        completed_at=job.completed_at,
+        created_at=_ensure_utc(job.created_at),
+        started_at=_ensure_utc(
+            job.claimed_at
+        ),  # Map claimed_at to started_at for schema compatibility
+        completed_at=_ensure_utc(job.completed_at),
     )
