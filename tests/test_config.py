@@ -3,8 +3,6 @@
 import json
 from pathlib import Path
 
-import pytest
-
 from lib.vibe.config import (
     DEFAULT_CONFIG,
     _deep_update,
@@ -107,9 +105,7 @@ class TestGetValue:
     def test_gets_nested_value_with_dot_notation(self, tmp_path):
         config_dir = tmp_path / ".vibe"
         config_dir.mkdir()
-        (config_dir / "config.json").write_text(
-            json.dumps({"github": {"owner": "test-owner"}})
-        )
+        (config_dir / "config.json").write_text(json.dumps({"github": {"owner": "test-owner"}}))
 
         value = get_value("github.owner", tmp_path)
         assert value == "test-owner"
