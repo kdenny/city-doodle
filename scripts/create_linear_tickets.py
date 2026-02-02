@@ -44,7 +44,7 @@ class TicketDef:
     linear_uuid: str | None = None  # Internal UUID
 
 
-def execute_query(query: str, variables: dict = None) -> dict:
+def execute_query(query: str, variables: dict | None = None) -> dict:
     """Execute GraphQL query against Linear API."""
     payload = {"query": query}
     if variables:
@@ -67,7 +67,7 @@ def parse_tickets_md(filepath: str) -> list[TicketDef]:
 
     tickets = []
 
-    # More comprehensive pattern
+    # Split by ticket headers (### ID: Title)
     sections = re.split(r"\n(?=### [A-Z])", content)
 
     for section in sections:
