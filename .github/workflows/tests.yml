@@ -14,6 +14,22 @@ jobs:
   python-tests:
     name: Python Tests
     runs-on: ubuntu-latest
+    services:
+      postgres:
+        image: postgres:15
+        env:
+          POSTGRES_USER: test
+          POSTGRES_PASSWORD: test
+          POSTGRES_DB: test_city_doodle
+        options: >-
+          --health-cmd pg_isready
+          --health-interval 10s
+          --health-timeout 5s
+          --health-retries 5
+        ports:
+          - 5432:5432
+    env:
+      TEST_DATABASE_URL: postgresql+asyncpg://test:test@localhost:5432/test_city_doodle
     steps:
       - name: Checkout
         uses: actions/checkout@v4
