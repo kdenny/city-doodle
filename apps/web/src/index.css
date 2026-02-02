@@ -1,1 +1,10 @@
 @import "tailwindcss";
+
+/* Handwritten font for map labels */
+:root {
+  --font-handwritten: "Caveat", cursive;
+}
+
+.font-handwritten {
+  font-family: var(--font-handwritten);
+}
