@@ -1,12 +1,18 @@
 import { Routes, Route, Link } from 'react-router-dom'
 import { MapCanvas } from './components/canvas'
 import { EditorShell } from './components/shell'
+import { ProtectedRoute } from './components/ProtectedRoute'
+import { LoginPage, RegisterPage } from './pages'
+import { useAuth } from './contexts'
 
 function Home() {
+  const { isAuthenticated, user, logout, isLoading } = useAuth()
+
   return (
     <div className="p-8">
       <h1 className="text-4xl font-bold text-gray-900">City Doodle</h1>
       <p className="mt-2 text-gray-600">A lo-fi vector city builder</p>
+
       <nav className="mt-4 flex gap-4">
         <Link to="/editor" className="text-blue-600 hover:underline">
           Editor
@@ -15,6 +21,34 @@ function Home() {
           About
         </Link>
       </nav>
+
+      <div className="mt-8 p-4 bg-gray-100 rounded-lg">
+        {isLoading ? (
+          <p className="text-gray-500">Loading...</p>
+        ) : isAuthenticated ? (
+          <div className="flex items-center gap-4">
+            <p className="text-gray-700">
+              Signed in as <span className="font-medium">{user?.email}</span>
+            </p>
+            <button
+              onClick={() => logout()}
+              className="text-sm text-red-600 hover:underline"
+            >
+              Sign out
+            </button>
+          </div>
+        ) : (
+          <div className="flex items-center gap-4">
+            <p className="text-gray-600">Not signed in</p>
+            <Link to="/login" className="text-blue-600 hover:underline">
+              Sign in
+            </Link>
+            <Link to="/register" className="text-blue-600 hover:underline">
+              Create account
+            </Link>
+          </div>
+        )}
+      </div>
     </div>
   )
 }
@@ -47,7 +81,16 @@ export function App() {
   return (
     <Routes>
       <Route path="/" element={<Home />} />
-      <Route path="/editor" element={<Editor />} />
+      <Route path="/login" element={<LoginPage />} />
+      <Route path="/register" element={<RegisterPage />} />
+      <Route
+        path="/editor"
+        element={
+          <ProtectedRoute>
+            <Editor />
+          </ProtectedRoute>
+        }
+      />
       <Route path="/about" element={<About />} />
     </Routes>
   )
