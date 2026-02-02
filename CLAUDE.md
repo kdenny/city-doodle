@@ -128,15 +128,31 @@ The canonical configuration is in `.vibe/config.json`. Key fields (actual values
 
 See `recipes/agents/asking-clarifying-questions.md` for examples.
 
-### When to Block and Request Human Review
+### When to Create HUMAN Tickets
 
-Apply the `HUMAN ‼️` label and stop when:
-- Security decisions (auth changes, access control)
-- Financial/legal implications
-- External communications (user-facing copy)
-- Major architecture decisions
-- Tasks requiring credentials you don't have
-- Subjective judgment calls (UI/UX, branding)
+**HUMAN tickets are for tasks that genuinely require human action** — things the AI agent cannot do. Before creating a HUMAN ticket, ask: "Can I do this programmatically?" If yes, create a regular ticket and do the work.
+
+**DO create HUMAN tickets for:**
+- **Obtaining secrets** — Actual credential values (database passwords, API keys) that the human must retrieve from external services
+- **External account actions** — Creating accounts, enabling billing, changing plan tiers on third-party services
+- **Subjective decisions** — UI/UX choices, branding, copy tone, product direction
+- **Legal/compliance review** — Terms of service, privacy policy, licensing decisions
+- **External communications** — Emails to users, public announcements, support responses
+
+**DO NOT create HUMAN tickets for:**
+- **Writing code or config** — Even if it involves security (auth, access control), the agent can write it
+- **Running CLI commands** — `fly secrets set`, `gh secret set`, etc. — create a regular ticket
+- **Setting up infrastructure** — Dockerfiles, workflows, terraform — the agent can do this
+- **Documentation** — README, comments, ADRs — the agent can write these
+- **Architecture decisions** — If requirements are clear, the agent can design and implement
+
+**Example — Fly.io deployment setup:**
+- ❌ HUMAN ticket: "Configure Fly.io secrets and environment" (too broad, agent can do most of this)
+- ✅ Regular ticket: "Create Fly.io deployment workflow and Dockerfiles" (agent does this)
+- ✅ Regular ticket: "Add fly secrets set commands to set DATABASE_URL, JWT_SECRET" (agent writes the commands)
+- ✅ HUMAN ticket: "Provide DATABASE_URL connection string from Neon dashboard" (human must retrieve actual value)
+
+**When in doubt:** Create a regular ticket and attempt the work. Only escalate to HUMAN if you hit a genuine blocker requiring human action.
 
 See `recipes/agents/human-required-work.md` for the full guide.
 
@@ -237,6 +253,18 @@ Direction matters. The **prerequisite** (foundation) ticket **blocks** the depen
 (That would mean monorepo can't start until React is done — backwards.)
 
 When linking: set the **foundation ticket** as blocking the **dependent ticket(s)**. Do not set the foundation as "blocked by" the later tickets.
+
+**When to use blocking relationships:**
+- **True dependencies** — Code in ticket B literally cannot be written until ticket A's code exists
+- **HUMAN prerequisites** — A HUMAN ticket blocks work that needs the human's output (e.g., "Provide DATABASE_URL" blocks "Deploy to production")
+- **Sequential deployments** — Infrastructure must exist before app deployment
+
+**When NOT to use blocking relationships:**
+- **Parallel work** — Two tickets that touch different files can be done simultaneously
+- **Nice-to-have order** — "It would be cleaner to do A first" isn't a blocker
+- **Same milestone** — Being part of the same feature doesn't mean blocking; use the Milestone label instead
+
+**Keep the dependency graph shallow.** Deep chains (A→B→C→D→E) slow down work. Prefer parallel tickets where possible.
 
 See `recipes/tickets/creating-tickets.md` for full guidance.
 
