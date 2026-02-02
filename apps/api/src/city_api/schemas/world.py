@@ -47,10 +47,10 @@ class World(BaseModel):
     """A world (city map) owned by a user."""
 
     id: UUID
+    user_id: UUID
     name: str
     seed: int
     settings: WorldSettings
     created_at: datetime
-    updated_at: datetime
 
     model_config = {"from_attributes": True}
