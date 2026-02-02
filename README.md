@@ -2,6 +2,10 @@
 
 A framework-agnostic, AI-agent-agnostic project boilerplate that orchestrates ticket workflows, GitHub/PR/CI enforcement, git worktrees, and secure environment handling.
 
+**What this is:** A workflow orchestration layer for AI-assisted development — ticket tracking, Git automation, CI/CD enforcement.
+
+**What this is NOT:** An application boilerplate with pre-built app structure (React, FastAPI, etc.). You build your app structure on top of this.
+
 ## What This Is
 
 This boilerplate provides:
