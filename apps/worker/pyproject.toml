@@ -9,7 +9,13 @@ description = "City Doodle background worker for heavy generation tasks"
 requires-python = ">=3.11"
 dependencies = [
     "pydantic>=2.5.0",
+    "pydantic-settings>=2.0.0",
+    "sqlalchemy[asyncio]>=2.0.0",
+    "asyncpg>=0.29.0",
 ]
+
+[project.scripts]
+city-worker = "city_worker.main:run"
 
 [project.optional-dependencies]
 dev = [

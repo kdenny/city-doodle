@@ -4,9 +4,9 @@ import pytest
 
 
 @pytest.fixture
-def sample_config():
-    """Sample configuration for worker tests."""
+def sample_job_params():
+    """Sample job parameters for testing."""
     return {
-        "queue_url": "memory://",
-        "concurrency": 1,
+        "tile_id": "00000000-0000-0000-0000-000000000001",
+        "seed": 12345,
     }
