@@ -32,10 +32,11 @@ describe("EditorShell", () => {
         <div>Content</div>
       </EditorShell>
     );
-    expect(screen.getByText("Transit")).toBeInTheDocument();
-    expect(screen.getByText("Density")).toBeInTheDocument();
-    expect(screen.getByText("Timelapse")).toBeInTheDocument();
-    expect(screen.getByText("Export")).toBeInTheDocument();
+    // Use role=button to target navigation tabs specifically (not palette headers)
+    expect(screen.getByRole("button", { name: "Transit" })).toBeInTheDocument();
+    expect(screen.getByRole("button", { name: "Density" })).toBeInTheDocument();
+    expect(screen.getByRole("button", { name: "Timelapse" })).toBeInTheDocument();
+    expect(screen.getByRole("button", { name: "Export" })).toBeInTheDocument();
   });
 
   it("renders zoom controls", () => {
@@ -68,8 +69,8 @@ describe("EditorShell", () => {
     // Initially shows "Build" in subtitle
     expect(screen.getByText("Build")).toBeInTheDocument();
 
-    // Click Transit tab
-    fireEvent.click(screen.getByText("Transit"));
+    // Click Transit tab (use role=button to target nav tab)
+    fireEvent.click(screen.getByRole("button", { name: "Transit" }));
     expect(screen.getByText("Transit View")).toBeInTheDocument();
 
     // Should show exit button
