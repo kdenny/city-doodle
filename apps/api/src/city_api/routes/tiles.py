@@ -1,5 +1,6 @@
 """Tile CRUD endpoints."""
 
+import logging
 from uuid import UUID
 
 from fastapi import APIRouter, Depends, HTTPException, Query, status
@@ -7,6 +8,8 @@ from fastapi import APIRouter, Depends, HTTPException, Query, status
 from city_api.dependencies import get_current_user
 from city_api.repositories import tile_repository, world_repository
 from city_api.schemas import Tile, TileUpdate
+
+logger = logging.getLogger(__name__)
 
 router = APIRouter(tags=["tiles"])
 
@@ -30,11 +33,18 @@ async def list_tiles(
     # Verify world exists and user has access
     world_data = world_repository.get(world_id)
     if world_data is None:
+        logger.warning("World not found for tile list: world_id=%s user_id=%s", world_id, user_id)
         raise HTTPException(
             status_code=status.HTTP_404_NOT_FOUND,
             detail=f"World {world_id} not found",
         )
     if world_data["user_id"] != user_id:
+        logger.warning(
+            "Unauthorized world access: world_id=%s owner=%s requester=%s",
+            world_id,
+            world_data["user_id"],
+            user_id,
+        )
         raise HTTPException(
             status_code=status.HTTP_403_FORBIDDEN,
             detail="You don't have access to this world",
@@ -63,6 +73,7 @@ async def get_tile(
     """Get a tile by ID."""
     tile_data = tile_repository.get(tile_id)
     if tile_data is None:
+        logger.warning("Tile not found: tile_id=%s user_id=%s", tile_id, user_id)
         raise HTTPException(
             status_code=status.HTTP_404_NOT_FOUND,
             detail=f"Tile {tile_id} not found",
@@ -71,6 +82,12 @@ async def get_tile(
     # Verify user has access to the world
     world_data = world_repository.get(tile_data["world_id"])
     if world_data is None or world_data["user_id"] != user_id:
+        logger.warning(
+            "Unauthorized tile access: tile_id=%s world_id=%s user_id=%s",
+            tile_id,
+            tile_data["world_id"],
+            user_id,
+        )
         raise HTTPException(
             status_code=status.HTTP_403_FORBIDDEN,
             detail="You don't have access to this tile",
@@ -93,6 +110,7 @@ async def update_tile(
     """
     tile_data = tile_repository.get(tile_id)
     if tile_data is None:
+        logger.warning("Tile not found for update: tile_id=%s user_id=%s", tile_id, user_id)
         raise HTTPException(
             status_code=status.HTTP_404_NOT_FOUND,
             detail=f"Tile {tile_id} not found",
@@ -101,6 +119,12 @@ async def update_tile(
     # Verify user has access to the world
     world_data = world_repository.get(tile_data["world_id"])
     if world_data is None or world_data["user_id"] != user_id:
+        logger.warning(
+            "Unauthorized tile update: tile_id=%s world_id=%s user_id=%s",
+            tile_id,
+            tile_data["world_id"],
+            user_id,
+        )
         raise HTTPException(
             status_code=status.HTTP_403_FORBIDDEN,
             detail="You don't have access to this tile",
@@ -110,6 +134,7 @@ async def update_tile(
 
     updated_tile = tile_repository.update(tile_id, tile_update)
     if updated_tile is None:
+        logger.error("Tile update failed unexpectedly: tile_id=%s user_id=%s", tile_id, user_id)
         raise HTTPException(
             status_code=status.HTTP_404_NOT_FOUND,
             detail=f"Tile {tile_id} not found",
@@ -134,11 +159,24 @@ async def get_or_create_tile(
     # Verify world exists and user has access
     world_data = world_repository.get(world_id)
     if world_data is None:
+        logger.warning(
+            "World not found for tile creation: world_id=%s tx=%s ty=%s user_id=%s",
+            world_id,
+            tx,
+            ty,
+            user_id,
+        )
         raise HTTPException(
             status_code=status.HTTP_404_NOT_FOUND,
             detail=f"World {world_id} not found",
         )
     if world_data["user_id"] != user_id:
+        logger.warning(
+            "Unauthorized tile creation: world_id=%s owner=%s requester=%s",
+            world_id,
+            world_data["user_id"],
+            user_id,
+        )
         raise HTTPException(
             status_code=status.HTTP_403_FORBIDDEN,
             detail="You don't have access to this world",

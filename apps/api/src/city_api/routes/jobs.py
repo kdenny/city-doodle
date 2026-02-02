@@ -1,5 +1,6 @@
 """Job endpoints for background processing."""
 
+import logging
 from uuid import UUID
 
 from fastapi import APIRouter, Depends, HTTPException, Query, status
@@ -7,6 +8,8 @@ from fastapi import APIRouter, Depends, HTTPException, Query, status
 from city_api.dependencies import get_current_user
 from city_api.repositories import job_repository
 from city_api.schemas import Job, JobCreate
+
+logger = logging.getLogger(__name__)
 
 router = APIRouter(prefix="/jobs", tags=["jobs"])
 
@@ -64,11 +67,18 @@ async def get_job(
     """
     job = job_repository.get(job_id)
     if job is None:
+        logger.warning("Job not found: job_id=%s user_id=%s", job_id, user_id)
         raise HTTPException(
             status_code=status.HTTP_404_NOT_FOUND,
             detail="Job not found",
         )
     if job.user_id != user_id:
+        logger.warning(
+            "Unauthorized job access: job_id=%s owner=%s requester=%s",
+            job_id,
+            job.user_id,
+            user_id,
+        )
         raise HTTPException(
             status_code=status.HTTP_403_FORBIDDEN,
             detail="Cannot access job owned by another user",
@@ -89,6 +99,7 @@ async def cancel_job(
     """
     job = job_repository.get(job_id)
     if job is None:
+        logger.warning("Cancel failed - job not found: job_id=%s user_id=%s", job_id, user_id)
         raise HTTPException(
             status_code=status.HTTP_404_NOT_FOUND,
             detail="Job not found",
@@ -97,10 +108,22 @@ async def cancel_job(
     cancelled = job_repository.cancel(job_id, user_id)
     if cancelled is None:
         if job.user_id != user_id:
+            logger.warning(
+                "Unauthorized job cancel: job_id=%s owner=%s requester=%s",
+                job_id,
+                job.user_id,
+                user_id,
+            )
             raise HTTPException(
                 status_code=status.HTTP_403_FORBIDDEN,
                 detail="Cannot cancel job owned by another user",
             )
+        logger.info(
+            "Cannot cancel job in current state: job_id=%s status=%s user_id=%s",
+            job_id,
+            job.status.value,
+            user_id,
+        )
         raise HTTPException(
             status_code=status.HTTP_409_CONFLICT,
             detail=f"Cannot cancel job with status '{job.status.value}'",
