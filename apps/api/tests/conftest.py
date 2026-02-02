@@ -1,9 +1,10 @@
 """Pytest configuration and fixtures for API tests."""
 
 import pytest
+from httpx import ASGITransport, AsyncClient
+
 from city_api.main import app
 from city_api.repositories import world_repository
-from httpx import ASGITransport, AsyncClient
 
 
 @pytest.fixture
