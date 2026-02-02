@@ -64,6 +64,13 @@ class Tile(BaseModel):
     model_config = {"from_attributes": True}
 
 
+class TileUpdate(BaseModel):
+    """Request model for updating a tile."""
+
+    terrain_data: TerrainData | None = None
+    features: TileFeatures | None = None
+
+
 class TileLockCreate(BaseModel):
     """Request model for acquiring a tile lock."""
 

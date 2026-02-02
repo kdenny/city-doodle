@@ -9,6 +9,7 @@ from city_api.schemas.tile import (
     TileFeatures,
     TileLock,
     TileLockCreate,
+    TileUpdate,
 )
 from city_api.schemas.user import (
     AuthResponse,
@@ -27,6 +28,7 @@ __all__ = [
     # Tile
     "Tile",
     "TileCreate",
+    "TileUpdate",
     "TileLock",
     "TileLockCreate",
     "TerrainData",
