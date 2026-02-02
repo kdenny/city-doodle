@@ -219,6 +219,28 @@ class TestGetJob:
 
         assert response.status_code == 404
 
+    def test_get_job_wrong_user(self, client):
+        """Cannot access another user's job."""
+        user1 = uuid4()
+        user2 = uuid4()
+
+        # User 1 creates a job
+        create_response = client.post(
+            "/jobs",
+            headers={"X-User-ID": str(user1)},
+            json={"type": "terrain_generation"},
+        )
+        job_id = create_response.json()["id"]
+
+        # User 2 tries to access it
+        response = client.get(
+            f"/jobs/{job_id}",
+            headers={"X-User-ID": str(user2)},
+        )
+
+        assert response.status_code == 403
+        assert "another user" in response.json()["detail"]
+
 
 class TestCancelJob:
     """Tests for POST /jobs/{job_id}/cancel."""
