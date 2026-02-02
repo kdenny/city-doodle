@@ -8,7 +8,11 @@ from lib.vibe.config import DEFAULT_CONFIG, config_exists, load_config, save_con
 from lib.vibe.state import DEFAULT_STATE, state_exists, save_state
 from lib.vibe.wizards.branch import run_branch_wizard
 from lib.vibe.wizards.env import run_env_wizard
-from lib.vibe.wizards.github import run_dependency_graph_prompt, run_github_wizard, try_auto_configure_github
+from lib.vibe.wizards.github import (
+    run_dependency_graph_prompt,
+    run_github_wizard,
+    try_auto_configure_github,
+)
 from lib.vibe.wizards.tracker import run_tracker_wizard
 
 # Default PR template when .github/PULL_REQUEST_TEMPLATE.md is missing
@@ -237,11 +241,27 @@ def run_setup(force: bool = False) -> bool:
     click.echo()
     click.echo("Configuration saved to .vibe/config.json")
     click.echo()
+
+    # Prominent reminder about CLAUDE.md
+    click.echo("+" + "-" * 58 + "+")
+    click.echo("|  IMPORTANT: Update the Project Overview in CLAUDE.md    |")
+    click.echo("+" + "-" * 58 + "+")
+    click.echo("|                                                          |")
+    click.echo("|  AI agents need project context to help effectively.     |")
+    click.echo("|  Open CLAUDE.md and fill in:                             |")
+    click.echo("|                                                          |")
+    click.echo("|  - What this project does                                |")
+    click.echo("|  - Tech stack (backend, frontend, database, deployment)  |")
+    click.echo("|  - Key features / domains                                |")
+    click.echo("|                                                          |")
+    click.echo("+" + "-" * 58 + "+")
+    click.echo()
+
     click.echo("Next steps:")
-    click.echo("  1. Run 'bin/doctor' to verify your setup")
-    click.echo("  2. Review .vibe/config.json and adjust as needed")
-    click.echo("  3. Fill in the Project Overview in CLAUDE.md (for AI agent context)")
-    click.echo("  4. Update README.md with app name, description, tech stack, and setup instructions")
+    click.echo("  1. Run 'bin/vibe doctor' to verify your setup")
+    click.echo("  2. Update CLAUDE.md Project Overview (see above)")
+    click.echo("  3. Update README.md with app name, tech stack, and setup instructions")
+    click.echo("  4. If using Linear: add LINEAR_API_KEY to .env.local")
     click.echo("  5. Check out the recipes/ directory for best practices")
     click.echo()
 

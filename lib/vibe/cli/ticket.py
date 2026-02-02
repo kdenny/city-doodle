@@ -287,6 +287,46 @@ def comment(ticket_id: str, message: str) -> None:
         sys.exit(1)
 
 
+@main.command()
+@click.option("--json", "as_json", is_flag=True, help="Output as JSON")
+def labels(as_json: bool) -> None:
+    """List all labels with their IDs.
+
+    Useful for API calls that require label IDs instead of names.
+    """
+    tracker = ensure_tracker_configured()
+
+    if not hasattr(tracker, "list_labels"):
+        click.echo("Label listing not supported for this tracker", err=True)
+        sys.exit(1)
+
+    try:
+        label_list = tracker.list_labels()
+        if not label_list:
+            click.echo("No labels found.")
+            return
+
+        if as_json:
+            import json
+
+            click.echo(json.dumps(label_list, indent=2))
+        else:
+            click.echo("\nLabels:")
+            click.echo("-" * 60)
+            for label in sorted(label_list, key=lambda x: x.get("name", "")):
+                name = label.get("name", "")
+                label_id = label.get("id", "")
+                color = label.get("color", "")
+                click.echo(f"  {name:<30} {label_id}")
+                if color:
+                    click.echo(f"    Color: {color}")
+            click.echo()
+            click.echo("Tip: Use label IDs in API calls for reliability.")
+    except NotImplementedError as e:
+        click.echo(str(e), err=True)
+        sys.exit(1)
+
+
 def print_ticket(ticket: Ticket) -> None:
     """Print full ticket details."""
     click.echo(f"\n{ticket.id}: {ticket.title}")

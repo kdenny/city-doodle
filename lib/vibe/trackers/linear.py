@@ -283,6 +283,33 @@ class LinearTracker(TrackerBase):
         except Exception:
             return []
 
+    def list_labels(self) -> list[dict[str, str]]:
+        """List all labels with their IDs for the configured team."""
+        query = """
+        query ListLabels($teamId: String) {
+            issueLabels(filter: { team: { id: { eq: $teamId } } }, first: 100) {
+                nodes {
+                    id
+                    name
+                    color
+                }
+            }
+        }
+        """
+        variables = {}
+        if self._team_id:
+            variables["teamId"] = self._team_id
+
+        try:
+            result = self._execute_query(query, variables if variables else None)
+            nodes = result.get("data", {}).get("issueLabels", {}).get("nodes", [])
+            return [
+                {"id": node.get("id", ""), "name": node.get("name", ""), "color": node.get("color", "")}
+                for node in nodes
+            ]
+        except Exception:
+            return []
+
     def _get_workflow_state_id(self, team_id: str, state_name: str) -> str | None:
         """Resolve workflow state name to state ID for a team."""
         query = """

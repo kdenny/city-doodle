@@ -1,21 +1,29 @@
 # Vibe Code Boilerplate
 
-A framework-agnostic, AI-agent-agnostic project boilerplate that orchestrates ticket workflows, GitHub/PR/CI enforcement, git worktrees, and secure environment handling.
+**Ship faster with AI. Stay organized. Never lose work.**
 
-**What this is:** A workflow orchestration layer for AI-assisted development — ticket tracking, Git automation, CI/CD enforcement.
+A workflow orchestration layer for AI-assisted development that actually works. Linear integration, automatic ticket status updates, git worktrees for parallel work, PR policies that enforce quality.
 
-**What this is NOT:** An application boilerplate with pre-built app structure (React, FastAPI, etc.). You build your app structure on top of this.
+```
+Linear ticket → bin/vibe do PROJ-123 → Worktree created → Code → PR → Merge → Ticket auto-updated to Deployed
+```
+
+**What this is:** Production-ready workflows for AI-assisted development — ticket tracking, Git automation, CI/CD enforcement.
+
+**What this is NOT:** An application boilerplate (React, FastAPI, etc.). You build your app structure on top of this foundation.
 
 ## What This Is
 
 This boilerplate provides:
-- **Ticket Integration** - Connect to Linear (Shortcut coming soon)
-- **Git Workflow Automation** - Worktrees, branch naming, rebasing
+- **Linear Integration** - Full CRUD, automatic status updates, label management
+- **Automatic Ticket Updates** - PR opened → In Review, PR merged → Deployed (zero manual status changes)
+- **Local Hooks** - Ticket auto-marked "In Progress" when you mention it (optional)
+- **Git Worktrees** - Each ticket gets isolated workspace, no branch switching conflicts
 - **PR Policy Enforcement** - Risk labels, ticket references, testing instructions
-- **Secret Management** - Allowlists, provider sync, scanning
-- **CI/CD Templates** - Security scanning, test detection, SBOM generation
-- **Recipe Library** - Best practices documentation for common tasks
-- **HUMAN follow-up tickets** - Auto-create or manually create HUMAN-labeled tickets with step-by-step deployment setup instructions when deployment config (fly.toml, vercel.json, .env.example) is added
+- **Multi-Agent Coordination** - Guidelines for multiple AI agents working simultaneously
+- **Secret Management** - Allowlists, provider sync, Gitleaks scanning
+- **Recipe Library** - 30+ best practices guides for common tasks
+- **HUMAN follow-up tickets** - Auto-create HUMAN-labeled tickets for deployment setup
 
 ## When to Use It
 
@@ -51,13 +59,31 @@ This will prompt you for:
 - Ticket tracker (Linear)
 - Optional: Branch naming, environment configuration
 
-### 2. Verify Setup
+### 2. Update CLAUDE.md
+
+**Important:** Open `CLAUDE.md` and fill in the **Project Overview** section:
+- What this project does
+- Tech stack (backend, frontend, database, deployment)
+- Key features / domains
+
+AI agents use this context to help you effectively.
+
+### 3. Add Linear API Key (if using Linear)
 
 ```bash
-bin/doctor
+# Add to .env.local (gitignored)
+echo "LINEAR_API_KEY=lin_api_your_key_here" >> .env.local
 ```
 
-### 3. Start Working
+Get your key from [Linear Settings → API](https://linear.app/settings/api).
+
+### 4. Verify Setup
+
+```bash
+bin/vibe doctor
+```
+
+### 5. Start Working
 
 ```bash
 # Start working on a ticket or GitHub issue (creates worktree from latest main)
@@ -97,7 +123,10 @@ This lets the system:
 | `bin/doctor` | Shortcut for `bin/vibe doctor` |
 | `bin/ticket list` | List tickets from tracker |
 | `bin/ticket get <id>` | Get ticket details |
-| `bin/ticket create-human-followup` | Create HUMAN follow-up ticket for deployment setup (after adding fly.toml, vercel.json, .env.example) |
+| `bin/ticket create <title>` | Create a new ticket |
+| `bin/ticket update <id>` | Update ticket status/title/labels |
+| `bin/ticket labels` | List all labels with their IDs |
+| `bin/ticket create-human-followup` | Create HUMAN follow-up ticket for deployment |
 | `bin/secrets list` | List configured secrets |
 | `bin/secrets sync` | Sync secrets to providers |
 
@@ -179,10 +208,18 @@ This lets the system:
 │   └── observability/        # Sentry, debugging
 ├── technical_docs/           # Project documentation
 │   └── adr-template.md       # ADR template
+├── .claude/                  # Claude Code integration
+│   ├── hooks/                # Local automation scripts
+│   │   ├── linear-start-ticket.sh   # Auto "In Progress"
+│   │   └── linear-update-on-commit.sh  # Auto "Done"
+│   └── settings.local.json.example
 ├── .github/
 │   ├── workflows/            # CI/CD
 │   │   ├── security.yml      # Secret scanning, SBOM
 │   │   ├── pr-policy.yml     # PR validation
+│   │   ├── pr-opened.yml     # Linear → In Review
+│   │   ├── pr-merged.yml     # Linear → Deployed
+│   │   ├── lint.yml          # Python linting
 │   │   └── tests.yml         # Test runner
 │   └── PULL_REQUEST_TEMPLATE.md
 ├── CLAUDE.md                 # AI agent instructions (must be all caps so tools load it)
@@ -203,12 +240,15 @@ Recipes are markdown guides for common tasks. Each has:
 
 | Recipe | Description |
 |--------|-------------|
+| `workflows/linear-hooks.md` | Local hooks for automatic Linear updates |
+| `workflows/pr-opened-linear.md` | PR opened → In Review automation |
+| `workflows/pr-merge-linear.md` | PR merged → Deployed automation |
+| `workflows/multi-agent-coordination.md` | Multiple AI agents working together |
 | `workflows/git-worktrees.md` | Using worktrees for parallel work |
-| `workflows/branching-and-rebasing.md` | Rebase workflow |
-| `workflows/pr-risk-assessment.md` | Risk labeling guide |
 | `security/secret-management.md` | Secrets philosophy |
-| `agents/asking-clarifying-questions.md` | AI agent guidelines |
+| `agents/human-required-work.md` | When to create HUMAN tickets |
 | `tickets/linear-setup.md` | Linear integration |
+| `tickets/linear-label-ids.md` | Using label IDs in API calls |
 
 ## Configuration
 
@@ -239,13 +279,36 @@ Main configuration is in `.vibe/config.json`:
 }
 ```
 
-### PR merge → Linear status
+### Automatic Linear Status Updates
 
-When a PR is merged, the workflow `.github/workflows/pr-merged.yml` can update the associated Linear ticket to a "deployed" state (e.g. **Deployed**, **Done**, **Released**):
+The boilerplate includes GitHub Actions that automatically update Linear ticket status:
 
-- **Required:** Add a repository secret `LINEAR_API_KEY` (Linear API key with write access).
-- **Optional:** Set a repository variable `LINEAR_DEPLOYED_STATE` to the exact state name in your Linear workflow (default is `Deployed`).
-- The workflow runs only when the PR is merged and the branch name matches a ticket ID (e.g. `PROJ-123`). If the ticket cannot be found or the API key is missing, the job logs a warning and does not fail.
+| Event | Workflow | Status Change |
+|-------|----------|---------------|
+| PR opened | `pr-opened.yml` | → In Review |
+| PR merged | `pr-merged.yml` | → Deployed |
+
+**Setup:**
+1. Add repository secret `LINEAR_API_KEY` (from [Linear Settings → API](https://linear.app/settings/api))
+2. Optional: Set repository variable `LINEAR_DEPLOYED_STATE` (default: `Deployed`)
+3. Optional: Set repository variable `LINEAR_IN_REVIEW_STATE` (default: `In Review`)
+
+**How it works:** The workflows extract the ticket ID from the branch name (e.g., `PROJ-123-add-feature` → `PROJ-123`). If no ticket ID is found or the API key is missing, the workflow logs a warning and continues without failing.
+
+### Local Hooks (Optional)
+
+For even faster feedback, enable local Claude Code hooks:
+
+```bash
+cp .claude/settings.local.json.example .claude/settings.local.json
+```
+
+| Trigger | Action |
+|---------|--------|
+| Mention ticket in prompt | Marks ticket "In Progress" |
+| Git commit with ticket ID | Marks ticket "Done" |
+
+See `recipes/workflows/linear-hooks.md` for details.
 
 ## Known Limitations
 

@@ -65,6 +65,7 @@ The canonical configuration is in `.vibe/config.json`. Key fields are populated 
 ```
 
 - **tracker.config.deployed_state** (optional): State name to use when a PR is merged (e.g. `Deployed`, `Done`, `Released`). The PR-merged workflow (`.github/workflows/pr-merged.yml`) uses repo variable `LINEAR_DEPLOYED_STATE` in CI (default `Deployed`); this config key is for local use and documentation.
+- **tracker.config.in_review_state** (optional): State name when a PR is opened (default: `In Review`). The PR-opened workflow (`.github/workflows/pr-opened.yml`) uses repo variable `LINEAR_IN_REVIEW_STATE` in CI.
 
 ---
 
@@ -87,15 +88,31 @@ The canonical configuration is in `.vibe/config.json`. Key fields are populated 
 
 See `recipes/agents/asking-clarifying-questions.md` for examples.
 
-### When to Block and Request Human Review
+### When to Create HUMAN Tickets
 
-Apply the `HUMAN` label and stop when:
-- Security decisions (auth changes, access control)
-- Financial/legal implications
-- External communications (user-facing copy)
-- Major architecture decisions
-- Tasks requiring credentials you don't have
-- Subjective judgment calls (UI/UX, branding)
+The `HUMAN` label means "I cannot proceed without human action." Use it sparingly.
+
+**DO create HUMAN tickets for:**
+- Obtaining **actual secret values** (API keys, passwords the human must retrieve)
+- External account actions (creating accounts on third-party services, enabling billing)
+- Subjective decisions (UI/UX choices, branding, product direction)
+- Legal/compliance review
+- External communications (emails to users, public announcements)
+
+**DO NOT create HUMAN tickets for:**
+- Writing code or config files (even security-related code)
+- Running CLI commands (`fly secrets set`, `gh secret set`, etc.)
+- Setting up infrastructure (Dockerfiles, workflows, terraform)
+- Documentation
+- Architecture decisions (if requirements are clear, just implement)
+- Installing dependencies or tools
+
+**Ask yourself:** "Can I do this programmatically?" If yes, do it. If no, create a HUMAN ticket.
+
+**Example:**
+- "Provide DATABASE_URL" → HUMAN (need actual credential value)
+- "Configure Fly.io secrets" → NOT HUMAN (you can run `fly secrets set`)
+- "Write RLS policies" → NOT HUMAN (you can write the code)
 
 See `recipes/agents/human-required-work.md` for the full guide.
 
@@ -165,10 +182,35 @@ This creates:
 ### Creating Tickets
 
 When creating tickets programmatically:
-1. Use descriptive titles: "Verb + Object" format
-2. **Apply labels** (see [Label checklist](#label-checklist-for-ticket-creation) below)
-3. Include acceptance criteria
-4. Link related tickets with **correct blocking direction** (see [Blocking relationships](#blocking-relationships) below)
+1. **Check for duplicates first** — Search existing tickets (open and recently closed) for similar work before creating a new ticket. If a ticket already covers the same scope, update that ticket instead.
+2. Use descriptive titles: "Verb + Object" format
+3. **Apply labels** (see [Label checklist](#label-checklist-for-ticket-creation) below)
+4. Include acceptance criteria
+5. Link related tickets with **correct blocking direction** (see [Blocking relationships](#blocking-relationships) below)
+
+#### Avoiding Duplicate Tickets
+
+Before creating a new ticket, **always search** for existing tickets that might cover the same work:
+
+```bash
+bin/ticket list  # Review open tickets for overlap
+```
+
+**Signs of a duplicate:**
+- Same component/area being modified
+- Similar acceptance criteria
+- Part of the same milestone or initiative
+- Would result in conflicting changes if both were implemented
+
+**If you find a potential duplicate:**
+- Update the existing ticket with any new requirements
+- Add a comment explaining the additional scope
+- Do NOT create a new ticket
+
+**If scopes overlap but aren't identical:**
+- Consider if one ticket can be expanded to cover both
+- If truly separate, document the boundary clearly in both tickets
+- Link them with "related to" (not blocking)
 
 #### Blocking relationships
 
@@ -177,13 +219,26 @@ Direction matters. The **prerequisite** (foundation) ticket **blocks** the depen
 - **"A blocks B"** = B cannot start until A is done. (A is the prerequisite.)
 - **"A is blocked by B"** = A cannot start until B is done. (B is the prerequisite.)
 
-**CORRECT:** "Initialize monorepo" BLOCKS "Set up React app"  
+**CORRECT:** "Initialize monorepo" BLOCKS "Set up React app"
 (React app depends on monorepo being done first.)
 
-**WRONG:** "Initialize monorepo" BLOCKED BY "Set up React app"  
+**WRONG:** "Initialize monorepo" BLOCKED BY "Set up React app"
 (That would mean monorepo can't start until React is done — backwards.)
 
 When linking: set the **foundation ticket** as blocking the **dependent ticket(s)**. Do not set the foundation as "blocked by" the later tickets.
+
+**When to use blocking:**
+- True code dependencies (B imports from A, B needs A's API)
+- HUMAN prerequisites (need credential value before next step)
+- Sequential deployments (database migration before app deploy)
+
+**When NOT to use blocking:**
+- Parallel work on different files/components
+- "Nice-to-have" ordering preferences
+- Same milestone tickets (use milestone label instead)
+- Related but independent features
+
+**Keep the dependency graph shallow.** Deep chains slow down work. If you have A → B → C → D, consider if B and C can actually be parallel.
 
 See `recipes/tickets/creating-tickets.md` for full guidance.
 
@@ -287,6 +342,92 @@ Worktrees are tracked in `.vibe/local_state.json` (gitignored). Stale entries ca
 
 ---
 
+## Multi-Agent Coordination
+
+When multiple AI agents work on the same codebase simultaneously, follow these rules to prevent conflicts.
+
+### Worktree Isolation (Mandatory)
+
+**Each agent MUST use its own worktree.** Never share a working directory with another agent.
+
+```bash
+# Create a dedicated worktree for your work
+bin/vibe do PROJ-123  # Creates ../repo-worktrees/PROJ-123
+```
+
+This prevents:
+- Merge conflicts from concurrent edits
+- Uncommitted changes being overwritten
+- Branch switching interfering with other agents
+
+### Situational Awareness
+
+Before starting significant work, understand what's in flight:
+
+```bash
+# See all active feature branches
+git fetch --all
+git branch -r | grep -v 'main\|HEAD'
+
+# See recent commits across ALL branches
+git log --all --oneline --graph -20
+
+# Check what files are being modified on other branches
+git diff main...<other-branch> --name-only
+```
+
+### High-Risk Overlap Areas
+
+These files are commonly edited and prone to conflicts:
+- `CLAUDE.md` - Documentation updates
+- `package.json` / `package-lock.json` - Dependencies
+- `migrations/` - Database migrations (use timestamps)
+- Shared components / utilities
+
+**When touching these areas:**
+1. Pull the latest `main` first
+2. Make changes quickly and push
+3. Consider coordinating with user if multiple agents need the same file
+
+### File Conflict Prevention
+
+1. **Check file history before editing:**
+   ```bash
+   git log --all --oneline -5 -- path/to/file.ts
+   ```
+
+2. **Avoid editing files with active changes on other branches**
+
+3. **Keep your branch up to date:**
+   ```bash
+   git fetch origin main && git rebase origin/main
+   ```
+
+### Communication Signals
+
+Since agents cannot directly communicate:
+
+| Signal | How |
+|--------|-----|
+| **Claim work area** | Branch name describes scope: `PROJ-123-auth-refactor` |
+| **Signal file changes** | Commit messages list affected files |
+| **Warn of conflicts** | PR description notes overlap with known branches |
+| **Coordinate via tracker** | Keep tickets "In Progress" so others see claimed work |
+
+### Pre-Work Checklist
+
+Before starting any task:
+- [ ] `git fetch --all` - Get latest remote state
+- [ ] `git branch -r` - Check what branches exist
+- [ ] Check tracker for "In Progress" tickets
+- [ ] Verify your branch is up to date with `main`
+- [ ] Identify which files you'll modify
+- [ ] Check those files aren't being actively modified elsewhere
+
+See `recipes/workflows/multi-agent-coordination.md` for the full guide.
+
+---
+
 ## PR Opening Checklist
 
 Before opening a PR, ensure:
@@ -374,10 +515,13 @@ When a workflow fails, check:
    - Missing risk label
    - Branch naming violation
 
-3. **pr-merged.yml**
+3. **pr-opened.yml**
+   - Runs when a PR is opened or reopened; updates the Linear ticket (from branch name) to "In Review" state. Requires repo secret `LINEAR_API_KEY`. Optional repo variable `LINEAR_IN_REVIEW_STATE` (default: `In Review`). On failure, logs a warning and does not fail the job.
+
+4. **pr-merged.yml**
    - Runs when a PR is merged; updates the Linear ticket (from branch name) to the "deployed" state. Requires repo secret `LINEAR_API_KEY`. Optional repo variable `LINEAR_DEPLOYED_STATE` (default: `Deployed`). On failure (e.g. no API key, ticket not found), logs a warning and does not fail the job.
 
-4. **tests.yml** (if tests exist)
+5. **tests.yml** (if tests exist)
    - Test failure (check output for details)
    - No tests detected (may be intentional for new projects)
 
@@ -410,6 +554,9 @@ When implementing specific features, consult these recipes:
 ### Workflow
 - `recipes/workflows/git-worktrees.md` - Parallel development
 - `recipes/workflows/branching-and-rebasing.md` - Git workflow
+- `recipes/workflows/multi-agent-coordination.md` - Preventing conflicts with multiple agents
+- `recipes/workflows/linear-hooks.md` - Local hooks for automatic Linear updates
+- `recipes/workflows/pr-opened-linear.md` - PR opened → Linear status (In Review)
 - `recipes/workflows/pr-merge-linear.md` - PR merge → Linear status (Deployed)
 - `recipes/workflows/pr-risk-assessment.md` - Risk classification
 - `recipes/workflows/testing-instructions-writing.md` - Testing docs

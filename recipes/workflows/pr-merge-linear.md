@@ -1,6 +1,15 @@
 # PR merge → Linear ticket status (Deployed)
 
-When a PR is merged, the workflow `.github/workflows/pr-merged.yml` can update the associated Linear ticket to a "deployed" state (e.g. **Deployed**, **Done**, **Released**).
+When a PR is merged, the workflow `.github/workflows/pr-merged.yml` automatically updates the associated Linear ticket to a "deployed" state (e.g. **Deployed**, **Done**, **Released**).
+
+This is the companion to [pr-opened-linear.md](pr-opened-linear.md) which handles the `In Progress → In Review` transition when PRs are opened.
+
+## Complete Linear Workflow
+
+```
+Backlog → In Progress → In Review → Deployed
+           (manual)     (PR opened) (PR merged)
+```
 
 ## Setup
 
@@ -37,3 +46,8 @@ Use the exact state name your Linear workflow uses (e.g. **Done**, **Released**)
 ## Config (local)
 
 In `.vibe/config.json`, `tracker.config.deployed_state` is optional and used for local/documentation; the GitHub Actions workflow uses the repo variable `LINEAR_DEPLOYED_STATE` (default `Deployed`).
+
+## Related
+
+- [pr-opened-linear.md](pr-opened-linear.md) - Updates ticket to In Review when PR is opened
+- [linear-setup.md](../tickets/linear-setup.md) - Initial Linear configuration
