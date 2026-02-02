@@ -273,9 +273,7 @@ class TestUpdateTile:
         assert "locked" in response.json()["detail"].lower()
 
     @pytest.mark.asyncio
-    async def test_update_tile_with_other_users_lock(
-        self, client: AsyncClient, world_id: str
-    ):
+    async def test_update_tile_with_other_users_lock(self, client: AsyncClient, world_id: str):
         """Update tile with another user's lock should return 409."""
         # Create a tile
         create_response = await client.post(
