@@ -1,4 +1,4 @@
-"""District models - represents zoning districts on tiles."""
+"""District schemas - represents zoning districts on tiles."""
 
 from datetime import datetime
 from enum import Enum

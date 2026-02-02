@@ -2,7 +2,7 @@
 
 from fastapi import FastAPI
 
-from city_api.models import (
+from city_api.schemas import (
     District,
     DistrictCreate,
     Job,

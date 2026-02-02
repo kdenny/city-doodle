@@ -34,20 +34,28 @@ def ensure_tracker_configured():
     if tracker is not None:
         return tracker
 
-    click.echo("No ticketing system (e.g. Linear) is configured. Set up a tracker before creating or viewing tickets.")
+    click.echo(
+        "No ticketing system (e.g. Linear) is configured. Set up a tracker before creating or viewing tickets."
+    )
     if not click.confirm("Run tracker setup now?", default=True):
-        click.echo("Run 'bin/vibe setup' or 'bin/vibe setup --wizard tracker' when ready.", err=True)
+        click.echo(
+            "Run 'bin/vibe setup' or 'bin/vibe setup --wizard tracker' when ready.", err=True
+        )
         sys.exit(1)
 
     config = load_config()
     if not run_tracker_wizard(config):
-        click.echo("Tracker setup was cancelled or failed. Run 'bin/vibe setup' to try again.", err=True)
+        click.echo(
+            "Tracker setup was cancelled or failed. Run 'bin/vibe setup' to try again.", err=True
+        )
         sys.exit(1)
     save_config(config)
 
     tracker = get_tracker()
     if tracker is None:
-        click.echo("No tracker was selected. Run 'bin/vibe setup' to configure one later.", err=True)
+        click.echo(
+            "No tracker was selected. Run 'bin/vibe setup' to configure one later.", err=True
+        )
         sys.exit(1)
     return tracker
 

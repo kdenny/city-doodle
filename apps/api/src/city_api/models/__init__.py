@@ -1,27 +1,8 @@
-"""City Doodle API models."""
+"""SQLAlchemy models for City Doodle database."""
 
-from city_api.models.district import District, DistrictCreate, DistrictType
-from city_api.models.job import Job, JobCreate, JobStatus, JobType
-from city_api.models.tile import Tile, TileCreate, TileLock, TileLockCreate
-from city_api.models.world import World, WorldCreate, WorldSettings
+from city_api.models.job import Job
+from city_api.models.tile import Tile, TileLock
+from city_api.models.user import Session, User
+from city_api.models.world import World
 
-__all__ = [
-    # World
-    "World",
-    "WorldCreate",
-    "WorldSettings",
-    # Tile
-    "Tile",
-    "TileCreate",
-    "TileLock",
-    "TileLockCreate",
-    # Job
-    "Job",
-    "JobCreate",
-    "JobStatus",
-    "JobType",
-    # District
-    "District",
-    "DistrictCreate",
-    "DistrictType",
-]
+__all__ = ["Job", "Session", "Tile", "TileLock", "User", "World"]

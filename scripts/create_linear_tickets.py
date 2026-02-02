@@ -11,10 +11,9 @@ This script:
 import os
 import re
 import sys
-import json
-import requests
 from dataclasses import dataclass, field
-from typing import Optional
+
+import requests
 
 LINEAR_API_URL = "https://api.linear.app/graphql"
 API_KEY = os.environ.get("LINEAR_API_KEY")
@@ -33,15 +32,16 @@ HEADERS = {
 @dataclass
 class TicketDef:
     """Ticket definition from TICKETS.md"""
+
     id: str  # Our ID like SETUP-001
     title: str
     type: str  # Task, Chore, Design
     priority: str  # P0, P1, P2, P3
     description: str
     blocked_by: list[str] = field(default_factory=list)
-    assignee: Optional[str] = None
-    linear_id: Optional[str] = None  # CITY-XX after creation
-    linear_uuid: Optional[str] = None  # Internal UUID
+    assignee: str | None = None
+    linear_id: str | None = None  # CITY-XX after creation
+    linear_uuid: str | None = None  # Internal UUID
 
 
 def execute_query(query: str, variables: dict = None) -> dict:
@@ -62,26 +62,23 @@ def execute_query(query: str, variables: dict = None) -> dict:
 
 def parse_tickets_md(filepath: str) -> list[TicketDef]:
     """Parse TICKETS.md and extract ticket definitions."""
-    with open(filepath, "r") as f:
+    with open(filepath) as f:
         content = f.read()
 
     tickets = []
 
-    # Split by ticket headers (### ID: Title)
-    ticket_pattern = r'### ([A-Z0-9-]+): (.+?)(?=\n###|\n---|\n# |$)'
-
     # More comprehensive pattern
-    sections = re.split(r'\n(?=### [A-Z])', content)
+    sections = re.split(r"\n(?=### [A-Z])", content)
 
     for section in sections:
-        if not section.strip().startswith('### '):
+        if not section.strip().startswith("### "):
             continue
 
-        lines = section.strip().split('\n')
+        lines = section.strip().split("\n")
         header = lines[0]
 
         # Parse header: ### ID: Title
-        header_match = re.match(r'### ([A-Z0-9-]+): (.+)', header)
+        header_match = re.match(r"### ([A-Z0-9-]+): (.+)", header)
         if not header_match:
             continue
 
@@ -99,37 +96,39 @@ def parse_tickets_md(filepath: str) -> list[TicketDef]:
         for line in lines[1:]:
             line = line.strip()
 
-            if line.startswith('**Type:**'):
-                ticket_type = line.replace('**Type:**', '').strip()
-            elif line.startswith('**Priority:**'):
-                priority = line.replace('**Priority:**', '').strip()
-            elif line.startswith('**Blocked By:**'):
-                blocked_str = line.replace('**Blocked By:**', '').strip()
-                blocked_by = [b.strip() for b in blocked_str.split(',') if b.strip()]
-            elif line.startswith('**Assignee:**'):
-                assignee = line.replace('**Assignee:**', '').strip()
-            elif line.startswith('**Description:**'):
+            if line.startswith("**Type:**"):
+                ticket_type = line.replace("**Type:**", "").strip()
+            elif line.startswith("**Priority:**"):
+                priority = line.replace("**Priority:**", "").strip()
+            elif line.startswith("**Blocked By:**"):
+                blocked_str = line.replace("**Blocked By:**", "").strip()
+                blocked_by = [b.strip() for b in blocked_str.split(",") if b.strip()]
+            elif line.startswith("**Assignee:**"):
+                assignee = line.replace("**Assignee:**", "").strip()
+            elif line.startswith("**Description:**"):
                 in_description = True
-            elif line.startswith('**Acceptance Criteria:**'):
+            elif line.startswith("**Acceptance Criteria:**"):
                 in_description = False
                 description_lines.append("\n## Acceptance Criteria")
-            elif line.startswith('- [ ]'):
+            elif line.startswith("- [ ]"):
                 description_lines.append(line)
-            elif in_description or (not line.startswith('**') and line):
-                if line and not line.startswith('---'):
+            elif in_description or (not line.startswith("**") and line):
+                if line and not line.startswith("---"):
                     description_lines.append(line)
 
-        description = '\n'.join(description_lines).strip()
+        description = "\n".join(description_lines).strip()
 
-        tickets.append(TicketDef(
-            id=ticket_id,
-            title=title,
-            type=ticket_type,
-            priority=priority,
-            description=description,
-            blocked_by=blocked_by,
-            assignee=assignee,
-        ))
+        tickets.append(
+            TicketDef(
+                id=ticket_id,
+                title=title,
+                type=ticket_type,
+                priority=priority,
+                description=description,
+                blocked_by=blocked_by,
+                assignee=assignee,
+            )
+        )
 
     return tickets
 
@@ -158,7 +157,7 @@ def get_label_ids() -> dict[str, str]:
     return label_map
 
 
-def create_label(name: str) -> Optional[str]:
+def create_label(name: str) -> str | None:
     """Create a label and return its ID."""
     mutation = """
     mutation CreateLabel($input: IssueLabelCreateInput!) {

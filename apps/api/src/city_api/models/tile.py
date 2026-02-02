@@ -1,87 +1,68 @@
-"""Tile models - represents a map tile and its lock state."""
+"""Tile and TileLock models for map grid cells."""
 
+import uuid
 from datetime import datetime
-from typing import Any
-from uuid import UUID
+from typing import TYPE_CHECKING
 
-from pydantic import BaseModel, Field
+from sqlalchemy import DateTime, ForeignKey, Index, Integer, func
+from sqlalchemy.dialects.postgresql import JSONB, UUID
+from sqlalchemy.orm import Mapped, mapped_column, relationship
+
+from city_api.database import Base
+
+if TYPE_CHECKING:
+    from city_api.models.world import World
 
 
-class TerrainData(BaseModel):
-    """Terrain information for a tile."""
+class Tile(Base):
+    """A single tile in the world grid."""
 
-    elevation: list[list[float]] = Field(
-        default_factory=list,
-        description="2D array of elevation values",
+    __tablename__ = "tiles"
+
+    id: Mapped[uuid.UUID] = mapped_column(UUID(as_uuid=True), primary_key=True, default=uuid.uuid4)
+    world_id: Mapped[uuid.UUID] = mapped_column(
+        UUID(as_uuid=True), ForeignKey("worlds.id", ondelete="CASCADE"), nullable=False
     )
-    water_bodies: list[dict[str, Any]] = Field(
-        default_factory=list,
-        description="Water feature polygons",
+    tx: Mapped[int] = mapped_column(Integer, nullable=False)
+    ty: Mapped[int] = mapped_column(Integer, nullable=False)
+    terrain_data: Mapped[dict] = mapped_column(JSONB, nullable=False, default=dict)
+    features: Mapped[dict] = mapped_column(JSONB, nullable=False, default=dict)
+    version: Mapped[int] = mapped_column(Integer, nullable=False, default=1)
+    created_at: Mapped[datetime] = mapped_column(
+        DateTime(timezone=True), server_default=func.now(), nullable=False
     )
-    vegetation: list[dict[str, Any]] = Field(
-        default_factory=list,
-        description="Vegetation area polygons",
-    )
-
-
-class TileFeatures(BaseModel):
-    """Features placed on a tile."""
-
-    roads: list[dict[str, Any]] = Field(
-        default_factory=list,
-        description="Road geometries",
-    )
-    buildings: list[dict[str, Any]] = Field(
-        default_factory=list,
-        description="Building footprints",
-    )
-    pois: list[dict[str, Any]] = Field(
-        default_factory=list,
-        description="Points of interest",
+    updated_at: Mapped[datetime] = mapped_column(
+        DateTime(timezone=True),
+        server_default=func.now(),
+        onupdate=func.now(),
+        nullable=False,
     )
 
+    world: Mapped["World"] = relationship("World", back_populates="tiles")
+    lock: Mapped["TileLock | None"] = relationship("TileLock", back_populates="tile", uselist=False)
 
-class TileCreate(BaseModel):
-    """Request model for creating a new tile."""
-
-    world_id: UUID
-    tx: int = Field(..., description="Tile X coordinate")
-    ty: int = Field(..., description="Tile Y coordinate")
-
-
-class Tile(BaseModel):
-    """A map tile within a world."""
-
-    id: UUID
-    world_id: UUID
-    tx: int = Field(..., description="Tile X coordinate")
-    ty: int = Field(..., description="Tile Y coordinate")
-    terrain_data: TerrainData = Field(default_factory=TerrainData)
-    features: TileFeatures = Field(default_factory=TileFeatures)
-    created_at: datetime
-    updated_at: datetime
-
-    model_config = {"from_attributes": True}
-
-
-class TileLockCreate(BaseModel):
-    """Request model for acquiring a tile lock."""
-
-    tile_id: UUID
-    duration_seconds: int = Field(
-        default=300,
-        ge=60,
-        le=3600,
-        description="Lock duration in seconds (1-60 minutes)",
+    __table_args__ = (
+        Index("ix_tiles_world_id", "world_id"),
+        Index("ix_tiles_world_coords", "world_id", "tx", "ty", unique=True),
     )
 
 
-class TileLock(BaseModel):
-    """A lock on a tile for concurrent editing."""
+class TileLock(Base):
+    """Lock on a tile for concurrent editing control."""
 
-    tile_id: UUID
-    user_id: UUID
-    locked_at: datetime
-    expires_at: datetime
+    __tablename__ = "tile_locks"
 
-    model_config = {"from_attributes": True}
+    tile_id: Mapped[uuid.UUID] = mapped_column(
+        UUID(as_uuid=True),
+        ForeignKey("tiles.id", ondelete="CASCADE"),
+        primary_key=True,
+    )
+    session_id: Mapped[uuid.UUID] = mapped_column(UUID(as_uuid=True), nullable=False)
+    locked_at: Mapped[datetime] = mapped_column(
+        DateTime(timezone=True), server_default=func.now(), nullable=False
+    )
+    expires_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), nullable=False)
+
+    tile: Mapped["Tile"] = relationship("Tile", back_populates="lock")
+
+    __table_args__ = (Index("ix_tile_locks_expires_at", "expires_at"),)

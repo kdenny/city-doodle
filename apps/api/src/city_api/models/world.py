@@ -1,56 +1,30 @@
-"""World model - represents a user's city map."""
+"""World model for storing city/map instances."""
 
+import uuid
 from datetime import datetime
-from uuid import UUID
+from typing import TYPE_CHECKING
 
-from pydantic import BaseModel, Field
+from sqlalchemy import DateTime, Integer, String, func
+from sqlalchemy.dialects.postgresql import JSONB, UUID
+from sqlalchemy.orm import Mapped, mapped_column, relationship
+
+from city_api.database import Base
+
+if TYPE_CHECKING:
+    from city_api.models.tile import Tile
 
 
-class WorldSettings(BaseModel):
-    """Configuration settings for a world."""
+class World(Base):
+    """A world/map instance containing tiles."""
 
-    grid_organic: float = Field(
-        default=0.5,
-        ge=0.0,
-        le=1.0,
-        description="0 = strict grid, 1 = fully organic street layout",
-    )
-    sprawl_compact: float = Field(
-        default=0.5,
-        ge=0.0,
-        le=1.0,
-        description="0 = sprawling suburbs, 1 = dense urban core",
-    )
-    historic_modern: float = Field(
-        default=0.5,
-        ge=0.0,
-        le=1.0,
-        description="0 = historic preservation focus, 1 = modern redevelopment",
-    )
-    transit_car: float = Field(
-        default=0.5,
-        ge=0.0,
-        le=1.0,
-        description="0 = transit-oriented, 1 = car-dependent",
+    __tablename__ = "worlds"
+
+    id: Mapped[uuid.UUID] = mapped_column(UUID(as_uuid=True), primary_key=True, default=uuid.uuid4)
+    name: Mapped[str] = mapped_column(String(255), nullable=False)
+    seed: Mapped[int] = mapped_column(Integer, nullable=False)
+    settings: Mapped[dict] = mapped_column(JSONB, nullable=False, default=dict)
+    created_at: Mapped[datetime] = mapped_column(
+        DateTime(timezone=True), server_default=func.now(), nullable=False
     )
 
-
-class WorldCreate(BaseModel):
-    """Request model for creating a new world."""
-
-    name: str = Field(..., min_length=1, max_length=100)
-    seed: int | None = Field(default=None, description="Random seed for generation")
-    settings: WorldSettings = Field(default_factory=WorldSettings)
-
-
-class World(BaseModel):
-    """A world (city map) owned by a user."""
-
-    id: UUID
-    name: str
-    seed: int
-    settings: WorldSettings
-    created_at: datetime
-    updated_at: datetime
-
-    model_config = {"from_attributes": True}
+    tiles: Mapped[list["Tile"]] = relationship("Tile", back_populates="world")

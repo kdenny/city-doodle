@@ -1,60 +1,56 @@
-"""Job models - represents background processing jobs."""
+"""Job model for background task queue."""
 
+import uuid
 from datetime import datetime
 from enum import Enum
-from typing import Any
-from uuid import UUID
 
-from pydantic import BaseModel, Field
+from sqlalchemy import DateTime, ForeignKey, Index, String, Text, func
+from sqlalchemy.dialects.postgresql import JSONB, UUID
+from sqlalchemy.orm import Mapped, mapped_column
+
+from city_api.database import Base
+
+
+class JobStatus(str, Enum):
+    """Job status values."""
+
+    PENDING = "pending"
+    CLAIMED = "claimed"
+    COMPLETED = "completed"
+    FAILED = "failed"
 
 
 class JobType(str, Enum):
-    """Types of background jobs."""
+    """Job type values."""
 
     TERRAIN_GENERATION = "terrain_generation"
-    SEED_PLACEMENT = "seed_placement"
-    GROWTH_SIMULATION = "growth_simulation"
-    VMT_CALCULATION = "vmt_calculation"
+    CITY_GROWTH = "city_growth"
     EXPORT_PNG = "export_png"
     EXPORT_GIF = "export_gif"
 
 
-class JobStatus(str, Enum):
-    """Status of a background job."""
+class Job(Base):
+    """Background job for worker processing."""
 
-    PENDING = "pending"
-    RUNNING = "running"
-    COMPLETED = "completed"
-    FAILED = "failed"
-    CANCELLED = "cancelled"
+    __tablename__ = "jobs"
 
-
-class JobCreate(BaseModel):
-    """Request model for creating a new job."""
-
-    type: JobType
-    tile_id: UUID | None = Field(
-        default=None,
-        description="Target tile (if applicable)",
+    id: Mapped[uuid.UUID] = mapped_column(UUID(as_uuid=True), primary_key=True, default=uuid.uuid4)
+    type: Mapped[str] = mapped_column(String(50), nullable=False)
+    status: Mapped[str] = mapped_column(String(20), nullable=False, default=JobStatus.PENDING.value)
+    tile_id: Mapped[uuid.UUID | None] = mapped_column(
+        UUID(as_uuid=True), ForeignKey("tiles.id", ondelete="SET NULL"), nullable=True
     )
-    params: dict[str, Any] = Field(
-        default_factory=dict,
-        description="Job-specific parameters",
+    params: Mapped[dict] = mapped_column(JSONB, nullable=False, default=dict)
+    result: Mapped[dict | None] = mapped_column(JSONB, nullable=True)
+    error: Mapped[str | None] = mapped_column(Text, nullable=True)
+    created_at: Mapped[datetime] = mapped_column(
+        DateTime(timezone=True), server_default=func.now(), nullable=False
     )
+    claimed_at: Mapped[datetime | None] = mapped_column(DateTime(timezone=True), nullable=True)
+    completed_at: Mapped[datetime | None] = mapped_column(DateTime(timezone=True), nullable=True)
 
-
-class Job(BaseModel):
-    """A background processing job."""
-
-    id: UUID
-    type: JobType
-    status: JobStatus = JobStatus.PENDING
-    tile_id: UUID | None = None
-    params: dict[str, Any] = Field(default_factory=dict)
-    result: dict[str, Any] | None = None
-    error: str | None = None
-    created_at: datetime
-    started_at: datetime | None = None
-    completed_at: datetime | None = None
-
-    model_config = {"from_attributes": True}
+    __table_args__ = (
+        Index("ix_jobs_status", "status"),
+        Index("ix_jobs_type_status", "type", "status"),
+        Index("ix_jobs_tile_id", "tile_id"),
+    )

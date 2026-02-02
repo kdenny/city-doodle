@@ -61,11 +61,17 @@ jobs:
       - name: Checkout
         uses: actions/checkout@v4
 
-      - name: Check for TypeScript/Node.js code
+      - name: Check for Node.js project
         id: check
         run: |
-          if [ -f "package.json" ]; then
+          # Check for root package.json with workspaces or standalone
+          if [ -f "package.json" ] && [ -f "package-lock.json" ]; then
             echo "has_node=true" >> $GITHUB_OUTPUT
+            if grep -q '"workspaces"' package.json; then
+              echo "is_workspaces=true" >> $GITHUB_OUTPUT
+            else
+              echo "is_workspaces=false" >> $GITHUB_OUTPUT
+            fi
           else
             echo "has_node=false" >> $GITHUB_OUTPUT
           fi
@@ -81,14 +87,22 @@ jobs:
         if: steps.check.outputs.has_node == 'true'
         run: npm ci
 
-      - name: Run eslint
-        if: steps.check.outputs.has_node == 'true'
+      - name: Run lint (workspaces)
+        if: steps.check.outputs.has_node == 'true' && steps.check.outputs.is_workspaces == 'true'
+        run: npm run lint --workspaces --if-present
+
+      - name: Run typecheck (workspaces)
+        if: steps.check.outputs.has_node == 'true' && steps.check.outputs.is_workspaces == 'true'
+        run: npm run typecheck --workspaces --if-present
+
+      - name: Run lint (standalone)
+        if: steps.check.outputs.has_node == 'true' && steps.check.outputs.is_workspaces != 'true'
         run: npm run lint --if-present
 
-      - name: Run tsc (type check)
-        if: steps.check.outputs.has_node == 'true'
-        run: npm run typecheck --if-present || npx tsc --noEmit 2>/dev/null || echo "No TypeScript config found"
+      - name: Run typecheck (standalone)
+        if: steps.check.outputs.has_node == 'true' && steps.check.outputs.is_workspaces != 'true'
+        run: npm run typecheck --if-present || npx tsc --noEmit 2>/dev/null || echo "No TypeScript config"
 
       - name: Skip (no Node.js)
         if: steps.check.outputs.has_node != 'true'
-        run: echo "No package.json found, skipping TypeScript lint checks."
+        run: echo "No package.json with lock file found, skipping TypeScript lint checks."
