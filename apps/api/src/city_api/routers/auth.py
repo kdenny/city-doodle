@@ -12,6 +12,7 @@ from sqlalchemy.ext.asyncio import AsyncSession
 
 from city_api.config import settings
 from city_api.database import get_db
+from city_api.dependencies import get_current_user_model
 from city_api.models import Session, User
 from city_api.schemas import AuthResponse, SessionResponse, UserCreate, UserLogin, UserResponse
 
@@ -31,48 +32,6 @@ def verify_password(password: str, password_hash: str) -> bool:
 def generate_session_token() -> str:
     """Generate a secure random session token."""
     return secrets.token_hex(32)
-
-
-async def get_current_user(
-    authorization: Annotated[str | None, Header()] = None,
-    db: AsyncSession = Depends(get_db),
-) -> User:
-    """Get the current authenticated user from the session token."""
-    if not authorization:
-        raise HTTPException(
-            status_code=status.HTTP_401_UNAUTHORIZED,
-            detail="Missing authorization header",
-        )
-
-    if not authorization.startswith("Bearer "):
-        raise HTTPException(
-            status_code=status.HTTP_401_UNAUTHORIZED,
-            detail="Invalid authorization header format",
-        )
-
-    token = authorization[7:]
-
-    result = await db.execute(
-        select(Session).where(Session.token == token).where(Session.expires_at > datetime.now(UTC))
-    )
-    session = result.scalar_one_or_none()
-
-    if not session:
-        raise HTTPException(
-            status_code=status.HTTP_401_UNAUTHORIZED,
-            detail="Invalid or expired session token",
-        )
-
-    result = await db.execute(select(User).where(User.id == session.user_id))
-    user = result.scalar_one_or_none()
-
-    if not user:
-        raise HTTPException(
-            status_code=status.HTTP_401_UNAUTHORIZED,
-            detail="User not found",
-        )
-
-    return user
 
 
 @router.post("/register", response_model=AuthResponse, status_code=status.HTTP_201_CREATED)
@@ -171,7 +130,7 @@ async def logout(
 
 @router.get("/me", response_model=UserResponse)
 async def get_me(
-    current_user: Annotated[User, Depends(get_current_user)],
+    current_user: Annotated[User, Depends(get_current_user_model)],
 ) -> UserResponse:
     """Get the current authenticated user."""
     return UserResponse(

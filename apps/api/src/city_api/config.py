@@ -11,6 +11,9 @@ class Settings(BaseSettings):
 
     session_expire_days: int = 7
 
+    # Auth mode: "dev" uses X-User-Id header, "production" uses Bearer token
+    auth_mode: str = "dev"
+
     # CORS configuration
     frontend_url: str = "http://localhost:5173"
     cors_origins: list[str] = [
