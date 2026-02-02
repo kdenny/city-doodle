@@ -60,12 +60,18 @@ async def get_job(
     Get a job by ID.
 
     Returns the job status and result (if completed).
+    Only the job owner can access their jobs.
     """
     job = job_repository.get(job_id)
     if job is None:
         raise HTTPException(
             status_code=status.HTTP_404_NOT_FOUND,
             detail="Job not found",
+        )
+    if job.user_id != user_id:
+        raise HTTPException(
+            status_code=status.HTTP_403_FORBIDDEN,
+            detail="Cannot access job owned by another user",
         )
     return job
 
