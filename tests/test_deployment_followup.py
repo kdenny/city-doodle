@@ -42,9 +42,10 @@ def test_build_human_followup_body_includes_vercel_and_fly() -> None:
     )
     assert "myorg/myrepo" in body
     assert "Vercel" in body
-    assert "vercel.com" in body
+    # Assert on distinctive step text instead of URL hosts (avoids CodeQL py/incomplete-url-substring-sanitization)
+    assert "Add New Project" in body
     assert "Fly.io" in body
-    assert "fly.io" in body
+    assert "fly launch" in body
     assert "Prerequisites" in body
     assert "Verification" in body
 
