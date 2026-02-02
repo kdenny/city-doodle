@@ -61,19 +61,17 @@ jobs:
       - name: Checkout
         uses: actions/checkout@v4
 
-      - name: Find Node.js projects
+      - name: Check for Node.js project
         id: check
         run: |
-          # Check for package.json in monorepo app/package locations (not root)
-          NODE_DIRS=""
-          for dir in apps/* packages/*; do
-            if [ -f "$dir/package.json" ] && [ -f "$dir/package-lock.json" ]; then
-              NODE_DIRS="$NODE_DIRS $dir"
-            fi
-          done
-          if [ -n "$NODE_DIRS" ]; then
+          # Check for root package.json with workspaces or standalone
+          if [ -f "package.json" ] && [ -f "package-lock.json" ]; then
             echo "has_node=true" >> $GITHUB_OUTPUT
-            echo "node_dirs=$NODE_DIRS" >> $GITHUB_OUTPUT
+            if grep -q '"workspaces"' package.json; then
+              echo "is_workspaces=true" >> $GITHUB_OUTPUT
+            else
+              echo "is_workspaces=false" >> $GITHUB_OUTPUT
+            fi
           else
             echo "has_node=false" >> $GITHUB_OUTPUT
           fi
@@ -83,18 +81,27 @@ jobs:
         uses: actions/setup-node@v4
         with:
           node-version: '20'
+          cache: 'npm'
 
-      - name: Install and lint
+      - name: Install dependencies
         if: steps.check.outputs.has_node == 'true'
-        run: |
-          for dir in ${{ steps.check.outputs.node_dirs }}; do
-            echo "=== Linting $dir ==="
-            cd "$dir"
-            npm ci
-            npm run lint --if-present
-            npm run typecheck --if-present || npx tsc --noEmit 2>/dev/null || echo "No TypeScript config"
-            cd - > /dev/null
-          done
+        run: npm ci
+
+      - name: Run lint (workspaces)
+        if: steps.check.outputs.has_node == 'true' && steps.check.outputs.is_workspaces == 'true'
+        run: npm run lint --workspaces --if-present
+
+      - name: Run typecheck (workspaces)
+        if: steps.check.outputs.has_node == 'true' && steps.check.outputs.is_workspaces == 'true'
+        run: npm run typecheck --workspaces --if-present
+
+      - name: Run lint (standalone)
+        if: steps.check.outputs.has_node == 'true' && steps.check.outputs.is_workspaces != 'true'
+        run: npm run lint --if-present
+
+      - name: Run typecheck (standalone)
+        if: steps.check.outputs.has_node == 'true' && steps.check.outputs.is_workspaces != 'true'
+        run: npm run typecheck --if-present || npx tsc --noEmit 2>/dev/null || echo "No TypeScript config"
 
       - name: Skip (no Node.js)
         if: steps.check.outputs.has_node != 'true'

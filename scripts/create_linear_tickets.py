@@ -11,10 +11,9 @@ This script:
 import os
 import re
 import sys
-import json
+
 import requests
 from dataclasses import dataclass, field
-from typing import Optional
 
 LINEAR_API_URL = "https://api.linear.app/graphql"
 API_KEY = os.environ.get("LINEAR_API_KEY")
@@ -39,9 +38,9 @@ class TicketDef:
     priority: str  # P0, P1, P2, P3
     description: str
     blocked_by: list[str] = field(default_factory=list)
-    assignee: Optional[str] = None
-    linear_id: Optional[str] = None  # CITY-XX after creation
-    linear_uuid: Optional[str] = None  # Internal UUID
+    assignee: str | None = None
+    linear_id: str | None = None  # CITY-XX after creation
+    linear_uuid: str | None = None  # Internal UUID
 
 
 def execute_query(query: str, variables: dict = None) -> dict:
@@ -62,13 +61,10 @@ def execute_query(query: str, variables: dict = None) -> dict:
 
 def parse_tickets_md(filepath: str) -> list[TicketDef]:
     """Parse TICKETS.md and extract ticket definitions."""
-    with open(filepath, "r") as f:
+    with open(filepath) as f:
         content = f.read()
 
     tickets = []
-
-    # Split by ticket headers (### ID: Title)
-    ticket_pattern = r'### ([A-Z0-9-]+): (.+?)(?=\n###|\n---|\n# |$)'
 
     # More comprehensive pattern
     sections = re.split(r'\n(?=### [A-Z])', content)
@@ -158,7 +154,7 @@ def get_label_ids() -> dict[str, str]:
     return label_map
 
 
-def create_label(name: str) -> Optional[str]:
+def create_label(name: str) -> str | None:
     """Create a label and return its ID."""
     mutation = """
     mutation CreateLabel($input: IssueLabelCreateInput!) {
