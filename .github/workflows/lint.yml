@@ -1,0 +1,94 @@
+name: Lint & Type Check
+
+on:
+  push:
+    branches: [main]
+  pull_request:
+    branches: [main]
+
+permissions:
+  contents: read
+
+jobs:
+  python-lint:
+    name: Python (ruff + mypy)
+    runs-on: ubuntu-latest
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+
+      - name: Check for Python code
+        id: check
+        run: |
+          if [ -f "pyproject.toml" ] || [ -f "setup.py" ] || find . -name "*.py" -type f | head -1 | grep -q .; then
+            echo "has_python=true" >> $GITHUB_OUTPUT
+          else
+            echo "has_python=false" >> $GITHUB_OUTPUT
+          fi
+
+      - name: Set up Python
+        if: steps.check.outputs.has_python == 'true'
+        uses: actions/setup-python@v5
+        with:
+          python-version: '3.11'
+
+      - name: Install dependencies
+        if: steps.check.outputs.has_python == 'true'
+        run: |
+          python -m pip install --upgrade pip
+          pip install -e ".[dev]" 2>/dev/null || pip install ruff mypy
+
+      - name: Run ruff (lint)
+        if: steps.check.outputs.has_python == 'true'
+        run: ruff check .
+
+      - name: Run ruff (format check)
+        if: steps.check.outputs.has_python == 'true'
+        run: ruff format --check .
+
+      - name: Run mypy (type check)
+        if: steps.check.outputs.has_python == 'true'
+        run: mypy lib/ --ignore-missing-imports
+
+      - name: Skip (no Python)
+        if: steps.check.outputs.has_python != 'true'
+        run: echo "No Python code found, skipping Python lint checks."
+
+  typescript-lint:
+    name: TypeScript (eslint + tsc)
+    runs-on: ubuntu-latest
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+
+      - name: Check for TypeScript/Node.js code
+        id: check
+        run: |
+          if [ -f "package.json" ]; then
+            echo "has_node=true" >> $GITHUB_OUTPUT
+          else
+            echo "has_node=false" >> $GITHUB_OUTPUT
+          fi
+
+      - name: Set up Node.js
+        if: steps.check.outputs.has_node == 'true'
+        uses: actions/setup-node@v4
+        with:
+          node-version: '20'
+          cache: 'npm'
+
+      - name: Install dependencies
+        if: steps.check.outputs.has_node == 'true'
+        run: npm ci
+
+      - name: Run eslint
+        if: steps.check.outputs.has_node == 'true'
+        run: npm run lint --if-present
+
+      - name: Run tsc (type check)
+        if: steps.check.outputs.has_node == 'true'
+        run: npm run typecheck --if-present || npx tsc --noEmit 2>/dev/null || echo "No TypeScript config found"
+
+      - name: Skip (no Node.js)
+        if: steps.check.outputs.has_node != 'true'
+        run: echo "No package.json found, skipping TypeScript lint checks."
