@@ -72,9 +72,11 @@ class TileUpdate(BaseModel):
 
 
 class TileLockCreate(BaseModel):
-    """Request model for acquiring a tile lock."""
+    """Request model for acquiring a tile lock.
 
-    tile_id: UUID
+    Note: tile_id comes from the URL path, not the request body.
+    """
+
     duration_seconds: int = Field(
         default=300,
         ge=60,
