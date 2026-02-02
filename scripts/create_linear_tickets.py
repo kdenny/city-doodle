@@ -67,7 +67,7 @@ def parse_tickets_md(filepath: str) -> list[TicketDef]:
 
     tickets = []
 
-    # More comprehensive pattern
+    # Split by ticket headers (### ID: Title)
     sections = re.split(r"\n(?=### [A-Z])", content)
 
     for section in sections:
