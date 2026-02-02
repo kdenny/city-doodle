@@ -16,6 +16,9 @@ vi.mock("pixi.js", () => ({
   })),
   Container: vi.fn().mockImplementation(() => ({
     addChild: vi.fn(),
+    destroy: vi.fn(),
+    visible: true,
+    label: "",
   })),
   Graphics: vi.fn().mockImplementation(() => ({
     setStrokeStyle: vi.fn().mockReturnThis(),
@@ -25,6 +28,10 @@ vi.mock("pixi.js", () => ({
     circle: vi.fn().mockReturnThis(),
     fill: vi.fn().mockReturnThis(),
     rect: vi.fn().mockReturnThis(),
+    clear: vi.fn().mockReturnThis(),
+    closePath: vi.fn().mockReturnThis(),
+    visible: true,
+    label: "",
   })),
 }));
 
