@@ -345,12 +345,20 @@ See `recipes/tickets/creating-tickets.md` for details.
 
 ### Understanding CI Failures
 
+**Always read the actual failure first.** Do not guess the cause from workflow names or assumptions.
+
+1. **PR comments and review threads** – CodeQL and other checks post inline comments (e.g. from `github-advanced-security`). Read them to see the exact finding (e.g. "Incomplete URL substring sanitization") and the file/line.
+2. **Failed run logs** – `gh pr checks <number>` to see which check failed; then `gh run view <run-id> --log-failed` (or open the failed job in the GitHub Checks tab) to read the error output.
+3. **PR policy bot comment** – If the bot commented on the PR, it lists missing items (ticket reference, risk label, etc.).
+
+Only after you know the real failure (e.g. "CodeQL alert on line 45", "missing risk label", "test X failed") should you fix it. See below for common workflows and responses.
+
 When a workflow fails, check:
 
 1. **security.yml**
    - Gitleaks: Secret detected in code
    - Dependency review: Vulnerable dependency in PR
-   - CodeQL: Security issue in code
+   - CodeQL: Security finding in code (see PR review comments from github-advanced-security for file/line and query name, e.g. `py/incomplete-url-substring-sanitization`)
 
 2. **pr-policy.yml**
    - Missing ticket reference in PR
@@ -374,8 +382,13 @@ When a workflow fails, check:
 **Missing labels:**
 1. Add the required label via GitHub UI or `gh pr edit`
 
+**CodeQL / security findings** (see PR review comments for the exact alert):
+1. Read the inline comment: query ID, file, line, and "Show more details" link
+2. Fix the finding (e.g. avoid URL substring checks in tests; use allowlists in production code) or add a documented suppression if it is a false positive
+3. Push the fix
+
 **Test failures** (if the project has tests):
-1. Read the failure output
+1. Read the failure output (from logs or `gh run view ... --log-failed`)
 2. Fix the failing test or the code
 3. Push the fix
 
@@ -470,11 +483,16 @@ git -C ../project-worktrees/PROJ-456 commit -m "PROJ-456: Fix null pointer in au
 
 ### Handling CI Failures
 
-```bash
-# 1. Check what failed
-gh pr checks
+**First:** Read the actual failure. Check PR comments (e.g. CodeQL inline comments from github-advanced-security), PR policy bot comment, and failed run logs. Do not guess from workflow names.
 
-# 2. If tests failed (and the project has tests), run locally
+```bash
+# 1. See which check failed
+gh pr checks <number>
+
+# 2. Read failed run logs (use run ID from the failed check link)
+gh run view <run-id> --log-failed
+
+# 3. If tests failed (and the project has tests), run locally
 pytest  # or npm test, etc.
 
 # 3. If secret scanning failed
@@ -488,15 +506,16 @@ git push
 
 ## Anti-Patterns to Avoid
 
-1. **Don't merge main into feature branches** - Always rebase
-2. **Don't force push to main** - Only to feature branches
-3. **Don't skip CI** - Wait for checks to pass
-4. **Don't commit secrets** - Even for "testing"
-5. **Don't skip risk labels** - Every PR needs one
-6. **Don't create PRs without ticket references** - Link to tickets
-7. **Don't work in the main checkout** - Use worktrees for ticket work.
-8. **Don't leave merged worktrees around** - After a PR is merged, remove the worktree, delete the local branch, and run `bin/vibe doctor`.
-9. **Don't use `cd path && command`** - Use `git -C path`, `npm --prefix path`, or `gh pr create --repo owner/repo` so commands can run without changing directory and can be parallelized when appropriate.
+1. **Don't guess CI failures** - Read PR comments (CodeQL, policy bot) and failed run logs first
+2. **Don't merge main into feature branches** - Always rebase
+3. **Don't force push to main** - Only to feature branches
+4. **Don't skip CI** - Wait for checks to pass
+5. **Don't commit secrets** - Even for "testing"
+6. **Don't skip risk labels** - Every PR needs one
+7. **Don't create PRs without ticket references** - Link to tickets
+8. **Don't work in the main checkout** - Use worktrees for ticket work.
+9. **Don't leave merged worktrees around** - After a PR is merged, remove the worktree, delete the local branch, and run `bin/vibe doctor`.
+10. **Don't use `cd path && command`** - Use `git -C path`, `npm --prefix path`, or `gh pr create --repo owner/repo` so commands can run without changing directory and can be parallelized when appropriate.
 
 ---
 
