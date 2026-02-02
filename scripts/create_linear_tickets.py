@@ -11,9 +11,9 @@ This script:
 import os
 import re
 import sys
+from dataclasses import dataclass, field
 
 import requests
-from dataclasses import dataclass, field
 
 LINEAR_API_URL = "https://api.linear.app/graphql"
 API_KEY = os.environ.get("LINEAR_API_KEY")
