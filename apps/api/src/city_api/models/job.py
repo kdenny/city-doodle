@@ -35,6 +35,9 @@ class Job(Base):
     __tablename__ = "jobs"
 
     id: Mapped[uuid.UUID] = mapped_column(UUID(as_uuid=True), primary_key=True, default=uuid.uuid4)
+    user_id: Mapped[uuid.UUID] = mapped_column(
+        UUID(as_uuid=True), ForeignKey("users.id", ondelete="CASCADE"), nullable=False
+    )
     type: Mapped[str] = mapped_column(String(50), nullable=False)
     status: Mapped[str] = mapped_column(String(20), nullable=False, default=JobStatus.PENDING.value)
     tile_id: Mapped[uuid.UUID | None] = mapped_column(
@@ -53,4 +56,5 @@ class Job(Base):
         Index("ix_jobs_status", "status"),
         Index("ix_jobs_type_status", "type", "status"),
         Index("ix_jobs_tile_id", "tile_id"),
+        Index("ix_jobs_user_id", "user_id"),
     )
