@@ -1,17 +1,93 @@
 """Initial setup wizard orchestrator."""
 
+from pathlib import Path
+
 import click
 
-from lib.vibe.config import config_exists, load_config, save_config
+from lib.vibe.config import DEFAULT_CONFIG, config_exists, load_config, save_config
 from lib.vibe.wizards.branch import run_branch_wizard
 from lib.vibe.wizards.env import run_env_wizard
-from lib.vibe.wizards.github import run_github_wizard
+from lib.vibe.wizards.github import run_github_wizard, try_auto_configure_github
 from lib.vibe.wizards.tracker import run_tracker_wizard
+
+# Default PR template when .github/PULL_REQUEST_TEMPLATE.md is missing
+_DEFAULT_PR_TEMPLATE = """## Summary
+
+<!-- Brief description of the changes. Link to the ticket. -->
+
+Closes #<!-- ticket number -->
+
+## Changes
+
+<!-- Bullet points of what changed -->
+
+-
+
+## Risk Assessment
+
+<!-- Select one risk level and delete the others -->
+
+- [ ] **Low Risk** - Minimal scope, well-tested, low blast radius
+- [ ] **Medium Risk** - Moderate scope, may affect multiple components
+- [ ] **High Risk** - Large scope, critical path, or infrastructure changes
+
+## Testing
+
+- [ ] Unit tests added/updated
+- [ ] Manual testing instructions included (for non-trivial changes)
+
+## Checklist
+
+- [ ] Code follows project conventions
+- [ ] No secrets or credentials committed
+- [ ] PR title includes ticket reference
+- [ ] Risk label added
+"""
+
+
+def is_fresh_project(config: dict, config_file_existed: bool) -> bool:
+    """
+    Return True if this looks like a fresh/unconfigured project.
+
+    Fresh = no config file existed, or config has no GitHub owner/repo
+    and no tracker configured.
+    """
+    if not config_file_existed:
+        return True
+    github = config.get("github") or {}
+    owner = github.get("owner") or ""
+    repo = github.get("repo") or ""
+    tracker_type = (config.get("tracker") or {}).get("type")
+    return (not owner.strip() or not repo.strip()) and tracker_type is None
+
+
+def apply_git_workflow_defaults(config: dict) -> None:
+    """Apply sensible git workflow defaults (branching, worktrees) without prompting."""
+    config["branching"] = dict(DEFAULT_CONFIG["branching"])
+    config["worktrees"] = dict(DEFAULT_CONFIG["worktrees"])
+
+
+def ensure_pr_template(base_path: Path | None = None) -> bool:
+    """
+    Ensure .github/PULL_REQUEST_TEMPLATE.md exists; create from default if missing.
+
+    Returns True if the file existed or was created.
+    """
+    root = base_path or Path(".")
+    template_path = root / ".github" / "PULL_REQUEST_TEMPLATE.md"
+    if template_path.exists():
+        return True
+    template_path.parent.mkdir(parents=True, exist_ok=True)
+    template_path.write_text(_DEFAULT_PR_TEMPLATE, encoding="utf-8")
+    return True
 
 
 def run_setup(force: bool = False) -> bool:
     """
     Run the initial setup wizard.
+
+    On a fresh project (no config or unconfigured), auto-initializes git workflow
+    defaults and GitHub from gh CLI + remote when possible, with no prompts.
 
     Args:
         force: Force re-running setup even if config exists
@@ -19,28 +95,61 @@ def run_setup(force: bool = False) -> bool:
     Returns:
         True if setup completed successfully
     """
+    config_file_existed = config_exists()
+    config = load_config()
+
+    # Fresh project: try zero-prompt auto-initialization
+    if is_fresh_project(config, config_file_existed) and not force:
+        apply_git_workflow_defaults(config)
+        ensure_pr_template()
+        if try_auto_configure_github(config):
+            config["tracker"]["type"] = None
+            config["tracker"]["config"] = {}
+            save_config(config)
+            click.echo("=" * 60)
+            click.echo("  Setup Complete (auto-configured)")
+            click.echo("=" * 60)
+            click.echo()
+            click.echo("Detected fresh project. Configured with no prompts:")
+            click.echo("  • Git workflow: branch pattern {PROJ}-{num}, worktrees, rebase onto main")
+            click.echo("  • GitHub: gh CLI + current repo")
+            click.echo("  • PR template: .github/PULL_REQUEST_TEMPLATE.md")
+            click.echo()
+            click.echo("Configuration saved to .vibe/config.json")
+            click.echo()
+            click.echo("Next steps:")
+            click.echo("  1. Run 'bin/doctor' to verify your setup")
+            click.echo("  2. Optional: run 'bin/vibe setup -w tracker' to add Linear")
+            click.echo("  3. Check recipes/ for best practices")
+            click.echo()
+            return True
+
+    # Existing config or reconfiguration: show wizard header and possibly confirm
     click.echo("=" * 60)
     click.echo("  Vibe Code Boilerplate - Setup Wizard")
     click.echo("=" * 60)
     click.echo()
 
-    # Check for existing config
-    if config_exists() and not force:
+    # Only ask to reconfigure when they already have a real config (not fresh)
+    already_configured = config_file_existed and not is_fresh_project(config, config_file_existed)
+    if already_configured and not force:
         click.echo("Configuration already exists at .vibe/config.json")
         if not click.confirm("Do you want to reconfigure?", default=False):
             click.echo("Setup cancelled. Use 'vibe setup --force' to reconfigure.")
             return False
-
-    config = load_config()
+        config = load_config()
 
     # Essential wizards (required)
     click.echo("\n--- Essential Configuration ---\n")
 
-    # 1. GitHub auth
-    click.echo("Step 1: GitHub Authentication")
-    if not run_github_wizard(config):
-        click.echo("GitHub authentication is required. Setup cancelled.")
-        return False
+    # 1. GitHub auth (skip if already configured)
+    if config.get("github", {}).get("auth_method") and config.get("github", {}).get("owner"):
+        click.echo("Step 1: GitHub already configured, skipping.")
+    else:
+        click.echo("Step 1: GitHub Authentication")
+        if not run_github_wizard(config):
+            click.echo("GitHub authentication is required. Setup cancelled.")
+            return False
 
     # 2. Tracker selection
     click.echo("\nStep 2: Ticket Tracker")
