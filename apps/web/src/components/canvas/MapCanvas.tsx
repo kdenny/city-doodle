@@ -53,13 +53,13 @@ export function MapCanvas({ className, seed = 12345 }: MapCanvasProps) {
     const container = containerRef.current;
     if (!container) return;
 
-    let app: Application | null = null;
-    let viewport: Viewport | null = null;
-    let terrainLayer: TerrainLayer | null = null;
+    // Track if this effect has been cleaned up (for async safety)
+    let cancelled = false;
+    let resizeCleanup: (() => void) | null = null;
 
     const init = async () => {
       // Create PixiJS application
-      app = new Application();
+      const app = new Application();
       await app.init({
         background: "#f5f5f5",
         resizeTo: container,
@@ -68,11 +68,17 @@ export function MapCanvas({ className, seed = 12345 }: MapCanvasProps) {
         autoDensity: true,
       });
 
+      // Check if unmounted during async init
+      if (cancelled) {
+        app.destroy(true);
+        return;
+      }
+
       // Add canvas to DOM
       container.appendChild(app.canvas as HTMLCanvasElement);
 
       // Create viewport with pan and zoom
-      viewport = new Viewport({
+      const viewport = new Viewport({
         screenWidth: container.clientWidth,
         screenHeight: container.clientHeight,
         worldWidth: WORLD_SIZE,
@@ -97,20 +103,18 @@ export function MapCanvas({ className, seed = 12345 }: MapCanvasProps) {
       viewport.moveCenter(WORLD_SIZE / 2, WORLD_SIZE / 2);
 
       // Create and add terrain layer (below grid)
-      terrainLayer = new TerrainLayer();
+      const terrainLayer = new TerrainLayer();
       viewport.addChild(terrainLayer.getContainer());
 
       // Generate and set terrain data
       const terrainData = generateMockTerrain(WORLD_SIZE, seed);
       terrainLayer.setData(terrainData);
       terrainLayer.setVisibility(layerVisibility);
-      terrainLayerRef.current = terrainLayer;
 
       // Create tile grid (above terrain)
       const gridContainer = new Container();
       gridContainer.label = "grid";
       viewport.addChild(gridContainer);
-      gridContainerRef.current = gridContainer;
 
       // Draw tile grid
       const grid = new Graphics();
@@ -154,35 +158,45 @@ export function MapCanvas({ className, seed = 12345 }: MapCanvasProps) {
       boundary.stroke();
       gridContainer.addChild(boundary);
 
+      // Check again if unmounted before storing refs
+      if (cancelled) {
+        terrainLayer.destroy();
+        app.destroy(true, { children: true });
+        return;
+      }
+
       // Store refs
       appRef.current = app;
       viewportRef.current = viewport;
+      terrainLayerRef.current = terrainLayer;
+      gridContainerRef.current = gridContainer;
       setIsReady(true);
 
       // Handle resize
       const handleResize = () => {
-        if (viewport && container) {
-          viewport.resize(container.clientWidth, container.clientHeight);
+        if (viewportRef.current && container) {
+          viewportRef.current.resize(container.clientWidth, container.clientHeight);
         }
       };
 
       window.addEventListener("resize", handleResize);
-
-      return () => {
-        window.removeEventListener("resize", handleResize);
-      };
+      resizeCleanup = () => window.removeEventListener("resize", handleResize);
     };
 
     init();
 
     // Cleanup
     return () => {
-      if (terrainLayer) {
-        terrainLayer.destroy();
+      cancelled = true;
+      resizeCleanup?.();
+
+      // Clean up using refs (which are set after async init completes)
+      if (terrainLayerRef.current) {
+        terrainLayerRef.current.destroy();
         terrainLayerRef.current = null;
       }
-      if (app) {
-        app.destroy(true, { children: true });
+      if (appRef.current) {
+        appRef.current.destroy(true, { children: true });
         appRef.current = null;
         viewportRef.current = null;
         gridContainerRef.current = null;
