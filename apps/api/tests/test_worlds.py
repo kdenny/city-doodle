@@ -46,16 +46,16 @@ class TestCreateWorld:
             json={
                 "name": "Custom World",
                 "settings": {
-                    "grid_size": 5,
-                    "terrain_type": "coastal",
+                    "grid_organic": 0.8,
+                    "sprawl_compact": 0.2,
                 },
             },
             headers={"X-User-Id": TEST_USER_ID},
         )
         assert response.status_code == 201
         data = response.json()
-        assert data["settings"]["grid_size"] == 5
-        assert data["settings"]["terrain_type"] == "coastal"
+        assert data["settings"]["grid_organic"] == 0.8
+        assert data["settings"]["sprawl_compact"] == 0.2
 
 
 class TestListWorlds:
