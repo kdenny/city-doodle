@@ -7,6 +7,7 @@ import { PlacementPalette, PlacementProvider } from "../palette";
 
 interface EditorShellProps {
   children: ReactNode;
+  worldId?: string;
   initialZoom?: number;
   onZoomChange?: (zoom: number) => void;
 }

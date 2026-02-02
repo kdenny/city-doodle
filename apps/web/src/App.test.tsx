@@ -43,9 +43,9 @@ describe("App", () => {
     expect(screen.getByRole("link", { name: /about/i })).toBeInTheDocument();
   });
 
-  it("has navigation link to editor", () => {
+  it("has navigation link to worlds", () => {
     renderApp();
-    expect(screen.getByRole("link", { name: /editor/i })).toBeInTheDocument();
+    expect(screen.getByRole("link", { name: /my worlds/i })).toBeInTheDocument();
   });
 
   it("shows sign in link when not authenticated", () => {

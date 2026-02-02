@@ -1,8 +1,8 @@
-import { Routes, Route, Link } from 'react-router-dom'
+import { Routes, Route, Link, useParams } from 'react-router-dom'
 import { MapCanvas } from './components/canvas'
 import { EditorShell } from './components/shell'
 import { ProtectedRoute } from './components/ProtectedRoute'
-import { LoginPage, RegisterPage } from './pages'
+import { LoginPage, RegisterPage, WorldsPage } from './pages'
 import { useAuth } from './contexts'
 
 function Home() {
@@ -14,8 +14,8 @@ function Home() {
       <p className="mt-2 text-gray-600">A lo-fi vector city builder</p>
 
       <nav className="mt-4 flex gap-4">
-        <Link to="/editor" className="text-blue-600 hover:underline">
-          Editor
+        <Link to="/worlds" className="text-blue-600 hover:underline">
+          My Worlds
         </Link>
         <Link to="/about" className="text-blue-600 hover:underline">
           About
@@ -53,9 +53,15 @@ function Home() {
   )
 }
 
-function Editor() {
+function WorldEditor() {
+  const { worldId } = useParams<{ worldId: string }>()
+
+  if (!worldId) {
+    return <div className="p-8 text-red-600">World ID not found</div>
+  }
+
   return (
-    <EditorShell>
+    <EditorShell worldId={worldId}>
       <MapCanvas className="absolute inset-0" />
     </EditorShell>
   )
@@ -84,10 +90,18 @@ export function App() {
       <Route path="/login" element={<LoginPage />} />
       <Route path="/register" element={<RegisterPage />} />
       <Route
-        path="/editor"
+        path="/worlds"
         element={
           <ProtectedRoute>
-            <Editor />
+            <WorldsPage />
+          </ProtectedRoute>
+        }
+      />
+      <Route
+        path="/worlds/:worldId"
+        element={
+          <ProtectedRoute>
+            <WorldEditor />
           </ProtectedRoute>
         }
       />
