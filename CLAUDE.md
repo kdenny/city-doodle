@@ -92,6 +92,69 @@ The canonical configuration is in `.vibe/config.json`. Key fields (actual values
 
 ---
 
+## Local Development Setup
+
+### Python Environment
+
+**macOS with Homebrew Python requires a virtual environment.** Do not use system Python directly.
+
+```bash
+# From the repo root (or worktree root)
+python3 -m venv .venv
+source .venv/bin/activate
+
+# Install root package (vibe CLI) and dev dependencies
+pip install -e ".[dev]"
+
+# Install API package with dev dependencies
+pip install -e "apps/api[dev]"
+```
+
+### Running Tests Locally
+
+**Python tests (API):**
+```bash
+# Activate venv first
+source .venv/bin/activate
+
+# Run from repo root
+pytest apps/api/tests -v
+
+# Or from the api directory
+cd apps/api && pytest tests -v
+```
+
+**TypeScript tests (Web):**
+```bash
+# From repo root (npm workspaces)
+npm test --workspace=apps/web
+
+# Or from the web directory
+cd apps/web && npm test
+```
+
+**All tests:**
+```bash
+# Python
+source .venv/bin/activate && pytest apps/api/tests -v
+
+# TypeScript
+npm test --workspaces --if-present
+```
+
+### Worktree-Specific Setup
+
+Each worktree needs its own `.venv`. When starting work on a ticket:
+
+```bash
+cd ../city-doodle-worktrees/CITY-123
+python3 -m venv .venv
+source .venv/bin/activate
+pip install -e ".[dev]" -e "apps/api[dev]"
+```
+
+---
+
 ## Core Rules
 
 ### When to Ask for Clarification
