@@ -1,6 +1,21 @@
 @import "tailwindcss";
 
-/* Handwritten font for map labels */
+/*
+ * Handwritten font for map labels
+ *
+ * Font: Caveat (https://fonts.google.com/specimen/Caveat)
+ * License: Open Font License (OFL)
+ *
+ * Selected for:
+ * - Excellent readability at small sizes (map labels)
+ * - Full character coverage including numbers
+ * - Natural, sketchy appearance fits lo-fi map aesthetic
+ * - Multiple weights (400-700) for hierarchy
+ * - Well-optimized via Google Fonts CDN
+ *
+ * Alternatives considered: Patrick Hand, Indie Flower, Architects Daughter, Kalam
+ * Caveat chosen for best balance of readability and hand-drawn feel.
+ */
 :root {
   --font-handwritten: "Caveat", cursive;
 }
