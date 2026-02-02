@@ -1,17 +1,131 @@
 """Initial setup wizard orchestrator."""
 
+from pathlib import Path
+
 import click
 
-from lib.vibe.config import config_exists, load_config, save_config
+from lib.vibe.config import DEFAULT_CONFIG, config_exists, load_config, save_config
+from lib.vibe.state import DEFAULT_STATE, state_exists, save_state
 from lib.vibe.wizards.branch import run_branch_wizard
 from lib.vibe.wizards.env import run_env_wizard
-from lib.vibe.wizards.github import run_github_wizard
+from lib.vibe.wizards.github import run_dependency_graph_prompt, run_github_wizard, try_auto_configure_github
 from lib.vibe.wizards.tracker import run_tracker_wizard
+
+# Default PR template when .github/PULL_REQUEST_TEMPLATE.md is missing
+_DEFAULT_PR_TEMPLATE = """## Summary
+
+<!-- Brief description of the changes. Link to the ticket. -->
+
+Closes #<!-- ticket number -->
+
+## Changes
+
+<!-- Bullet points of what changed -->
+
+-
+
+## Risk Assessment
+
+<!-- Select one risk level and delete the others -->
+
+- [ ] **Low Risk** - Minimal scope, well-tested, low blast radius
+- [ ] **Medium Risk** - Moderate scope, may affect multiple components
+- [ ] **High Risk** - Large scope, critical path, or infrastructure changes
+
+## Testing
+
+- [ ] Unit tests added/updated
+- [ ] Manual testing instructions included (for non-trivial changes)
+
+## Checklist
+
+- [ ] Code follows project conventions
+- [ ] No secrets or credentials committed
+- [ ] PR title includes ticket reference
+- [ ] Risk label added
+"""
+
+
+def is_fresh_project(config: dict, config_file_existed: bool) -> bool:
+    """
+    Return True if this looks like a fresh/unconfigured project.
+
+    Fresh = no config file existed, or config has no GitHub owner/repo
+    and no tracker configured.
+    """
+    if not config_file_existed:
+        return True
+    github = config.get("github") or {}
+    owner = github.get("owner") or ""
+    repo = github.get("repo") or ""
+    tracker_type = (config.get("tracker") or {}).get("type")
+    return (not owner.strip() or not repo.strip()) and tracker_type is None
+
+
+def apply_git_workflow_defaults(config: dict) -> None:
+    """Apply sensible git workflow defaults (branching, worktrees) without prompting."""
+    config["branching"] = dict(DEFAULT_CONFIG["branching"])
+    config["worktrees"] = dict(DEFAULT_CONFIG["worktrees"])
+
+
+def ensure_pr_template(base_path: Path | None = None) -> bool:
+    """
+    Ensure .github/PULL_REQUEST_TEMPLATE.md exists; create from default if missing.
+
+    Returns True if the file existed or was created.
+    """
+    root = base_path or Path(".")
+    template_path = root / ".github" / "PULL_REQUEST_TEMPLATE.md"
+    if template_path.exists():
+        return True
+    template_path.parent.mkdir(parents=True, exist_ok=True)
+    template_path.write_text(_DEFAULT_PR_TEMPLATE, encoding="utf-8")
+    return True
+
+
+def ensure_local_state(base_path: Path | None = None) -> bool:
+    """
+    Ensure .vibe/local_state.json exists; create from default if missing.
+
+    Returns True if the file existed or was created.
+    """
+    if state_exists(base_path):
+        return True
+    save_state(DEFAULT_STATE.copy(), base_path)
+    return True
+
+
+_COMMIT_CONVENTION_CONTENT = """# Commit message convention
+
+Use the format: **TICKET-123: Short description**
+
+- Prefix with the ticket ID (e.g. PROJ-123) when the change relates to a ticket.
+- Use present tense: "Add feature" not "Added feature".
+- Keep the subject line under ~72 characters.
+"""
+
+
+def ensure_commit_convention(base_path: Path | None = None) -> bool:
+    """
+    Ensure .github/COMMIT_CONVENTION.md exists; create from default if missing.
+
+    Returns True if the file existed or was created.
+    """
+    root = base_path or Path(".")
+    path = root / ".github" / "COMMIT_CONVENTION.md"
+    if path.exists():
+        return True
+    path.parent.mkdir(parents=True, exist_ok=True)
+    path.write_text(_COMMIT_CONVENTION_CONTENT, encoding="utf-8")
+    return True
 
 
 def run_setup(force: bool = False) -> bool:
     """
     Run the initial setup wizard.
+
+    On a fresh project (no config or unconfigured), auto-initializes git workflow
+    defaults and GitHub from gh CLI + remote when possible, with no prompts.
 
     Args:
         force: Force re-running setup even if config exists
@@ -19,28 +133,80 @@ def run_setup(force: bool = False) -> bool:
     Returns:
         True if setup completed successfully
     """
+    config_file_existed = config_exists()
+    config = load_config()
+
+    # Fresh project: zero-prompt auto-initialization (never drop into interactive wizard)
+    if is_fresh_project(config, config_file_existed) and not force:
+        apply_git_workflow_defaults(config)
+        config["tracker"]["type"] = None
+        config["tracker"]["config"] = {}
+        ensure_pr_template()
+        ensure_local_state()
+        ensure_commit_convention()
+        github_configured = try_auto_configure_github(config)
+        save_config(config)
+        click.echo("=" * 60)
+        click.echo("  Setup Complete (auto-configured)")
+        click.echo("=" * 60)
+        click.echo()
+        click.echo("Detected fresh project. Configured with no prompts:")
+        click.echo("  • Git workflow: branch pattern {PROJ}-{num}, worktrees, rebase onto main")
+        click.echo("  • PR template: .github/PULL_REQUEST_TEMPLATE.md")
+        click.echo("  • Commit convention: .github/COMMIT_CONVENTION.md")
+        click.echo("  • Local state: .vibe/local_state.json")
+        if github_configured:
+            click.echo("  • GitHub: gh CLI + current repo")
+            run_dependency_graph_prompt(config)
+        else:
+            click.echo("  • GitHub: not configured (run 'bin/vibe setup -w github' when ready)")
+        click.echo()
+        click.echo("Configuration saved to .vibe/config.json")
+        click.echo()
+        click.echo("Next steps:")
+        click.echo("  1. Run 'bin/doctor' to verify your setup")
+        next_num = 2
+        if not github_configured:
+            click.echo(f"  {next_num}. Run 'bin/vibe setup -w github' to connect GitHub")
+            next_num += 1
+        click.echo(f"  {next_num}. Optional: run 'bin/vibe setup -w tracker' to add Linear")
+        next_num += 1
+        click.echo(f"  {next_num}. Fill in the Project Overview in CLAUDE.md (for AI agent context)")
+        next_num += 1
+        click.echo(f"  {next_num}. Update README.md with app name, description, tech stack, and setup instructions")
+        next_num += 1
+        click.echo(f"  {next_num}. Check recipes/ for best practices")
+        click.echo()
+        return True
+
+    # Existing config or reconfiguration: show wizard header and possibly confirm
     click.echo("=" * 60)
     click.echo("  Vibe Code Boilerplate - Setup Wizard")
     click.echo("=" * 60)
     click.echo()
 
-    # Check for existing config
-    if config_exists() and not force:
+    # Only ask to reconfigure when they already have a real config (not fresh)
+    already_configured = config_file_existed and not is_fresh_project(config, config_file_existed)
+    if already_configured and not force:
         click.echo("Configuration already exists at .vibe/config.json")
         if not click.confirm("Do you want to reconfigure?", default=False):
             click.echo("Setup cancelled. Use 'vibe setup --force' to reconfigure.")
             return False
-
-    config = load_config()
+        config = load_config()
 
     # Essential wizards (required)
     click.echo("\n--- Essential Configuration ---\n")
 
-    # 1. GitHub auth
-    click.echo("Step 1: GitHub Authentication")
-    if not run_github_wizard(config):
-        click.echo("GitHub authentication is required. Setup cancelled.")
-        return False
+    # 1. GitHub auth (skip if already configured)
+    if config.get("github", {}).get("auth_method") and config.get("github", {}).get("owner"):
+        click.echo("Step 1: GitHub already configured, skipping.")
+    else:
+        click.echo("Step 1: GitHub Authentication")
+        if not run_github_wizard(config):
+            click.echo("GitHub authentication is required. Setup cancelled.")
+            return False
+
+    run_dependency_graph_prompt(config)
 
     # 2. Tracker selection
     click.echo("\nStep 2: Ticket Tracker")
@@ -74,7 +240,9 @@ def run_setup(force: bool = False) -> bool:
     click.echo("Next steps:")
     click.echo("  1. Run 'bin/doctor' to verify your setup")
     click.echo("  2. Review .vibe/config.json and adjust as needed")
-    click.echo("  3. Check out the recipes/ directory for best practices")
+    click.echo("  3. Fill in the Project Overview in CLAUDE.md (for AI agent context)")
+    click.echo("  4. Update README.md with app name, description, tech stack, and setup instructions")
+    click.echo("  5. Check out the recipes/ directory for best practices")
     click.echo()
 
     return True
