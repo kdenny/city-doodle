@@ -12,6 +12,7 @@ const defaultVisibility: LayerVisibility = {
   roads: true,
   pois: true,
   grid: true,
+  labels: true,
 };
 
 describe("LayerControls", () => {
@@ -27,6 +28,7 @@ describe("LayerControls", () => {
     expect(screen.getByLabelText("Roads")).toBeInTheDocument();
     expect(screen.getByLabelText("POIs")).toBeInTheDocument();
     expect(screen.getByLabelText("Grid")).toBeInTheDocument();
+    expect(screen.getByLabelText("Labels")).toBeInTheDocument();
   });
 
   it("displays checkboxes as checked when visible", () => {
