@@ -1,8 +1,6 @@
 """Tests for authentication endpoints."""
 
-import pytest
-
-from city_api.routers.auth import hash_password, verify_password, generate_session_token
+from city_api.routers.auth import generate_session_token, hash_password, verify_password
 
 
 class TestPasswordHashing:

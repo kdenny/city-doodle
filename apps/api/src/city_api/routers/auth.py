@@ -1,7 +1,7 @@
 """Authentication router."""
 
 import secrets
-from datetime import datetime, timedelta, timezone
+from datetime import UTC, datetime, timedelta
 from typing import Annotated
 
 import bcrypt
@@ -55,7 +55,7 @@ async def get_current_user(
     result = await db.execute(
         select(Session)
         .where(Session.token == token)
-        .where(Session.expires_at > datetime.now(timezone.utc))
+        .where(Session.expires_at > datetime.now(UTC))
     )
     session = result.scalar_one_or_none()
 
@@ -85,7 +85,7 @@ async def register(
     """Register a new user."""
     password_hash = hash_password(user_data.password)
     token = generate_session_token()
-    expires_at = datetime.now(timezone.utc) + timedelta(days=settings.session_expire_days)
+    expires_at = datetime.now(UTC) + timedelta(days=settings.session_expire_days)
 
     user = User(email=user_data.email, password_hash=password_hash)
     db.add(user)
@@ -132,7 +132,7 @@ async def login(
         )
 
     token = generate_session_token()
-    expires_at = datetime.now(timezone.utc) + timedelta(days=settings.session_expire_days)
+    expires_at = datetime.now(UTC) + timedelta(days=settings.session_expire_days)
 
     session = Session(user_id=user.id, token=token, expires_at=expires_at)
     db.add(session)
