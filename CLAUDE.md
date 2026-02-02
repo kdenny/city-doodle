@@ -311,6 +311,77 @@ Before opening a PR, ensure:
 
 ---
 
+## Testing Policy
+
+**All PRs that change behavior must include tests.** This ensures regressions are caught and code quality remains high.
+
+### When Tests Are Required
+
+| PR Type | Tests Required? | Notes |
+|---------|----------------|-------|
+| **Feature** | Yes | Test new functionality |
+| **Bug fix** | Yes | Add regression test that would have caught the bug |
+| **Refactor** | Yes, if behavior could change | Existing tests should still pass |
+| **Chore** | Usually no | Dependencies, config, CI changes |
+| **Docs** | No | Documentation-only changes |
+| **Lint/style** | No | No behavior change |
+
+### Test Location
+
+```
+tests/                    # Root-level Python tests (lib/vibe, scripts)
+apps/api/tests/          # API tests
+apps/web/src/**/*.test.ts # Frontend tests (colocated)
+```
+
+### Running Tests
+
+```bash
+# Python tests (root)
+pytest
+
+# API tests
+pytest apps/api/tests/
+
+# Frontend tests
+npm --prefix apps/web test
+```
+
+### What to Test
+
+**Do test:**
+- Public API functions and methods
+- Edge cases and error handling
+- Integration between components
+- User-facing behavior
+
+**Don't test:**
+- Private implementation details
+- Third-party library behavior
+- Trivial getters/setters
+
+### Test Naming
+
+Use descriptive names that explain what's being tested:
+
+```python
+# Good
+def test_create_worktree_returns_path_when_branch_exists():
+    ...
+
+def test_parse_ticket_raises_error_for_invalid_format():
+    ...
+
+# Bad
+def test_worktree():
+    ...
+
+def test_1():
+    ...
+```
+
+---
+
 ## Label Documentation
 
 ### Type Labels
