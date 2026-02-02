@@ -53,9 +53,7 @@ async def get_current_user(
     token = authorization[7:]
 
     result = await db.execute(
-        select(Session)
-        .where(Session.token == token)
-        .where(Session.expires_at > datetime.now(UTC))
+        select(Session).where(Session.token == token).where(Session.expires_at > datetime.now(UTC))
     )
     session = result.scalar_one_or_none()
 

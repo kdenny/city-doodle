@@ -55,19 +55,23 @@ class TestAuthEndpoints:
     def test_register_endpoint_exists(self):
         """Register endpoint should be defined."""
         from city_api.routers.auth import register
+
         assert register is not None
 
     def test_login_endpoint_exists(self):
         """Login endpoint should be defined."""
         from city_api.routers.auth import login
+
         assert login is not None
 
     def test_logout_endpoint_exists(self):
         """Logout endpoint should be defined."""
         from city_api.routers.auth import logout
+
         assert logout is not None
 
     def test_me_endpoint_exists(self):
         """Me endpoint should be defined."""
         from city_api.routers.auth import get_me
+
         assert get_me is not None
