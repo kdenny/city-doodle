@@ -157,7 +157,7 @@ def boilerplate_issue(title: str | None, body: str | None, print_only: bool) -> 
     if body:
         if body.startswith("@") or "/" in body:
             try:
-                with open(body.lstrip("@"), "r") as f:
+                with open(body.lstrip("@")) as f:
                     body = f.read()
             except OSError:
                 pass

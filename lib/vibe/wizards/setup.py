@@ -5,10 +5,14 @@ from pathlib import Path
 import click
 
 from lib.vibe.config import DEFAULT_CONFIG, config_exists, load_config, save_config
-from lib.vibe.state import DEFAULT_STATE, state_exists, save_state
+from lib.vibe.state import DEFAULT_STATE, save_state, state_exists
 from lib.vibe.wizards.branch import run_branch_wizard
 from lib.vibe.wizards.env import run_env_wizard
-from lib.vibe.wizards.github import run_dependency_graph_prompt, run_github_wizard, try_auto_configure_github
+from lib.vibe.wizards.github import (
+    run_dependency_graph_prompt,
+    run_github_wizard,
+    try_auto_configure_github,
+)
 from lib.vibe.wizards.tracker import run_tracker_wizard
 
 # Default PR template when .github/PULL_REQUEST_TEMPLATE.md is missing
