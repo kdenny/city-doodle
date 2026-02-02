@@ -37,9 +37,13 @@ city-doodle/
 # Install Node dependencies (web app + shared types)
 npm install
 
+# Create and activate Python virtual environment
+python3 -m venv .venv
+source .venv/bin/activate  # On Windows: .venv\Scripts\activate
+
 # Install Python packages in development mode
-pip install -e .
-pip install -e apps/api
+pip install -e ".[dev]"
+pip install -e "apps/api[dev]"
 pip install -e apps/worker
 pip install -e packages/shared
 ```
@@ -50,11 +54,24 @@ pip install -e packages/shared
 # Web app (development server)
 npm run dev
 
-# API server
-cd apps/api && uvicorn city_api.main:app --reload
+# API server (activate venv first)
+source .venv/bin/activate
+uvicorn city_api.main:app --reload --app-dir apps/api/src
 
 # Worker
+source .venv/bin/activate
 python -m city_worker.main
+```
+
+### Running Tests
+
+```bash
+# Python tests (API)
+source .venv/bin/activate
+pytest apps/api/tests -v
+
+# TypeScript tests (Web)
+npm test --workspace=apps/web
 ```
 
 ## Development
