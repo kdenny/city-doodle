@@ -2,6 +2,7 @@
 
 from fastapi import FastAPI
 
+from city_api.routers import auth_router
 from city_api.schemas import (
     District,
     DistrictCreate,
@@ -20,6 +21,8 @@ app = FastAPI(
     description="Backend API for City Doodle - a lo-fi vector city builder",
     version="0.1.0",
 )
+
+app.include_router(auth_router)
 
 
 @app.get("/")
