@@ -4,9 +4,16 @@ import logging
 from uuid import UUID
 
 from fastapi import APIRouter, Depends, HTTPException, Query, status
+from sqlalchemy.ext.asyncio import AsyncSession
 
+from city_api.database import get_db
 from city_api.dependencies import get_current_user
+<<<<<<< HEAD
 from city_api.repositories import lock_repository, tile_repository, world_repository
+=======
+from city_api.repositories import tile as tile_repo
+from city_api.repositories import world as world_repo
+>>>>>>> bab391d (CITY-94: Convert world and tile repositories to use database)
 from city_api.schemas import Tile, TileUpdate
 
 logger = logging.getLogger(__name__)
@@ -23,6 +30,7 @@ async def list_tiles(
     max_tx: int | None = Query(default=None, description="Maximum X coordinate (bbox)"),
     min_ty: int | None = Query(default=None, description="Minimum Y coordinate (bbox)"),
     max_ty: int | None = Query(default=None, description="Maximum Y coordinate (bbox)"),
+    db: AsyncSession = Depends(get_db),
     user_id: UUID = Depends(get_current_user),
 ) -> list[Tile]:
     """
@@ -31,18 +39,18 @@ async def list_tiles(
     Can filter by exact coordinates (tx, ty) or by bounding box (min_tx, max_tx, min_ty, max_ty).
     """
     # Verify world exists and user has access
-    world_data = world_repository.get(world_id)
-    if world_data is None:
+    world_model = await world_repo.get_world(db, world_id)
+    if world_model is None:
         logger.warning("World not found for tile list: world_id=%s user_id=%s", world_id, user_id)
         raise HTTPException(
             status_code=status.HTTP_404_NOT_FOUND,
             detail=f"World {world_id} not found",
         )
-    if world_data["user_id"] != user_id:
+    if world_model.user_id != user_id:
         logger.warning(
             "Unauthorized world access: world_id=%s owner=%s requester=%s",
             world_id,
-            world_data["user_id"],
+            world_model.user_id,
             user_id,
         )
         raise HTTPException(
@@ -52,11 +60,12 @@ async def list_tiles(
 
     # If exact coordinates provided, return single tile or empty list
     if tx is not None and ty is not None:
-        tile = tile_repository.get_by_coords(world_id, tx, ty)
+        tile = await tile_repo.get_tile_by_coords(db, world_id, tx, ty)
         return [tile] if tile else []
 
     # Otherwise, return tiles with optional bbox filter
-    return tile_repository.list_by_world(
+    return await tile_repo.list_tiles_by_world(
+        db,
         world_id=world_id,
         min_tx=min_tx,
         max_tx=max_tx,
@@ -68,11 +77,12 @@ async def list_tiles(
 @router.get("/tiles/{tile_id}", response_model=Tile)
 async def get_tile(
     tile_id: UUID,
+    db: AsyncSession = Depends(get_db),
     user_id: UUID = Depends(get_current_user),
 ) -> Tile:
     """Get a tile by ID."""
-    tile_data = tile_repository.get(tile_id)
-    if tile_data is None:
+    tile_model = await tile_repo.get_tile(db, tile_id)
+    if tile_model is None:
         logger.warning("Tile not found: tile_id=%s user_id=%s", tile_id, user_id)
         raise HTTPException(
             status_code=status.HTTP_404_NOT_FOUND,
@@ -80,12 +90,12 @@ async def get_tile(
         )
 
     # Verify user has access to the world
-    world_data = world_repository.get(tile_data["world_id"])
-    if world_data is None or world_data["user_id"] != user_id:
+    world_model = await world_repo.get_world(db, tile_model.world_id)
+    if world_model is None or world_model.user_id != user_id:
         logger.warning(
             "Unauthorized tile access: tile_id=%s world_id=%s user_id=%s",
             tile_id,
-            tile_data["world_id"],
+            tile_model.world_id,
             user_id,
         )
         raise HTTPException(
@@ -93,13 +103,14 @@ async def get_tile(
             detail="You don't have access to this tile",
         )
 
-    return tile_repository._to_model(tile_data)
+    return tile_repo._to_schema(tile_model)
 
 
 @router.patch("/tiles/{tile_id}", response_model=Tile)
 async def update_tile(
     tile_id: UUID,
     tile_update: TileUpdate,
+    db: AsyncSession = Depends(get_db),
     user_id: UUID = Depends(get_current_user),
 ) -> Tile:
     """
@@ -108,8 +119,8 @@ async def update_tile(
     Requires the user to hold an active lock on the tile.
     Returns 409 Conflict if the tile is not locked or locked by another user.
     """
-    tile_data = tile_repository.get(tile_id)
-    if tile_data is None:
+    tile_model = await tile_repo.get_tile(db, tile_id)
+    if tile_model is None:
         logger.warning("Tile not found for update: tile_id=%s user_id=%s", tile_id, user_id)
         raise HTTPException(
             status_code=status.HTTP_404_NOT_FOUND,
@@ -117,12 +128,12 @@ async def update_tile(
         )
 
     # Verify user has access to the world
-    world_data = world_repository.get(tile_data["world_id"])
-    if world_data is None or world_data["user_id"] != user_id:
+    world_model = await world_repo.get_world(db, tile_model.world_id)
+    if world_model is None or world_model.user_id != user_id:
         logger.warning(
             "Unauthorized tile update: tile_id=%s world_id=%s user_id=%s",
             tile_id,
-            tile_data["world_id"],
+            tile_model.world_id,
             user_id,
         )
         raise HTTPException(
@@ -138,7 +149,7 @@ async def update_tile(
             detail="Tile must be locked for editing",
         )
 
-    updated_tile = tile_repository.update(tile_id, tile_update)
+    updated_tile = await tile_repo.update_tile(db, tile_id, tile_update)
     if updated_tile is None:
         logger.error("Tile update failed unexpectedly: tile_id=%s user_id=%s", tile_id, user_id)
         raise HTTPException(
@@ -154,6 +165,7 @@ async def get_or_create_tile(
     world_id: UUID,
     tx: int = Query(..., description="Tile X coordinate"),
     ty: int = Query(..., description="Tile Y coordinate"),
+    db: AsyncSession = Depends(get_db),
     user_id: UUID = Depends(get_current_user),
 ) -> Tile:
     """
@@ -163,8 +175,8 @@ async def get_or_create_tile(
     when a user navigates to a new area of the map.
     """
     # Verify world exists and user has access
-    world_data = world_repository.get(world_id)
-    if world_data is None:
+    world_model = await world_repo.get_world(db, world_id)
+    if world_model is None:
         logger.warning(
             "World not found for tile creation: world_id=%s tx=%s ty=%s user_id=%s",
             world_id,
@@ -176,11 +188,11 @@ async def get_or_create_tile(
             status_code=status.HTTP_404_NOT_FOUND,
             detail=f"World {world_id} not found",
         )
-    if world_data["user_id"] != user_id:
+    if world_model.user_id != user_id:
         logger.warning(
             "Unauthorized tile creation: world_id=%s owner=%s requester=%s",
             world_id,
-            world_data["user_id"],
+            world_model.user_id,
             user_id,
         )
         raise HTTPException(
@@ -188,4 +200,4 @@ async def get_or_create_tile(
             detail="You don't have access to this world",
         )
 
-    return tile_repository.get_or_create(world_id, tx, ty)
+    return await tile_repo.get_or_create_tile(db, world_id, tx, ty)
