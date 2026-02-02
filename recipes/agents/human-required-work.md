@@ -9,7 +9,7 @@ Use this recipe when you need to:
 
 ## The HUMAN Label
 
-The `HUMAN` label marks tickets or tasks that require human decision-making, expertise, or action that an AI agent cannot or should not perform.
+The `HUMAN ‼️` label marks tickets or tasks that require human decision-making, expertise, or action that an AI agent cannot or should not perform.
 
 ## When to Apply HUMAN
 

@@ -142,7 +142,7 @@ def create(title: str, description: str, label: tuple) -> None:
         sys.exit(1)
 
 
-HUMAN_FOLLOWUP_LABELS = ["Chore", "Infra", "HUMAN"]
+HUMAN_FOLLOWUP_LABELS = ["Chore", "Infra", "HUMAN ‼️"]
 
 
 @main.command("create-human-followup")

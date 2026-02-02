@@ -83,7 +83,7 @@ The canonical configuration is in `.vibe/config.json`. Key fields (actual values
     "type": ["Bug", "Feature", "Chore", "Refactor"],
     "risk": ["Low Risk", "Medium Risk", "High Risk"],
     "area": ["Frontend", "Backend", "Infra", "Docs"],
-    "special": ["HUMAN", "Milestone", "Blocked"]
+    "special": ["HUMAN ‼️", "Milestone", "Blocked"]
   }
 }
 ```
@@ -113,7 +113,7 @@ See `recipes/agents/asking-clarifying-questions.md` for examples.
 
 ### When to Block and Request Human Review
 
-Apply the `HUMAN` label and stop when:
+Apply the `HUMAN ‼️` label and stop when:
 - Security decisions (auth changes, access control)
 - Financial/legal implications
 - External communications (user-facing copy)
@@ -206,7 +206,7 @@ When creating a ticket, assign:
 - **Risk** (exactly one): Low Risk, Medium Risk, High Risk
 - **Area** (at least one): Frontend, Backend, Infra, Docs
 
-Optional: **HUMAN**, **Milestone**, **Blocked** (see [Special Labels](#special-labels)).
+Optional: **HUMAN ‼️**, **Milestone**, **Blocked** (see [Special Labels](#special-labels)).
 
 #### Priority (Linear): use the Priority field, not labels
 
@@ -410,7 +410,7 @@ def test_1():
 ### Special Labels
 | Label | Purpose |
 |-------|---------|
-| **HUMAN** | Requires human decision/action |
+| **HUMAN ‼️** | Requires human decision/action |
 | **Milestone** | Part of a larger feature |
 | **Blocked** | Waiting on external dependency |
 
