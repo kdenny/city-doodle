@@ -32,6 +32,7 @@ HEADERS = {
 @dataclass
 class TicketDef:
     """Ticket definition from TICKETS.md"""
+
     id: str  # Our ID like SETUP-001
     title: str
     type: str  # Task, Chore, Design
@@ -67,17 +68,17 @@ def parse_tickets_md(filepath: str) -> list[TicketDef]:
     tickets = []
 
     # More comprehensive pattern
-    sections = re.split(r'\n(?=### [A-Z])', content)
+    sections = re.split(r"\n(?=### [A-Z])", content)
 
     for section in sections:
-        if not section.strip().startswith('### '):
+        if not section.strip().startswith("### "):
             continue
 
-        lines = section.strip().split('\n')
+        lines = section.strip().split("\n")
         header = lines[0]
 
         # Parse header: ### ID: Title
-        header_match = re.match(r'### ([A-Z0-9-]+): (.+)', header)
+        header_match = re.match(r"### ([A-Z0-9-]+): (.+)", header)
         if not header_match:
             continue
 
@@ -95,37 +96,39 @@ def parse_tickets_md(filepath: str) -> list[TicketDef]:
         for line in lines[1:]:
             line = line.strip()
 
-            if line.startswith('**Type:**'):
-                ticket_type = line.replace('**Type:**', '').strip()
-            elif line.startswith('**Priority:**'):
-                priority = line.replace('**Priority:**', '').strip()
-            elif line.startswith('**Blocked By:**'):
-                blocked_str = line.replace('**Blocked By:**', '').strip()
-                blocked_by = [b.strip() for b in blocked_str.split(',') if b.strip()]
-            elif line.startswith('**Assignee:**'):
-                assignee = line.replace('**Assignee:**', '').strip()
-            elif line.startswith('**Description:**'):
+            if line.startswith("**Type:**"):
+                ticket_type = line.replace("**Type:**", "").strip()
+            elif line.startswith("**Priority:**"):
+                priority = line.replace("**Priority:**", "").strip()
+            elif line.startswith("**Blocked By:**"):
+                blocked_str = line.replace("**Blocked By:**", "").strip()
+                blocked_by = [b.strip() for b in blocked_str.split(",") if b.strip()]
+            elif line.startswith("**Assignee:**"):
+                assignee = line.replace("**Assignee:**", "").strip()
+            elif line.startswith("**Description:**"):
                 in_description = True
-            elif line.startswith('**Acceptance Criteria:**'):
+            elif line.startswith("**Acceptance Criteria:**"):
                 in_description = False
                 description_lines.append("\n## Acceptance Criteria")
-            elif line.startswith('- [ ]'):
+            elif line.startswith("- [ ]"):
                 description_lines.append(line)
-            elif in_description or (not line.startswith('**') and line):
-                if line and not line.startswith('---'):
+            elif in_description or (not line.startswith("**") and line):
+                if line and not line.startswith("---"):
                     description_lines.append(line)
 
-        description = '\n'.join(description_lines).strip()
+        description = "\n".join(description_lines).strip()
 
-        tickets.append(TicketDef(
-            id=ticket_id,
-            title=title,
-            type=ticket_type,
-            priority=priority,
-            description=description,
-            blocked_by=blocked_by,
-            assignee=assignee,
-        ))
+        tickets.append(
+            TicketDef(
+                id=ticket_id,
+                title=title,
+                type=ticket_type,
+                priority=priority,
+                description=description,
+                blocked_by=blocked_by,
+                assignee=assignee,
+            )
+        )
 
     return tickets
 

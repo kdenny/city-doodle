@@ -19,9 +19,7 @@ class Tile(Base):
 
     __tablename__ = "tiles"
 
-    id: Mapped[uuid.UUID] = mapped_column(
-        UUID(as_uuid=True), primary_key=True, default=uuid.uuid4
-    )
+    id: Mapped[uuid.UUID] = mapped_column(UUID(as_uuid=True), primary_key=True, default=uuid.uuid4)
     world_id: Mapped[uuid.UUID] = mapped_column(
         UUID(as_uuid=True), ForeignKey("worlds.id", ondelete="CASCADE"), nullable=False
     )
@@ -41,9 +39,7 @@ class Tile(Base):
     )
 
     world: Mapped["World"] = relationship("World", back_populates="tiles")
-    lock: Mapped["TileLock | None"] = relationship(
-        "TileLock", back_populates="tile", uselist=False
-    )
+    lock: Mapped["TileLock | None"] = relationship("TileLock", back_populates="tile", uselist=False)
 
     __table_args__ = (
         Index("ix_tiles_world_id", "world_id"),

@@ -5,6 +5,7 @@ Revises:
 Create Date: 2026-02-02
 
 """
+
 from collections.abc import Sequence
 
 import sqlalchemy as sa
@@ -81,9 +82,7 @@ def upgrade() -> None:
         ),
         sa.Column("tx", sa.Integer, nullable=False),
         sa.Column("ty", sa.Integer, nullable=False),
-        sa.Column(
-            "terrain_data", postgresql.JSONB, nullable=False, server_default="{}"
-        ),
+        sa.Column("terrain_data", postgresql.JSONB, nullable=False, server_default="{}"),
         sa.Column("features", postgresql.JSONB, nullable=False, server_default="{}"),
         sa.Column("version", sa.Integer, nullable=False, server_default="1"),
         sa.Column(
@@ -100,9 +99,7 @@ def upgrade() -> None:
         ),
     )
     op.create_index("ix_tiles_world_id", "tiles", ["world_id"])
-    op.create_index(
-        "ix_tiles_world_coords", "tiles", ["world_id", "tx", "ty"], unique=True
-    )
+    op.create_index("ix_tiles_world_coords", "tiles", ["world_id", "tx", "ty"], unique=True)
 
     # Tile locks table
     op.create_table(
