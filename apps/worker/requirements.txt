@@ -1,0 +1,6 @@
+# Auto-generated from pyproject.toml dependencies
+# Keep in sync with [project.dependencies] in pyproject.toml
+pydantic>=2.5.0
+pydantic-settings>=2.0.0
+sqlalchemy[asyncio]>=2.0.0
+asyncpg>=0.29.0
