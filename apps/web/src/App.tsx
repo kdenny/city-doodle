@@ -1,5 +1,6 @@
 import { Routes, Route, Link } from 'react-router-dom'
 import { MapCanvas } from './components/canvas'
+import { EditorShell } from './components/shell'
 
 function Home() {
   return (
@@ -20,15 +21,9 @@ function Home() {
 
 function Editor() {
   return (
-    <div className="h-screen w-screen flex flex-col">
-      <header className="h-12 bg-gray-800 text-white flex items-center px-4 shrink-0">
-        <Link to="/" className="font-bold">City Doodle</Link>
-        <span className="ml-4 text-gray-400 text-sm">Editor</span>
-      </header>
-      <main className="flex-1 relative">
-        <MapCanvas className="absolute inset-0" />
-      </main>
-    </div>
+    <EditorShell>
+      <MapCanvas className="absolute inset-0" />
+    </EditorShell>
   )
 }
 
