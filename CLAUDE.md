@@ -39,6 +39,23 @@ See the prompt files in the repo root for full specifications:
 - `02_ai_coding_assistant_prompt_milestones.md` - V1 milestone plan
 - `03_v2_improvements_milestones.md` - V2 roadmap (needs system, 3D view, multiplayer)
 
+### Infrastructure Accounts
+
+The project owner already has accounts set up on all deployment platforms. **Do not create new accounts or projects** - use the existing ones:
+
+| Service | Purpose | Status |
+|---------|---------|--------|
+| **Neon** | Postgres database | Account exists |
+| **Fly.io** | API + Worker hosting | Account exists |
+| **Vercel** | Web app hosting | Account exists, auto-deploys on PR |
+| **Linear** | Issue tracking | Configured in `.vibe/config.json` |
+
+When working on infrastructure tasks:
+- Focus on **configuration** (env vars, secrets, migrations), not account creation
+- Vercel preview deployments are automatic for PRs
+- Fly.io app names are defined in `apps/api/fly.toml` and `apps/worker/fly.toml`
+- Database connection strings need both async (`postgresql+asyncpg://`) and sync (`postgresql://`) formats
+
 ---
 
 ## README Maintenance
@@ -176,10 +193,35 @@ This creates:
 ### Creating Tickets
 
 When creating tickets programmatically:
-1. Use descriptive titles: "Verb + Object" format
-2. **Apply labels** (see [Label checklist](#label-checklist-for-ticket-creation) below)
-3. Include acceptance criteria
-4. Link related tickets with **correct blocking direction** (see [Blocking relationships](#blocking-relationships) below)
+1. **Check for duplicates first** — Search existing tickets (open and recently closed) for similar work before creating a new ticket. If a ticket already covers the same scope, update that ticket instead of creating a duplicate.
+2. Use descriptive titles: "Verb + Object" format
+3. **Apply labels** (see [Label checklist](#label-checklist-for-ticket-creation) below)
+4. Include acceptance criteria
+5. Link related tickets with **correct blocking direction** (see [Blocking relationships](#blocking-relationships) below)
+
+#### Avoiding Duplicate Tickets
+
+Before creating a new ticket, **always search** for existing tickets that might cover the same work:
+
+```bash
+bin/ticket list  # Review open tickets for overlap
+```
+
+**Signs of a duplicate:**
+- Same component/area being modified
+- Similar acceptance criteria
+- Part of the same milestone or initiative
+- Would result in conflicting changes if both were implemented
+
+**If you find a potential duplicate:**
+- Update the existing ticket with any new requirements
+- Add a comment explaining the additional scope
+- Do NOT create a new ticket
+
+**If scopes overlap but aren't identical:**
+- Consider if one ticket can be expanded to cover both
+- If truly separate, document the boundary clearly in both tickets
+- Link them with "related to" (not blocking)
 
 #### Blocking relationships
 
