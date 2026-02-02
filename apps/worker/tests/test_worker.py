@@ -13,14 +13,19 @@ from city_worker.runner import JobRunner
 def test_job_status_values():
     """Test JobStatus enum has expected values."""
     assert JobStatus.PENDING.value == "pending"
+    assert JobStatus.RUNNING.value == "running"
     assert JobStatus.CLAIMED.value == "claimed"
     assert JobStatus.COMPLETED.value == "completed"
     assert JobStatus.FAILED.value == "failed"
+    assert JobStatus.CANCELLED.value == "cancelled"
 
 
 def test_job_type_values():
     """Test JobType enum has expected values."""
     assert JobType.TERRAIN_GENERATION.value == "terrain_generation"
+    assert JobType.SEED_PLACEMENT.value == "seed_placement"
+    assert JobType.GROWTH_SIMULATION.value == "growth_simulation"
+    assert JobType.VMT_CALCULATION.value == "vmt_calculation"
     assert JobType.CITY_GROWTH.value == "city_growth"
     assert JobType.EXPORT_PNG.value == "export_png"
     assert JobType.EXPORT_GIF.value == "export_gif"
