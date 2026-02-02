@@ -38,6 +38,7 @@ jobs:
 
       - name: Dependency Review
         uses: actions/dependency-review-action@v4
+        continue-on-error: true  # Don't fail if Dependency graph isn't enabled
         with:
           fail-on-severity: high
 

@@ -10,6 +10,13 @@ from city_api.schemas.tile import (
     TileLock,
     TileLockCreate,
 )
+from city_api.schemas.user import (
+    AuthResponse,
+    SessionResponse,
+    UserCreate,
+    UserLogin,
+    UserResponse,
+)
 from city_api.schemas.world import World, WorldCreate, WorldSettings
 
 __all__ = [
@@ -33,4 +40,10 @@ __all__ = [
     "District",
     "DistrictCreate",
     "DistrictType",
+    # User/Auth
+    "UserCreate",
+    "UserLogin",
+    "UserResponse",
+    "SessionResponse",
+    "AuthResponse",
 ]
