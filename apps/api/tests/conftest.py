@@ -149,7 +149,7 @@ async def clear_tables():
         )
         await conn.execute(
             text(
-                "INSERT INTO tiles (id, world_id, tx, ty, terrain_data, features) VALUES (:id, :world_id, :tx, :ty, :terrain_data, :features)"
+                "INSERT INTO tiles (id, world_id, tx, ty, terrain_data, features, version) VALUES (:id, :world_id, :tx, :ty, :terrain_data, :features, :version)"
             ),
             {
                 "id": test_tile_id_str,
@@ -158,6 +158,7 @@ async def clear_tables():
                 "ty": 0,
                 "terrain_data": "{}",
                 "features": "{}",
+                "version": 1,
             },
         )
         await conn.commit()
