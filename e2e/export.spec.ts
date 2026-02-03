@@ -6,19 +6,14 @@
  * - GIF timelapse export (placeholder until implemented)
  * - Format and resolution selection
  *
- * NOTE: Most tests are skipped until the Export view is integrated into
- * the EditorShell. The ExportView component exists but is not rendered
- * when switching to export mode. See CITY-70 for integration work.
- *
  * @see CITY-107 for full test acceptance criteria
+ * @see CITY-110 for EditorShell view mode integration
  */
 
 import { test, expect } from "./fixtures";
 
 test.describe("Export View Navigation", () => {
-  // Skip: ExportView is not rendered when viewMode === "export"
-  // The EditorShell needs to conditionally render ExportView based on viewMode
-  test.skip("can navigate to export view from world editor", async ({ page, auth, api }) => {
+  test("can navigate to export view from world editor", async ({ page, auth, api }) => {
     const user = await auth.registerUser();
     const world = await api.createWorld(user.token!, "Export Nav Test");
 
@@ -33,8 +28,7 @@ test.describe("Export View Navigation", () => {
     await expect(page.getByText("Export Settings")).toBeVisible();
   });
 
-  // Skip: ExportView is not rendered when viewMode === "export"
-  test.skip("can return to build mode from export view", async ({ page, auth, api }) => {
+  test("can return to build mode from export view", async ({ page, auth, api }) => {
     const user = await auth.registerUser();
     const world = await api.createWorld(user.token!, "Exit Export Test");
 
@@ -54,8 +48,7 @@ test.describe("Export View Navigation", () => {
 });
 
 test.describe("Export Format Selection", () => {
-  // Skip: ExportView (which contains format selector) is not rendered
-  test.skip("can select PNG format", async ({ page, auth, api }) => {
+  test("can select PNG format", async ({ page, auth, api }) => {
     const user = await auth.registerUser();
     const world = await api.createWorld(user.token!, "PNG Format Test");
 
@@ -71,12 +64,13 @@ test.describe("Export Format Selection", () => {
       await pngOption.click();
     }
 
-    // Download button should show PNG
-    await expect(page.getByRole("button", { name: /download png/i })).toBeVisible();
+    // Download button has aria-label="Download export" but visible text includes format
+    // Use text matcher to find the button with "Download PNG" visible text
+    await expect(page.getByRole("button", { name: /download export/i })).toBeVisible();
+    await expect(page.getByText("Download PNG")).toBeVisible();
   });
 
-  // Skip: ExportView (which contains format selector) is not rendered
-  test.skip("can select GIF format", async ({ page, auth, api }) => {
+  test("can select GIF format", async ({ page, auth, api }) => {
     const user = await auth.registerUser();
     const world = await api.createWorld(user.token!, "GIF Format Test");
 
@@ -90,14 +84,15 @@ test.describe("Export Format Selection", () => {
     );
     if (await gifOption.isVisible()) {
       await gifOption.click();
-      // Download button should show GIF
-      await expect(page.getByRole("button", { name: /download gif/i })).toBeVisible();
+      // Download button has aria-label="Download export" but visible text changes
+      await expect(page.getByRole("button", { name: /download export/i })).toBeVisible();
+      await expect(page.getByText("Download GIF")).toBeVisible();
     }
   });
 });
 
 test.describe("Export Resolution Selection", () => {
-  // Skip: ExportView (which contains resolution selector) is not rendered
+  // TODO(CITY-111): Fix test selectors - ResolutionSelector uses buttons, not radio inputs
   test.skip("can select different resolutions", async ({ page, auth, api }) => {
     const user = await auth.registerUser();
     const world = await api.createWorld(user.token!, "Resolution Test");
@@ -122,8 +117,7 @@ test.describe("Export Resolution Selection", () => {
 });
 
 test.describe("PNG Export", () => {
-  // Skip: ExportView (which contains download button) is not rendered
-  test.skip("@slow can export PNG snapshot", async ({ page, auth, api }) => {
+  test("@slow can export PNG snapshot", async ({ page, auth, api }) => {
     const user = await auth.registerUser();
     const world = await api.createWorld(user.token!, "PNG Export Test");
 
@@ -147,7 +141,7 @@ test.describe("PNG Export", () => {
     expect(download.suggestedFilename()).toMatch(/\.png$/);
   });
 
-  // Skip: ExportView is not rendered
+  // TODO(CITY-111): Depends on resolution selector test fix
   test.skip("@slow exported PNG filename includes resolution", async ({ page, auth, api }) => {
     const user = await auth.registerUser();
     const world = await api.createWorld(user.token!, "PNG Filename Test");
@@ -175,7 +169,7 @@ test.describe("PNG Export", () => {
 });
 
 test.describe("GIF Export", () => {
-  // GIF export requires both ExportView integration and growth simulation
+  // TODO(CITY-112): GIF export not yet implemented - requires growth simulation
   test.skip("@slow can export GIF timelapse", async ({ page, auth, api }) => {
     const user = await auth.registerUser();
     const world = await api.createWorld(user.token!, "GIF Export Test");
@@ -206,8 +200,7 @@ test.describe("GIF Export", () => {
 });
 
 test.describe("Export Preview", () => {
-  // Skip: ExportView is not rendered
-  test.skip("shows preview area with canvas content", async ({ page, auth, api }) => {
+  test("shows preview area with canvas content", async ({ page, auth, api }) => {
     const user = await auth.registerUser();
     const world = await api.createWorld(user.token!, "Preview Test");
 

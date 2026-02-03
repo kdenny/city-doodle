@@ -7,11 +7,8 @@
  * - Timelapse view navigation and controls
  * - Growth simulation playback
  *
- * NOTE: Several tests are skipped until view mode integration is complete.
- * The components (TimelapseView, BuildView panels) exist but aren't rendered
- * when switching view modes in the EditorShell.
- *
  * @see CITY-106 for full test acceptance criteria
+ * @see CITY-110 for EditorShell view mode integration
  */
 
 import { test, expect } from "./fixtures";
@@ -60,8 +57,7 @@ test.describe("Placement Palette", () => {
     await expect(page.getByText(/click on map to place/i)).not.toBeVisible();
   });
 
-  // Skip: The "Points of Interest" category label isn't displayed in the current UI
-  // The palette shows seed categories but with different labels
+  // Skip: PlacementPalette doesn't show "Points of Interest" label
   test.skip("shows all seed categories", async ({ page, auth, api }) => {
     const user = await auth.registerUser();
     const world = await api.createWorld(user.token!, "Categories Test");
@@ -144,8 +140,7 @@ test.describe("Seed Placement on Canvas", () => {
 });
 
 test.describe("Timelapse View Navigation", () => {
-  // Skip: TimelapseView is not rendered when viewMode === "timelapse"
-  // The EditorShell needs to conditionally render TimelapseView based on viewMode
+  // Skip: TimelapseView doesn't show year indicator or overlay yet
   test.skip("can navigate to timelapse view", async ({ page, auth, api }) => {
     const user = await auth.registerUser();
     const world = await api.createWorld(user.token!, "Timelapse Nav Test");
@@ -162,8 +157,7 @@ test.describe("Timelapse View Navigation", () => {
     ).toBeVisible();
   });
 
-  // Skip: TimelapseView is not rendered when viewMode === "timelapse"
-  test.skip("can return to build mode from timelapse", async ({ page, auth, api }) => {
+  test("can return to build mode from timelapse", async ({ page, auth, api }) => {
     const user = await auth.registerUser();
     const world = await api.createWorld(user.token!, "Exit Timelapse Test");
 
@@ -182,8 +176,7 @@ test.describe("Timelapse View Navigation", () => {
 });
 
 test.describe("Timelapse Playback Controls", () => {
-  // Skip: TimelapseView (containing playback controls) is not rendered
-  test.skip("shows playback controls in timelapse view", async ({ page, auth, api }) => {
+  test("shows playback controls in timelapse view", async ({ page, auth, api }) => {
     const user = await auth.registerUser();
     const world = await api.createWorld(user.token!, "Playback Controls Test");
 
@@ -196,8 +189,7 @@ test.describe("Timelapse Playback Controls", () => {
     await expect(playButton).toBeVisible();
   });
 
-  // Skip: TimelapseView is not rendered
-  test.skip("can use step forward control", async ({ page, auth, api }) => {
+  test("can use step forward control", async ({ page, auth, api }) => {
     const user = await auth.registerUser();
     const world = await api.createWorld(user.token!, "Step Forward Test");
 
@@ -214,8 +206,7 @@ test.describe("Timelapse Playback Controls", () => {
     }
   });
 
-  // Skip: TimelapseView is not rendered
-  test.skip("can use step back control", async ({ page, auth, api }) => {
+  test("can use step back control", async ({ page, auth, api }) => {
     const user = await auth.registerUser();
     const world = await api.createWorld(user.token!, "Step Back Test");
 
@@ -234,9 +225,7 @@ test.describe("Timelapse Playback Controls", () => {
 });
 
 test.describe("Build View UI Elements", () => {
-  // Skip: BuildView UI panels (PopulationPanel, CityNeedsPanel) are not integrated
-  // into the world page yet - they exist as components but aren't rendered
-  test.skip("shows population panel in build mode", async ({ page, auth, api }) => {
+  test("shows population panel in build mode", async ({ page, auth, api }) => {
     const user = await auth.registerUser();
     const world = await api.createWorld(user.token!, "Population Panel Test");
 
@@ -260,8 +249,7 @@ test.describe("Build View UI Elements", () => {
     await expect(page.locator("canvas")).toBeVisible();
   });
 
-  // Skip: LayersPanel is not integrated into the world page
-  test.skip("shows layers panel in build mode", async ({ page, auth, api }) => {
+  test("shows layers panel in build mode", async ({ page, auth, api }) => {
     const user = await auth.registerUser();
     const world = await api.createWorld(user.token!, "Layers Panel Test");
 
