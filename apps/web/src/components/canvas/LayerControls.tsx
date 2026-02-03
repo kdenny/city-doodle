@@ -14,6 +14,9 @@ const LAYER_LABELS: Record<keyof LayerVisibility, string> = {
   coastlines: "Coastlines",
   rivers: "Rivers",
   contours: "Contours",
+  districts: "Districts",
+  roads: "Roads",
+  pois: "POIs",
   grid: "Grid",
 };
 

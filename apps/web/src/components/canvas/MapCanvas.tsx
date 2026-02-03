@@ -3,7 +3,9 @@ import { Application, Container, Graphics } from "pixi.js";
 import { Viewport } from "pixi-viewport";
 import {
   TerrainLayer,
+  FeaturesLayer,
   generateMockTerrain,
+  generateMockFeatures,
   DEFAULT_LAYER_VISIBILITY,
   type LayerVisibility,
 } from "./layers";
@@ -25,6 +27,7 @@ export function MapCanvas({ className, seed = 12345 }: MapCanvasProps) {
   const appRef = useRef<Application | null>(null);
   const viewportRef = useRef<Viewport | null>(null);
   const terrainLayerRef = useRef<TerrainLayer | null>(null);
+  const featuresLayerRef = useRef<FeaturesLayer | null>(null);
   const gridContainerRef = useRef<Container | null>(null);
   const [isReady, setIsReady] = useState(false);
   const [layerVisibility, setLayerVisibility] = useState<LayerVisibility>(
@@ -39,6 +42,11 @@ export function MapCanvas({ className, seed = 12345 }: MapCanvasProps) {
       // Update terrain layer visibility
       if (terrainLayerRef.current) {
         terrainLayerRef.current.setVisibility(visibility);
+      }
+
+      // Update features layer visibility
+      if (featuresLayerRef.current) {
+        featuresLayerRef.current.setVisibility(visibility);
       }
 
       // Update grid visibility
@@ -102,7 +110,7 @@ export function MapCanvas({ className, seed = 12345 }: MapCanvasProps) {
       // Center the viewport on the world
       viewport.moveCenter(WORLD_SIZE / 2, WORLD_SIZE / 2);
 
-      // Create and add terrain layer (below grid)
+      // Create and add terrain layer (bottom)
       const terrainLayer = new TerrainLayer();
       viewport.addChild(terrainLayer.getContainer());
 
@@ -111,7 +119,16 @@ export function MapCanvas({ className, seed = 12345 }: MapCanvasProps) {
       terrainLayer.setData(terrainData);
       terrainLayer.setVisibility(layerVisibility);
 
-      // Create tile grid (above terrain)
+      // Create and add features layer (above terrain)
+      const featuresLayer = new FeaturesLayer();
+      viewport.addChild(featuresLayer.getContainer());
+
+      // Generate and set features data
+      const featuresData = generateMockFeatures(WORLD_SIZE, seed);
+      featuresLayer.setData(featuresData);
+      featuresLayer.setVisibility(layerVisibility);
+
+      // Create tile grid (above features)
       const gridContainer = new Container();
       gridContainer.label = "grid";
       viewport.addChild(gridContainer);
@@ -161,6 +178,7 @@ export function MapCanvas({ className, seed = 12345 }: MapCanvasProps) {
       // Check again if unmounted before storing refs
       if (cancelled) {
         terrainLayer.destroy();
+        featuresLayer.destroy();
         app.destroy(true, { children: true });
         return;
       }
@@ -169,6 +187,7 @@ export function MapCanvas({ className, seed = 12345 }: MapCanvasProps) {
       appRef.current = app;
       viewportRef.current = viewport;
       terrainLayerRef.current = terrainLayer;
+      featuresLayerRef.current = featuresLayer;
       gridContainerRef.current = gridContainer;
       setIsReady(true);
 
@@ -195,6 +214,10 @@ export function MapCanvas({ className, seed = 12345 }: MapCanvasProps) {
         terrainLayerRef.current.destroy();
         terrainLayerRef.current = null;
       }
+      if (featuresLayerRef.current) {
+        featuresLayerRef.current.destroy();
+        featuresLayerRef.current = null;
+      }
       if (appRef.current) {
         appRef.current.destroy(true, { children: true });
         appRef.current = null;
@@ -209,6 +232,9 @@ export function MapCanvas({ className, seed = 12345 }: MapCanvasProps) {
     if (isReady) {
       if (terrainLayerRef.current) {
         terrainLayerRef.current.setVisibility(layerVisibility);
+      }
+      if (featuresLayerRef.current) {
+        featuresLayerRef.current.setVisibility(layerVisibility);
       }
       if (gridContainerRef.current) {
         gridContainerRef.current.visible = layerVisibility.grid;
