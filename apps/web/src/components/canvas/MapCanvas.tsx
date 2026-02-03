@@ -4,8 +4,10 @@ import { Viewport } from "pixi-viewport";
 import {
   TerrainLayer,
   FeaturesLayer,
+  LabelLayer,
   generateMockTerrain,
   generateMockFeatures,
+  generateMockLabels,
   DEFAULT_LAYER_VISIBILITY,
   type LayerVisibility,
 } from "./layers";
@@ -28,6 +30,7 @@ export function MapCanvas({ className, seed = 12345 }: MapCanvasProps) {
   const viewportRef = useRef<Viewport | null>(null);
   const terrainLayerRef = useRef<TerrainLayer | null>(null);
   const featuresLayerRef = useRef<FeaturesLayer | null>(null);
+  const labelLayerRef = useRef<LabelLayer | null>(null);
   const gridContainerRef = useRef<Container | null>(null);
   const [isReady, setIsReady] = useState(false);
   const [layerVisibility, setLayerVisibility] = useState<LayerVisibility>(
@@ -47,6 +50,11 @@ export function MapCanvas({ className, seed = 12345 }: MapCanvasProps) {
       // Update features layer visibility
       if (featuresLayerRef.current) {
         featuresLayerRef.current.setVisibility(visibility);
+      }
+
+      // Update label layer visibility
+      if (labelLayerRef.current) {
+        labelLayerRef.current.setVisibility(visibility);
       }
 
       // Update grid visibility
@@ -128,7 +136,16 @@ export function MapCanvas({ className, seed = 12345 }: MapCanvasProps) {
       featuresLayer.setData(featuresData);
       featuresLayer.setVisibility(layerVisibility);
 
-      // Create tile grid (above features)
+      // Create and add label layer (above features, below grid)
+      const labelLayer = new LabelLayer();
+      viewport.addChild(labelLayer.getContainer());
+
+      // Generate and set label data
+      const labelData = generateMockLabels(WORLD_SIZE, seed);
+      labelLayer.setData(labelData);
+      labelLayer.setVisibility(layerVisibility);
+
+      // Create tile grid (above all layers)
       const gridContainer = new Container();
       gridContainer.label = "grid";
       viewport.addChild(gridContainer);
@@ -179,6 +196,7 @@ export function MapCanvas({ className, seed = 12345 }: MapCanvasProps) {
       if (cancelled) {
         terrainLayer.destroy();
         featuresLayer.destroy();
+        labelLayer.destroy();
         app.destroy(true, { children: true });
         return;
       }
@@ -188,6 +206,7 @@ export function MapCanvas({ className, seed = 12345 }: MapCanvasProps) {
       viewportRef.current = viewport;
       terrainLayerRef.current = terrainLayer;
       featuresLayerRef.current = featuresLayer;
+      labelLayerRef.current = labelLayer;
       gridContainerRef.current = gridContainer;
       setIsReady(true);
 
@@ -218,6 +237,10 @@ export function MapCanvas({ className, seed = 12345 }: MapCanvasProps) {
         featuresLayerRef.current.destroy();
         featuresLayerRef.current = null;
       }
+      if (labelLayerRef.current) {
+        labelLayerRef.current.destroy();
+        labelLayerRef.current = null;
+      }
       if (appRef.current) {
         appRef.current.destroy(true, { children: true });
         appRef.current = null;
@@ -235,6 +258,9 @@ export function MapCanvas({ className, seed = 12345 }: MapCanvasProps) {
       }
       if (featuresLayerRef.current) {
         featuresLayerRef.current.setVisibility(layerVisibility);
+      }
+      if (labelLayerRef.current) {
+        labelLayerRef.current.setVisibility(layerVisibility);
       }
       if (gridContainerRef.current) {
         gridContainerRef.current.visible = layerVisibility.grid;

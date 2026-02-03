@@ -16,9 +16,12 @@ vi.mock("pixi.js", () => ({
   })),
   Container: vi.fn().mockImplementation(() => ({
     addChild: vi.fn(),
+    removeChildren: vi.fn(),
     destroy: vi.fn(),
     visible: true,
     label: "",
+    children: [],
+    destroyed: false,
   })),
   Graphics: vi.fn().mockImplementation(() => ({
     setStrokeStyle: vi.fn().mockReturnThis(),
@@ -33,6 +36,14 @@ vi.mock("pixi.js", () => ({
     visible: true,
     label: "",
   })),
+  Text: vi.fn().mockImplementation(() => ({
+    anchor: { set: vi.fn() },
+    position: { set: vi.fn() },
+    rotation: 0,
+    getBounds: vi.fn().mockReturnValue({ width: 50, height: 20 }),
+    destroy: vi.fn(),
+  })),
+  TextStyle: vi.fn().mockImplementation(() => ({})),
 }));
 
 vi.mock("pixi-viewport", () => ({

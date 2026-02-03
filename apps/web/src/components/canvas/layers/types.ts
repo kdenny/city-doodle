@@ -105,6 +105,42 @@ export interface FeaturesData {
   pois: POI[];
 }
 
+// Label types
+export type LabelType =
+  | "district"
+  | "water"
+  | "road"
+  | "poi"
+  | "region"
+  | "contour";
+
+export interface LabelData {
+  id: string;
+  text: string;
+  type: LabelType;
+  position: Point;
+  anchor?: Point; // For curved/angled labels
+  rotation?: number; // Radians
+  fontSize?: number;
+  priority?: number; // Higher = more important, shown first
+  bounds?: { width: number; height: number }; // For collision detection
+}
+
+export interface LabelConfig {
+  fontFamily: string;
+  baseFontSize: number;
+  color: number;
+  outlineColor: number;
+  outlineWidth: number;
+  maxRotation: number; // Max random rotation for organic feel
+  jitterAmount: number; // Random position offset
+}
+
+export interface LabelLayerData {
+  labels: LabelData[];
+  seed: number; // For deterministic randomness
+}
+
 export interface LayerVisibility {
   water: boolean;
   coastlines: boolean;
@@ -114,6 +150,7 @@ export interface LayerVisibility {
   roads: boolean;
   pois: boolean;
   grid: boolean;
+  labels: boolean;
 }
 
 export const DEFAULT_LAYER_VISIBILITY: LayerVisibility = {
@@ -125,4 +162,5 @@ export const DEFAULT_LAYER_VISIBILITY: LayerVisibility = {
   roads: true,
   pois: true,
   grid: true,
+  labels: true,
 };

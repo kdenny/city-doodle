@@ -1,5 +1,6 @@
 export { TerrainLayer } from "./TerrainLayer";
 export { FeaturesLayer, generateMockFeatures } from "./FeaturesLayer";
+export { LabelLayer, generateMockLabels } from "./LabelLayer";
 export { generateMockTerrain } from "./mockTerrain";
 export type {
   TerrainData,
@@ -18,5 +19,9 @@ export type {
   POI,
   POIType,
   FeaturesData,
+  LabelData,
+  LabelConfig,
+  LabelLayerData,
+  LabelType,
 } from "./types";
 export { DEFAULT_LAYER_VISIBILITY } from "./types";

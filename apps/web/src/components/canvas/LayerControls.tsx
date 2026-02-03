@@ -18,6 +18,7 @@ const LAYER_LABELS: Record<keyof LayerVisibility, string> = {
   roads: "Roads",
   pois: "POIs",
   grid: "Grid",
+  labels: "Labels",
 };
 
 export function LayerControls({ visibility, onChange }: LayerControlsProps) {
