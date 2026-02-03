@@ -4,11 +4,7 @@ import { LayersPanel, useLayers, LayerVisibility } from "./LayersPanel";
 import { PopulationPanel } from "./PopulationPanel";
 import { CityNeedsPanel, CityNeeds } from "./CityNeedsPanel";
 import { ScaleBar } from "./ScaleBar";
-import {
-  InspectorPanel,
-  useSelection,
-  type SelectedFeature,
-} from "./InspectorPanel";
+import { InspectorPanel, type SelectedFeature } from "./InspectorPanel";
 
 interface BuildViewProps {
   children: ReactNode;
