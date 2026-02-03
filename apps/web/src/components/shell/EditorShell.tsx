@@ -4,6 +4,7 @@ import { Header } from "./Header";
 import { ZoomControls } from "./ZoomControls";
 import { HelpButton } from "./HelpButton";
 import { PlacementPalette, PlacementProvider } from "../palette";
+import { MapCanvasProvider } from "../canvas";
 
 interface EditorShellProps {
   children: ReactNode;
@@ -86,14 +87,16 @@ export function EditorShell({
   return (
     <ViewModeProvider>
       <PlacementProvider>
-        <EditorShellContent
-          zoom={zoom}
-          onZoomIn={handleZoomIn}
-          onZoomOut={handleZoomOut}
-          onHelp={handleHelp}
-        >
-          {children}
-        </EditorShellContent>
+        <MapCanvasProvider>
+          <EditorShellContent
+            zoom={zoom}
+            onZoomIn={handleZoomIn}
+            onZoomOut={handleZoomOut}
+            onHelp={handleHelp}
+          >
+            {children}
+          </EditorShellContent>
+        </MapCanvasProvider>
       </PlacementProvider>
     </ViewModeProvider>
   );
