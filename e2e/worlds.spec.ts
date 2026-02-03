@@ -166,9 +166,7 @@ test.describe("World Navigation", () => {
     // Try to access a non-existent world
     await page.goto("/worlds/00000000-0000-0000-0000-000000000000");
 
-    // Should show error or redirect - use first() to avoid strict mode with multiple matches
-    await expect(
-      page.getByTestId("error").or(page.getByText(/not found|doesn't exist/i).first())
-    ).toBeVisible();
+    // Should show error element (matches the error container with data-testid)
+    await expect(page.locator('[data-testid="error"]')).toBeVisible();
   });
 });
