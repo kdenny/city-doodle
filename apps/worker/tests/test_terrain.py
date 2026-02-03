@@ -54,17 +54,13 @@ class TestHeightfieldGeneration:
 
     def test_heightfield_dimensions(self):
         """Heightfield should have correct dimensions."""
-        heightfield = generate_heightfield(
-            seed=42, tx=0, ty=0, tile_size=1000.0, resolution=64
-        )
+        heightfield = generate_heightfield(seed=42, tx=0, ty=0, tile_size=1000.0, resolution=64)
 
         assert heightfield.shape == (64, 64)
 
     def test_heightfield_range(self):
         """Heightfield values should be normalized to [0, 1]."""
-        heightfield = generate_heightfield(
-            seed=42, tx=0, ty=0, tile_size=1000.0, resolution=64
-        )
+        heightfield = generate_heightfield(seed=42, tx=0, ty=0, tile_size=1000.0, resolution=64)
 
         assert heightfield.min() >= 0.0
         assert heightfield.max() <= 1.0
@@ -86,9 +82,7 @@ class TestHeightfieldGeneration:
 
     def test_erosion_preserves_range(self):
         """Erosion should keep values in valid range."""
-        heightfield = generate_heightfield(
-            seed=42, tx=0, ty=0, tile_size=1000.0, resolution=32
-        )
+        heightfield = generate_heightfield(seed=42, tx=0, ty=0, tile_size=1000.0, resolution=32)
         eroded = apply_erosion(heightfield, iterations=10)
 
         # Values should still be mostly in [0, 1] (erosion might slightly exceed)

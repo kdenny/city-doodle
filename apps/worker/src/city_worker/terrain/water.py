@@ -46,9 +46,7 @@ def extract_coastlines(
                 # Flood fill to find connected land region
                 region_cells = _flood_fill(land_mask, visited, i, j)
                 if len(region_cells) >= 4:  # Minimum size for a polygon
-                    poly = _cells_to_polygon(
-                        region_cells, tile_x, tile_y, tile_size, cell_size, w
-                    )
+                    poly = _cells_to_polygon(region_cells, tile_x, tile_y, tile_size, cell_size, w)
                     if poly is not None and poly.is_valid:
                         land_polygons.append(poly)
 
@@ -292,10 +290,7 @@ def extract_rivers(
                     for di, dj in directions:
                         ni, nj = ci + di, cj + dj
                         if 0 <= ni < h and 0 <= nj < w:
-                            if (
-                                not visited[ni, nj]
-                                and heightfield[ni, nj] < heightfield[ci, cj]
-                            ):
+                            if not visited[ni, nj] and heightfield[ni, nj] < heightfield[ci, cj]:
                                 next_cell = (ni, nj)
                                 break
 

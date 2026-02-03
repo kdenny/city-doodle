@@ -52,8 +52,10 @@ class TerrainGenerator:
 
         assert center_data is not None
 
-        logger.info("Generated 9 tiles with %d total features",
-                    sum(len(t.features) for t in [center_data, *tiles.values()]))
+        logger.info(
+            "Generated 9 tiles with %d total features",
+            sum(len(t.features) for t in [center_data, *tiles.values()]),
+        )
 
         return TerrainResult(center=center_data, neighbors=tiles)
 

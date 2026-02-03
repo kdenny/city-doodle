@@ -63,12 +63,14 @@ async def test_job_handler_terrain_generation():
 
     # Mock the database save to avoid actual DB calls
     with patch.object(runner, "_save_terrain_tiles", new_callable=AsyncMock):
-        result = await runner._handle_terrain_generation({
-            "world_id": str(uuid4()),
-            "world_seed": 42,
-            "center_tx": 0,
-            "center_ty": 0,
-        })
+        result = await runner._handle_terrain_generation(
+            {
+                "world_id": str(uuid4()),
+                "world_seed": 42,
+                "center_tx": 0,
+                "center_ty": 0,
+            }
+        )
 
     assert "status" in result
     assert result["status"] == "generated"
@@ -147,7 +149,7 @@ async def test_run_job_handler_valid_types():
     with patch.object(runner, "_save_terrain_tiles", new_callable=AsyncMock):
         result = await runner._run_job_handler(
             JobType.TERRAIN_GENERATION.value,
-            {"world_id": str(uuid4()), "world_seed": 42, "center_tx": 0, "center_ty": 0}
+            {"world_id": str(uuid4()), "world_seed": 42, "center_tx": 0, "center_ty": 0},
         )
         assert isinstance(result, dict)
         assert "status" in result
