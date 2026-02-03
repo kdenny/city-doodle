@@ -41,10 +41,12 @@ export interface AuthFixture {
 }
 
 /** Generate a unique email for test isolation */
+// Note: Using @example.com which is a reserved domain for examples per RFC 2606
+// The .test TLD is rejected by email validators as a special-use domain
 function generateEmail(): string {
   const timestamp = Date.now();
   const random = Math.random().toString(36).substring(2, 8);
-  return `test-${timestamp}-${random}@e2e.test`;
+  return `test-${timestamp}-${random}@example.com`;
 }
 
 /** Create auth fixture with API request context */

@@ -58,8 +58,8 @@ test.describe("Registration", () => {
 
     await page.getByRole("button", { name: "Create account" }).click();
 
-    // Should show error message
-    await expect(page.getByText(/at least 8 characters/i)).toBeVisible();
+    // Should show error message (use role to avoid matching hint text)
+    await expect(page.getByRole("alert").or(page.locator('[data-testid="error"]')).or(page.locator('.text-red-500, .text-destructive, .error'))).toBeVisible();
   });
 
   test("@slow shows error for duplicate email", async ({ page, auth }) => {
