@@ -5,7 +5,7 @@
  * and accessing snap state.
  */
 
-import { useState, useCallback, useRef, useEffect } from "react";
+import { useState, useCallback, useRef } from "react";
 import { SnapEngine } from "./SnapEngine";
 import type {
   SnapConfig,

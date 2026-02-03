@@ -1,6 +1,6 @@
 import { describe, it, expect, beforeEach } from "vitest";
 import { SnapEngine } from "./SnapEngine";
-import type { SnapLineSegment, SnapGeometryProvider, BoundingBox } from "./types";
+import type { SnapLineSegment, SnapGeometryProvider } from "./types";
 
 describe("SnapEngine", () => {
   let engine: SnapEngine;
