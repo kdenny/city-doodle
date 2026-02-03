@@ -17,6 +17,10 @@ from sqlalchemy.pool import NullPool, StaticPool
 TEST_USER_ID = UUID("00000000-0000-0000-0000-000000000001")
 OTHER_USER_ID = UUID("00000000-0000-0000-0000-000000000002")
 
+# Fixed test world and tile IDs for tests that need real entities
+TEST_WORLD_ID = UUID("00000000-0000-0000-0000-000000000010")
+TEST_TILE_ID = UUID("00000000-0000-0000-0000-000000000020")
+
 # Use SQLite for local tests, PostgreSQL in CI (when TEST_DATABASE_URL is set)
 TEST_DATABASE_URL = os.environ.get(
     "TEST_DATABASE_URL",
@@ -124,6 +128,36 @@ async def clear_tables():
                 "id": other_user_id_str,
                 "email": "other@example.com",
                 "hash": "$2b$12$placeholder",
+            },
+        )
+
+        # Create test world and tile for tests that need them
+        test_world_id_str = str(TEST_WORLD_ID).replace("-", "") if is_sqlite else str(TEST_WORLD_ID)
+        test_tile_id_str = str(TEST_TILE_ID).replace("-", "") if is_sqlite else str(TEST_TILE_ID)
+
+        await conn.execute(
+            text(
+                "INSERT INTO worlds (id, user_id, name, seed, settings) VALUES (:id, :user_id, :name, :seed, :settings)"
+            ),
+            {
+                "id": test_world_id_str,
+                "user_id": test_user_id_str,
+                "name": "Test World",
+                "seed": 12345,
+                "settings": "{}",
+            },
+        )
+        await conn.execute(
+            text(
+                "INSERT INTO tiles (id, world_id, x, y, terrain_data, features) VALUES (:id, :world_id, :x, :y, :terrain_data, :features)"
+            ),
+            {
+                "id": test_tile_id_str,
+                "world_id": test_world_id_str,
+                "x": 0,
+                "y": 0,
+                "terrain_data": "{}",
+                "features": "{}",
             },
         )
         await conn.commit()
