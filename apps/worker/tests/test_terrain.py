@@ -1,7 +1,6 @@
 """Tests for terrain generation module."""
 
 import pytest
-
 from city_worker.terrain import TerrainConfig, TerrainGenerator, generate_terrain_3x3
 from city_worker.terrain.noise import SeededNoise, apply_erosion, generate_heightfield
 from city_worker.terrain.types import TileCoord
