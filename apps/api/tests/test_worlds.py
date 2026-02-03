@@ -7,6 +7,9 @@ from httpx import AsyncClient
 TEST_USER_ID = "00000000-0000-0000-0000-000000000001"
 OTHER_USER_ID = "00000000-0000-0000-0000-000000000002"
 
+# The test world created by conftest.py (used for tile/lock tests)
+TEST_WORLD_ID = "00000000-0000-0000-0000-000000000010"
+
 
 class TestCreateWorld:
     """Tests for POST /worlds endpoint."""
@@ -16,7 +19,7 @@ class TestCreateWorld:
         """Create world should return 201 with world data."""
         response = await client.post(
             "/worlds",
-            json={"name": "Test World"},
+            json={"name": "Test World", "seed": 12345},  # Use explicit seed to avoid overflow
             headers={"X-User-Id": TEST_USER_ID},
         )
         assert response.status_code == 201
@@ -45,6 +48,7 @@ class TestCreateWorld:
             "/worlds",
             json={
                 "name": "Custom World",
+                "seed": 54321,  # Use explicit seed to avoid overflow
                 "settings": {
                     "grid_organic": 0.8,
                     "sprawl_compact": 0.2,
@@ -62,22 +66,26 @@ class TestListWorlds:
     """Tests for GET /worlds endpoint."""
 
     @pytest.mark.asyncio
-    async def test_list_worlds_empty(self, client: AsyncClient):
-        """List worlds should return empty list when no worlds exist."""
+    async def test_list_worlds_only_test_world(self, client: AsyncClient):
+        """List worlds should only return the fixture test world initially."""
         response = await client.get(
             "/worlds",
             headers={"X-User-Id": TEST_USER_ID},
         )
         assert response.status_code == 200
-        assert response.json() == []
+        data = response.json()
+        # Should only contain the test world created by conftest.py
+        assert len(data) == 1
+        assert data[0]["id"] == TEST_WORLD_ID
+        assert data[0]["name"] == "Test World"
 
     @pytest.mark.asyncio
     async def test_list_worlds_returns_user_worlds(self, client: AsyncClient):
-        """List worlds should return only the user's worlds."""
+        """List worlds should return the user's worlds."""
         # Create a world
         await client.post(
             "/worlds",
-            json={"name": "My World"},
+            json={"name": "My World", "seed": 11111},
             headers={"X-User-Id": TEST_USER_ID},
         )
 
@@ -88,8 +96,11 @@ class TestListWorlds:
         )
         assert response.status_code == 200
         data = response.json()
-        assert len(data) == 1
-        assert data[0]["name"] == "My World"
+        # Should have test world + newly created world
+        assert len(data) == 2
+        world_names = [w["name"] for w in data]
+        assert "My World" in world_names
+        assert "Test World" in world_names
 
     @pytest.mark.asyncio
     async def test_list_worlds_excludes_other_users(self, client: AsyncClient):
@@ -97,14 +108,14 @@ class TestListWorlds:
         # Create world as user 1
         await client.post(
             "/worlds",
-            json={"name": "User 1 World"},
+            json={"name": "User 1 World", "seed": 22222},
             headers={"X-User-Id": TEST_USER_ID},
         )
 
         # Create world as user 2
         await client.post(
             "/worlds",
-            json={"name": "User 2 World"},
+            json={"name": "User 2 World", "seed": 33333},
             headers={"X-User-Id": OTHER_USER_ID},
         )
 
@@ -114,8 +125,11 @@ class TestListWorlds:
             headers={"X-User-Id": TEST_USER_ID},
         )
         data = response.json()
-        assert len(data) == 1
-        assert data[0]["name"] == "User 1 World"
+        # User 1 should see test world + their created world
+        assert len(data) == 2
+        world_names = [w["name"] for w in data]
+        assert "User 1 World" in world_names
+        assert "User 2 World" not in world_names
 
 
 class TestGetWorld:
@@ -127,7 +141,7 @@ class TestGetWorld:
         # Create a world
         create_response = await client.post(
             "/worlds",
-            json={"name": "Test World"},
+            json={"name": "Test World", "seed": 44444},
             headers={"X-User-Id": TEST_USER_ID},
         )
         world_id = create_response.json()["id"]
@@ -156,7 +170,7 @@ class TestGetWorld:
         # Create world as user 1
         create_response = await client.post(
             "/worlds",
-            json={"name": "Private World"},
+            json={"name": "Private World", "seed": 55555},
             headers={"X-User-Id": TEST_USER_ID},
         )
         world_id = create_response.json()["id"]
@@ -178,7 +192,7 @@ class TestDeleteWorld:
         # Create a world
         create_response = await client.post(
             "/worlds",
-            json={"name": "Doomed World"},
+            json={"name": "Doomed World", "seed": 66666},
             headers={"X-User-Id": TEST_USER_ID},
         )
         world_id = create_response.json()["id"]
@@ -213,7 +227,7 @@ class TestDeleteWorld:
         # Create world as user 1
         create_response = await client.post(
             "/worlds",
-            json={"name": "Protected World"},
+            json={"name": "Protected World", "seed": 77777},
             headers={"X-User-Id": TEST_USER_ID},
         )
         world_id = create_response.json()["id"]
