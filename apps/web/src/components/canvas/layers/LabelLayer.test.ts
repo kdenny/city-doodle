@@ -40,6 +40,9 @@ describe("LabelLayer", () => {
       coastlines: true,
       rivers: true,
       contours: false,
+      districts: true,
+      roads: true,
+      pois: true,
       grid: true,
       labels: false,
     };

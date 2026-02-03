@@ -70,6 +70,7 @@ describe("FeaturesLayer", () => {
       roads: true,
       pois: false,
       grid: true,
+      labels: true,
     };
 
     layer.setVisibility(visibility);
