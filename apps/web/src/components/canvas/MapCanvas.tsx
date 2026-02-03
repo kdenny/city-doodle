@@ -1,4 +1,12 @@
-import { useEffect, useRef, useState, useCallback } from "react";
+import {
+  useEffect,
+  useRef,
+  useState,
+  useCallback,
+  forwardRef,
+  useImperativeHandle,
+  useContext,
+} from "react";
 import { Application, Container, Graphics } from "pixi.js";
 import { Viewport } from "pixi-viewport";
 import {
@@ -12,6 +20,13 @@ import {
   type LayerVisibility,
 } from "./layers";
 import { LayerControls } from "./LayerControls";
+import {
+  exportCanvasAsPng,
+  captureCanvasAsPng,
+  type ExportOptions,
+  type ExportResult,
+} from "./useCanvasExport";
+import { MapCanvasContextInternal } from "./MapCanvasContext";
 
 // Tile size in world coordinates
 const TILE_SIZE = 256;
@@ -24,7 +39,20 @@ interface MapCanvasProps {
   seed?: number;
 }
 
-export function MapCanvas({ className, seed = 12345 }: MapCanvasProps) {
+/**
+ * Imperative handle exposed by MapCanvas for export functionality.
+ */
+export interface MapCanvasHandle {
+  /** Exports the canvas as PNG and triggers download */
+  exportAsPng: (options: ExportOptions) => Promise<void>;
+  /** Captures the canvas as PNG and returns the result (no download) */
+  captureAsPng: (options: ExportOptions) => Promise<ExportResult>;
+  /** Whether the canvas is ready for export */
+  isReady: boolean;
+}
+
+export const MapCanvas = forwardRef<MapCanvasHandle, MapCanvasProps>(
+  function MapCanvas({ className, seed = 12345 }, ref) {
   const containerRef = useRef<HTMLDivElement>(null);
   const appRef = useRef<Application | null>(null);
   const viewportRef = useRef<Viewport | null>(null);
@@ -36,6 +64,39 @@ export function MapCanvas({ className, seed = 12345 }: MapCanvasProps) {
   const [layerVisibility, setLayerVisibility] = useState<LayerVisibility>(
     DEFAULT_LAYER_VISIBILITY
   );
+
+  // Try to get the context (may be null if not wrapped in provider)
+  const canvasContext = useContext(MapCanvasContextInternal);
+
+  // Create the export handle object
+  const exportHandle = {
+    exportAsPng: async (options: ExportOptions) => {
+      if (!appRef.current || !viewportRef.current) {
+        throw new Error("Canvas not ready for export");
+      }
+      return exportCanvasAsPng(appRef.current, viewportRef.current, options);
+    },
+    captureAsPng: async (options: ExportOptions) => {
+      if (!appRef.current || !viewportRef.current) {
+        throw new Error("Canvas not ready for export");
+      }
+      return captureCanvasAsPng(appRef.current, viewportRef.current, options);
+    },
+    isReady,
+  };
+
+  // Expose export functionality via ref
+  useImperativeHandle(ref, () => exportHandle, [isReady]);
+
+  // Register with context if available
+  useEffect(() => {
+    if (canvasContext) {
+      canvasContext.registerCanvas(isReady ? exportHandle : null);
+      return () => {
+        canvasContext.registerCanvas(null);
+      };
+    }
+  }, [canvasContext, isReady]);
 
   // Handle layer visibility changes
   const handleVisibilityChange = useCallback(
@@ -286,4 +347,5 @@ export function MapCanvas({ className, seed = 12345 }: MapCanvasProps) {
       )}
     </div>
   );
-}
+  }
+);
