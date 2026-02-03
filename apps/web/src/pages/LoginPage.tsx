@@ -49,7 +49,7 @@ export function LoginPage() {
 
         <form className="mt-8 space-y-6" onSubmit={handleSubmit}>
           {error && (
-            <div className="rounded-md bg-red-50 p-4">
+            <div role="alert" className="rounded-md bg-red-50 p-4">
               <p className="text-sm text-red-700">{error}</p>
             </div>
           )}
