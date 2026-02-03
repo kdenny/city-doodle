@@ -2,10 +2,9 @@
 
 import os
 from collections.abc import AsyncGenerator
-
-import pytest
 from uuid import UUID
 
+import pytest
 from city_api.database import Base, get_db
 from city_api.main import app
 from city_api.models import User
