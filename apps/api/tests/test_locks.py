@@ -1,12 +1,13 @@
 """Tests for tile locking endpoints."""
 
-from uuid import uuid4
-
 import pytest
 
 # Fixed test user IDs matching those created in conftest.py
 TEST_USER_ID = "00000000-0000-0000-0000-000000000001"
 OTHER_USER_ID = "00000000-0000-0000-0000-000000000002"
+
+# Fixed test tile ID matching the one created in conftest.py
+TEST_TILE_ID = "00000000-0000-0000-0000-000000000020"
 
 
 class TestAcquireLock:
@@ -15,7 +16,7 @@ class TestAcquireLock:
     @pytest.mark.asyncio
     async def test_acquire_lock_success(self, client):
         """Successfully acquire a lock on an unlocked tile."""
-        tile_id = uuid4()
+        tile_id = TEST_TILE_ID
         user_id = TEST_USER_ID
 
         response = await client.post(
@@ -25,7 +26,7 @@ class TestAcquireLock:
 
         assert response.status_code == 200
         data = response.json()
-        assert data["tile_id"] == str(tile_id)
+        assert data["tile_id"] == tile_id
         assert data["user_id"] == user_id
         assert "locked_at" in data
         assert "expires_at" in data
@@ -33,7 +34,7 @@ class TestAcquireLock:
     @pytest.mark.asyncio
     async def test_acquire_lock_with_custom_duration(self, client):
         """Acquire a lock with custom duration."""
-        tile_id = uuid4()
+        tile_id = TEST_TILE_ID
         user_id = TEST_USER_ID
 
         response = await client.post(
@@ -47,7 +48,7 @@ class TestAcquireLock:
     @pytest.mark.asyncio
     async def test_acquire_lock_conflict(self, client):
         """Fail to acquire a lock already held by another user."""
-        tile_id = uuid4()
+        tile_id = TEST_TILE_ID
         user1 = TEST_USER_ID
         user2 = OTHER_USER_ID
 
@@ -70,7 +71,7 @@ class TestAcquireLock:
     @pytest.mark.asyncio
     async def test_acquire_lock_extend_own(self, client):
         """Acquiring a lock you already hold extends it."""
-        tile_id = uuid4()
+        tile_id = TEST_TILE_ID
         user_id = TEST_USER_ID
 
         # Acquire initial lock
@@ -94,7 +95,7 @@ class TestReleaseLock:
     @pytest.mark.asyncio
     async def test_release_lock_success(self, client):
         """Successfully release a lock you hold."""
-        tile_id = uuid4()
+        tile_id = TEST_TILE_ID
         user_id = TEST_USER_ID
 
         # Acquire lock
@@ -114,7 +115,7 @@ class TestReleaseLock:
     @pytest.mark.asyncio
     async def test_release_lock_not_found(self, client):
         """Fail to release a lock that doesn't exist."""
-        tile_id = uuid4()
+        tile_id = TEST_TILE_ID
         user_id = TEST_USER_ID
 
         response = await client.delete(
@@ -127,7 +128,7 @@ class TestReleaseLock:
     @pytest.mark.asyncio
     async def test_release_lock_forbidden(self, client):
         """Fail to release a lock held by another user."""
-        tile_id = uuid4()
+        tile_id = TEST_TILE_ID
         user1 = TEST_USER_ID
         user2 = OTHER_USER_ID
 
@@ -152,7 +153,7 @@ class TestGetLock:
     @pytest.mark.asyncio
     async def test_get_lock_exists(self, client):
         """Get details of an active lock."""
-        tile_id = uuid4()
+        tile_id = TEST_TILE_ID
         user_id = TEST_USER_ID
 
         # Acquire lock
@@ -169,13 +170,13 @@ class TestGetLock:
 
         assert response.status_code == 200
         data = response.json()
-        assert data["tile_id"] == str(tile_id)
+        assert data["tile_id"] == tile_id
         assert data["user_id"] == user_id
 
     @pytest.mark.asyncio
     async def test_get_lock_not_exists(self, client):
         """Get lock status for unlocked tile returns null."""
-        tile_id = uuid4()
+        tile_id = TEST_TILE_ID
         user_id = TEST_USER_ID
 
         response = await client.get(
@@ -193,7 +194,7 @@ class TestHeartbeatLock:
     @pytest.mark.asyncio
     async def test_heartbeat_success(self, client):
         """Successfully extend an active lock."""
-        tile_id = uuid4()
+        tile_id = TEST_TILE_ID
         user_id = TEST_USER_ID
 
         # Acquire lock
@@ -213,7 +214,7 @@ class TestHeartbeatLock:
     @pytest.mark.asyncio
     async def test_heartbeat_not_found(self, client):
         """Fail to heartbeat a non-existent lock."""
-        tile_id = uuid4()
+        tile_id = TEST_TILE_ID
         user_id = TEST_USER_ID
 
         response = await client.post(
@@ -226,7 +227,7 @@ class TestHeartbeatLock:
     @pytest.mark.asyncio
     async def test_heartbeat_forbidden(self, client):
         """Fail to heartbeat a lock held by another user."""
-        tile_id = uuid4()
+        tile_id = TEST_TILE_ID
         user1 = TEST_USER_ID
         user2 = OTHER_USER_ID
 
