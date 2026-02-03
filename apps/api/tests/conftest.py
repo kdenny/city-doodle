@@ -11,6 +11,7 @@ from city_api.main import app
 from httpx import ASGITransport, AsyncClient
 from sqlalchemy import text
 from sqlalchemy.ext.asyncio import AsyncSession, async_sessionmaker, create_async_engine
+from sqlalchemy.pool import NullPool, StaticPool
 
 # Test user IDs (must match the ones used in test files)
 TEST_USER_ID = UUID("00000000-0000-0000-0000-000000000001")
@@ -22,30 +23,42 @@ TEST_DATABASE_URL = os.environ.get(
     "sqlite+aiosqlite:///:memory:",
 )
 
-# Create test engine with appropriate settings for the database type
+# Detect database type
 is_sqlite = TEST_DATABASE_URL.startswith("sqlite")
 
-if is_sqlite:
-    # SQLite in-memory requires StaticPool to keep connection alive
-    from sqlalchemy.pool import StaticPool
+# Lazy initialization for engine and session factory
+# This avoids creating the engine at module import time, which would
+# bind it to the wrong event loop when running tests in CI
+_test_engine = None
+_test_session_factory = None
 
-    test_engine = create_async_engine(
-        TEST_DATABASE_URL,
-        echo=False,
-        connect_args={"check_same_thread": False},
-        poolclass=StaticPool,
-    )
-else:
-    # PostgreSQL settings
-    test_engine = create_async_engine(
-        TEST_DATABASE_URL,
-        echo=False,
-        pool_pre_ping=True,
-        pool_size=5,
-        max_overflow=10,
-    )
 
-test_session_factory = async_sessionmaker(test_engine, class_=AsyncSession, expire_on_commit=False)
+def get_test_engine():
+    """Get or create the test database engine lazily."""
+    global _test_engine, _test_session_factory
+
+    if _test_engine is None:
+        if is_sqlite:
+            # SQLite in-memory requires StaticPool to keep connection alive
+            _test_engine = create_async_engine(
+                TEST_DATABASE_URL,
+                echo=False,
+                connect_args={"check_same_thread": False},
+                poolclass=StaticPool,
+            )
+        else:
+            # PostgreSQL settings - use NullPool to avoid event loop issues
+            _test_engine = create_async_engine(
+                TEST_DATABASE_URL,
+                echo=False,
+                poolclass=NullPool,
+            )
+
+        _test_session_factory = async_sessionmaker(
+            _test_engine, class_=AsyncSession, expire_on_commit=False
+        )
+
+    return _test_engine, _test_session_factory
 
 
 # Note: Foreign key constraints are NOT enforced in SQLite tests for simplicity.
@@ -55,25 +68,28 @@ test_session_factory = async_sessionmaker(test_engine, class_=AsyncSession, expi
 
 async def override_get_db() -> AsyncGenerator[AsyncSession, None]:
     """Override database dependency for tests."""
-    async with test_session_factory() as session:
+    _, session_factory = get_test_engine()
+    async with session_factory() as session:
         yield session
 
 
 @pytest.fixture(scope="session", autouse=True)
 async def setup_test_db():
     """Create test database tables once per session."""
-    async with test_engine.begin() as conn:
+    engine, _ = get_test_engine()
+    async with engine.begin() as conn:
         await conn.run_sync(Base.metadata.create_all)
     yield
-    async with test_engine.begin() as conn:
+    async with engine.begin() as conn:
         await conn.run_sync(Base.metadata.drop_all)
 
 
 @pytest.fixture(autouse=True)
 async def clear_tables():
     """Clear all tables and create test users before each test."""
+    engine, _ = get_test_engine()
     # Use a raw connection to avoid session state issues
-    async with test_engine.connect() as conn:
+    async with engine.connect() as conn:
         if "postgresql" in TEST_DATABASE_URL:
             await conn.execute(
                 text(
