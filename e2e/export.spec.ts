@@ -64,8 +64,10 @@ test.describe("Export Format Selection", () => {
       await pngOption.click();
     }
 
-    // Download button should show PNG
-    await expect(page.getByRole("button", { name: /download png/i })).toBeVisible();
+    // Download button has aria-label="Download export" but visible text includes format
+    // Use text matcher to find the button with "Download PNG" visible text
+    await expect(page.getByRole("button", { name: /download export/i })).toBeVisible();
+    await expect(page.getByText("Download PNG")).toBeVisible();
   });
 
   test("can select GIF format", async ({ page, auth, api }) => {
@@ -82,8 +84,9 @@ test.describe("Export Format Selection", () => {
     );
     if (await gifOption.isVisible()) {
       await gifOption.click();
-      // Download button should show GIF
-      await expect(page.getByRole("button", { name: /download gif/i })).toBeVisible();
+      // Download button has aria-label="Download export" but visible text changes
+      await expect(page.getByRole("button", { name: /download export/i })).toBeVisible();
+      await expect(page.getByText("Download GIF")).toBeVisible();
     }
   });
 });
