@@ -11,7 +11,6 @@ from city_api.models import User
 from httpx import ASGITransport, AsyncClient
 from sqlalchemy import text
 from sqlalchemy.ext.asyncio import AsyncSession, async_sessionmaker, create_async_engine
-from sqlalchemy.pool import NullPool
 
 # Use PostgreSQL for tests (from env var in CI, or local default)
 TEST_DATABASE_URL = os.environ.get(
@@ -36,7 +35,9 @@ def get_test_engine():
         _test_engine = create_async_engine(
             TEST_DATABASE_URL,
             echo=False,
-            poolclass=NullPool,  # Disable pooling to avoid connection state issues in tests
+            pool_pre_ping=True,
+            pool_size=5,
+            max_overflow=10,
         )
     return _test_engine
 
