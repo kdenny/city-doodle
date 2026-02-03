@@ -2,7 +2,7 @@
 
 import uuid
 from datetime import datetime
-from enum import Enum
+from enum import StrEnum
 
 from sqlalchemy import DateTime, ForeignKey, Index, String, Text, Uuid, func
 from sqlalchemy.orm import Mapped, mapped_column
@@ -10,7 +10,7 @@ from sqlalchemy.orm import Mapped, mapped_column
 from city_api.database import Base, JSONVariant
 
 
-class JobStatus(str, Enum):
+class JobStatus(StrEnum):
     """Job status values."""
 
     PENDING = "pending"
@@ -21,7 +21,7 @@ class JobStatus(str, Enum):
     CANCELLED = "cancelled"
 
 
-class JobType(str, Enum):
+class JobType(StrEnum):
     """Job type values."""
 
     TERRAIN_GENERATION = "terrain_generation"

@@ -3,10 +3,10 @@
 These mirror the API models to work with the same database schema.
 """
 
-from enum import Enum
+from enum import StrEnum
 
 
-class JobStatus(str, Enum):
+class JobStatus(StrEnum):
     """Job status values."""
 
     PENDING = "pending"
@@ -17,7 +17,7 @@ class JobStatus(str, Enum):
     CANCELLED = "cancelled"
 
 
-class JobType(str, Enum):
+class JobType(StrEnum):
     """Job type values."""
 
     TERRAIN_GENERATION = "terrain_generation"

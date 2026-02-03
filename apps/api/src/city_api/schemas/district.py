@@ -1,14 +1,14 @@
 """District schemas - represents zoning districts on tiles."""
 
 from datetime import datetime
-from enum import Enum
+from enum import StrEnum
 from typing import Any
 from uuid import UUID
 
 from pydantic import BaseModel, Field
 
 
-class DistrictType(str, Enum):
+class DistrictType(StrEnum):
     """Types of zoning districts."""
 
     RESIDENTIAL_LOW = "residential_low"

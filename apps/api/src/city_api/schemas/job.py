@@ -1,14 +1,14 @@
 """Job schemas - represents background processing jobs."""
 
 from datetime import datetime
-from enum import Enum
+from enum import StrEnum
 from typing import Any
 from uuid import UUID
 
 from pydantic import BaseModel, Field
 
 
-class JobType(str, Enum):
+class JobType(StrEnum):
     """Types of background jobs."""
 
     TERRAIN_GENERATION = "terrain_generation"
@@ -20,7 +20,7 @@ class JobType(str, Enum):
     EXPORT_GIF = "export_gif"
 
 
-class JobStatus(str, Enum):
+class JobStatus(StrEnum):
     """Status of a background job."""
 
     PENDING = "pending"
