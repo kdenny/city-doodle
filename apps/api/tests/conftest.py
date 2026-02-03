@@ -1,12 +1,13 @@
 """Pytest configuration and fixtures for API tests."""
 
-import asyncio
 import os
 from collections.abc import AsyncGenerator
+from uuid import UUID
 
 import pytest
 from city_api.database import Base, get_db
 from city_api.main import app
+from city_api.models import User
 from httpx import ASGITransport, AsyncClient
 from sqlalchemy import text
 from sqlalchemy.ext.asyncio import AsyncSession, async_sessionmaker, create_async_engine
@@ -17,46 +18,69 @@ TEST_DATABASE_URL = os.environ.get(
     "postgresql+asyncpg://localhost/city_doodle_test",
 )
 
-# Create test engine with pool_pre_ping to handle stale connections
-test_engine = create_async_engine(
-    TEST_DATABASE_URL,
-    echo=False,
-    pool_pre_ping=True,
-    pool_size=5,
-    max_overflow=10,
-)
-test_session_factory = async_sessionmaker(test_engine, class_=AsyncSession, expire_on_commit=False)
+# Test user IDs matching those used in test files
+TEST_USER_ID = UUID("00000000-0000-0000-0000-000000000001")
+OTHER_USER_ID = UUID("00000000-0000-0000-0000-000000000002")
+
+# Note: Engine is created inside a fixture to ensure it's bound to the correct event loop
+# Do NOT create engine at module level - it causes "Task got Future attached to a different loop" errors
+_test_engine = None
+_test_session_factory = None
+
+
+def get_test_engine():
+    """Get or create the test engine (lazy initialization)."""
+    global _test_engine
+    if _test_engine is None:
+        _test_engine = create_async_engine(
+            TEST_DATABASE_URL,
+            echo=False,
+            pool_pre_ping=True,
+            pool_size=5,
+            max_overflow=10,
+        )
+    return _test_engine
+
+
+def get_test_session_factory():
+    """Get or create the test session factory (lazy initialization)."""
+    global _test_session_factory
+    if _test_session_factory is None:
+        _test_session_factory = async_sessionmaker(
+            get_test_engine(), class_=AsyncSession, expire_on_commit=False
+        )
+    return _test_session_factory
 
 
 async def override_get_db() -> AsyncGenerator[AsyncSession, None]:
     """Override database dependency for tests."""
-    async with test_session_factory() as session:
+    async with get_test_session_factory()() as session:
         yield session
 
 
-@pytest.fixture(scope="session")
-def event_loop():
-    """Create event loop for async tests."""
-    loop = asyncio.get_event_loop_policy().new_event_loop()
-    yield loop
-    loop.close()
+# Note: event_loop fixture is no longer needed with pytest-asyncio >= 0.23
+# when asyncio_default_fixture_loop_scope = "session" is set in pyproject.toml
 
 
 @pytest.fixture(scope="session", autouse=True)
 async def setup_test_db():
     """Create test database tables once per session."""
-    async with test_engine.begin() as conn:
+    engine = get_test_engine()
+    async with engine.begin() as conn:
         await conn.run_sync(Base.metadata.create_all)
     yield
-    async with test_engine.begin() as conn:
+    async with engine.begin() as conn:
         await conn.run_sync(Base.metadata.drop_all)
+    # Clean up engine at end of session
+    await engine.dispose()
 
 
 @pytest.fixture(autouse=True)
 async def clear_tables():
-    """Clear all tables before each test."""
+    """Clear all tables before each test and create test users."""
+    engine = get_test_engine()
     # Use a raw connection to avoid session state issues
-    async with test_engine.connect() as conn:
+    async with engine.connect() as conn:
         # Use TRUNCATE CASCADE for efficient cleanup (Postgres-specific)
         if "postgresql" in TEST_DATABASE_URL:
             await conn.execute(
@@ -73,6 +97,23 @@ async def clear_tables():
             await conn.execute(text("DELETE FROM sessions"))
             await conn.execute(text("DELETE FROM users"))
         await conn.commit()
+
+    # Create test users that tests expect to exist
+    async with get_test_session_factory()() as session:
+        test_user = User(
+            id=TEST_USER_ID,
+            email="test@example.com",
+            password_hash="$2b$12$placeholder",  # Not used in tests
+        )
+        other_user = User(
+            id=OTHER_USER_ID,
+            email="other@example.com",
+            password_hash="$2b$12$placeholder",
+        )
+        session.add(test_user)
+        session.add(other_user)
+        await session.commit()
+
     yield
 
 
@@ -95,5 +136,5 @@ async def client():
 @pytest.fixture
 async def db_session() -> AsyncGenerator[AsyncSession, None]:
     """Provide a database session for tests that need direct DB access."""
-    async with test_session_factory() as session:
+    async with get_test_session_factory()() as session:
         yield session
