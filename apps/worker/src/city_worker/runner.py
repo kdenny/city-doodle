@@ -196,11 +196,120 @@ class JobRunner:
     async def _handle_terrain_generation(self, params: dict) -> dict[str, Any]:
         """Handle terrain generation job.
 
-        Placeholder - will be implemented in CITY-13.
+        Generates terrain for a 3x3 tile neighborhood and saves to database.
+
+        Expected params:
+            world_id: UUID of the world
+            world_seed: int seed for deterministic generation
+            center_tx: int x-coordinate of center tile
+            center_ty: int y-coordinate of center tile
         """
+        from uuid import UUID
+
+        from city_worker.terrain import TerrainConfig, TerrainGenerator
+
         logger.info("Terrain generation job with params: %s", params)
-        await asyncio.sleep(0.1)
-        return {"status": "generated", "message": "Terrain generation not yet implemented"}
+
+        # Validate required params
+        world_id = params.get("world_id")
+        world_seed = params.get("world_seed")
+        center_tx = params.get("center_tx", 0)
+        center_ty = params.get("center_ty", 0)
+
+        if world_id is None:
+            raise ValueError("world_id is required")
+        if world_seed is None:
+            raise ValueError("world_seed is required")
+
+        world_id = UUID(world_id) if isinstance(world_id, str) else world_id
+
+        # Run terrain generation in thread pool (CPU-bound)
+        loop = asyncio.get_running_loop()
+        config = TerrainConfig(world_seed=int(world_seed))
+        generator = TerrainGenerator(config)
+
+        result = await loop.run_in_executor(
+            None, generator.generate_3x3, int(center_tx), int(center_ty)
+        )
+
+        # Save generated tiles to database
+        await self._save_terrain_tiles(world_id, result)
+
+        # Return summary
+        all_tiles = result.all_tiles()
+        total_features = sum(len(t.features) for t in all_tiles)
+
+        return {
+            "status": "generated",
+            "tiles_generated": len(all_tiles),
+            "total_features": total_features,
+            "center_tile": {"tx": center_tx, "ty": center_ty},
+        }
+
+    async def _save_terrain_tiles(self, world_id: UUID, result: Any) -> None:
+        """Save generated terrain tiles to the database."""
+        from city_worker.terrain import TerrainResult
+
+        result: TerrainResult = result
+        session = await get_session()
+
+        try:
+            async with session.begin():
+                for tile_data in result.all_tiles():
+                    # Check if tile exists
+                    existing = await session.execute(
+                        text("""
+                            SELECT id FROM tiles
+                            WHERE world_id = :world_id AND tx = :tx AND ty = :ty
+                        """),
+                        {"world_id": world_id, "tx": tile_data.tx, "ty": tile_data.ty},
+                    )
+                    row = existing.fetchone()
+
+                    terrain_dict = tile_data.to_dict()
+                    features_dict = tile_data.features_to_geojson()
+
+                    if row:
+                        # Update existing tile
+                        await session.execute(
+                            text("""
+                                UPDATE tiles
+                                SET terrain_data = :terrain_data,
+                                    features = :features,
+                                    version = version + 1,
+                                    updated_at = :now
+                                WHERE id = :tile_id
+                            """),
+                            {
+                                "tile_id": row[0],
+                                "terrain_data": terrain_dict,
+                                "features": features_dict,
+                                "now": datetime.now(UTC),
+                            },
+                        )
+                    else:
+                        # Insert new tile
+                        await session.execute(
+                            text("""
+                                INSERT INTO tiles (id, world_id, tx, ty, terrain_data, features, version)
+                                VALUES (gen_random_uuid(), :world_id, :tx, :ty, :terrain_data, :features, 1)
+                            """),
+                            {
+                                "world_id": world_id,
+                                "tx": tile_data.tx,
+                                "ty": tile_data.ty,
+                                "terrain_data": terrain_dict,
+                                "features": features_dict,
+                            },
+                        )
+
+                logger.info(
+                    "Saved %d terrain tiles for world %s",
+                    len(result.all_tiles()),
+                    world_id,
+                )
+        finally:
+            await session.close()
 
     async def _handle_city_growth(self, params: dict) -> dict[str, Any]:
         """Handle city growth simulation job.

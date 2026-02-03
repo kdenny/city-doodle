@@ -60,10 +60,33 @@ def test_job_runner_shutdown_handler():
 async def test_job_handler_terrain_generation():
     """Test terrain generation handler returns expected result."""
     runner = JobRunner()
-    result = await runner._handle_terrain_generation({})
+
+    # Mock the database save to avoid actual DB calls
+    with patch.object(runner, "_save_terrain_tiles", new_callable=AsyncMock):
+        result = await runner._handle_terrain_generation(
+            {
+                "world_id": str(uuid4()),
+                "world_seed": 42,
+                "center_tx": 0,
+                "center_ty": 0,
+            }
+        )
 
     assert "status" in result
     assert result["status"] == "generated"
+    assert result["tiles_generated"] == 9
+
+
+@pytest.mark.asyncio
+async def test_job_handler_terrain_generation_missing_params():
+    """Test terrain generation handler validates required params."""
+    runner = JobRunner()
+
+    with pytest.raises(ValueError, match="world_id is required"):
+        await runner._handle_terrain_generation({})
+
+    with pytest.raises(ValueError, match="world_seed is required"):
+        await runner._handle_terrain_generation({"world_id": str(uuid4())})
 
 
 @pytest.mark.asyncio
@@ -110,16 +133,24 @@ async def test_run_job_handler_valid_types():
     """Test that implemented job types are handled."""
     runner = JobRunner()
 
-    # Only test job types that have handlers implemented
-    implemented_types = [
-        JobType.TERRAIN_GENERATION,
+    # Test non-terrain job types that don't require complex params
+    simple_types = [
         JobType.CITY_GROWTH,
         JobType.EXPORT_PNG,
         JobType.EXPORT_GIF,
     ]
 
-    for job_type in implemented_types:
+    for job_type in simple_types:
         result = await runner._run_job_handler(job_type.value, {})
+        assert isinstance(result, dict)
+        assert "status" in result
+
+    # Test terrain generation with required params
+    with patch.object(runner, "_save_terrain_tiles", new_callable=AsyncMock):
+        result = await runner._run_job_handler(
+            JobType.TERRAIN_GENERATION.value,
+            {"world_id": str(uuid4()), "world_seed": 42, "center_tx": 0, "center_ty": 0},
+        )
         assert isinstance(result, dict)
         assert "status" in result
 
@@ -218,11 +249,20 @@ async def test_wait_for_active_jobs_timeout():
 async def test_job_handler_with_params():
     """Test job handlers receive and can use params."""
     runner = JobRunner()
-    params = {"tile_id": str(uuid4()), "seed": 12345}
+    params = {
+        "world_id": str(uuid4()),
+        "world_seed": 12345,
+        "center_tx": 5,
+        "center_ty": 3,
+    }
 
-    result = await runner._handle_terrain_generation(params)
+    with patch.object(runner, "_save_terrain_tiles", new_callable=AsyncMock):
+        result = await runner._handle_terrain_generation(params)
+
     assert result is not None
     assert "status" in result
+    assert result["center_tile"]["tx"] == 5
+    assert result["center_tile"]["ty"] == 3
 
 
 @pytest.mark.asyncio
@@ -230,10 +270,19 @@ async def test_execute_job_success():
     """Test _execute_job completes successfully."""
     runner = JobRunner()
     job_id = uuid4()
+    params = {
+        "world_id": str(uuid4()),
+        "world_seed": 42,
+        "center_tx": 0,
+        "center_ty": 0,
+    }
 
-    # Mock _update_job_status to avoid database
-    with patch.object(runner, "_update_job_status", new_callable=AsyncMock) as mock_update:
-        await runner._execute_job(job_id, JobType.TERRAIN_GENERATION.value, {})
+    # Mock _update_job_status and _save_terrain_tiles to avoid database
+    with (
+        patch.object(runner, "_update_job_status", new_callable=AsyncMock) as mock_update,
+        patch.object(runner, "_save_terrain_tiles", new_callable=AsyncMock),
+    ):
+        await runner._execute_job(job_id, JobType.TERRAIN_GENERATION.value, params)
 
         mock_update.assert_called_once()
         call_args = mock_update.call_args
