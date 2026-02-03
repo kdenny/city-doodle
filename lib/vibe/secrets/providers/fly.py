@@ -1,7 +1,6 @@
 """Fly.io secrets provider."""
 
 import subprocess
-from typing import Any
 
 from lib.vibe.secrets.providers.base import Secret, SecretProvider
 

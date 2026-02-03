@@ -92,7 +92,7 @@ def build_human_followup_body(
     ]
     if parent_ticket_id:
         lines.extend([
-            f"## Context",
+            "## Context",
             f"Follow-up from **{parent_ticket_id}** (deployment configs were added in that ticket).",
             "",
         ])
