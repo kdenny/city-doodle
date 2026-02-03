@@ -1,3 +1,7 @@
+---
+description: Create a pull request for the current branch with proper labels and ticket linkage
+---
+
 # /pr - Create a pull request
 
 Open a pull request for the current branch/worktree.

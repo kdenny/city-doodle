@@ -1,3 +1,7 @@
+---
+description: Run health checks on the project configuration and dependencies
+---
+
 # /doctor - Check project health
 
 Run health checks on the project configuration and dependencies.

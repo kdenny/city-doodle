@@ -1,3 +1,7 @@
+---
+description: Manage tickets in Linear or Shortcut (list, get, create, update)
+---
+
 # /ticket - Ticket operations
 
 Manage tickets in Linear or Shortcut.

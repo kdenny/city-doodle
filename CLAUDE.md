@@ -645,7 +645,28 @@ When implementing specific features, consult these recipes:
 
 ---
 
-## Command Reference
+## Skills Reference
+
+Use these slash commands for common workflows:
+
+| Skill | Description |
+|-------|-------------|
+| `/setup` | Run the initial project setup wizard |
+| `/do PROJ-123` | Start working on a ticket (creates worktree) |
+| `/pr` | Create a pull request for the current branch |
+| `/doctor` | Check project health and configuration |
+| `/ticket list` | List tickets from the tracker |
+| `/ticket get PROJ-123` | Get ticket details |
+| `/ticket create "Title"` | Create a new ticket |
+| `/cleanup` | Clean up merged worktrees |
+
+Skills are defined in `.claude/commands/` and can be customized per project.
+
+---
+
+## CLI Reference
+
+These are the underlying CLI commands (skills call these automatically):
 
 ```bash
 # Setup and health
@@ -657,9 +678,10 @@ bin/doctor                  # Alias for doctor
 bin/ticket list             # List tickets
 bin/ticket get PROJ-123     # Get ticket details
 bin/ticket create "Title"   # Create ticket
-bin/ticket create-human-followup   # Create HUMAN follow-up for deployment setup (after fly.toml, vercel.json, .env.example)
+bin/ticket labels           # List label IDs
+bin/ticket create-human-followup   # Create HUMAN follow-up for deployment
 
-# Working on tickets ("do this ticket" = fresh worktree + open PR when done)
+# Working on tickets
 bin/vibe do PROJ-123        # Create worktree for ticket
 
 # Secrets

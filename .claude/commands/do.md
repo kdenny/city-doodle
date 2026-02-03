@@ -1,3 +1,7 @@
+---
+description: Start working on a ticket by creating a dedicated git worktree and branch
+---
+
 # /do - Start working on a ticket
 
 Start working on a ticket by creating a dedicated git worktree and branch.
