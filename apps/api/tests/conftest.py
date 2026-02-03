@@ -4,8 +4,11 @@ import os
 from collections.abc import AsyncGenerator
 
 import pytest
+from uuid import UUID
+
 from city_api.database import Base, get_db
 from city_api.main import app
+from city_api.models import User
 from httpx import ASGITransport, AsyncClient
 from sqlalchemy import text
 from sqlalchemy.ext.asyncio import AsyncSession, async_sessionmaker, create_async_engine
@@ -15,6 +18,10 @@ TEST_DATABASE_URL = os.environ.get(
     "TEST_DATABASE_URL",
     "postgresql+asyncpg://localhost/city_doodle_test",
 )
+
+# Test user IDs matching those used in test files
+TEST_USER_ID = UUID("00000000-0000-0000-0000-000000000001")
+OTHER_USER_ID = UUID("00000000-0000-0000-0000-000000000002")
 
 # Note: Engine is created inside a fixture to ensure it's bound to the correct event loop
 # Do NOT create engine at module level - it causes "Task got Future attached to a different loop" errors
@@ -71,7 +78,7 @@ async def setup_test_db():
 
 @pytest.fixture(autouse=True)
 async def clear_tables():
-    """Clear all tables before each test."""
+    """Clear all tables before each test and create test users."""
     engine = get_test_engine()
     # Use a raw connection to avoid session state issues
     async with engine.connect() as conn:
@@ -91,6 +98,23 @@ async def clear_tables():
             await conn.execute(text("DELETE FROM sessions"))
             await conn.execute(text("DELETE FROM users"))
         await conn.commit()
+
+    # Create test users that tests expect to exist
+    async with get_test_session_factory()() as session:
+        test_user = User(
+            id=TEST_USER_ID,
+            email="test@example.com",
+            password_hash="$2b$12$placeholder",  # Not used in tests
+        )
+        other_user = User(
+            id=OTHER_USER_ID,
+            email="other@example.com",
+            password_hash="$2b$12$placeholder",
+        )
+        session.add(test_user)
+        session.add(other_user)
+        await session.commit()
+
     yield
 
 
