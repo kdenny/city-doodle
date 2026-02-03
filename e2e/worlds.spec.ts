@@ -166,7 +166,7 @@ test.describe("World Navigation", () => {
     // Try to access a non-existent world
     await page.goto("/worlds/00000000-0000-0000-0000-000000000000");
 
-    // Should show error element (matches the error container with data-testid)
-    await expect(page.locator('[data-testid="error"]')).toBeVisible();
+    // Should show error - the error div has data-testid="error"
+    await expect(page.getByTestId("error")).toBeVisible();
   });
 });
