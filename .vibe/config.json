@@ -33,7 +33,7 @@
   "labels": {
     "type": ["Bug", "Feature", "Chore", "Refactor"],
     "risk": ["Low Risk", "Medium Risk", "High Risk"],
-    "area": ["Frontend", "Backend", "Infra", "Docs"],
+    "area": ["Frontend", "Backend", "Infra", "Docs", "Tests"],
     "milestone": ["v1", "v2", "Future"],
     "special": ["HUMAN ‼️", "Blocked"]
   },
