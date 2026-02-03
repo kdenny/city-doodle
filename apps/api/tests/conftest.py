@@ -5,82 +5,95 @@ from collections.abc import AsyncGenerator
 from uuid import UUID
 
 import pytest
+import pytest_asyncio
 from city_api.database import Base, get_db
 from city_api.main import app
-from city_api.models import User
 from httpx import ASGITransport, AsyncClient
 from sqlalchemy import text
 from sqlalchemy.ext.asyncio import AsyncSession, async_sessionmaker, create_async_engine
-from sqlalchemy.pool import NullPool
+from sqlalchemy.pool import NullPool, StaticPool
 
-# Use PostgreSQL for tests (from env var in CI, or local default)
-TEST_DATABASE_URL = os.environ.get(
-    "TEST_DATABASE_URL",
-    "postgresql+asyncpg://localhost/city_doodle_test",
-)
-
-# Test user IDs matching those used in test files
+# Test user IDs (must match the ones used in test files)
 TEST_USER_ID = UUID("00000000-0000-0000-0000-000000000001")
 OTHER_USER_ID = UUID("00000000-0000-0000-0000-000000000002")
 
-# Note: Engine is created inside a fixture to ensure it's bound to the correct event loop
-# Do NOT create engine at module level - it causes "Task got Future attached to a different loop" errors
+# Fixed test world and tile IDs for tests that need real entities
+TEST_WORLD_ID = UUID("00000000-0000-0000-0000-000000000010")
+TEST_TILE_ID = UUID("00000000-0000-0000-0000-000000000020")
+
+# Use SQLite for local tests, PostgreSQL in CI (when TEST_DATABASE_URL is set)
+TEST_DATABASE_URL = os.environ.get(
+    "TEST_DATABASE_URL",
+    "sqlite+aiosqlite:///:memory:",
+)
+
+# Detect database type
+is_sqlite = TEST_DATABASE_URL.startswith("sqlite")
+
+# Lazy initialization for engine and session factory
+# This avoids creating the engine at module import time, which would
+# bind it to the wrong event loop when running tests in CI
 _test_engine = None
 _test_session_factory = None
 
 
 def get_test_engine():
-    """Get or create the test engine (lazy initialization)."""
-    global _test_engine
+    """Get or create the test database engine lazily."""
+    global _test_engine, _test_session_factory
+
     if _test_engine is None:
-        _test_engine = create_async_engine(
-            TEST_DATABASE_URL,
-            echo=False,
-            poolclass=NullPool,  # Disable pooling to avoid connection state issues in tests
-        )
-    return _test_engine
+        if is_sqlite:
+            # SQLite in-memory requires StaticPool to keep connection alive
+            _test_engine = create_async_engine(
+                TEST_DATABASE_URL,
+                echo=False,
+                connect_args={"check_same_thread": False},
+                poolclass=StaticPool,
+            )
+        else:
+            # PostgreSQL settings - use NullPool to avoid event loop issues
+            _test_engine = create_async_engine(
+                TEST_DATABASE_URL,
+                echo=False,
+                poolclass=NullPool,
+            )
 
-
-def get_test_session_factory():
-    """Get or create the test session factory (lazy initialization)."""
-    global _test_session_factory
-    if _test_session_factory is None:
         _test_session_factory = async_sessionmaker(
-            get_test_engine(), class_=AsyncSession, expire_on_commit=False
+            _test_engine, class_=AsyncSession, expire_on_commit=False
         )
-    return _test_session_factory
+
+    return _test_engine, _test_session_factory
+
+
+# Note: Foreign key constraints are NOT enforced in SQLite tests for simplicity.
+# The PostgreSQL tests in CI will enforce them properly.
+# This allows tests to use arbitrary UUIDs without creating full entity hierarchies.
 
 
 async def override_get_db() -> AsyncGenerator[AsyncSession, None]:
     """Override database dependency for tests."""
-    async with get_test_session_factory()() as session:
+    _, session_factory = get_test_engine()
+    async with session_factory() as session:
         yield session
-
-
-# Note: event_loop fixture is no longer needed with pytest-asyncio >= 0.23
-# when asyncio_default_fixture_loop_scope = "session" is set in pyproject.toml
 
 
 @pytest.fixture(scope="session", autouse=True)
 async def setup_test_db():
     """Create test database tables once per session."""
-    engine = get_test_engine()
+    engine, _ = get_test_engine()
     async with engine.begin() as conn:
         await conn.run_sync(Base.metadata.create_all)
     yield
     async with engine.begin() as conn:
         await conn.run_sync(Base.metadata.drop_all)
-    # Clean up engine at end of session
-    await engine.dispose()
 
 
 @pytest.fixture(autouse=True)
 async def clear_tables():
-    """Clear all tables before each test and create test users."""
-    engine = get_test_engine()
+    """Clear all tables and create test users before each test."""
+    engine, _ = get_test_engine()
     # Use a raw connection to avoid session state issues
     async with engine.connect() as conn:
-        # Use TRUNCATE CASCADE for efficient cleanup (Postgres-specific)
         if "postgresql" in TEST_DATABASE_URL:
             await conn.execute(
                 text(
@@ -88,38 +101,72 @@ async def clear_tables():
                 )
             )
         else:
-            # Fallback for SQLite (manual delete order)
             await conn.execute(text("DELETE FROM tile_locks"))
             await conn.execute(text("DELETE FROM jobs"))
             await conn.execute(text("DELETE FROM tiles"))
             await conn.execute(text("DELETE FROM worlds"))
             await conn.execute(text("DELETE FROM sessions"))
             await conn.execute(text("DELETE FROM users"))
+
+        # Create test users that tests expect to exist
+        # These are the user IDs used in X-User-Id headers during dev mode testing
+        # Note: SQLite stores UUIDs without hyphens, Postgres stores with hyphens
+        test_user_id_str = str(TEST_USER_ID).replace("-", "") if is_sqlite else str(TEST_USER_ID)
+        other_user_id_str = str(OTHER_USER_ID).replace("-", "") if is_sqlite else str(OTHER_USER_ID)
+
+        await conn.execute(
+            text("INSERT INTO users (id, email, password_hash) VALUES (:id, :email, :hash)"),
+            {
+                "id": test_user_id_str,
+                "email": "test@example.com",
+                "hash": "$2b$12$placeholder",  # Fake hash, not used in tests
+            },
+        )
+        await conn.execute(
+            text("INSERT INTO users (id, email, password_hash) VALUES (:id, :email, :hash)"),
+            {
+                "id": other_user_id_str,
+                "email": "other@example.com",
+                "hash": "$2b$12$placeholder",
+            },
+        )
+
+        # Create test world and tile for tests that need them
+        test_world_id_str = str(TEST_WORLD_ID).replace("-", "") if is_sqlite else str(TEST_WORLD_ID)
+        test_tile_id_str = str(TEST_TILE_ID).replace("-", "") if is_sqlite else str(TEST_TILE_ID)
+
+        await conn.execute(
+            text(
+                "INSERT INTO worlds (id, user_id, name, seed, settings) VALUES (:id, :user_id, :name, :seed, :settings)"
+            ),
+            {
+                "id": test_world_id_str,
+                "user_id": test_user_id_str,
+                "name": "Test World",
+                "seed": 12345,
+                "settings": "{}",
+            },
+        )
+        await conn.execute(
+            text(
+                "INSERT INTO tiles (id, world_id, x, y, terrain_data, features) VALUES (:id, :world_id, :x, :y, :terrain_data, :features)"
+            ),
+            {
+                "id": test_tile_id_str,
+                "world_id": test_world_id_str,
+                "x": 0,
+                "y": 0,
+                "terrain_data": "{}",
+                "features": "{}",
+            },
+        )
         await conn.commit()
-
-    # Create test users that tests expect to exist
-    async with get_test_session_factory()() as session:
-        test_user = User(
-            id=TEST_USER_ID,
-            email="test@example.com",
-            password_hash="$2b$12$placeholder",  # Not used in tests
-        )
-        other_user = User(
-            id=OTHER_USER_ID,
-            email="other@example.com",
-            password_hash="$2b$12$placeholder",
-        )
-        session.add(test_user)
-        session.add(other_user)
-        await session.commit()
-
     yield
 
 
-@pytest.fixture
-async def client():
+@pytest_asyncio.fixture
+async def client(setup_test_db):
     """Async test client for FastAPI app."""
-    # Override database dependency
     app.dependency_overrides[get_db] = override_get_db
 
     async with AsyncClient(
@@ -128,12 +175,12 @@ async def client():
     ) as ac:
         yield ac
 
-    # Clean up overrides
     app.dependency_overrides.clear()
 
 
-@pytest.fixture
-async def db_session() -> AsyncGenerator[AsyncSession, None]:
+@pytest_asyncio.fixture
+async def db_session(setup_test_db) -> AsyncGenerator[AsyncSession, None]:
     """Provide a database session for tests that need direct DB access."""
-    async with get_test_session_factory()() as session:
+    _, session_factory = get_test_engine()
+    async with session_factory() as session:
         yield session
