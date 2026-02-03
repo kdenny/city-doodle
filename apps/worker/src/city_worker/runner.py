@@ -204,7 +204,7 @@ class JobRunner:
             center_tx: int x-coordinate of center tile
             center_ty: int y-coordinate of center tile
         """
-        from uuid import UUID as UUIDType
+        from uuid import UUID
 
         from city_worker.terrain import TerrainConfig, TerrainGenerator
 
@@ -221,7 +221,7 @@ class JobRunner:
         if world_seed is None:
             raise ValueError("world_seed is required")
 
-        world_id = UUIDType(world_id) if isinstance(world_id, str) else world_id
+        world_id = UUID(world_id) if isinstance(world_id, str) else world_id
 
         # Run terrain generation in thread pool (CPU-bound)
         loop = asyncio.get_running_loop()

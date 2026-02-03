@@ -113,11 +113,11 @@ def _cells_to_polygon(
     if len(cells) < 4:
         return None
 
-    # Create a mini-grid for this region
-    min_i = min(c[0] for c in cells)
-    max_i = max(c[0] for c in cells)
-    min_j = min(c[1] for c in cells)
-    max_j = max(c[1] for c in cells)
+    # Create a mini-grid for this region (bounds used for potential future expansion)
+    _min_i = min(c[0] for c in cells)
+    _max_i = max(c[0] for c in cells)
+    _min_j = min(c[1] for c in cells)
+    _max_j = max(c[1] for c in cells)
 
     # Build boundary by finding edge cells
     cell_set = set(cells)

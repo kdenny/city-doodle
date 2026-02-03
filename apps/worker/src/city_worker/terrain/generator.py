@@ -10,7 +10,6 @@ from city_worker.terrain.types import (
     TerrainConfig,
     TerrainFeature,
     TerrainResult,
-    TileCoord,
     TileTerrainData,
 )
 from city_worker.terrain.water import extract_coastlines, extract_lakes, extract_rivers

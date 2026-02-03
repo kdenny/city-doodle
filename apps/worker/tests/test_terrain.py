@@ -4,12 +4,8 @@ import pytest
 
 from city_worker.terrain import TerrainConfig, TerrainGenerator, generate_terrain_3x3
 from city_worker.terrain.noise import SeededNoise, apply_erosion, generate_heightfield
-from city_worker.terrain.types import TileCoord, TileTerrainData
-from city_worker.terrain.water import (
-    calculate_flow_accumulation,
-    extract_coastlines,
-    extract_rivers,
-)
+from city_worker.terrain.types import TileCoord
+from city_worker.terrain.water import calculate_flow_accumulation, extract_coastlines
 
 
 class TestSeededNoise:
