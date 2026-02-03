@@ -4,15 +4,20 @@ import { LayersPanel, useLayers, LayerVisibility } from "./LayersPanel";
 import { PopulationPanel } from "./PopulationPanel";
 import { CityNeedsPanel, CityNeeds } from "./CityNeedsPanel";
 import { ScaleBar } from "./ScaleBar";
+import { InspectorPanel, type SelectedFeature } from "./InspectorPanel";
 
 interface BuildViewProps {
   children: ReactNode;
   population?: number;
   growthPercent?: number;
   cityNeeds?: CityNeeds;
+  selectedFeature?: SelectedFeature;
   onToolChange?: (tool: Tool) => void;
   onLayerToggle?: (layer: keyof LayerVisibility, visible: boolean) => void;
   onCityNeedsClick?: () => void;
+  onFeatureUpdate?: (feature: SelectedFeature) => void;
+  onFeatureDelete?: (feature: SelectedFeature) => void;
+  onSelectionClear?: () => void;
 }
 
 const defaultNeeds: CityNeeds = {
@@ -27,9 +32,13 @@ export function BuildView({
   population = 125000,
   growthPercent = 2.3,
   cityNeeds = defaultNeeds,
+  selectedFeature,
   onToolChange,
   onLayerToggle,
   onCityNeedsClick,
+  onFeatureUpdate,
+  onFeatureDelete,
+  onSelectionClear,
 }: BuildViewProps) {
   const { activeTool, setActiveTool } = useToolbar();
   const { layers, toggleLayer } = useLayers();
@@ -84,6 +93,16 @@ export function BuildView({
       {/* City needs panel (right, below population) */}
       <div className="absolute top-20 right-4">
         <CityNeedsPanel needs={cityNeeds} onClick={handleCityNeedsClick} />
+      </div>
+
+      {/* Inspector panel (right, below city needs) */}
+      <div className="absolute top-48 right-4">
+        <InspectorPanel
+          selection={selectedFeature ?? null}
+          onUpdate={onFeatureUpdate}
+          onDelete={onFeatureDelete}
+          onClose={onSelectionClear}
+        />
       </div>
     </div>
   );
