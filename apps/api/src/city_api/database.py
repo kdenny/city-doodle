@@ -18,6 +18,7 @@ def transform_database_url_for_asyncpg(url: str) -> str:
     # Replace sslmode=require with ssl=require for asyncpg
     return re.sub(r"sslmode=(\w+)", r"ssl=\1", url)
 
+
 # Database-agnostic JSON type: JSONB on Postgres, JSON on SQLite/others
 # This allows tests to use SQLite while production uses Postgres JSONB
 JSONVariant = JSON().with_variant(JSONB(), "postgresql")
