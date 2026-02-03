@@ -22,57 +22,45 @@ TEST_DATABASE_URL = os.environ.get(
     "sqlite+aiosqlite:///:memory:",
 )
 
-# Database type detection
+# Create test engine with appropriate settings for the database type
 is_sqlite = TEST_DATABASE_URL.startswith("sqlite")
 
+if is_sqlite:
+    # SQLite in-memory requires StaticPool to keep connection alive
+    from sqlalchemy.pool import StaticPool
 
-def _create_engine():
-    """Create the test engine (called lazily in fixtures)."""
-    if is_sqlite:
-        from sqlalchemy.pool import StaticPool
+    test_engine = create_async_engine(
+        TEST_DATABASE_URL,
+        echo=False,
+        connect_args={"check_same_thread": False},
+        poolclass=StaticPool,
+    )
+else:
+    # PostgreSQL settings
+    test_engine = create_async_engine(
+        TEST_DATABASE_URL,
+        echo=False,
+        pool_pre_ping=True,
+        pool_size=5,
+        max_overflow=10,
+    )
 
-        return create_async_engine(
-            TEST_DATABASE_URL,
-            echo=False,
-            connect_args={"check_same_thread": False},
-            poolclass=StaticPool,
-        )
-    else:
-        return create_async_engine(
-            TEST_DATABASE_URL,
-            echo=False,
-            pool_pre_ping=True,
-            pool_size=5,
-            max_overflow=10,
-        )
-
-
-# Module-level engine (created lazily via fixture for PostgreSQL)
-_test_engine = None
-_test_session_factory = None
+test_session_factory = async_sessionmaker(test_engine, class_=AsyncSession, expire_on_commit=False)
 
 
-def get_test_engine():
-    """Get or create the test engine."""
-    global _test_engine, _test_session_factory
-    if _test_engine is None:
-        _test_engine = _create_engine()
-        _test_session_factory = async_sessionmaker(
-            _test_engine, class_=AsyncSession, expire_on_commit=False
-        )
-    return _test_engine, _test_session_factory
+# Note: Foreign key constraints are NOT enforced in SQLite tests for simplicity.
+# The PostgreSQL tests in CI will enforce them properly.
+# This allows tests to use arbitrary UUIDs without creating full entity hierarchies.
 
 
-@pytest_asyncio.fixture(scope="session")
-async def test_engine():
-    """Create and yield the test engine (session-scoped)."""
-    engine, _ = get_test_engine()
-    yield engine
-    await engine.dispose()
+async def override_get_db() -> AsyncGenerator[AsyncSession, None]:
+    """Override database dependency for tests."""
+    async with test_session_factory() as session:
+        yield session
 
 
-@pytest_asyncio.fixture(scope="session")
-async def setup_test_db(test_engine):
+@pytest.fixture(scope="session", autouse=True)
+async def setup_test_db():
     """Create test database tables once per session."""
     async with test_engine.begin() as conn:
         await conn.run_sync(Base.metadata.create_all)
@@ -81,16 +69,10 @@ async def setup_test_db(test_engine):
         await conn.run_sync(Base.metadata.drop_all)
 
 
-async def override_get_db() -> AsyncGenerator[AsyncSession, None]:
-    """Override database dependency for tests."""
-    _, session_factory = get_test_engine()
-    async with session_factory() as session:
-        yield session
-
-
-@pytest_asyncio.fixture(autouse=True)
-async def clear_tables(setup_test_db, test_engine):
+@pytest.fixture(autouse=True)
+async def clear_tables():
     """Clear all tables and create test users before each test."""
+    # Use a raw connection to avoid session state issues
     async with test_engine.connect() as conn:
         if "postgresql" in TEST_DATABASE_URL:
             await conn.execute(
@@ -106,17 +88,27 @@ async def clear_tables(setup_test_db, test_engine):
             await conn.execute(text("DELETE FROM sessions"))
             await conn.execute(text("DELETE FROM users"))
 
-        # Create test users
+        # Create test users that tests expect to exist
+        # These are the user IDs used in X-User-Id headers during dev mode testing
+        # Note: SQLite stores UUIDs without hyphens, Postgres stores with hyphens
         test_user_id_str = str(TEST_USER_ID).replace("-", "") if is_sqlite else str(TEST_USER_ID)
         other_user_id_str = str(OTHER_USER_ID).replace("-", "") if is_sqlite else str(OTHER_USER_ID)
 
         await conn.execute(
             text("INSERT INTO users (id, email, password_hash) VALUES (:id, :email, :hash)"),
-            {"id": test_user_id_str, "email": "test@example.com", "hash": "$2b$12$placeholder"},
+            {
+                "id": test_user_id_str,
+                "email": "test@example.com",
+                "hash": "$2b$12$placeholder",  # Fake hash, not used in tests
+            },
         )
         await conn.execute(
             text("INSERT INTO users (id, email, password_hash) VALUES (:id, :email, :hash)"),
-            {"id": other_user_id_str, "email": "other@example.com", "hash": "$2b$12$placeholder"},
+            {
+                "id": other_user_id_str,
+                "email": "other@example.com",
+                "hash": "$2b$12$placeholder",
+            },
         )
         await conn.commit()
     yield
