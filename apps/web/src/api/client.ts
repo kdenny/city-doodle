@@ -103,11 +103,17 @@ async function request<T>(
     } catch {
       detail = await response.text();
     }
-    throw new ApiClientError(
-      `API request failed: ${response.status} ${response.statusText}`,
-      response.status,
-      detail
-    );
+    // Extract error message from API response
+    let errorMessage = `API request failed: ${response.status} ${response.statusText}`;
+    if (detail && typeof detail === "object" && "detail" in detail) {
+      const apiDetail = (detail as { detail: unknown }).detail;
+      if (typeof apiDetail === "string") {
+        errorMessage = apiDetail;
+      } else if (apiDetail && typeof apiDetail === "object" && "message" in apiDetail) {
+        errorMessage = String((apiDetail as { message: unknown }).message);
+      }
+    }
+    throw new ApiClientError(errorMessage, response.status, detail);
   }
 
   // Handle empty responses (204 No Content)

@@ -4,6 +4,7 @@ import { EditorShell } from './components/shell'
 import { ProtectedRoute } from './components/ProtectedRoute'
 import { LoginPage, RegisterPage, WorldsPage } from './pages'
 import { useAuth } from './contexts'
+import { useWorld } from './api'
 
 function Home() {
   const { isAuthenticated, user, logout, isLoading } = useAuth()
@@ -55,9 +56,29 @@ function Home() {
 
 function WorldEditor() {
   const { worldId } = useParams<{ worldId: string }>()
+  const { data: world, isLoading, error } = useWorld(worldId || '', {
+    enabled: !!worldId,
+    retry: false,
+  })
 
   if (!worldId) {
-    return <div className="p-8 text-red-600">World ID not found</div>
+    return <div className="p-8 text-red-600" data-testid="error">World ID not found</div>
+  }
+
+  if (isLoading) {
+    return <div className="p-8 text-gray-600">Loading world...</div>
+  }
+
+  if (error || !world) {
+    return (
+      <div className="p-8" data-testid="error">
+        <h1 className="text-2xl font-bold text-red-600">World not found</h1>
+        <p className="mt-2 text-gray-600">The world you're looking for doesn't exist or has been deleted.</p>
+        <Link to="/worlds" className="mt-4 inline-block text-blue-600 hover:underline">
+          Back to My Worlds
+        </Link>
+      </div>
+    )
   }
 
   return (

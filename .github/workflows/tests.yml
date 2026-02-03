@@ -74,9 +74,33 @@ jobs:
   e2e-tests:
     name: E2E Tests
     runs-on: ubuntu-latest
+    services:
+      postgres:
+        image: postgres:15
+        env:
+          POSTGRES_USER: test
+          POSTGRES_PASSWORD: test
+          POSTGRES_DB: city_doodle_test
+        options: >-
+          --health-cmd pg_isready
+          --health-interval 10s
+          --health-timeout 5s
+          --health-retries 5
+        ports:
+          - 5432:5432
+    env:
+      DATABASE_URL: postgresql+asyncpg://test:test@localhost:5432/city_doodle_test
+      DATABASE_URL_SYNC: postgresql://test:test@localhost:5432/city_doodle_test
+      AUTH_MODE: production
+      VITE_API_URL: http://localhost:8001
     steps:
       - name: Checkout
         uses: actions/checkout@v4
+
+      - name: Set up Python
+        uses: actions/setup-python@v5
+        with:
+          python-version: "3.11"
 
       - name: Set up Node.js
         uses: actions/setup-node@v4
@@ -84,7 +108,17 @@ jobs:
           node-version: "20"
           cache: "npm"
 
-      - name: Install dependencies
+      - name: Install Python dependencies
+        run: |
+          python -m pip install --upgrade pip
+          pip install -e "./apps/api[dev]"
+
+      - name: Run database migrations
+        run: |
+          cd apps/api
+          alembic upgrade head
+
+      - name: Install Node dependencies
         run: npm ci
 
       - name: Install Playwright browsers
