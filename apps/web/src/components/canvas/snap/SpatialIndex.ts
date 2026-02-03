@@ -26,15 +26,6 @@ export class SpatialIndex {
   }
 
   /**
-   * Gets the cell key for a point.
-   */
-  private getCellKey(x: number, y: number): string {
-    const cx = Math.floor(x / this.cellSize);
-    const cy = Math.floor(y / this.cellSize);
-    return `${cx},${cy}`;
-  }
-
-  /**
    * Gets all cells that a line segment intersects.
    */
   private getSegmentCells(segment: SnapLineSegment): string[] {
