@@ -5,7 +5,7 @@
  * and download it as a PNG file.
  */
 
-import { Application, Container } from "pixi.js";
+import { Application } from "pixi.js";
 import { Viewport } from "pixi-viewport";
 import { ExportResolution } from "../export-view/ResolutionSelector";
 
@@ -53,7 +53,6 @@ export async function captureCanvasAsPng(
   // Store original state
   const originalWidth = app.renderer.width;
   const originalHeight = app.renderer.height;
-  const originalResolution = app.renderer.resolution;
   const originalViewportWidth = viewport.screenWidth;
   const originalViewportHeight = viewport.screenHeight;
 
