@@ -16,20 +16,39 @@ TEST_DATABASE_URL = os.environ.get(
     "postgresql+asyncpg://localhost/city_doodle_test",
 )
 
-# Create test engine with pool_pre_ping to handle stale connections
-test_engine = create_async_engine(
-    TEST_DATABASE_URL,
-    echo=False,
-    pool_pre_ping=True,
-    pool_size=5,
-    max_overflow=10,
-)
-test_session_factory = async_sessionmaker(test_engine, class_=AsyncSession, expire_on_commit=False)
+# Note: Engine is created inside a fixture to ensure it's bound to the correct event loop
+# Do NOT create engine at module level - it causes "Task got Future attached to a different loop" errors
+_test_engine = None
+_test_session_factory = None
+
+
+def get_test_engine():
+    """Get or create the test engine (lazy initialization)."""
+    global _test_engine
+    if _test_engine is None:
+        _test_engine = create_async_engine(
+            TEST_DATABASE_URL,
+            echo=False,
+            pool_pre_ping=True,
+            pool_size=5,
+            max_overflow=10,
+        )
+    return _test_engine
+
+
+def get_test_session_factory():
+    """Get or create the test session factory (lazy initialization)."""
+    global _test_session_factory
+    if _test_session_factory is None:
+        _test_session_factory = async_sessionmaker(
+            get_test_engine(), class_=AsyncSession, expire_on_commit=False
+        )
+    return _test_session_factory
 
 
 async def override_get_db() -> AsyncGenerator[AsyncSession, None]:
     """Override database dependency for tests."""
-    async with test_session_factory() as session:
+    async with get_test_session_factory()() as session:
         yield session
 
 
@@ -40,18 +59,22 @@ async def override_get_db() -> AsyncGenerator[AsyncSession, None]:
 @pytest.fixture(scope="session", autouse=True)
 async def setup_test_db():
     """Create test database tables once per session."""
-    async with test_engine.begin() as conn:
+    engine = get_test_engine()
+    async with engine.begin() as conn:
         await conn.run_sync(Base.metadata.create_all)
     yield
-    async with test_engine.begin() as conn:
+    async with engine.begin() as conn:
         await conn.run_sync(Base.metadata.drop_all)
+    # Clean up engine at end of session
+    await engine.dispose()
 
 
 @pytest.fixture(autouse=True)
 async def clear_tables():
     """Clear all tables before each test."""
+    engine = get_test_engine()
     # Use a raw connection to avoid session state issues
-    async with test_engine.connect() as conn:
+    async with engine.connect() as conn:
         # Use TRUNCATE CASCADE for efficient cleanup (Postgres-specific)
         if "postgresql" in TEST_DATABASE_URL:
             await conn.execute(
@@ -90,5 +113,5 @@ async def client():
 @pytest.fixture
 async def db_session() -> AsyncGenerator[AsyncSession, None]:
     """Provide a database session for tests that need direct DB access."""
-    async with test_session_factory() as session:
+    async with get_test_session_factory()() as session:
         yield session
