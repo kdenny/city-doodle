@@ -14,7 +14,6 @@ import type {
   LabelConfig,
   LabelLayerData,
   LayerVisibility,
-  Point,
 } from "./types";
 
 // Default configuration for handwritten labels
