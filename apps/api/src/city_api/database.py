@@ -1,11 +1,22 @@
 """Database connection and session management."""
 
+import re
 from collections.abc import AsyncGenerator
 
 from sqlalchemy import JSON
 from sqlalchemy.dialects.postgresql import JSONB
 from sqlalchemy.ext.asyncio import AsyncSession, async_sessionmaker, create_async_engine
 from sqlalchemy.orm import DeclarativeBase
+
+
+def transform_database_url_for_asyncpg(url: str) -> str:
+    """Transform database URL for asyncpg compatibility.
+
+    asyncpg doesn't support 'sslmode' parameter - it uses 'ssl' instead.
+    This transforms Neon-style URLs (sslmode=require) to asyncpg-compatible URLs.
+    """
+    # Replace sslmode=require with ssl=require for asyncpg
+    return re.sub(r"sslmode=(\w+)", r"ssl=\1", url)
 
 # Database-agnostic JSON type: JSONB on Postgres, JSON on SQLite/others
 # This allows tests to use SQLite while production uses Postgres JSONB
@@ -29,7 +40,9 @@ def get_engine():
     if _engine is None:
         from city_api.config import settings
 
-        _engine = create_async_engine(settings.database_url, echo=False)
+        # Transform URL for asyncpg compatibility (sslmode -> ssl)
+        db_url = transform_database_url_for_asyncpg(settings.database_url)
+        _engine = create_async_engine(db_url, echo=False)
     return _engine
 
 
