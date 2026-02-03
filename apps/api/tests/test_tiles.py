@@ -13,7 +13,7 @@ async def world_id(client: AsyncClient) -> str:
     """Create a test world and return its ID."""
     response = await client.post(
         "/worlds",
-        json={"name": "Test World"},
+        json={"name": "Test World", "seed": 11111},  # Use explicit seed to avoid int32 overflow
         headers={"X-User-Id": TEST_USER_ID},
     )
     return response.json()["id"]
@@ -24,7 +24,7 @@ async def other_user_world_id(client: AsyncClient) -> str:
     """Create a world owned by another user."""
     response = await client.post(
         "/worlds",
-        json={"name": "Other User World"},
+        json={"name": "Other User World", "seed": 22222},  # Use explicit seed
         headers={"X-User-Id": OTHER_USER_ID},
     )
     return response.json()["id"]
