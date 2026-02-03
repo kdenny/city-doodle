@@ -92,8 +92,7 @@ test.describe("Export Format Selection", () => {
 });
 
 test.describe("Export Resolution Selection", () => {
-  // TODO(CITY-111): Fix test selectors - ResolutionSelector uses buttons, not radio inputs
-  test.skip("can select different resolutions", async ({ page, auth, api }) => {
+  test("can select different resolutions", async ({ page, auth, api }) => {
     const user = await auth.registerUser();
     const world = await api.createWorld(user.token!, "Resolution Test");
 
@@ -101,18 +100,23 @@ test.describe("Export Resolution Selection", () => {
     await page.goto(`/worlds/${world.id}`);
     await page.getByRole("button", { name: "Export" }).click();
 
-    // Check resolution options are visible
-    const res1x = page.getByRole("radio", { name: /1x/i }).or(page.getByLabel(/1x/i));
-    const res2x = page.getByRole("radio", { name: /2x/i }).or(page.getByLabel(/2x/i));
-    const res4x = page.getByRole("radio", { name: /4x/i }).or(page.getByLabel(/4x/i));
+    // ResolutionSelector uses buttons with aria-label="{label} resolution"
+    // Labels: "Standard resolution", "High resolution", "Ultra resolution"
+    const standardRes = page.getByRole("button", { name: /standard resolution/i });
+    const highRes = page.getByRole("button", { name: /high resolution/i });
+    const ultraRes = page.getByRole("button", { name: /ultra resolution/i });
 
-    // At least one resolution option should be visible
-    const anyResolutionVisible =
-      (await res1x.isVisible()) ||
-      (await res2x.isVisible()) ||
-      (await res4x.isVisible());
+    // All resolution options should be visible
+    await expect(standardRes).toBeVisible();
+    await expect(highRes).toBeVisible();
+    await expect(ultraRes).toBeVisible();
 
-    expect(anyResolutionVisible).toBe(true);
+    // Click to select high resolution
+    await highRes.click();
+
+    // The button should now show selected state (has blue border/bg)
+    // We verify it's clickable and exists
+    await expect(highRes).toBeVisible();
   });
 });
 
@@ -141,8 +145,7 @@ test.describe("PNG Export", () => {
     expect(download.suggestedFilename()).toMatch(/\.png$/);
   });
 
-  // TODO(CITY-111): Depends on resolution selector test fix
-  test.skip("@slow exported PNG filename includes resolution", async ({ page, auth, api }) => {
+  test("@slow exported PNG filename includes resolution", async ({ page, auth, api }) => {
     const user = await auth.registerUser();
     const world = await api.createWorld(user.token!, "PNG Filename Test");
 
@@ -150,14 +153,12 @@ test.describe("PNG Export", () => {
     await page.goto(`/worlds/${world.id}`);
     await page.getByRole("button", { name: "Export" }).click();
 
-    // Select 2x resolution if available
-    const res2x = page.getByRole("radio", { name: /2x/i }).or(page.getByLabel(/2x/i));
-    if (await res2x.isVisible()) {
-      await res2x.click();
-    }
+    // Select High (2x) resolution
+    const highRes = page.getByRole("button", { name: /high resolution/i });
+    await highRes.click();
 
     const downloadPromise = page.waitForEvent("download");
-    await page.getByRole("button", { name: /download/i }).click();
+    await page.getByRole("button", { name: /download export/i }).click();
     const download = await downloadPromise;
 
     // Filename should include resolution indicator
