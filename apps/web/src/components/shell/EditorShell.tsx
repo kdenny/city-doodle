@@ -4,7 +4,13 @@ import { ZoomProvider, useZoom } from "./ZoomContext";
 import { Header } from "./Header";
 import { ZoomControls } from "./ZoomControls";
 import { HelpButton } from "./HelpButton";
-import { PlacementPalette, PlacementProvider } from "../palette";
+import {
+  PlacementPalette,
+  PlacementProvider,
+  PlacedSeedsProvider,
+  usePlacedSeeds,
+  type SeedType,
+} from "../palette";
 import { MapCanvasProvider } from "../canvas";
 import { ExportView } from "../export-view";
 import { TimelapseView } from "../timelapse-view";
@@ -83,6 +89,27 @@ function EditorShellContent({
   );
 }
 
+/**
+ * Inner component that connects PlacementProvider with PlacedSeedsProvider.
+ * This component has access to usePlacedSeeds and provides the onPlaceSeed callback.
+ */
+function PlacementWithSeeds({ children }: { children: ReactNode }) {
+  const { addSeed } = usePlacedSeeds();
+
+  const handlePlaceSeed = useCallback(
+    (seed: SeedType, position: { x: number; y: number }) => {
+      addSeed(seed, position);
+    },
+    [addSeed]
+  );
+
+  return (
+    <PlacementProvider onPlaceSeed={handlePlaceSeed}>
+      {children}
+    </PlacementProvider>
+  );
+}
+
 export function EditorShell({
   children,
   initialZoom = 1,
@@ -96,13 +123,15 @@ export function EditorShell({
   return (
     <ViewModeProvider>
       <ZoomProvider initialZoom={initialZoom} onZoomChange={onZoomChange}>
-        <PlacementProvider>
-          <MapCanvasProvider>
-            <EditorShellContent onHelp={handleHelp}>
-              {children}
-            </EditorShellContent>
-          </MapCanvasProvider>
-        </PlacementProvider>
+        <PlacedSeedsProvider>
+          <PlacementWithSeeds>
+            <MapCanvasProvider>
+              <EditorShellContent onHelp={handleHelp}>
+                {children}
+              </EditorShellContent>
+            </MapCanvasProvider>
+          </PlacementWithSeeds>
+        </PlacedSeedsProvider>
       </ZoomProvider>
     </ViewModeProvider>
   );

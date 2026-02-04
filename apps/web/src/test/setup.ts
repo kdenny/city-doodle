@@ -14,15 +14,31 @@ vi.mock("pixi.js", () => ({
     },
     destroy: vi.fn(),
   })),
-  Container: vi.fn().mockImplementation(() => ({
-    addChild: vi.fn(),
-    removeChildren: vi.fn(),
-    destroy: vi.fn(),
-    visible: true,
-    label: "",
-    children: [],
-    destroyed: false,
-  })),
+  Container: vi.fn().mockImplementation(() => {
+    const container = {
+      addChild: vi.fn(),
+      removeChild: vi.fn(),
+      removeChildren: vi.fn(),
+      destroy: vi.fn(),
+      visible: true,
+      label: "",
+      children: [] as unknown[],
+      destroyed: false,
+    };
+    // Make addChild actually add to children array for tests that check children.length
+    container.addChild.mockImplementation((...args: unknown[]) => {
+      container.children.push(...args);
+      return args[0];
+    });
+    container.removeChild.mockImplementation((child: unknown) => {
+      const index = container.children.indexOf(child);
+      if (index > -1) {
+        container.children.splice(index, 1);
+      }
+      return child;
+    });
+    return container;
+  }),
   Graphics: vi.fn().mockImplementation(() => ({
     setStrokeStyle: vi.fn().mockReturnThis(),
     moveTo: vi.fn().mockReturnThis(),
@@ -33,6 +49,7 @@ vi.mock("pixi.js", () => ({
     rect: vi.fn().mockReturnThis(),
     clear: vi.fn().mockReturnThis(),
     closePath: vi.fn().mockReturnThis(),
+    destroy: vi.fn(),
     visible: true,
     label: "",
   })),
@@ -40,6 +57,7 @@ vi.mock("pixi.js", () => ({
     anchor: { set: vi.fn() },
     position: { set: vi.fn() },
     rotation: 0,
+    alpha: 1,
     getBounds: vi.fn().mockReturnValue({ width: 50, height: 20 }),
     destroy: vi.fn(),
   })),
