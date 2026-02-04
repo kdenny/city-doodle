@@ -22,9 +22,14 @@ origins = list(settings.cors_origins)
 if settings.frontend_url and settings.frontend_url not in origins:
     origins.append(settings.frontend_url)
 
+# Regex pattern for Vercel preview deployments
+# Matches: https://city-doodle-web-*.vercel.app
+vercel_preview_regex = r"https://city-doodle-web-[a-z0-9]+-[a-z0-9]+\.vercel\.app"
+
 app.add_middleware(
     CORSMiddleware,
     allow_origins=origins,
+    allow_origin_regex=vercel_preview_regex,
     allow_credentials=True,
     allow_methods=["*"],
     allow_headers=["*"],
