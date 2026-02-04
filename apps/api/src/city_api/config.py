@@ -1,10 +1,18 @@
 """Application configuration."""
 
-from pydantic_settings import BaseSettings
+import json
+
+from pydantic import field_validator
+from pydantic_settings import BaseSettings, SettingsConfigDict
 
 
 class Settings(BaseSettings):
     """Application settings loaded from environment variables."""
+
+    model_config = SettingsConfigDict(
+        env_file=".env",
+        env_file_encoding="utf-8",
+    )
 
     database_url: str = "postgresql+asyncpg://localhost/city_doodle"
     database_url_sync: str = "postgresql://localhost/city_doodle"
@@ -22,9 +30,21 @@ class Settings(BaseSettings):
         "https://city-doodle-web.vercel.app",
     ]
 
-    class Config:
-        env_file = ".env"
-        env_file_encoding = "utf-8"
+    @field_validator("cors_origins", mode="before")
+    @classmethod
+    def parse_cors_origins(cls, v):
+        """Parse CORS origins from string (JSON or comma-separated) or list."""
+        if isinstance(v, str):
+            # Try JSON first
+            try:
+                parsed = json.loads(v)
+                if isinstance(parsed, list):
+                    return parsed
+            except json.JSONDecodeError:
+                pass
+            # Fall back to comma-separated
+            return [origin.strip() for origin in v.split(",") if origin.strip()]
+        return v
 
 
 settings = Settings()
