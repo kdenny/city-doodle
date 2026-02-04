@@ -80,6 +80,63 @@ describe("FeaturesLayer", () => {
     expect(container).toBeDefined();
   });
 
+  it("toggles districts visibility on and off", () => {
+    const allVisible: LayerVisibility = {
+      water: true,
+      coastlines: true,
+      rivers: true,
+      contours: true,
+      districts: true,
+      roads: true,
+      pois: true,
+      grid: true,
+      labels: true,
+    };
+
+    layer.setVisibility(allVisible);
+    layer.setVisibility({ ...allVisible, districts: false });
+    layer.setVisibility({ ...allVisible, districts: true });
+    expect(layer.getContainer()).toBeDefined();
+  });
+
+  it("toggles roads visibility on and off", () => {
+    const allVisible: LayerVisibility = {
+      water: true,
+      coastlines: true,
+      rivers: true,
+      contours: true,
+      districts: true,
+      roads: true,
+      pois: true,
+      grid: true,
+      labels: true,
+    };
+
+    layer.setVisibility(allVisible);
+    layer.setVisibility({ ...allVisible, roads: false });
+    layer.setVisibility({ ...allVisible, roads: true });
+    expect(layer.getContainer()).toBeDefined();
+  });
+
+  it("toggles pois visibility on and off", () => {
+    const allVisible: LayerVisibility = {
+      water: true,
+      coastlines: true,
+      rivers: true,
+      contours: true,
+      districts: true,
+      roads: true,
+      pois: true,
+      grid: true,
+      labels: true,
+    };
+
+    layer.setVisibility(allVisible);
+    layer.setVisibility({ ...allVisible, pois: false });
+    layer.setVisibility({ ...allVisible, pois: true });
+    expect(layer.getContainer()).toBeDefined();
+  });
+
   it("cleans up on destroy", () => {
     expect(() => layer.destroy()).not.toThrow();
   });
