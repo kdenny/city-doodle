@@ -15,3 +15,8 @@ export type {
   SelectedPOI,
   SelectableFeatureType,
 } from "./InspectorPanel";
+export {
+  SelectionProvider,
+  useSelectionContext,
+  useSelectionContextOptional,
+} from "./SelectionContext";

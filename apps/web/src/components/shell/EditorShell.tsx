@@ -16,7 +16,7 @@ import { ExportView } from "../export-view";
 import { TimelapseView } from "../timelapse-view";
 import { DensityView } from "../density-view";
 import { TransitView } from "../transit-view";
-import { BuildView } from "../build-view";
+import { BuildView, SelectionProvider } from "../build-view";
 
 interface EditorShellProps {
   children: ReactNode;
@@ -125,11 +125,13 @@ export function EditorShell({
       <ZoomProvider initialZoom={initialZoom} onZoomChange={onZoomChange}>
         <PlacedSeedsProvider>
           <PlacementWithSeeds>
-            <MapCanvasProvider>
-              <EditorShellContent onHelp={handleHelp}>
-                {children}
-              </EditorShellContent>
-            </MapCanvasProvider>
+            <SelectionProvider>
+              <MapCanvasProvider>
+                <EditorShellContent onHelp={handleHelp}>
+                  {children}
+                </EditorShellContent>
+              </MapCanvasProvider>
+            </SelectionProvider>
           </PlacementWithSeeds>
         </PlacedSeedsProvider>
       </ZoomProvider>

@@ -5,6 +5,7 @@ import { PopulationPanel } from "./PopulationPanel";
 import { CityNeedsPanel, CityNeeds } from "./CityNeedsPanel";
 import { ScaleBar } from "./ScaleBar";
 import { InspectorPanel, type SelectedFeature } from "./InspectorPanel";
+import { useSelectionContextOptional } from "./SelectionContext";
 
 interface BuildViewProps {
   children: ReactNode;
@@ -32,16 +33,22 @@ export function BuildView({
   population = 125000,
   growthPercent = 2.3,
   cityNeeds = defaultNeeds,
-  selectedFeature,
+  selectedFeature: selectedFeatureProp,
   onToolChange,
   onLayerToggle,
   onCityNeedsClick,
-  onFeatureUpdate,
-  onFeatureDelete,
-  onSelectionClear,
+  onFeatureUpdate: onFeatureUpdateProp,
+  onFeatureDelete: onFeatureDeleteProp,
+  onSelectionClear: onSelectionClearProp,
 }: BuildViewProps) {
   const { activeTool, setActiveTool } = useToolbar();
   const { layers, toggleLayer } = useLayers();
+
+  // Get selection from context if available, otherwise use props
+  const selectionContext = useSelectionContextOptional();
+  const selectedFeature = selectedFeatureProp ?? selectionContext?.selection ?? null;
+  const onFeatureUpdate = onFeatureUpdateProp ?? selectionContext?.updateSelection;
+  const onSelectionClear = onSelectionClearProp ?? selectionContext?.clearSelection;
 
   const handleToolChange = useCallback(
     (tool: Tool) => {
@@ -98,9 +105,9 @@ export function BuildView({
       {/* Inspector panel (right, below city needs) */}
       <div className="absolute top-48 right-4">
         <InspectorPanel
-          selection={selectedFeature ?? null}
+          selection={selectedFeature}
           onUpdate={onFeatureUpdate}
-          onDelete={onFeatureDelete}
+          onDelete={onFeatureDeleteProp}
           onClose={onSelectionClear}
         />
       </div>

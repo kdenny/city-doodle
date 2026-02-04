@@ -1,5 +1,6 @@
 export { TerrainLayer } from "./TerrainLayer";
 export { FeaturesLayer, generateMockFeatures } from "./FeaturesLayer";
+export type { HitTestResult } from "./FeaturesLayer";
 export { LabelLayer, generateMockLabels } from "./LabelLayer";
 export { SeedsLayer } from "./SeedsLayer";
 export type { PlacedSeedData, PreviewSeedData } from "./SeedsLayer";

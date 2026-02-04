@@ -58,6 +58,20 @@ const POI_COLORS: Record<POIType, number> = {
   industrial: 0x888888,
 };
 
+// Hit test radius for POIs (in world coordinates)
+const POI_HIT_RADIUS = 12;
+
+// Hit test distance for roads (in world coordinates)
+const ROAD_HIT_DISTANCE = 8;
+
+/**
+ * Result of a hit test on the features layer.
+ */
+export interface HitTestResult {
+  type: "district" | "road" | "poi";
+  feature: District | Road | POI;
+}
+
 export class FeaturesLayer {
   private container: Container;
   private districtsGraphics: Graphics;
@@ -254,9 +268,143 @@ export class FeaturesLayer {
     }
   }
 
+  /**
+   * Get the current features data.
+   */
+  getData(): FeaturesData | null {
+    return this.data;
+  }
+
+  /**
+   * Perform a hit test at the given world coordinates.
+   * Returns the topmost feature at that point, or null if nothing is hit.
+   * Priority: POIs > Roads > Districts (topmost layers first)
+   */
+  hitTest(worldX: number, worldY: number): HitTestResult | null {
+    if (!this.data) return null;
+
+    // Check POIs first (they're on top)
+    if (this.poisGraphics.visible) {
+      for (const poi of this.data.pois) {
+        if (this.hitTestPOI(poi, worldX, worldY)) {
+          return { type: "poi", feature: poi };
+        }
+      }
+    }
+
+    // Check roads next
+    if (this.roadsGraphics.visible) {
+      for (const road of this.data.roads) {
+        if (this.hitTestRoad(road, worldX, worldY)) {
+          return { type: "road", feature: road };
+        }
+      }
+    }
+
+    // Check districts last (they're at the bottom)
+    if (this.districtsGraphics.visible) {
+      for (const district of this.data.districts) {
+        if (this.hitTestDistrict(district, worldX, worldY)) {
+          return { type: "district", feature: district };
+        }
+      }
+    }
+
+    return null;
+  }
+
+  /**
+   * Check if a point hits a POI.
+   */
+  private hitTestPOI(poi: POI, x: number, y: number): boolean {
+    const dx = x - poi.position.x;
+    const dy = y - poi.position.y;
+    return Math.sqrt(dx * dx + dy * dy) <= POI_HIT_RADIUS;
+  }
+
+  /**
+   * Check if a point hits a road.
+   */
+  private hitTestRoad(road: Road, x: number, y: number): boolean {
+    const points = road.line.points;
+    if (points.length < 2) return false;
+
+    // Check distance to each line segment
+    for (let i = 0; i < points.length - 1; i++) {
+      const dist = pointToLineSegmentDistance(
+        x, y,
+        points[i].x, points[i].y,
+        points[i + 1].x, points[i + 1].y
+      );
+      if (dist <= ROAD_HIT_DISTANCE) {
+        return true;
+      }
+    }
+    return false;
+  }
+
+  /**
+   * Check if a point hits a district (point-in-polygon test).
+   */
+  private hitTestDistrict(district: District, x: number, y: number): boolean {
+    return pointInPolygon(x, y, district.polygon.points);
+  }
+
   destroy(): void {
     this.container.destroy({ children: true });
   }
+}
+
+/**
+ * Calculate the distance from a point to a line segment.
+ */
+function pointToLineSegmentDistance(
+  px: number, py: number,
+  x1: number, y1: number,
+  x2: number, y2: number
+): number {
+  const dx = x2 - x1;
+  const dy = y2 - y1;
+  const lengthSquared = dx * dx + dy * dy;
+
+  if (lengthSquared === 0) {
+    // Line segment is a point
+    return Math.sqrt((px - x1) ** 2 + (py - y1) ** 2);
+  }
+
+  // Calculate projection parameter
+  let t = ((px - x1) * dx + (py - y1) * dy) / lengthSquared;
+  t = Math.max(0, Math.min(1, t));
+
+  // Find closest point on segment
+  const closestX = x1 + t * dx;
+  const closestY = y1 + t * dy;
+
+  return Math.sqrt((px - closestX) ** 2 + (py - closestY) ** 2);
+}
+
+/**
+ * Check if a point is inside a polygon using ray casting algorithm.
+ */
+function pointInPolygon(x: number, y: number, points: Point[]): boolean {
+  if (points.length < 3) return false;
+
+  let inside = false;
+  for (let i = 0, j = points.length - 1; i < points.length; j = i++) {
+    const xi = points[i].x;
+    const yi = points[i].y;
+    const xj = points[j].x;
+    const yj = points[j].y;
+
+    if (
+      yi > y !== yj > y &&
+      x < ((xj - xi) * (y - yi)) / (yj - yi) + xi
+    ) {
+      inside = !inside;
+    }
+  }
+
+  return inside;
 }
 
 /**
