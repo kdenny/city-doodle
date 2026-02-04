@@ -13,11 +13,13 @@ import {
   TerrainLayer,
   FeaturesLayer,
   LabelLayer,
+  SeedsLayer,
   generateMockTerrain,
   generateMockFeatures,
   generateMockLabels,
   DEFAULT_LAYER_VISIBILITY,
   type LayerVisibility,
+  type PlacedSeedData,
 } from "./layers";
 import { LayerControls } from "./LayerControls";
 import {
@@ -28,7 +30,7 @@ import {
 } from "./useCanvasExport";
 import { MapCanvasContextInternal } from "./MapCanvasContext";
 import { useZoomOptional } from "../shell/ZoomContext";
-import { usePlacementOptional } from "../palette";
+import { usePlacementOptional, usePlacedSeedsOptional } from "../palette";
 
 // Tile size in world coordinates
 const TILE_SIZE = 256;
@@ -67,6 +69,7 @@ export const MapCanvas = forwardRef<MapCanvasHandle, MapCanvasProps>(
   const terrainLayerRef = useRef<TerrainLayer | null>(null);
   const featuresLayerRef = useRef<FeaturesLayer | null>(null);
   const labelLayerRef = useRef<LabelLayer | null>(null);
+  const seedsLayerRef = useRef<SeedsLayer | null>(null);
   const gridContainerRef = useRef<Container | null>(null);
   const [isReady, setIsReady] = useState(false);
   const [layerVisibility, setLayerVisibility] = useState<LayerVisibility>(
@@ -83,6 +86,9 @@ export const MapCanvas = forwardRef<MapCanvasHandle, MapCanvasProps>(
 
   // Get placement context for handling seed placement
   const placementContext = usePlacementOptional();
+
+  // Get placed seeds context for rendering placed seeds
+  const placedSeedsContext = usePlacedSeedsOptional();
 
   // Create the export handle object
   const exportHandle = {
@@ -218,7 +224,7 @@ export const MapCanvas = forwardRef<MapCanvasHandle, MapCanvasProps>(
       }
       featuresLayer.setVisibility(layerVisibility);
 
-      // Create and add label layer (above features, below grid)
+      // Create and add label layer (above features, below seeds)
       const labelLayer = new LabelLayer();
       viewport.addChild(labelLayer.getContainer());
 
@@ -231,6 +237,10 @@ export const MapCanvas = forwardRef<MapCanvasHandle, MapCanvasProps>(
         labelLayer.setData({ labels: [], seed });
       }
       labelLayer.setVisibility(layerVisibility);
+
+      // Create and add seeds layer (above labels, below grid)
+      const seedsLayer = new SeedsLayer();
+      viewport.addChild(seedsLayer.getContainer());
 
       // Create tile grid (above all layers)
       const gridContainer = new Container();
@@ -284,6 +294,7 @@ export const MapCanvas = forwardRef<MapCanvasHandle, MapCanvasProps>(
         terrainLayer.destroy();
         featuresLayer.destroy();
         labelLayer.destroy();
+        seedsLayer.destroy();
         app.destroy(true, { children: true });
         return;
       }
@@ -294,6 +305,7 @@ export const MapCanvas = forwardRef<MapCanvasHandle, MapCanvasProps>(
       terrainLayerRef.current = terrainLayer;
       featuresLayerRef.current = featuresLayer;
       labelLayerRef.current = labelLayer;
+      seedsLayerRef.current = seedsLayer;
       gridContainerRef.current = gridContainer;
       setIsReady(true);
 
@@ -327,6 +339,10 @@ export const MapCanvas = forwardRef<MapCanvasHandle, MapCanvasProps>(
       if (labelLayerRef.current) {
         labelLayerRef.current.destroy();
         labelLayerRef.current = null;
+      }
+      if (seedsLayerRef.current) {
+        seedsLayerRef.current.destroy();
+        seedsLayerRef.current = null;
       }
       if (appRef.current) {
         appRef.current.destroy(true, { children: true });
@@ -389,6 +405,47 @@ export const MapCanvas = forwardRef<MapCanvasHandle, MapCanvasProps>(
       viewport.off("pinch-end", handleZoomEnd);
     };
   }, [isReady, onZoomChange]);
+
+  // Update seeds layer when placed seeds change
+  useEffect(() => {
+    if (!isReady || !seedsLayerRef.current || !placedSeedsContext) return;
+
+    const seedsData: PlacedSeedData[] = placedSeedsContext.seeds.map((ps) => ({
+      id: ps.id,
+      seedId: ps.seed.id,
+      category: ps.seed.category,
+      icon: ps.seed.icon,
+      label: ps.seed.label,
+      position: ps.position,
+    }));
+
+    seedsLayerRef.current.setSeeds(seedsData);
+  }, [isReady, placedSeedsContext?.seeds]);
+
+  // Update seed preview when preview position changes
+  useEffect(() => {
+    if (!isReady || !seedsLayerRef.current) return;
+
+    if (
+      placementContext?.isPlacing &&
+      placementContext.previewPosition &&
+      placementContext.selectedSeed
+    ) {
+      seedsLayerRef.current.setPreview({
+        seedId: placementContext.selectedSeed.id,
+        category: placementContext.selectedSeed.category,
+        icon: placementContext.selectedSeed.icon,
+        position: placementContext.previewPosition,
+      });
+    } else {
+      seedsLayerRef.current.setPreview(null);
+    }
+  }, [
+    isReady,
+    placementContext?.isPlacing,
+    placementContext?.previewPosition,
+    placementContext?.selectedSeed,
+  ]);
 
   // Handle clicks for seed placement
   useEffect(() => {
