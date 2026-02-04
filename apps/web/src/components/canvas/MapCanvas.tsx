@@ -27,6 +27,8 @@ import {
   type ExportResult,
 } from "./useCanvasExport";
 import { MapCanvasContextInternal } from "./MapCanvasContext";
+import { useZoomOptional } from "../shell/ZoomContext";
+import { usePlacementOptional } from "../palette";
 
 // Tile size in world coordinates
 const TILE_SIZE = 256;
@@ -37,6 +39,12 @@ const WORLD_SIZE = TILE_SIZE * WORLD_TILES;
 interface MapCanvasProps {
   className?: string;
   seed?: number;
+  /** Controlled zoom level from parent - synced with viewport */
+  zoom?: number;
+  /** Callback when zoom changes (from wheel/pinch) */
+  onZoomChange?: (zoom: number) => void;
+  /** Whether to show mock features (set false for new empty worlds) */
+  showMockFeatures?: boolean;
 }
 
 /**
@@ -52,7 +60,7 @@ export interface MapCanvasHandle {
 }
 
 export const MapCanvas = forwardRef<MapCanvasHandle, MapCanvasProps>(
-  function MapCanvas({ className, seed = 12345 }, ref) {
+  function MapCanvas({ className, seed = 12345, zoom: zoomProp, onZoomChange: onZoomChangeProp, showMockFeatures = true }, ref) {
   const containerRef = useRef<HTMLDivElement>(null);
   const appRef = useRef<Application | null>(null);
   const viewportRef = useRef<Viewport | null>(null);
@@ -67,6 +75,14 @@ export const MapCanvas = forwardRef<MapCanvasHandle, MapCanvasProps>(
 
   // Try to get the context (may be null if not wrapped in provider)
   const canvasContext = useContext(MapCanvasContextInternal);
+
+  // Get zoom from context if available, otherwise use props
+  const zoomContext = useZoomOptional();
+  const zoom = zoomContext?.zoom ?? zoomProp;
+  const onZoomChange = zoomContext?.setZoom ?? onZoomChangeProp;
+
+  // Get placement context for handling seed placement
+  const placementContext = usePlacementOptional();
 
   // Create the export handle object
   const exportHandle = {
@@ -192,18 +208,28 @@ export const MapCanvas = forwardRef<MapCanvasHandle, MapCanvasProps>(
       const featuresLayer = new FeaturesLayer();
       viewport.addChild(featuresLayer.getContainer());
 
-      // Generate and set features data
-      const featuresData = generateMockFeatures(WORLD_SIZE, seed);
-      featuresLayer.setData(featuresData);
+      // Generate and set features data (only if showMockFeatures is enabled)
+      if (showMockFeatures) {
+        const featuresData = generateMockFeatures(WORLD_SIZE, seed);
+        featuresLayer.setData(featuresData);
+      } else {
+        // Empty features for new worlds
+        featuresLayer.setData({ districts: [], roads: [], pois: [] });
+      }
       featuresLayer.setVisibility(layerVisibility);
 
       // Create and add label layer (above features, below grid)
       const labelLayer = new LabelLayer();
       viewport.addChild(labelLayer.getContainer());
 
-      // Generate and set label data
-      const labelData = generateMockLabels(WORLD_SIZE, seed);
-      labelLayer.setData(labelData);
+      // Generate and set label data (only if showMockFeatures is enabled)
+      if (showMockFeatures) {
+        const labelData = generateMockLabels(WORLD_SIZE, seed);
+        labelLayer.setData(labelData);
+      } else {
+        // No labels for new worlds
+        labelLayer.setData({ labels: [], seed });
+      }
       labelLayer.setVisibility(layerVisibility);
 
       // Create tile grid (above all layers)
@@ -328,6 +354,94 @@ export const MapCanvas = forwardRef<MapCanvasHandle, MapCanvasProps>(
       }
     }
   }, [layerVisibility, isReady]);
+
+  // Sync zoom from parent prop to viewport
+  useEffect(() => {
+    if (isReady && viewportRef.current && zoom !== undefined) {
+      const currentZoom = viewportRef.current.scale.x;
+      // Only update if significantly different to avoid loops
+      if (Math.abs(currentZoom - zoom) > 0.01) {
+        viewportRef.current.setZoom(zoom, true);
+      }
+    }
+  }, [zoom, isReady]);
+
+  // Listen for viewport zoom changes and notify parent
+  useEffect(() => {
+    if (!isReady || !viewportRef.current || !onZoomChange) return;
+
+    const viewport = viewportRef.current;
+
+    const handleZoomEnd = () => {
+      const newZoom = viewport.scale.x;
+      onZoomChange(newZoom);
+    };
+
+    // Listen to zoom-end event from pixi-viewport
+    viewport.on("zoomed-end", handleZoomEnd);
+    // Also listen to wheel for immediate feedback
+    viewport.on("wheel-scroll", handleZoomEnd);
+    viewport.on("pinch-end", handleZoomEnd);
+
+    return () => {
+      viewport.off("zoomed-end", handleZoomEnd);
+      viewport.off("wheel-scroll", handleZoomEnd);
+      viewport.off("pinch-end", handleZoomEnd);
+    };
+  }, [isReady, onZoomChange]);
+
+  // Handle clicks for seed placement
+  useEffect(() => {
+    if (!isReady || !viewportRef.current || !placementContext) return;
+
+    const viewport = viewportRef.current;
+    const { isPlacing, confirmPlacement, setPreviewPosition } = placementContext;
+
+    // Track if we're dragging to avoid triggering click after drag
+    let isDragging = false;
+    let dragStartPos = { x: 0, y: 0 };
+    const DRAG_THRESHOLD = 5;
+
+    const handlePointerDown = (event: { global: { x: number; y: number } }) => {
+      dragStartPos = { x: event.global.x, y: event.global.y };
+      isDragging = false;
+    };
+
+    const handlePointerMove = (event: { global: { x: number; y: number } }) => {
+      const dx = event.global.x - dragStartPos.x;
+      const dy = event.global.y - dragStartPos.y;
+      if (Math.sqrt(dx * dx + dy * dy) > DRAG_THRESHOLD) {
+        isDragging = true;
+      }
+
+      // Update preview position if placing
+      if (isPlacing) {
+        const worldPos = viewport.toWorld(event.global.x, event.global.y);
+        setPreviewPosition({ x: worldPos.x, y: worldPos.y });
+      }
+    };
+
+    const handleClick = (event: { global: { x: number; y: number } }) => {
+      // Don't trigger placement if we were dragging
+      if (isDragging) return;
+
+      if (isPlacing) {
+        // Convert screen position to world position
+        const worldPos = viewport.toWorld(event.global.x, event.global.y);
+        confirmPlacement({ x: worldPos.x, y: worldPos.y });
+      }
+    };
+
+    viewport.on("pointerdown", handlePointerDown);
+    viewport.on("pointermove", handlePointerMove);
+    viewport.on("pointerup", handleClick);
+
+    return () => {
+      viewport.off("pointerdown", handlePointerDown);
+      viewport.off("pointermove", handlePointerMove);
+      viewport.off("pointerup", handleClick);
+    };
+  }, [isReady, placementContext?.isPlacing, placementContext?.confirmPlacement, placementContext?.setPreviewPosition]);
 
   return (
     <div

@@ -1,5 +1,6 @@
-import { ReactNode, useState, useCallback } from "react";
+import { ReactNode, useCallback } from "react";
 import { ViewModeProvider, useViewMode, ViewMode } from "./ViewModeContext";
+import { ZoomProvider, useZoom } from "./ZoomContext";
 import { Header } from "./Header";
 import { ZoomControls } from "./ZoomControls";
 import { HelpButton } from "./HelpButton";
@@ -41,21 +42,16 @@ function ViewWrapper({
   }
 }
 
-// Inner component that can access the ViewMode context
+// Inner component that can access the ViewMode and Zoom contexts
 function EditorShellContent({
   children,
-  zoom,
-  onZoomIn,
-  onZoomOut,
   onHelp,
 }: {
   children: ReactNode;
-  zoom: number;
-  onZoomIn: () => void;
-  onZoomOut: () => void;
   onHelp: () => void;
 }) {
   const { viewMode } = useViewMode();
+  const { zoom, zoomIn, zoomOut } = useZoom();
   const showPalette = viewMode === "build";
   const showZoomControls = viewMode !== "export"; // Export view has its own controls
 
@@ -78,7 +74,7 @@ function EditorShellContent({
         {/* Bottom-right controls (not shown in export view) */}
         {showZoomControls && (
           <div className="absolute bottom-4 right-4 flex flex-col items-end gap-2">
-            <ZoomControls zoom={zoom} onZoomIn={onZoomIn} onZoomOut={onZoomOut} />
+            <ZoomControls zoom={zoom} onZoomIn={zoomIn} onZoomOut={zoomOut} />
             <HelpButton onClick={onHelp} />
           </div>
         )}
@@ -92,24 +88,6 @@ export function EditorShell({
   initialZoom = 1,
   onZoomChange,
 }: EditorShellProps) {
-  const [zoom, setZoom] = useState(initialZoom);
-
-  const handleZoomIn = useCallback(() => {
-    setZoom((prev) => {
-      const newZoom = Math.min(prev * 1.25, 4);
-      onZoomChange?.(newZoom);
-      return newZoom;
-    });
-  }, [onZoomChange]);
-
-  const handleZoomOut = useCallback(() => {
-    setZoom((prev) => {
-      const newZoom = Math.max(prev / 1.25, 0.25);
-      onZoomChange?.(newZoom);
-      return newZoom;
-    });
-  }, [onZoomChange]);
-
   const handleHelp = useCallback(() => {
     // TODO: Open help modal
     console.log("Help clicked");
@@ -117,18 +95,15 @@ export function EditorShell({
 
   return (
     <ViewModeProvider>
-      <PlacementProvider>
-        <MapCanvasProvider>
-          <EditorShellContent
-            zoom={zoom}
-            onZoomIn={handleZoomIn}
-            onZoomOut={handleZoomOut}
-            onHelp={handleHelp}
-          >
-            {children}
-          </EditorShellContent>
-        </MapCanvasProvider>
-      </PlacementProvider>
+      <ZoomProvider initialZoom={initialZoom} onZoomChange={onZoomChange}>
+        <PlacementProvider>
+          <MapCanvasProvider>
+            <EditorShellContent onHelp={handleHelp}>
+              {children}
+            </EditorShellContent>
+          </MapCanvasProvider>
+        </PlacementProvider>
+      </ZoomProvider>
     </ViewModeProvider>
   );
 }

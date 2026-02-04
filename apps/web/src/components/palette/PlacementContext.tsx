@@ -101,3 +101,7 @@ export function usePlacement() {
   }
   return context;
 }
+
+export function usePlacementOptional(): PlacementContextValue | null {
+  return useContext(PlacementContext);
+}

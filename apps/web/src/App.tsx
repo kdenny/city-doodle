@@ -83,7 +83,7 @@ function WorldEditor() {
 
   return (
     <EditorShell worldId={worldId}>
-      <MapCanvas className="absolute inset-0" />
+      <MapCanvas className="absolute inset-0" showMockFeatures={false} />
     </EditorShell>
   )
 }
