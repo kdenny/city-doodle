@@ -1,15 +1,30 @@
 import { render, screen, fireEvent } from "@testing-library/react";
 import { BrowserRouter } from "react-router-dom";
+import { QueryClient, QueryClientProvider } from "@tanstack/react-query";
 import { describe, it, expect, vi } from "vitest";
 import { EditorShell } from "./EditorShell";
 
-function renderWithRouter(ui: React.ReactElement) {
-  return render(<BrowserRouter>{ui}</BrowserRouter>);
+function createTestQueryClient() {
+  return new QueryClient({
+    defaultOptions: {
+      queries: { retry: false },
+      mutations: { retry: false },
+    },
+  });
+}
+
+function renderWithProviders(ui: React.ReactElement) {
+  const queryClient = createTestQueryClient();
+  return render(
+    <QueryClientProvider client={queryClient}>
+      <BrowserRouter>{ui}</BrowserRouter>
+    </QueryClientProvider>
+  );
 }
 
 describe("EditorShell", () => {
   it("renders header with title", () => {
-    renderWithRouter(
+    renderWithProviders(
       <EditorShell>
         <div>Content</div>
       </EditorShell>
@@ -18,7 +33,7 @@ describe("EditorShell", () => {
   });
 
   it("renders children", () => {
-    renderWithRouter(
+    renderWithProviders(
       <EditorShell>
         <div data-testid="content">Map Content</div>
       </EditorShell>
@@ -27,7 +42,7 @@ describe("EditorShell", () => {
   });
 
   it("renders view mode tabs", () => {
-    renderWithRouter(
+    renderWithProviders(
       <EditorShell>
         <div>Content</div>
       </EditorShell>
@@ -40,7 +55,7 @@ describe("EditorShell", () => {
   });
 
   it("renders zoom controls", () => {
-    renderWithRouter(
+    renderWithProviders(
       <EditorShell>
         <div>Content</div>
       </EditorShell>
@@ -51,7 +66,7 @@ describe("EditorShell", () => {
   });
 
   it("renders help button", () => {
-    renderWithRouter(
+    renderWithProviders(
       <EditorShell>
         <div>Content</div>
       </EditorShell>
@@ -60,7 +75,7 @@ describe("EditorShell", () => {
   });
 
   it("switches view modes when tabs are clicked", () => {
-    renderWithRouter(
+    renderWithProviders(
       <EditorShell>
         <div>Content</div>
       </EditorShell>
@@ -79,7 +94,7 @@ describe("EditorShell", () => {
 
   it("calls onZoomChange when zooming", () => {
     const onZoomChange = vi.fn();
-    renderWithRouter(
+    renderWithProviders(
       <EditorShell onZoomChange={onZoomChange}>
         <div>Content</div>
       </EditorShell>

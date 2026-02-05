@@ -97,12 +97,13 @@ async def clear_tables():
         if "postgresql" in TEST_DATABASE_URL:
             await conn.execute(
                 text(
-                    "TRUNCATE users, sessions, worlds, tiles, tile_locks, jobs RESTART IDENTITY CASCADE"
+                    "TRUNCATE users, sessions, worlds, tiles, tile_locks, jobs, placed_seeds RESTART IDENTITY CASCADE"
                 )
             )
         else:
             await conn.execute(text("DELETE FROM tile_locks"))
             await conn.execute(text("DELETE FROM jobs"))
+            await conn.execute(text("DELETE FROM placed_seeds"))
             await conn.execute(text("DELETE FROM tiles"))
             await conn.execute(text("DELETE FROM worlds"))
             await conn.execute(text("DELETE FROM sessions"))

@@ -5,7 +5,7 @@ from fastapi.middleware.cors import CORSMiddleware
 
 from city_api.config import settings
 from city_api.routers import auth_router
-from city_api.routes import jobs_router, locks_router, tiles_router, worlds_router
+from city_api.routes import jobs_router, locks_router, seeds_router, tiles_router, worlds_router
 from city_api.schemas import (
     District,
     DistrictCreate,
@@ -40,6 +40,7 @@ app.include_router(worlds_router)
 app.include_router(tiles_router)
 app.include_router(locks_router)
 app.include_router(jobs_router)
+app.include_router(seeds_router)
 
 
 @app.get("/")

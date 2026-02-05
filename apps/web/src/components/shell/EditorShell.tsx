@@ -129,6 +129,7 @@ function PlacementWithSeeds({ children }: { children: ReactNode }) {
 
 export function EditorShell({
   children,
+  worldId,
   initialZoom = 1,
   onZoomChange,
 }: EditorShellProps) {
@@ -141,7 +142,7 @@ export function EditorShell({
     <ViewModeProvider>
       <ZoomProvider initialZoom={initialZoom} onZoomChange={onZoomChange}>
         <FeaturesProvider>
-          <PlacedSeedsProvider>
+          <PlacedSeedsProvider worldId={worldId}>
             <PlacementWithSeeds>
               <SelectionProvider>
                 <MapCanvasProvider>

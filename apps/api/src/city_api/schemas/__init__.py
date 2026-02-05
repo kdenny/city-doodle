@@ -2,6 +2,7 @@
 
 from city_api.schemas.district import District, DistrictCreate, DistrictType
 from city_api.schemas.job import Job, JobCreate, JobStatus, JobType
+from city_api.schemas.seed import PlacedSeed, PlacedSeedBulkCreate, PlacedSeedCreate, Position
 from city_api.schemas.tile import (
     TerrainData,
     Tile,
@@ -42,6 +43,11 @@ __all__ = [
     "District",
     "DistrictCreate",
     "DistrictType",
+    # Seed
+    "PlacedSeed",
+    "PlacedSeedCreate",
+    "PlacedSeedBulkCreate",
+    "Position",
     # User/Auth
     "UserCreate",
     "UserLogin",

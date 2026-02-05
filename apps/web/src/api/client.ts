@@ -8,6 +8,9 @@ import {
   AuthResponse,
   Job,
   JobCreate,
+  PlacedSeed,
+  PlacedSeedBulkCreate,
+  PlacedSeedCreate,
   Tile,
   TileCreate,
   TileLock,
@@ -272,6 +275,37 @@ export const jobs = {
 };
 
 // ============================================================================
+// Seed Endpoints
+// ============================================================================
+
+export const seeds = {
+  /** List all placed seeds in a world */
+  async list(worldId: string): Promise<PlacedSeed[]> {
+    return request<PlacedSeed[]>("GET", `/worlds/${worldId}/seeds`);
+  },
+
+  /** Create a new placed seed */
+  async create(worldId: string, data: PlacedSeedCreate): Promise<PlacedSeed> {
+    return request<PlacedSeed>("POST", `/worlds/${worldId}/seeds`, { body: data });
+  },
+
+  /** Create multiple placed seeds in a single request */
+  async createBulk(worldId: string, data: PlacedSeedBulkCreate): Promise<PlacedSeed[]> {
+    return request<PlacedSeed[]>("POST", `/worlds/${worldId}/seeds/bulk`, { body: data });
+  },
+
+  /** Delete a placed seed */
+  async delete(seedId: string): Promise<void> {
+    return request<void>("DELETE", `/seeds/${seedId}`);
+  },
+
+  /** Delete all placed seeds in a world */
+  async deleteAll(worldId: string): Promise<void> {
+    return request<void>("DELETE", `/worlds/${worldId}/seeds`);
+  },
+};
+
+// ============================================================================
 // Default Export
 // ============================================================================
 
@@ -280,6 +314,7 @@ export const api = {
   worlds,
   tiles,
   jobs,
+  seeds,
 };
 
 export default api;
