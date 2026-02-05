@@ -103,8 +103,6 @@ const DISTRICT_TYPE_OPTIONS = [
   "airport",
 ] as const;
 
-type DistrictType = typeof DISTRICT_TYPE_OPTIONS[number];
-
 // Road class display names
 const ROAD_CLASS_LABELS: Record<string, string> = {
   highway: "Highway",
