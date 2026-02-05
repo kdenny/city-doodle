@@ -28,12 +28,12 @@ def main():
         # ENUMS
         # =====================================================
 
-        # district_type enum
+        # district_type enum - matches frontend types
         conn.execute(text("""
             DO $$ BEGIN
                 CREATE TYPE district_type AS ENUM (
-                    'residential_low', 'residential_med', 'residential_high',
-                    'commercial', 'industrial', 'mixed_use', 'park', 'civic', 'transit'
+                    'residential', 'downtown', 'commercial', 'industrial',
+                    'hospital', 'university', 'k12', 'park', 'airport'
                 );
             EXCEPTION WHEN duplicate_object THEN null;
             END $$;

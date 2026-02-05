@@ -229,15 +229,15 @@ export interface Job {
 
 /** API district types - must match backend DistrictType enum */
 export type DistrictType =
-  | "residential_low"
-  | "residential_med"
-  | "residential_high"
+  | "residential"
+  | "downtown"
   | "commercial"
   | "industrial"
-  | "mixed_use"
+  | "hospital"
+  | "university"
+  | "k12"
   | "park"
-  | "civic"
-  | "transit";
+  | "airport";
 
 export interface DistrictCreate {
   world_id: UUID;

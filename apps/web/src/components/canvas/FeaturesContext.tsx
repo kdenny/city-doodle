@@ -144,46 +144,27 @@ const EMPTY_FEATURES: FeaturesData = {
 
 /**
  * Map frontend district type to API district type.
- * Frontend uses user-friendly types, API uses database-compatible types.
+ * Frontend and API use the same types now.
  */
 function toApiDistrictType(frontendType: string): ApiDistrictType {
-  const mapping: Record<string, ApiDistrictType> = {
-    residential: "residential_med",
-    residential_low: "residential_low",
-    residential_med: "residential_med",
-    residential_high: "residential_high",
-    downtown: "commercial", // Downtown maps to commercial
-    commercial: "commercial",
-    industrial: "industrial",
-    hospital: "civic", // Hospital is a civic building
-    university: "civic", // University is a civic building
-    k12: "civic", // School is a civic building
-    park: "park",
-    airport: "transit", // Airport is transit infrastructure
-    mixed_use: "mixed_use",
-    civic: "civic",
-    transit: "transit",
-  };
-  return mapping[frontendType] || "commercial";
+  // API accepts frontend types directly
+  const validTypes: ApiDistrictType[] = [
+    "residential", "downtown", "commercial", "industrial",
+    "hospital", "university", "k12", "park", "airport"
+  ];
+  if (validTypes.includes(frontendType as ApiDistrictType)) {
+    return frontendType as ApiDistrictType;
+  }
+  return "commercial"; // Default fallback
 }
 
 /**
  * Map API district type back to frontend type.
- * API types are less specific, so we use reasonable defaults.
+ * Frontend and API use the same types now.
  */
 function fromApiDistrictType(apiType: ApiDistrictType): string {
-  const mapping: Record<ApiDistrictType, string> = {
-    residential_low: "residential",
-    residential_med: "residential",
-    residential_high: "residential",
-    commercial: "commercial",
-    industrial: "industrial",
-    mixed_use: "commercial",
-    park: "park",
-    civic: "commercial", // Civic could be hospital, university, or k12
-    transit: "commercial", // Transit could be airport
-  };
-  return mapping[apiType] || apiType;
+  // API returns frontend types directly
+  return apiType;
 }
 
 /**
