@@ -99,7 +99,7 @@ describe("FeaturesContext", () => {
 
   describe("useFeaturesOptional", () => {
     it("returns null when used outside provider", () => {
-      let context: ReturnType<typeof useFeaturesOptional> = undefined as any;
+      let context: ReturnType<typeof useFeaturesOptional> | undefined;
 
       function TestComponent() {
         context = useFeaturesOptional();
