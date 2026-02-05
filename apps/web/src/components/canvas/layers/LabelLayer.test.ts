@@ -41,6 +41,7 @@ describe("LabelLayer", () => {
       coastlines: true,
       rivers: true,
       contours: false,
+      neighborhoods: true,
       districts: true,
       roads: true,
       pois: true,

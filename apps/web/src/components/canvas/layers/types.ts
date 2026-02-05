@@ -236,6 +236,7 @@ export interface LayerVisibility {
   coastlines: boolean;
   rivers: boolean;
   contours: boolean;
+  neighborhoods: boolean;
   districts: boolean;
   roads: boolean;
   bridges: boolean;
@@ -251,6 +252,7 @@ export const DEFAULT_LAYER_VISIBILITY: LayerVisibility = {
   coastlines: true,
   rivers: true,
   contours: false,
+  neighborhoods: true,
   districts: true,
   roads: true,
   bridges: true,
