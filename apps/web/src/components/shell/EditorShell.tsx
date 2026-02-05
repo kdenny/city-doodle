@@ -179,6 +179,7 @@ function SelectionWithFeatures({ children }: { children: ReactNode }) {
       if (feature.type === "district") {
         updateDistrict(feature.id, {
           name: feature.name,
+          type: feature.districtType as "residential" | "downtown" | "commercial" | "industrial" | "hospital" | "university" | "k12" | "park" | "airport",
           isHistoric: feature.isHistoric,
           personality: feature.personality,
         });
