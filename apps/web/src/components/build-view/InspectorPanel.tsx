@@ -90,6 +90,21 @@ const DISTRICT_TYPE_LABELS: Record<string, string> = {
   airport: "Airport",
 };
 
+// District types available for selection (ordered by common usage)
+const DISTRICT_TYPE_OPTIONS = [
+  "residential",
+  "commercial",
+  "downtown",
+  "industrial",
+  "park",
+  "hospital",
+  "university",
+  "k12",
+  "airport",
+] as const;
+
+type DistrictType = typeof DISTRICT_TYPE_OPTIONS[number];
+
 // Road class display names
 const ROAD_CLASS_LABELS: Record<string, string> = {
   highway: "Highway",
@@ -185,6 +200,9 @@ function DistrictInspector({
   onDelete,
 }: DistrictInspectorProps) {
   const [editedName, setEditedName] = useState(district.name);
+  const [editedDistrictType, setEditedDistrictType] = useState<DistrictType>(
+    district.districtType as DistrictType
+  );
   const [isHistoric, setIsHistoric] = useState(district.isHistoric);
   const [personality, setPersonality] = useState<DistrictPersonality>(
     district.personality ?? DEFAULT_DISTRICT_PERSONALITY
@@ -208,6 +226,15 @@ function DistrictInspector({
       const newName = e.target.value;
       setEditedName(newName);
       onUpdate?.({ ...district, name: newName });
+    },
+    [district, onUpdate]
+  );
+
+  const handleDistrictTypeChange = useCallback(
+    (e: React.ChangeEvent<HTMLSelectElement>) => {
+      const newType = e.target.value as DistrictType;
+      setEditedDistrictType(newType);
+      onUpdate?.({ ...district, districtType: newType });
     },
     [district, onUpdate]
   );
@@ -247,9 +274,25 @@ function DistrictInspector({
         <span className="text-xs font-medium text-white bg-blue-500 px-2 py-0.5 rounded">
           District
         </span>
-        <span className="text-xs text-gray-500">
-          {DISTRICT_TYPE_LABELS[district.districtType] || district.districtType}
-        </span>
+      </div>
+
+      {/* District type selector */}
+      <div>
+        <label className="block text-xs font-medium text-gray-600 mb-1">
+          Type
+        </label>
+        <select
+          value={editedDistrictType}
+          onChange={handleDistrictTypeChange}
+          className="w-full px-2 py-1 text-sm border border-gray-300 rounded focus:outline-none focus:ring-1 focus:ring-blue-500 bg-white"
+          data-testid="district-type-select"
+        >
+          {DISTRICT_TYPE_OPTIONS.map((districtType) => (
+            <option key={districtType} value={districtType}>
+              {DISTRICT_TYPE_LABELS[districtType] || districtType}
+            </option>
+          ))}
+        </select>
       </div>
 
       {/* Name field */}
