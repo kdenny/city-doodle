@@ -37,6 +37,7 @@ describe("LabelLayer", () => {
   it("sets visibility correctly", () => {
     const visibility: LayerVisibility = {
       water: true,
+      beaches: true,
       coastlines: true,
       rivers: true,
       contours: false,

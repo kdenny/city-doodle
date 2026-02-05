@@ -34,6 +34,7 @@ describe("TerrainLayer", () => {
           },
         },
       ],
+      beaches: [],
       coastlines: [
         {
           id: "coast-1",
@@ -95,6 +96,7 @@ describe("TerrainLayer visibility", () => {
   it("sets water visibility correctly", () => {
     const visibility: LayerVisibility = {
       water: false,
+      beaches: true,
       coastlines: true,
       rivers: true,
       contours: true,
@@ -115,6 +117,7 @@ describe("TerrainLayer visibility", () => {
   it("sets coastlines visibility correctly", () => {
     const visibility: LayerVisibility = {
       water: true,
+      beaches: true,
       coastlines: false,
       rivers: true,
       contours: true,
@@ -133,6 +136,7 @@ describe("TerrainLayer visibility", () => {
   it("sets rivers visibility correctly", () => {
     const visibility: LayerVisibility = {
       water: true,
+      beaches: true,
       coastlines: true,
       rivers: false,
       contours: true,
@@ -151,6 +155,7 @@ describe("TerrainLayer visibility", () => {
   it("sets contours visibility correctly", () => {
     const visibility: LayerVisibility = {
       water: true,
+      beaches: true,
       coastlines: true,
       rivers: true,
       contours: false,
@@ -169,6 +174,7 @@ describe("TerrainLayer visibility", () => {
   it("can toggle all terrain layers off", () => {
     const visibility: LayerVisibility = {
       water: false,
+      beaches: false,
       coastlines: false,
       rivers: false,
       contours: false,
@@ -185,6 +191,7 @@ describe("TerrainLayer visibility", () => {
   it("can toggle all terrain layers on", () => {
     const visibility: LayerVisibility = {
       water: true,
+      beaches: true,
       coastlines: true,
       rivers: true,
       contours: true,

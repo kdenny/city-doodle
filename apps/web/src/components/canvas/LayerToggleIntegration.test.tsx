@@ -20,6 +20,7 @@ import { useState } from "react";
 
 const allVisibleLayers: LayerVisibility = {
   water: true,
+  beaches: true,
   coastlines: true,
   rivers: true,
   contours: true,
@@ -32,6 +33,7 @@ const allVisibleLayers: LayerVisibility = {
 
 const allHiddenLayers: LayerVisibility = {
   water: false,
+  beaches: false,
   coastlines: false,
   rivers: false,
   contours: false,
@@ -394,6 +396,7 @@ describe("Edge cases", () => {
     // Set empty data
     terrainLayer.setData({
       water: [],
+      beaches: [],
       coastlines: [],
       rivers: [],
       contours: [],

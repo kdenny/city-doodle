@@ -132,10 +132,6 @@ export function generateMockTerrain(
   const lakeBeachPoints: Point[] = [];
   const lakeBeachWidth = worldSize * 0.015;
   for (const point of lakePoints) {
-    const dx = point.x - lakeCenter.x;
-    const dy = point.y - lakeCenter.y;
-    const dist = Math.sqrt(dx * dx + dy * dy);
-    const scale = (dist + lakeBeachWidth) / dist;
     lakeBeachPoints.push({ x: point.x, y: point.y });
   }
   // Outer ring

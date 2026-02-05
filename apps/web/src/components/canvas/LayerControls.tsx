@@ -11,6 +11,7 @@ interface LayerControlsProps {
 
 const LAYER_LABELS: Record<keyof LayerVisibility, string> = {
   water: "Water",
+  beaches: "Beaches",
   coastlines: "Coastlines",
   rivers: "Rivers",
   contours: "Contours",
