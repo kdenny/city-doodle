@@ -21,6 +21,7 @@ import {
   type LayerVisibility,
   type PlacedSeedData,
   type HitTestResult,
+  type FeaturesData,
 } from "./layers";
 import { LayerControls } from "./LayerControls";
 import {
@@ -30,6 +31,7 @@ import {
   type ExportResult,
 } from "./useCanvasExport";
 import { MapCanvasContextInternal } from "./MapCanvasContext";
+import { useFeaturesOptional } from "./FeaturesContext";
 import { useZoomOptional } from "../shell/ZoomContext";
 import { usePlacementOptional, usePlacedSeedsOptional } from "../palette";
 import { useSelectionContextOptional } from "../build-view/SelectionContext";
@@ -99,6 +101,9 @@ export const MapCanvas = forwardRef<MapCanvasHandle, MapCanvasProps>(
   // Get selection context for handling feature selection
   const selectionContext = useSelectionContextOptional();
   const onFeatureSelect = onFeatureSelectProp ?? selectionContext?.selectFeature;
+
+  // Get features context for dynamic features (districts, roads, POIs)
+  const featuresContext = useFeaturesOptional();
 
   // Create the export handle object
   const exportHandle = {
@@ -415,6 +420,47 @@ export const MapCanvas = forwardRef<MapCanvasHandle, MapCanvasProps>(
       viewport.off("pinch-end", handleZoomEnd);
     };
   }, [isReady, onZoomChange]);
+
+  // Update features layer when context features change
+  useEffect(() => {
+    if (!isReady || !featuresLayerRef.current || !featuresContext) return;
+
+    // Merge mock features with context features
+    // Context features are added on top of existing mock features
+    const currentData = featuresLayerRef.current.getData();
+
+    // If we have context features, combine them with any existing mock features
+    // The context tracks user-placed features separately
+    if (featuresContext.features.districts.length > 0 ||
+        featuresContext.features.roads.length > 0 ||
+        featuresContext.features.pois.length > 0) {
+
+      // Start with mock features if they exist, otherwise empty
+      const baseData: FeaturesData = showMockFeatures && currentData
+        ? {
+            // Keep only the original mock districts (filter out user-placed ones)
+            districts: currentData.districts.filter(d =>
+              !featuresContext.features.districts.some(fd => fd.id === d.id)
+            ),
+            roads: currentData.roads.filter(r =>
+              !featuresContext.features.roads.some(fr => fr.id === r.id)
+            ),
+            pois: currentData.pois.filter(p =>
+              !featuresContext.features.pois.some(fp => fp.id === p.id)
+            ),
+          }
+        : { districts: [], roads: [], pois: [] };
+
+      // Merge with context features
+      const mergedData: FeaturesData = {
+        districts: [...baseData.districts, ...featuresContext.features.districts],
+        roads: [...baseData.roads, ...featuresContext.features.roads],
+        pois: [...baseData.pois, ...featuresContext.features.pois],
+      };
+
+      featuresLayerRef.current.setData(mergedData);
+    }
+  }, [isReady, featuresContext?.features, showMockFeatures]);
 
   // Update seeds layer when placed seeds change
   useEffect(() => {

@@ -11,7 +11,7 @@ import {
   usePlacedSeeds,
   type SeedType,
 } from "../palette";
-import { MapCanvasProvider } from "../canvas";
+import { MapCanvasProvider, FeaturesProvider, useFeatures } from "../canvas";
 import { ExportView } from "../export-view";
 import { TimelapseView } from "../timelapse-view";
 import { DensityView } from "../density-view";
@@ -92,15 +92,32 @@ function EditorShellContent({
 /**
  * Inner component that connects PlacementProvider with PlacedSeedsProvider.
  * This component has access to usePlacedSeeds and provides the onPlaceSeed callback.
+ *
+ * For district seeds, it generates actual district geometry (polygon + street grid)
+ * and adds them to FeaturesContext instead of just showing a seed marker.
+ * For POI and transit seeds, it still adds them as seed markers.
  */
 function PlacementWithSeeds({ children }: { children: ReactNode }) {
   const { addSeed } = usePlacedSeeds();
+  const { addDistrict } = useFeatures();
 
   const handlePlaceSeed = useCallback(
     (seed: SeedType, position: { x: number; y: number }) => {
-      addSeed(seed, position);
+      if (seed.category === "district") {
+        // For district seeds, generate actual district geometry
+        const result = addDistrict(position, seed.id);
+        if (!result) {
+          // District overlapped or failed, don't add marker
+          console.warn("Failed to place district - may overlap with existing");
+          return;
+        }
+        // Don't add a seed marker for districts - the geometry is enough
+      } else {
+        // For POI and transit seeds, add them as seed markers
+        addSeed(seed, position);
+      }
     },
-    [addSeed]
+    [addSeed, addDistrict]
   );
 
   return (
@@ -123,17 +140,19 @@ export function EditorShell({
   return (
     <ViewModeProvider>
       <ZoomProvider initialZoom={initialZoom} onZoomChange={onZoomChange}>
-        <PlacedSeedsProvider>
-          <PlacementWithSeeds>
-            <SelectionProvider>
-              <MapCanvasProvider>
-                <EditorShellContent onHelp={handleHelp}>
-                  {children}
-                </EditorShellContent>
-              </MapCanvasProvider>
-            </SelectionProvider>
-          </PlacementWithSeeds>
-        </PlacedSeedsProvider>
+        <FeaturesProvider>
+          <PlacedSeedsProvider>
+            <PlacementWithSeeds>
+              <SelectionProvider>
+                <MapCanvasProvider>
+                  <EditorShellContent onHelp={handleHelp}>
+                    {children}
+                  </EditorShellContent>
+                </MapCanvasProvider>
+              </SelectionProvider>
+            </PlacementWithSeeds>
+          </PlacedSeedsProvider>
+        </FeaturesProvider>
       </ZoomProvider>
     </ViewModeProvider>
   );

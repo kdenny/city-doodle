@@ -125,19 +125,76 @@ export class SeedsLayer {
     // Create container for this preview
     this.previewGraphics = new Graphics();
 
-    // Draw marker background (pulsing effect would need animation)
-    this.previewGraphics.circle(position.x, position.y, 20);
-    this.previewGraphics.fill({ color: bgColor, alpha: 0.5 });
+    if (category === "district") {
+      // For districts, show a polygon preview representing the district area
+      const size = 60; // Half of typical district size for preview
+      const numPoints = 8;
+      const points: { x: number; y: number }[] = [];
 
-    // Draw marker border
-    this.previewGraphics.setStrokeStyle({ width: 2, color, alpha: 0.7 });
-    this.previewGraphics.circle(position.x, position.y, 20);
-    this.previewGraphics.stroke();
+      for (let i = 0; i < numPoints; i++) {
+        const angle = (i / numPoints) * Math.PI * 2;
+        const radius = size * (0.85 + Math.sin(angle * 3) * 0.15); // Slight variation
+        points.push({
+          x: position.x + Math.cos(angle) * radius,
+          y: position.y + Math.sin(angle) * radius,
+        });
+      }
 
-    // Dashed inner circle to indicate placement point
-    this.previewGraphics.setStrokeStyle({ width: 1, color, alpha: 0.5 });
-    this.previewGraphics.circle(position.x, position.y, 8);
-    this.previewGraphics.stroke();
+      // Draw polygon fill
+      this.previewGraphics.moveTo(points[0].x, points[0].y);
+      for (let i = 1; i < points.length; i++) {
+        this.previewGraphics.lineTo(points[i].x, points[i].y);
+      }
+      this.previewGraphics.closePath();
+      this.previewGraphics.fill({ color: bgColor, alpha: 0.4 });
+
+      // Draw polygon border
+      this.previewGraphics.setStrokeStyle({ width: 2, color, alpha: 0.7 });
+      this.previewGraphics.moveTo(points[0].x, points[0].y);
+      for (let i = 1; i < points.length; i++) {
+        this.previewGraphics.lineTo(points[i].x, points[i].y);
+      }
+      this.previewGraphics.closePath();
+      this.previewGraphics.stroke();
+
+      // Draw crosshair at center
+      const crossSize = 8;
+      this.previewGraphics.setStrokeStyle({ width: 1, color, alpha: 0.8 });
+      this.previewGraphics.moveTo(position.x - crossSize, position.y);
+      this.previewGraphics.lineTo(position.x + crossSize, position.y);
+      this.previewGraphics.stroke();
+      this.previewGraphics.moveTo(position.x, position.y - crossSize);
+      this.previewGraphics.lineTo(position.x, position.y + crossSize);
+      this.previewGraphics.stroke();
+
+      // Draw preview street grid lines
+      this.previewGraphics.setStrokeStyle({ width: 1, color: 0xaaaaaa, alpha: 0.3 });
+      const gridSpacing = 20;
+      for (let offset = -size + gridSpacing; offset < size; offset += gridSpacing) {
+        // Horizontal lines
+        this.previewGraphics.moveTo(position.x - size * 0.7, position.y + offset);
+        this.previewGraphics.lineTo(position.x + size * 0.7, position.y + offset);
+        this.previewGraphics.stroke();
+        // Vertical lines
+        this.previewGraphics.moveTo(position.x + offset, position.y - size * 0.7);
+        this.previewGraphics.lineTo(position.x + offset, position.y + size * 0.7);
+        this.previewGraphics.stroke();
+      }
+    } else {
+      // For POIs and transit, show the standard circular marker
+      this.previewGraphics.circle(position.x, position.y, 20);
+      this.previewGraphics.fill({ color: bgColor, alpha: 0.5 });
+
+      // Draw marker border
+      this.previewGraphics.setStrokeStyle({ width: 2, color, alpha: 0.7 });
+      this.previewGraphics.circle(position.x, position.y, 20);
+      this.previewGraphics.stroke();
+
+      // Dashed inner circle to indicate placement point
+      this.previewGraphics.setStrokeStyle({ width: 1, color, alpha: 0.5 });
+      this.previewGraphics.circle(position.x, position.y, 8);
+      this.previewGraphics.stroke();
+    }
 
     this.previewContainer.addChild(this.previewGraphics);
 
