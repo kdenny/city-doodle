@@ -4,7 +4,7 @@ import hashlib
 from datetime import UTC, datetime
 from uuid import UUID
 
-from sqlalchemy import select
+from sqlalchemy import delete, select
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from city_api.models import World as WorldModel
@@ -78,15 +78,10 @@ async def list_worlds_for_user(db: AsyncSession, user_id: UUID) -> list[World]:
 async def delete_world(db: AsyncSession, world_id: UUID, user_id: UUID) -> bool:
     """Delete a world. Returns True if deleted, False if not found/not owned."""
     result = await db.execute(
-        select(WorldModel).where(WorldModel.id == world_id, WorldModel.user_id == user_id)
+        delete(WorldModel).where(WorldModel.id == world_id, WorldModel.user_id == user_id)
     )
-    world = result.scalar_one_or_none()
-    if world is None:
-        return False
-
-    await db.delete(world)
     await db.commit()
-    return True
+    return result.rowcount > 0
 
 
 async def world_exists(db: AsyncSession, world_id: UUID) -> bool:

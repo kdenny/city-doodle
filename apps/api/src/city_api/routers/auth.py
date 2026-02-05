@@ -6,7 +6,7 @@ from typing import Annotated
 
 import bcrypt
 from fastapi import APIRouter, Depends, Header, HTTPException, status
-from sqlalchemy import select
+from sqlalchemy import delete, select
 from sqlalchemy.exc import IntegrityError
 from sqlalchemy.ext.asyncio import AsyncSession
 
@@ -115,17 +115,14 @@ async def logout(
 
     token = authorization[7:]
 
-    result = await db.execute(select(Session).where(Session.token == token))
-    session = result.scalar_one_or_none()
+    result = await db.execute(delete(Session).where(Session.token == token))
+    await db.commit()
 
-    if not session:
+    if result.rowcount == 0:
         raise HTTPException(
             status_code=status.HTTP_401_UNAUTHORIZED,
             detail="Invalid session token",
         )
-
-    await db.delete(session)
-    await db.commit()
 
 
 @router.get("/me", response_model=UserResponse)

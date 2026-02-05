@@ -3,7 +3,7 @@
 from datetime import UTC, datetime
 from uuid import UUID
 
-from sqlalchemy import select
+from sqlalchemy import delete, select
 from sqlalchemy.ext.asyncio import AsyncSession
 from sqlalchemy.orm import selectinload
 
@@ -142,15 +142,10 @@ async def update_station(
 async def delete_station(db: AsyncSession, station_id: UUID) -> bool:
     """Delete a transit station. Connected segments are deleted via CASCADE."""
     result = await db.execute(
-        select(TransitStationModel).where(TransitStationModel.id == station_id)
+        delete(TransitStationModel).where(TransitStationModel.id == station_id)
     )
-    station = result.scalar_one_or_none()
-    if station is None:
-        return False
-
-    await db.delete(station)
     await db.commit()
-    return True
+    return result.rowcount > 0
 
 
 # ============================================================================
@@ -274,14 +269,11 @@ async def update_line(
 
 async def delete_line(db: AsyncSession, line_id: UUID) -> bool:
     """Delete a transit line. Segments are deleted via CASCADE."""
-    result = await db.execute(select(TransitLineModel).where(TransitLineModel.id == line_id))
-    line = result.scalar_one_or_none()
-    if line is None:
-        return False
-
-    await db.delete(line)
+    result = await db.execute(
+        delete(TransitLineModel).where(TransitLineModel.id == line_id)
+    )
     await db.commit()
-    return True
+    return result.rowcount > 0
 
 
 # ============================================================================
@@ -392,15 +384,10 @@ async def update_segment(
 async def delete_segment(db: AsyncSession, segment_id: UUID) -> bool:
     """Delete a line segment."""
     result = await db.execute(
-        select(TransitLineSegmentModel).where(TransitLineSegmentModel.id == segment_id)
+        delete(TransitLineSegmentModel).where(TransitLineSegmentModel.id == segment_id)
     )
-    segment = result.scalar_one_or_none()
-    if segment is None:
-        return False
-
-    await db.delete(segment)
     await db.commit()
-    return True
+    return result.rowcount > 0
 
 
 # ============================================================================
@@ -445,26 +432,22 @@ async def get_network_stats(db: AsyncSession, world_id: UUID) -> TransitNetworkS
     )
 
 
-async def clear_transit_network(db: AsyncSession, world_id: UUID) -> None:
-    """Delete all stations and lines in a world."""
-    # Lines and segments will be deleted via CASCADE
-    # Stations need to be deleted after segments due to FK constraints
-    # But since we have CASCADE on lines -> segments, we can delete lines first
-    result = await db.execute(
-        select(TransitLineModel).where(TransitLineModel.world_id == world_id)
-    )
-    lines = result.scalars().all()
-    for line in lines:
-        await db.delete(line)
+async def clear_transit_network(db: AsyncSession, world_id: UUID) -> tuple[int, int]:
+    """Delete all stations and lines in a world. Returns (lines_deleted, stations_deleted).
 
-    result = await db.execute(
-        select(TransitStationModel).where(TransitStationModel.world_id == world_id)
+    Lines and segments are deleted via CASCADE when lines are deleted.
+    Stations are deleted after lines.
+    """
+    # Delete lines first (segments will be deleted via CASCADE)
+    lines_result = await db.execute(
+        delete(TransitLineModel).where(TransitLineModel.world_id == world_id)
     )
-    stations = result.scalars().all()
-    for station in stations:
-        await db.delete(station)
-
+    # Then delete stations
+    stations_result = await db.execute(
+        delete(TransitStationModel).where(TransitStationModel.world_id == world_id)
+    )
     await db.commit()
+    return (lines_result.rowcount, stations_result.rowcount)
 
 
 # ============================================================================

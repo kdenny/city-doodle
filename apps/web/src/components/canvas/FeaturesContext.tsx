@@ -30,6 +30,7 @@ import {
   type ClipResult,
 } from "./layers/polygonUtils";
 import { useTerrainOptional } from "./TerrainContext";
+import { useToastOptional } from "../../contexts";
 
 /**
  * Extended config that includes personality settings for the district.
@@ -230,6 +231,9 @@ export function FeaturesProvider({
   // Get terrain context for water collision detection
   const terrainContext = useTerrainOptional();
 
+  // Get toast context for error notifications
+  const toast = useToastOptional();
+
   // Track pending operations for optimistic updates
   const pendingCreates = useRef<Set<string>>(new Set());
 
@@ -401,6 +405,10 @@ export function FeaturesProvider({
                 roads: prev.roads.filter((r) => !r.id.startsWith(tempId)),
               }));
               console.error("Failed to save district:", error);
+              toast?.addToast(
+                "Failed to save district. Please try again.",
+                "error"
+              );
             },
           }
         );
@@ -412,7 +420,7 @@ export function FeaturesProvider({
         clipResult: clipResult.overlapsWater ? clipResult : undefined,
       };
     },
-    [worldId, features.districts, updateFeatures, createDistrictMutation, terrainContext]
+    [worldId, features.districts, updateFeatures, createDistrictMutation, terrainContext, toast]
   );
 
   const previewDistrictPlacement = useCallback(
@@ -506,12 +514,16 @@ export function FeaturesProvider({
                 districts: [...prev.districts, districtToRemove],
               }));
               console.error("Failed to delete district:", error);
+              toast?.addToast(
+                "Failed to delete district. Please try again.",
+                "error"
+              );
             },
           }
         );
       }
     },
-    [worldId, features.districts, updateFeatures, deleteDistrictMutation]
+    [worldId, features.districts, updateFeatures, deleteDistrictMutation, toast]
   );
 
   const removeRoad = useCallback(
@@ -570,13 +582,17 @@ export function FeaturesProvider({
                   ),
                 }));
                 console.error("Failed to update district:", error);
+                toast?.addToast(
+                  "Failed to update district. Please try again.",
+                  "error"
+                );
               },
             }
           );
         }
       }
     },
-    [worldId, features.districts, updateFeatures, updateDistrictMutation]
+    [worldId, features.districts, updateFeatures, updateDistrictMutation, toast]
   );
 
   const updateRoad = useCallback(

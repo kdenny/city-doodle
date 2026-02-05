@@ -76,13 +76,11 @@ async def list_seeds_by_world(db: AsyncSession, world_id: UUID) -> list[PlacedSe
 
 async def delete_seed(db: AsyncSession, seed_id: UUID) -> bool:
     """Delete a placed seed. Returns True if deleted, False if not found."""
-    result = await db.execute(select(PlacedSeedModel).where(PlacedSeedModel.id == seed_id))
-    seed = result.scalar_one_or_none()
-    if seed is None:
-        return False
-    await db.delete(seed)
+    result = await db.execute(
+        delete(PlacedSeedModel).where(PlacedSeedModel.id == seed_id)
+    )
     await db.commit()
-    return True
+    return result.rowcount > 0
 
 
 async def delete_all_seeds_in_world(db: AsyncSession, world_id: UUID) -> int:
