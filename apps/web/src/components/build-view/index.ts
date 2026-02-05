@@ -26,3 +26,15 @@ export {
   PersonalitySliders,
   CollapsiblePersonalitySliders,
 } from "./PersonalitySliders";
+export {
+  EraSelector,
+  ERAS,
+  DEFAULT_ERA_YEAR,
+  HISTORIC_THRESHOLD_YEAR,
+  canBeHistoric,
+  getEraByYear,
+  getEraIndexByYear,
+  sliderValueToEraYear,
+  eraYearToSliderValue,
+} from "./EraSelector";
+export type { Era } from "./EraSelector";
