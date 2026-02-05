@@ -1,7 +1,7 @@
 """Add metadata column to placed_seeds for park configuration
 
 Revision ID: 011
-Revises: 010
+Revises: 010b
 Create Date: 2026-02-05
 
 """
@@ -13,7 +13,7 @@ from alembic import op
 from sqlalchemy.dialects import postgresql
 
 revision: str = "011"
-down_revision: str = "010"
+down_revision: str = "010b"
 branch_labels: str | Sequence[str] | None = None
 depends_on: str | Sequence[str] | None = None
 
