@@ -1,14 +1,16 @@
-import { ReactNode, useCallback, useEffect } from "react";
+import { ReactNode, useCallback, useEffect, useState } from "react";
 import { Toolbar, useToolbar, Tool } from "./Toolbar";
 import { LayersPanel, useLayers, LayerVisibility } from "./LayersPanel";
 import { PopulationPanel } from "./PopulationPanel";
 import { CityNeedsPanel, CityNeeds } from "./CityNeedsPanel";
 import { ScaleBar } from "./ScaleBar";
 import { InspectorPanel, type SelectedFeature } from "./InspectorPanel";
+import { TransitLinePropertiesDialog } from "./TransitLinePropertiesDialog";
 import { useSelectionContextOptional } from "./SelectionContext";
 import { useZoomOptional } from "../shell/ZoomContext";
 import { useDrawingOptional } from "../canvas/DrawingContext";
-import { usePopulationStats } from "../canvas";
+import { useTransitLineDrawingOptional, usePopulationStats } from "../canvas";
+import type { TransitLineProperties } from "../canvas";
 
 interface BuildViewProps {
   children: ReactNode;
@@ -59,6 +61,15 @@ export function BuildView({
   // Get drawing context for polygon drawing mode
   const drawingContext = useDrawingOptional();
 
+  // Get transit line drawing context
+  const transitLineDrawingContext = useTransitLineDrawingOptional();
+
+  // Note: Transit context is used by TransitLineDrawingProvider in EditorShell
+  // We don't need direct access here, but the hook call ensures the provider exists
+
+  // State for showing transit line properties dialog
+  const [showLinePropertiesDialog, setShowLinePropertiesDialog] = useState(false);
+
   // Start/stop drawing mode when tool changes
   useEffect(() => {
     if (!drawingContext) return;
@@ -83,6 +94,51 @@ export function BuildView({
       setActiveTool("pan");
     }
   }, [activeTool, drawingContext?.state.isDrawing, drawingContext?.state.mode, setActiveTool]);
+
+  // Handle transit-line tool - show properties dialog first
+  useEffect(() => {
+    if (!transitLineDrawingContext) return;
+
+    if (activeTool === "transit-line") {
+      // Show properties dialog when tool is selected
+      if (!transitLineDrawingContext.state.isDrawing && !showLinePropertiesDialog) {
+        setShowLinePropertiesDialog(true);
+      }
+    } else {
+      // Cancel transit line drawing when switching away
+      if (transitLineDrawingContext.state.isDrawing) {
+        transitLineDrawingContext.cancelDrawing();
+      }
+    }
+  }, [activeTool, transitLineDrawingContext, showLinePropertiesDialog]);
+
+  // Switch back to pan tool when transit line drawing is completed
+  useEffect(() => {
+    if (!transitLineDrawingContext) return;
+
+    // If we were drawing and now we're not, switch to pan
+    if (activeTool === "transit-line" && !transitLineDrawingContext.state.isDrawing && !showLinePropertiesDialog) {
+      setActiveTool("pan");
+    }
+  }, [activeTool, transitLineDrawingContext?.state.isDrawing, showLinePropertiesDialog, setActiveTool]);
+
+  // Handle transit line properties confirmation
+  const handleLinePropertiesConfirm = useCallback(
+    (properties: TransitLineProperties) => {
+      setShowLinePropertiesDialog(false);
+      if (transitLineDrawingContext) {
+        transitLineDrawingContext.setLineProperties(properties);
+        transitLineDrawingContext.startDrawing();
+      }
+    },
+    [transitLineDrawingContext]
+  );
+
+  // Handle transit line properties cancel
+  const handleLinePropertiesCancel = useCallback(() => {
+    setShowLinePropertiesDialog(false);
+    setActiveTool("pan");
+  }, [setActiveTool]);
 
   // Calculate population from placed districts, fallback to props
   const populationStats = usePopulationStats();
@@ -150,6 +206,14 @@ export function BuildView({
           onClose={onSelectionClear}
         />
       </div>
+
+      {/* Transit line properties dialog */}
+      <TransitLinePropertiesDialog
+        isOpen={showLinePropertiesDialog}
+        initialProperties={transitLineDrawingContext?.state.lineProperties || undefined}
+        onConfirm={handleLinePropertiesConfirm}
+        onCancel={handleLinePropertiesCancel}
+      />
     </div>
   );
 }
