@@ -28,6 +28,7 @@ import {
   useCreateTransitLine,
   useCreateTransitLineSegment,
   useDeleteTransitStation,
+  useUpdateTransitLine,
 } from "../../api/hooks";
 import type {
   TransitStation,
@@ -160,6 +161,8 @@ interface TransitContextValue {
     toStationId: string,
     isUnderground?: boolean
   ) => Promise<boolean>;
+  /** Update a transit line (name, color) */
+  updateLine: (lineId: string, updates: { name?: string; color?: string }) => Promise<boolean>;
   /** Get the count of existing lines */
   lineCount: number;
   /** Loading state */
@@ -200,6 +203,7 @@ export function TransitProvider({ children, worldId }: TransitProviderProps) {
   const createLine = useCreateTransitLine();
   const createSegment = useCreateTransitLineSegment();
   const deleteStation = useDeleteTransitStation();
+  const updateLine = useUpdateTransitLine();
 
   // Sync API data to local state for rendering
   useEffect(() => {
@@ -750,6 +754,34 @@ export function TransitProvider({ children, worldId }: TransitProviderProps) {
   );
 
   /**
+   * Update a transit line (name, color).
+   */
+  const updateLineMethod = useCallback(
+    async (lineId: string, updates: { name?: string; color?: string }): Promise<boolean> => {
+      if (!worldId) {
+        toast?.addToast("Cannot update line: No world selected", "error");
+        return false;
+      }
+
+      try {
+        await updateLine.mutateAsync({
+          lineId,
+          data: updates,
+          worldId,
+        });
+
+        toast?.addToast("Transit line updated", "success");
+        return true;
+      } catch (error) {
+        console.error("Failed to update transit line:", error);
+        toast?.addToast("Failed to update transit line", "error");
+        return false;
+      }
+    },
+    [worldId, updateLine, toast]
+  );
+
+  /**
    * Get all station IDs that belong to a specific line.
    */
   const getStationIdsForLine = useCallback(
@@ -782,7 +814,7 @@ export function TransitProvider({ children, worldId }: TransitProviderProps) {
   );
 
   const lineCount = transitNetwork?.lines.length || 0;
-  const isLoading = isLoadingNetwork || createStation.isPending || createLine.isPending;
+  const isLoading = isLoadingNetwork || createStation.isPending || createLine.isPending || updateLine.isPending;
   const error = networkError || createStation.error || null;
 
   const value: TransitContextValue = {
@@ -810,6 +842,7 @@ export function TransitProvider({ children, worldId }: TransitProviderProps) {
     // Manual line drawing
     createLine: createLineManual,
     createLineSegment,
+    updateLine: updateLineMethod,
     lineCount,
     // Loading/Error
     isLoading,
