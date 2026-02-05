@@ -1,6 +1,7 @@
 """District CRUD endpoints."""
 
 import logging
+import traceback
 from uuid import UUID
 
 from fastapi import APIRouter, Depends, HTTPException, status
@@ -45,8 +46,17 @@ async def list_districts(
     user_id: UUID = Depends(get_current_user),
 ) -> list[District]:
     """List all districts in a world."""
-    await _verify_world_ownership(db, world_id, user_id)
-    return await district_repo.list_districts_by_world(db, world_id, historic_only=historic_only)
+    logger.debug(f"Listing districts: world_id={world_id}, historic_only={historic_only}")
+    try:
+        await _verify_world_ownership(db, world_id, user_id)
+        result = await district_repo.list_districts_by_world(db, world_id, historic_only=historic_only)
+        logger.debug(f"Found {len(result)} districts")
+        return result
+    except HTTPException:
+        raise
+    except Exception as e:
+        logger.error(f"Failed to list districts: {type(e).__name__}: {e}\n{traceback.format_exc()}")
+        raise
 
 
 @router.post(
@@ -61,10 +71,25 @@ async def create_district(
     user_id: UUID = Depends(get_current_user),
 ) -> District:
     """Create a new district."""
-    await _verify_world_ownership(db, world_id, user_id)
-    # Override world_id from path
-    district_create.world_id = world_id
-    return await district_repo.create_district(db, district_create)
+    logger.debug(
+        f"Creating district: world_id={world_id}, type={district_create.type}, "
+        f"type_value={district_create.type.value}"
+    )
+    try:
+        await _verify_world_ownership(db, world_id, user_id)
+        # Override world_id from path
+        district_create.world_id = world_id
+        result = await district_repo.create_district(db, district_create)
+        logger.debug(f"District created: id={result.id}")
+        return result
+    except HTTPException:
+        raise
+    except Exception as e:
+        logger.error(
+            f"Failed to create district: world_id={world_id}, type={district_create.type}, "
+            f"error={type(e).__name__}: {e}\n{traceback.format_exc()}"
+        )
+        raise
 
 
 @router.post(

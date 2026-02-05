@@ -1,7 +1,7 @@
 """Add neighborhoods table
 
-Revision ID: 010
-Revises: 009
+Revision ID: 012
+Revises: 011
 Create Date: 2026-02-05
 
 """
@@ -12,8 +12,8 @@ import sqlalchemy as sa
 from alembic import op
 from sqlalchemy.dialects import postgresql
 
-revision: str = "010"
-down_revision: str = "009"
+revision: str = "012"
+down_revision: str = "011"
 branch_labels: str | Sequence[str] | None = None
 depends_on: str | Sequence[str] | None = None
 

@@ -1,5 +1,6 @@
 """District repository - data access for districts."""
 
+import logging
 from datetime import UTC, datetime
 from uuid import UUID
 
@@ -9,6 +10,8 @@ from sqlalchemy.ext.asyncio import AsyncSession
 from city_api.models.district import District as DistrictModel
 from city_api.models.district import DISTRICT_TYPE_DEFAULTS
 from city_api.schemas import District, DistrictCreate, DistrictUpdate
+
+logger = logging.getLogger(__name__)
 
 
 def _ensure_utc(dt: datetime) -> datetime:
@@ -20,8 +23,15 @@ def _ensure_utc(dt: datetime) -> datetime:
 
 async def create_district(db: AsyncSession, district_create: DistrictCreate) -> District:
     """Create a new district."""
+    logger.debug(
+        f"Creating district: type={district_create.type}, "
+        f"type_value={district_create.type.value}, world_id={district_create.world_id}"
+    )
+
     # Apply type defaults if not explicitly set
     defaults = DISTRICT_TYPE_DEFAULTS.get(district_create.type, {})
+    logger.debug(f"Type defaults lookup: type={district_create.type}, defaults={defaults}")
+
     density = (
         district_create.density
         if district_create.density != 1.0
@@ -43,8 +53,16 @@ async def create_district(db: AsyncSession, district_create: DistrictCreate) -> 
         transit_access=district_create.transit_access,
         historic=district_create.historic,
     )
+    logger.debug(f"Created DistrictModel with type={district.type}")
+
     db.add(district)
-    await db.commit()
+    try:
+        await db.commit()
+        logger.debug(f"District committed: id={district.id}")
+    except Exception as e:
+        logger.error(f"Failed to commit district: {type(e).__name__}: {e}")
+        raise
+
     await db.refresh(district)
     return _to_schema(district)
 
