@@ -82,6 +82,7 @@ export class SubwayStationLayer {
   private previewText: Text | null = null;
   private previewLabel: Text | null = null;
   private tunnelsVisible: boolean = false;
+  private currentStations: SubwayStationData[] = [];
 
   constructor() {
     this.container = new Container();
@@ -112,6 +113,9 @@ export class SubwayStationLayer {
    * Set the stations to render.
    */
   setStations(stations: SubwayStationData[]): void {
+    // Store stations for hit testing
+    this.currentStations = stations;
+
     // Track which stations we've seen
     const seenIds = new Set<string>();
 
@@ -406,6 +410,23 @@ export class SubwayStationLayer {
    */
   setVisible(visible: boolean): void {
     this.container.visible = visible;
+  }
+
+  /**
+   * Hit test to check if a world position is within a station marker.
+   * Returns the station data if hit, null otherwise.
+   */
+  hitTest(x: number, y: number): SubwayStationData | null {
+    for (const station of this.currentStations) {
+      const dx = x - station.position.x;
+      const dy = y - station.position.y;
+      const distance = Math.sqrt(dx * dx + dy * dy);
+      // Use slightly larger hit radius for easier clicking
+      if (distance <= SUBWAY_STATION_RADIUS + 4) {
+        return station;
+      }
+    }
+    return null;
   }
 
   /**
