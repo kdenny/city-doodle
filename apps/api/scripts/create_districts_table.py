@@ -24,6 +24,26 @@ def main():
     engine = create_engine(url)
 
     with engine.connect() as conn:
+        # Create district_type enum if it doesn't exist
+        conn.execute(text("""
+            DO $$ BEGIN
+                CREATE TYPE district_type AS ENUM (
+                    'residential_low',
+                    'residential_med',
+                    'residential_high',
+                    'commercial',
+                    'industrial',
+                    'mixed_use',
+                    'park',
+                    'civic',
+                    'transit'
+                );
+            EXCEPTION
+                WHEN duplicate_object THEN null;
+            END $$;
+        """))
+        print("district_type enum ready")
+
         # Create districts table
         conn.execute(text("""
             CREATE TABLE IF NOT EXISTS districts (
