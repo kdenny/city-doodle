@@ -7,6 +7,7 @@
  */
 
 import type { District, Road, Point, DistrictType, RoadClass } from "./types";
+import { generateDistrictName } from "../../../utils/nameGenerator";
 
 /**
  * Scale settings for district and block sizes.
@@ -183,38 +184,10 @@ export function seedIdToDistrictType(seedId: string): DistrictType {
 
 /**
  * Get a display name for a district type.
+ * Delegates to the centralized name generator utility.
  */
 function getDistrictName(type: DistrictType, seed: number): string {
-  const rng = new SeededRandom(seed);
-
-  const prefixes: Record<DistrictType, string[]> = {
-    residential: ["Oak", "Maple", "Pine", "Cedar", "Elm", "Birch", "Willow"],
-    downtown: ["Central", "Main", "Market", "Metro", "Core", "City"],
-    commercial: ["Harbor", "Gateway", "Plaza", "Commerce", "Trade"],
-    industrial: ["Foundry", "Steel", "Iron", "Factory", "Mill"],
-    hospital: ["Medical", "Health", "Care", "Mercy", "Grace"],
-    university: ["Scholar", "Academy", "Campus", "College", "Learning"],
-    k12: ["Lincoln", "Washington", "Jefferson", "Roosevelt", "Kennedy"],
-    park: ["Green", "Meadow", "Garden", "Nature", "Forest"],
-    airport: ["Sky", "Flight", "Aviation", "Aero", "Wing"],
-  };
-
-  const suffixes: Record<DistrictType, string[]> = {
-    residential: ["Heights", "Village", "Neighborhood", "Commons", "Grove"],
-    downtown: ["District", "Square", "Center", "Hub"],
-    commercial: ["District", "Center", "Square", "Quarter"],
-    industrial: ["Park", "Zone", "District", "Works"],
-    hospital: ["Center", "Campus", "District"],
-    university: ["Quarter", "District", "Campus"],
-    k12: ["School District", "Learning Center"],
-    park: ["Park", "Gardens", "Reserve", "Commons"],
-    airport: ["Field", "Port", "Hub"],
-  };
-
-  const prefix = prefixes[type][rng.intRange(0, prefixes[type].length)];
-  const suffix = suffixes[type][rng.intRange(0, suffixes[type].length)];
-
-  return `${prefix} ${suffix}`;
+  return generateDistrictName(type, { seed });
 }
 
 /**
