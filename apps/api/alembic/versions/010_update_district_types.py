@@ -1,7 +1,7 @@
 """Update district_type enum to match frontend types
 
-Revision ID: 010b
-Revises: 010
+Revision ID: 010
+Revises: 009
 Create Date: 2026-02-05
 
 Changes the district_type enum from backend-centric types to frontend-centric types:
@@ -19,8 +19,8 @@ from collections.abc import Sequence
 from alembic import op
 from sqlalchemy.dialects import postgresql
 
-revision: str = "010b"
-down_revision: str = "010"
+revision: str = "010"
+down_revision: str = "009"
 branch_labels: str | Sequence[str] | None = None
 depends_on: str | Sequence[str] | None = None
 
