@@ -60,6 +60,10 @@ export interface WorldSettings {
   block_size_meters: number;
   /** Size of a district in meters (200-1000) */
   district_size_meters: number;
+  /** Whether to generate beaches along coastlines */
+  beach_enabled: boolean;
+  /** Multiplier for beach width (0.5 = narrow, 2.0 = wide) */
+  beach_width_multiplier: number;
 }
 
 /** Default world settings */
@@ -70,6 +74,8 @@ export const DEFAULT_WORLD_SETTINGS: WorldSettings = {
   transit_car: 0.5,
   block_size_meters: 100,
   district_size_meters: 500,
+  beach_enabled: true,
+  beach_width_multiplier: 1.0,
 };
 
 /** City scale presets for different city types */
@@ -126,11 +132,11 @@ export interface WorldUpdate {
 
 export interface World {
   id: UUID;
+  user_id: UUID;
   name: string;
   seed: number;
   settings: WorldSettings;
   created_at: DateTime;
-  updated_at: DateTime;
 }
 
 // ============================================================================
