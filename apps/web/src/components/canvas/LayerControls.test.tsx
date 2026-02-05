@@ -9,6 +9,7 @@ const defaultVisibility: LayerVisibility = {
   coastlines: true,
   rivers: true,
   contours: true,
+  neighborhoods: true,
   districts: true,
   roads: true,
   pois: true,
@@ -27,6 +28,7 @@ describe("LayerControls", () => {
     expect(screen.getByLabelText("Coastlines")).toBeInTheDocument();
     expect(screen.getByLabelText("Rivers")).toBeInTheDocument();
     expect(screen.getByLabelText("Contours")).toBeInTheDocument();
+    expect(screen.getByLabelText("Neighborhoods")).toBeInTheDocument();
     expect(screen.getByLabelText("Districts")).toBeInTheDocument();
     expect(screen.getByLabelText("Roads")).toBeInTheDocument();
     expect(screen.getByLabelText("POIs")).toBeInTheDocument();
