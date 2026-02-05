@@ -6,8 +6,8 @@
 
 import { useState, useCallback, useMemo } from "react";
 import { CollapsiblePersonalitySliders } from "./PersonalitySliders";
-import type { DistrictPersonality, RoadClass } from "../canvas/layers/types";
-import { DEFAULT_DISTRICT_PERSONALITY } from "../canvas/layers/types";
+import type { DistrictPersonality, RoadClass, DistrictType } from "../canvas/layers/types";
+import { DEFAULT_DISTRICT_PERSONALITY, DEFAULT_DENSITY_BY_TYPE } from "../canvas/layers/types";
 import {
   canBeHistoric,
   getEraByYear,
@@ -179,6 +179,14 @@ interface DistrictInspectorProps {
   onDelete?: (feature: SelectedFeature) => void;
 }
 
+// Density presets for quick selection
+const DENSITY_PRESETS = [
+  { label: "Sparse", value: 2, description: "Rural/suburban" },
+  { label: "Medium", value: 5, description: "Typical suburban" },
+  { label: "Dense", value: 8, description: "Urban" },
+  { label: "Max", value: 10, description: "Downtown core" },
+] as const;
+
 function DistrictInspector({
   district,
   onUpdate,
@@ -189,6 +197,10 @@ function DistrictInspector({
   const [personality, setPersonality] = useState<DistrictPersonality>(
     district.personality ?? DEFAULT_DISTRICT_PERSONALITY
   );
+
+  // Get the type-specific default density
+  const typeDefault = DEFAULT_DENSITY_BY_TYPE[district.districtType as DistrictType] ?? 5;
+  const currentDensity = personality.density ?? typeDefault;
 
   // Check if the current era allows historic designation
   const eraYear = personality.era_year ?? DEFAULT_ERA_YEAR;
@@ -210,6 +222,15 @@ function DistrictInspector({
       onUpdate?.({ ...district, name: newName });
     },
     [district, onUpdate]
+  );
+
+  const handleDensityChange = useCallback(
+    (newDensity: number) => {
+      const newPersonality = { ...personality, density: newDensity };
+      setPersonality(newPersonality);
+      onUpdate?.({ ...district, personality: newPersonality });
+    },
+    [district, personality, onUpdate]
   );
 
   const handleHistoricToggle = useCallback(() => {
@@ -263,6 +284,59 @@ function DistrictInspector({
           onChange={handleNameChange}
           className="w-full px-2 py-1 text-sm border border-gray-300 rounded focus:outline-none focus:ring-1 focus:ring-blue-500"
         />
+      </div>
+
+      {/* Density slider */}
+      <div>
+        <div className="flex items-center justify-between mb-1">
+          <label className="text-xs font-medium text-gray-600">
+            Density
+          </label>
+          <span className="text-xs text-gray-500">
+            {currentDensity} / 10
+            {currentDensity === typeDefault && " (default)"}
+          </span>
+        </div>
+        <input
+          type="range"
+          min={0}
+          max={10}
+          step={1}
+          value={currentDensity}
+          onChange={(e) => handleDensityChange(Number(e.target.value))}
+          className="w-full h-2 bg-gray-200 rounded-lg appearance-none cursor-pointer accent-blue-500"
+          data-testid="density-slider"
+        />
+        <div className="flex justify-between text-xs text-gray-400 mt-0.5">
+          <span>Sparse</span>
+          <span>Dense</span>
+        </div>
+        {/* Density presets */}
+        <div className="flex gap-1 mt-2">
+          {DENSITY_PRESETS.map((preset) => (
+            <button
+              key={preset.value}
+              onClick={() => handleDensityChange(preset.value)}
+              title={preset.description}
+              className={`flex-1 px-1 py-0.5 text-xs rounded border transition-colors ${
+                currentDensity === preset.value
+                  ? "bg-blue-100 border-blue-400 text-blue-700"
+                  : "bg-white border-gray-300 text-gray-600 hover:bg-gray-50"
+              }`}
+            >
+              {preset.label}
+            </button>
+          ))}
+        </div>
+        {/* Type default indicator */}
+        {currentDensity !== typeDefault && (
+          <button
+            onClick={() => handleDensityChange(typeDefault)}
+            className="w-full mt-1 text-xs text-blue-600 hover:text-blue-800"
+          >
+            Reset to type default ({typeDefault})
+          </button>
+        )}
       </div>
 
       {/* Historic toggle with era-based validation */}
