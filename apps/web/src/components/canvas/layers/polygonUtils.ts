@@ -4,7 +4,7 @@
  * Used for clipping districts against water features.
  */
 
-import type { Point, Polygon, WaterFeature } from "./types";
+import type { Point, WaterFeature } from "./types";
 
 /**
  * Check if a point is inside a polygon using ray casting algorithm.
@@ -162,7 +162,7 @@ export function overlapsWater(
  * Sutherland-Hodgman polygon clipping algorithm.
  * Clips the subject polygon against the clip polygon (keeps inside).
  */
-function sutherlandHodgmanClip(
+export function sutherlandHodgmanClip(
   subject: Point[],
   clip: Point[]
 ): Point[] {

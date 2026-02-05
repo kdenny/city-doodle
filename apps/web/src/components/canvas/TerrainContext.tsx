@@ -31,13 +31,6 @@ interface TerrainProviderProps {
   initialData?: TerrainData;
 }
 
-const EMPTY_TERRAIN: TerrainData = {
-  water: [],
-  coastlines: [],
-  rivers: [],
-  contours: [],
-};
-
 export function TerrainProvider({
   children,
   initialData,
