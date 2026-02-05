@@ -12,14 +12,14 @@ describe("BuildView", () => {
     expect(screen.getByTestId("content")).toBeInTheDocument();
   });
 
-  it("renders toolbar with pan, zone, build tools", () => {
+  it("renders toolbar with pan, draw, build tools", () => {
     render(
       <BuildView>
         <div>Content</div>
       </BuildView>
     );
     expect(screen.getByLabelText("Pan")).toBeInTheDocument();
-    expect(screen.getByLabelText("Zone")).toBeInTheDocument();
+    expect(screen.getByLabelText("Draw")).toBeInTheDocument();
     expect(screen.getByLabelText("Build")).toBeInTheDocument();
   });
 

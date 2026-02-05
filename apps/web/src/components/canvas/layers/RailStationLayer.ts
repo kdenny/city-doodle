@@ -66,6 +66,7 @@ export class RailStationLayer {
   private trackGraphics: Map<string, Graphics> = new Map();
   private previewGraphics: Graphics | null = null;
   private previewText: Text | null = null;
+  private currentStations: RailStationData[] = [];
 
   constructor() {
     this.container = new Container();
@@ -95,6 +96,9 @@ export class RailStationLayer {
    * Set the rail stations to render.
    */
   setStations(stations: RailStationData[]): void {
+    // Store stations for hit testing
+    this.currentStations = stations;
+
     // Track which stations we've seen
     const seenIds = new Set<string>();
 
@@ -447,6 +451,23 @@ export class RailStationLayer {
    */
   setVisible(visible: boolean): void {
     this.container.visible = visible;
+  }
+
+  /**
+   * Hit test to check if a world position is within a station marker.
+   * Returns the station data if hit, null otherwise.
+   */
+  hitTest(x: number, y: number): RailStationData | null {
+    for (const station of this.currentStations) {
+      const dx = x - station.position.x;
+      const dy = y - station.position.y;
+      const distance = Math.sqrt(dx * dx + dy * dy);
+      // Use slightly larger hit radius for easier clicking
+      if (distance <= STATION_RADIUS + 4) {
+        return station;
+      }
+    }
+    return null;
   }
 
   destroy(): void {

@@ -163,11 +163,12 @@ function PlacementWithSeeds({ children }: { children: ReactNode }) {
 }
 
 /**
- * Inner component that connects SelectionProvider to FeaturesContext.
+ * Inner component that connects SelectionProvider to FeaturesContext and TransitContext.
  * This allows the inspector panel to persist edits to the database.
  */
 function SelectionWithFeatures({ children }: { children: ReactNode }) {
   const { updateDistrict, removeDistrict, updateRoad, removeRoad, updateNeighborhood, removeNeighborhood } = useFeatures();
+  const transitContext = useTransitOptional();
 
   const handleUpdate = useCallback(
     (feature: SelectedFeature) => {
@@ -204,10 +205,14 @@ function SelectionWithFeatures({ children }: { children: ReactNode }) {
         removeRoad(feature.id);
       } else if (feature.type === "neighborhood") {
         removeNeighborhood(feature.id);
+      } else if (feature.type === "rail_station" && transitContext) {
+        transitContext.removeRailStation(feature.id);
+      } else if (feature.type === "subway_station" && transitContext) {
+        transitContext.removeSubwayStation(feature.id);
       }
       // TODO: Add delete handlers for POIs when those are persisted
     },
-    [removeDistrict, removeRoad, removeNeighborhood]
+    [removeDistrict, removeRoad, removeNeighborhood, transitContext]
   );
 
   return (

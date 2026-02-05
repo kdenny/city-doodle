@@ -732,16 +732,48 @@ export const MapCanvas = forwardRef<MapCanvasHandle, MapCanvasProps>(
       }
 
       // Handle feature selection (default mode)
-      if (onFeatureSelect && featuresLayerRef.current) {
-        // Perform hit test and select feature
-        const hitResult = featuresLayerRef.current.hitTest(worldPos.x, worldPos.y);
-        if (hitResult) {
-          const selectedFeature = hitTestResultToSelectedFeature(hitResult);
-          onFeatureSelect(selectedFeature);
-        } else {
-          // Clicked on empty space - clear selection
-          onFeatureSelect(null);
+      if (onFeatureSelect) {
+        // Check rail stations first (on top)
+        if (railStationLayerRef.current) {
+          const railHit = railStationLayerRef.current.hitTest(worldPos.x, worldPos.y);
+          if (railHit) {
+            onFeatureSelect({
+              type: "rail_station",
+              id: railHit.id,
+              name: railHit.name,
+              isTerminus: railHit.isTerminus,
+              lineColor: railHit.lineColor,
+            });
+            return;
+          }
         }
+
+        // Check subway stations
+        if (subwayStationLayerRef.current) {
+          const subwayHit = subwayStationLayerRef.current.hitTest(worldPos.x, worldPos.y);
+          if (subwayHit) {
+            onFeatureSelect({
+              type: "subway_station",
+              id: subwayHit.id,
+              name: subwayHit.name,
+              isTerminus: subwayHit.isTerminus,
+            });
+            return;
+          }
+        }
+
+        // Check features layer (districts, roads, pois, neighborhoods)
+        if (featuresLayerRef.current) {
+          const hitResult = featuresLayerRef.current.hitTest(worldPos.x, worldPos.y);
+          if (hitResult) {
+            const selectedFeature = hitTestResultToSelectedFeature(hitResult);
+            onFeatureSelect(selectedFeature);
+            return;
+          }
+        }
+
+        // Clicked on empty space - clear selection
+        onFeatureSelect(null);
       }
     };
 
