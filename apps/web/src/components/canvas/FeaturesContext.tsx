@@ -35,6 +35,7 @@ interface AddDistrictConfig extends DistrictGenerationConfig {
 import {
   useWorldDistricts,
   useCreateDistrict,
+  useUpdateDistrict,
   useDeleteDistrict,
 } from "../../api/hooks";
 import type {
@@ -205,6 +206,7 @@ export function FeaturesProvider({
   });
 
   const createDistrictMutation = useCreateDistrict();
+  const updateDistrictMutation = useUpdateDistrict();
   const deleteDistrictMutation = useDeleteDistrict();
 
   // Load districts from API when data is available
@@ -412,14 +414,47 @@ export function FeaturesProvider({
 
   const updateDistrict = useCallback(
     (id: string, updates: Partial<Omit<District, "id">>) => {
+      // Find the current district for rollback
+      const currentDistrict = features.districts.find((d) => d.id === id);
+      if (!currentDistrict) return;
+
+      // Optimistically update local state
       updateFeatures((prev) => ({
         ...prev,
         districts: prev.districts.map((d) =>
           d.id === id ? { ...d, ...updates } : d
         ),
       }));
+
+      // Persist to API if worldId is provided and not a pending create
+      if (worldId && !pendingCreates.current.has(id)) {
+        // Build API update payload from the updates
+        const apiUpdate: Record<string, unknown> = {};
+        if (updates.name !== undefined) apiUpdate.name = updates.name;
+        if (updates.isHistoric !== undefined) apiUpdate.historic = updates.isHistoric;
+        if (updates.type !== undefined) apiUpdate.type = toApiDistrictType(updates.type);
+
+        // Only call API if there are fields to update
+        if (Object.keys(apiUpdate).length > 0) {
+          updateDistrictMutation.mutate(
+            { districtId: id, data: apiUpdate, worldId },
+            {
+              onError: (error) => {
+                // Rollback to previous state on error
+                updateFeatures((prev) => ({
+                  ...prev,
+                  districts: prev.districts.map((d) =>
+                    d.id === id ? currentDistrict : d
+                  ),
+                }));
+                console.error("Failed to update district:", error);
+              },
+            }
+          );
+        }
+      }
     },
-    [updateFeatures]
+    [worldId, features.districts, updateFeatures, updateDistrictMutation]
   );
 
   const clearFeatures = useCallback(() => {

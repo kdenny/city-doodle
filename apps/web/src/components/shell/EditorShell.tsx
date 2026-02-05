@@ -17,7 +17,11 @@ import { ExportView } from "../export-view";
 import { TimelapseView } from "../timelapse-view";
 import { DensityView } from "../density-view";
 import { TransitView } from "../transit-view";
-import { BuildView, SelectionProvider } from "../build-view";
+import {
+  BuildView,
+  SelectionProvider,
+  type SelectedFeature,
+} from "../build-view";
 
 interface EditorShellProps {
   children: ReactNode;
@@ -133,6 +137,48 @@ function PlacementWithSeeds({ children }: { children: ReactNode }) {
   );
 }
 
+/**
+ * Inner component that connects SelectionProvider to FeaturesContext.
+ * This allows the inspector panel to persist edits to the database.
+ */
+function SelectionWithFeatures({ children }: { children: ReactNode }) {
+  const { updateDistrict, removeDistrict } = useFeatures();
+
+  const handleUpdate = useCallback(
+    (feature: SelectedFeature) => {
+      if (!feature) return;
+
+      if (feature.type === "district") {
+        updateDistrict(feature.id, {
+          name: feature.name,
+          isHistoric: feature.isHistoric,
+          personality: feature.personality,
+        });
+      }
+      // TODO: Add update handlers for roads and POIs when those are persisted
+    },
+    [updateDistrict]
+  );
+
+  const handleDelete = useCallback(
+    (feature: SelectedFeature) => {
+      if (!feature) return;
+
+      if (feature.type === "district") {
+        removeDistrict(feature.id);
+      }
+      // TODO: Add delete handlers for roads and POIs when those are persisted
+    },
+    [removeDistrict]
+  );
+
+  return (
+    <SelectionProvider onUpdate={handleUpdate} onDelete={handleDelete}>
+      {children}
+    </SelectionProvider>
+  );
+}
+
 export function EditorShell({
   children,
   worldId,
@@ -150,13 +196,13 @@ export function EditorShell({
         <FeaturesProvider worldId={worldId}>
           <PlacedSeedsProvider worldId={worldId}>
             <PlacementWithSeeds>
-              <SelectionProvider>
+              <SelectionWithFeatures>
                 <MapCanvasProvider>
                   <EditorShellContent onHelp={handleHelp}>
                     {children}
                   </EditorShellContent>
                 </MapCanvasProvider>
-              </SelectionProvider>
+              </SelectionWithFeatures>
             </PlacementWithSeeds>
           </PlacedSeedsProvider>
         </FeaturesProvider>
