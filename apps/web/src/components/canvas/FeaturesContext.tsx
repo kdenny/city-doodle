@@ -66,6 +66,8 @@ interface FeaturesContextValue {
   removePOI: (id: string) => void;
   /** Update a district */
   updateDistrict: (id: string, updates: Partial<Omit<District, "id">>) => void;
+  /** Update a road */
+  updateRoad: (id: string, updates: Partial<Omit<Road, "id">>) => void;
   /** Clear all features */
   clearFeatures: () => void;
   /** Set all features data at once */
@@ -457,6 +459,26 @@ export function FeaturesProvider({
     [worldId, features.districts, updateFeatures, updateDistrictMutation]
   );
 
+  const updateRoad = useCallback(
+    (id: string, updates: Partial<Omit<Road, "id">>) => {
+      // Find the current road for potential rollback
+      const currentRoad = features.roads.find((r) => r.id === id);
+      if (!currentRoad) return;
+
+      // Optimistically update local state
+      updateFeatures((prev) => ({
+        ...prev,
+        roads: prev.roads.map((r) =>
+          r.id === id ? { ...r, ...updates } : r
+        ),
+      }));
+
+      // Note: Roads are not currently persisted to the backend API
+      // When road persistence is added, API calls should be added here
+    },
+    [features.roads, updateFeatures]
+  );
+
   const clearFeatures = useCallback(() => {
     updateFeatures(() => EMPTY_FEATURES);
   }, [updateFeatures]);
@@ -481,6 +503,7 @@ export function FeaturesProvider({
     removeRoad,
     removePOI,
     updateDistrict,
+    updateRoad,
     clearFeatures,
     setFeatures,
     isLoading,

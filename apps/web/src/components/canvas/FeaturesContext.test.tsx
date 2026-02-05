@@ -485,6 +485,181 @@ describe("FeaturesContext", () => {
     });
   });
 
+  describe("updateRoad", () => {
+    it("updates a road's classification", () => {
+      let features: ReturnType<typeof useFeatures>["features"];
+      let addRoads: ReturnType<typeof useFeatures>["addRoads"];
+      let updateRoad: ReturnType<typeof useFeatures>["updateRoad"];
+      const Wrapper = createTestWrapper();
+
+      function TestComponent() {
+        const ctx = useFeatures();
+        features = ctx.features;
+        addRoads = ctx.addRoads;
+        updateRoad = ctx.updateRoad;
+        return null;
+      }
+
+      render(
+        <Wrapper>
+          <FeaturesProvider>
+            <TestComponent />
+          </FeaturesProvider>
+        </Wrapper>
+      );
+
+      // Add a road
+      act(() => {
+        addRoads!([
+          {
+            id: "road-1",
+            roadClass: "local",
+            line: { points: [{ x: 0, y: 0 }, { x: 100, y: 100 }] },
+          },
+        ]);
+      });
+
+      expect(features!.roads[0].roadClass).toBe("local");
+
+      // Update the road class
+      act(() => {
+        updateRoad!("road-1", { roadClass: "arterial" });
+      });
+
+      expect(features!.roads[0].roadClass).toBe("arterial");
+    });
+
+    it("updates a road's name", () => {
+      let features: ReturnType<typeof useFeatures>["features"];
+      let addRoads: ReturnType<typeof useFeatures>["addRoads"];
+      let updateRoad: ReturnType<typeof useFeatures>["updateRoad"];
+      const Wrapper = createTestWrapper();
+
+      function TestComponent() {
+        const ctx = useFeatures();
+        features = ctx.features;
+        addRoads = ctx.addRoads;
+        updateRoad = ctx.updateRoad;
+        return null;
+      }
+
+      render(
+        <Wrapper>
+          <FeaturesProvider>
+            <TestComponent />
+          </FeaturesProvider>
+        </Wrapper>
+      );
+
+      // Add a road
+      act(() => {
+        addRoads!([
+          {
+            id: "road-1",
+            roadClass: "arterial",
+            line: { points: [{ x: 0, y: 0 }, { x: 100, y: 100 }] },
+          },
+        ]);
+      });
+
+      expect(features!.roads[0].name).toBeUndefined();
+
+      // Update the road name
+      act(() => {
+        updateRoad!("road-1", { name: "Main Street" });
+      });
+
+      expect(features!.roads[0].name).toBe("Main Street");
+    });
+
+    it("does nothing when road is not found", () => {
+      let features: ReturnType<typeof useFeatures>["features"];
+      let addRoads: ReturnType<typeof useFeatures>["addRoads"];
+      let updateRoad: ReturnType<typeof useFeatures>["updateRoad"];
+      const Wrapper = createTestWrapper();
+
+      function TestComponent() {
+        const ctx = useFeatures();
+        features = ctx.features;
+        addRoads = ctx.addRoads;
+        updateRoad = ctx.updateRoad;
+        return null;
+      }
+
+      render(
+        <Wrapper>
+          <FeaturesProvider>
+            <TestComponent />
+          </FeaturesProvider>
+        </Wrapper>
+      );
+
+      // Add a road
+      act(() => {
+        addRoads!([
+          {
+            id: "road-1",
+            roadClass: "local",
+            line: { points: [{ x: 0, y: 0 }, { x: 100, y: 100 }] },
+          },
+        ]);
+      });
+
+      // Try to update a non-existent road
+      act(() => {
+        updateRoad!("non-existent", { roadClass: "arterial" });
+      });
+
+      // Original road should be unchanged
+      expect(features!.roads[0].roadClass).toBe("local");
+      expect(features!.roads.length).toBe(1);
+    });
+
+    it("calls onFeaturesChange when road is updated", () => {
+      const onFeaturesChange = vi.fn();
+      let addRoads: ReturnType<typeof useFeatures>["addRoads"];
+      let updateRoad: ReturnType<typeof useFeatures>["updateRoad"];
+      const Wrapper = createTestWrapper();
+
+      function TestComponent() {
+        const ctx = useFeatures();
+        addRoads = ctx.addRoads;
+        updateRoad = ctx.updateRoad;
+        return null;
+      }
+
+      render(
+        <Wrapper>
+          <FeaturesProvider onFeaturesChange={onFeaturesChange}>
+            <TestComponent />
+          </FeaturesProvider>
+        </Wrapper>
+      );
+
+      // Add a road
+      act(() => {
+        addRoads!([
+          {
+            id: "road-1",
+            roadClass: "local",
+            line: { points: [{ x: 0, y: 0 }, { x: 100, y: 100 }] },
+          },
+        ]);
+      });
+
+      // Clear mock to isolate the update call
+      onFeaturesChange.mockClear();
+
+      // Update the road
+      act(() => {
+        updateRoad!("road-1", { roadClass: "highway" });
+      });
+
+      expect(onFeaturesChange).toHaveBeenCalled();
+      expect(onFeaturesChange.mock.calls[0][0].roads[0].roadClass).toBe("highway");
+    });
+  });
+
   describe("clearFeatures", () => {
     it("removes all features", () => {
       let features: ReturnType<typeof useFeatures>["features"];

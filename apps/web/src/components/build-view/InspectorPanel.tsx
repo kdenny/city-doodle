@@ -6,7 +6,7 @@
 
 import { useState, useCallback } from "react";
 import { CollapsiblePersonalitySliders } from "./PersonalitySliders";
-import type { DistrictPersonality } from "../canvas/layers/types";
+import type { DistrictPersonality, RoadClass } from "../canvas/layers/types";
 import { DEFAULT_DISTRICT_PERSONALITY } from "../canvas/layers/types";
 
 // Feature types that can be selected
@@ -257,14 +257,27 @@ interface RoadInspectorProps {
   onDelete?: (feature: SelectedFeature) => void;
 }
 
+// Road classes available for selection
+const ROAD_CLASS_OPTIONS: RoadClass[] = ["highway", "arterial", "collector", "local", "trail"];
+
 function RoadInspector({ road, onUpdate, onDelete }: RoadInspectorProps) {
   const [editedName, setEditedName] = useState(road.name || "");
+  const [editedRoadClass, setEditedRoadClass] = useState<RoadClass>(road.roadClass as RoadClass);
 
   const handleNameChange = useCallback(
     (e: React.ChangeEvent<HTMLInputElement>) => {
       const newName = e.target.value;
       setEditedName(newName);
       onUpdate?.({ ...road, name: newName || undefined });
+    },
+    [road, onUpdate]
+  );
+
+  const handleRoadClassChange = useCallback(
+    (e: React.ChangeEvent<HTMLSelectElement>) => {
+      const newClass = e.target.value as RoadClass;
+      setEditedRoadClass(newClass);
+      onUpdate?.({ ...road, roadClass: newClass });
     },
     [road, onUpdate]
   );
@@ -276,9 +289,24 @@ function RoadInspector({ road, onUpdate, onDelete }: RoadInspectorProps) {
         <span className="text-xs font-medium text-white bg-gray-600 px-2 py-0.5 rounded">
           Road
         </span>
-        <span className="text-xs text-gray-500">
-          {ROAD_CLASS_LABELS[road.roadClass] || road.roadClass}
-        </span>
+      </div>
+
+      {/* Road class selector */}
+      <div>
+        <label className="block text-xs font-medium text-gray-600 mb-1">
+          Classification
+        </label>
+        <select
+          value={editedRoadClass}
+          onChange={handleRoadClassChange}
+          className="w-full px-2 py-1 text-sm border border-gray-300 rounded focus:outline-none focus:ring-1 focus:ring-blue-500 bg-white"
+        >
+          {ROAD_CLASS_OPTIONS.map((roadClass) => (
+            <option key={roadClass} value={roadClass}>
+              {ROAD_CLASS_LABELS[roadClass] || roadClass}
+            </option>
+          ))}
+        </select>
       </div>
 
       {/* Name field */}

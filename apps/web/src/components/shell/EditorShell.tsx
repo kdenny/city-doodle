@@ -142,7 +142,7 @@ function PlacementWithSeeds({ children }: { children: ReactNode }) {
  * This allows the inspector panel to persist edits to the database.
  */
 function SelectionWithFeatures({ children }: { children: ReactNode }) {
-  const { updateDistrict, removeDistrict } = useFeatures();
+  const { updateDistrict, removeDistrict, updateRoad, removeRoad } = useFeatures();
 
   const handleUpdate = useCallback(
     (feature: SelectedFeature) => {
@@ -154,10 +154,15 @@ function SelectionWithFeatures({ children }: { children: ReactNode }) {
           isHistoric: feature.isHistoric,
           personality: feature.personality,
         });
+      } else if (feature.type === "road") {
+        updateRoad(feature.id, {
+          name: feature.name,
+          roadClass: feature.roadClass as "highway" | "arterial" | "collector" | "local" | "trail",
+        });
       }
-      // TODO: Add update handlers for roads and POIs when those are persisted
+      // TODO: Add update handlers for POIs when those are persisted
     },
-    [updateDistrict]
+    [updateDistrict, updateRoad]
   );
 
   const handleDelete = useCallback(
@@ -166,10 +171,12 @@ function SelectionWithFeatures({ children }: { children: ReactNode }) {
 
       if (feature.type === "district") {
         removeDistrict(feature.id);
+      } else if (feature.type === "road") {
+        removeRoad(feature.id);
       }
-      // TODO: Add delete handlers for roads and POIs when those are persisted
+      // TODO: Add delete handlers for POIs when those are persisted
     },
-    [removeDistrict]
+    [removeDistrict, removeRoad]
   );
 
   return (
