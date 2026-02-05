@@ -8,6 +8,10 @@ import pytest
 import pytest_asyncio
 from city_api.database import Base, get_db
 from city_api.main import app
+
+# Import all models so they are registered with Base.metadata
+# This ensures tables are created during test setup
+import city_api.models  # noqa: F401
 from httpx import ASGITransport, AsyncClient
 from sqlalchemy import text
 from sqlalchemy.ext.asyncio import AsyncSession, async_sessionmaker, create_async_engine
@@ -97,13 +101,15 @@ async def clear_tables():
         if "postgresql" in TEST_DATABASE_URL:
             await conn.execute(
                 text(
-                    "TRUNCATE users, sessions, worlds, tiles, tile_locks, jobs, placed_seeds RESTART IDENTITY CASCADE"
+                    "TRUNCATE users, sessions, worlds, tiles, tile_locks, jobs, placed_seeds, road_nodes, road_edges RESTART IDENTITY CASCADE"
                 )
             )
         else:
             await conn.execute(text("DELETE FROM tile_locks"))
             await conn.execute(text("DELETE FROM jobs"))
             await conn.execute(text("DELETE FROM placed_seeds"))
+            await conn.execute(text("DELETE FROM road_edges"))
+            await conn.execute(text("DELETE FROM road_nodes"))
             await conn.execute(text("DELETE FROM tiles"))
             await conn.execute(text("DELETE FROM worlds"))
             await conn.execute(text("DELETE FROM sessions"))
