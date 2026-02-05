@@ -1,12 +1,16 @@
 /**
  * Subway Station Layer - renders subway stations on the map.
  *
- * Unlike rail stations, subway lines are underground and NOT visible on the map.
- * Only the station markers are displayed, with a distinctive metro/underground style icon.
+ * Unlike rail stations, subway lines are underground and NOT visible on the map surface.
+ * Only the station markers are displayed by default, with a distinctive metro/underground style icon.
+ *
+ * In "transit view" mode, subway tunnels can be shown as dashed lines to indicate
+ * underground connectivity.
  */
 
 import { Container, Graphics, Text, TextStyle } from "pixi.js";
 import type { TransitStation } from "../../../api/types";
+import type { Point } from "./types";
 
 // Subway station styling
 const SUBWAY_STATION_COLOR = 0x0066cc; // Blue for subway
@@ -14,6 +18,12 @@ const SUBWAY_STATION_BG_COLOR = 0xe6f2ff; // Light blue background
 const SUBWAY_STATION_INVALID_COLOR = 0xff4444; // Red for invalid placement
 const SUBWAY_STATION_RADIUS = 12;
 const SUBWAY_STATION_INNER_RADIUS = 8;
+
+// Subway tunnel styling (dashed lines for transit view)
+const TUNNEL_WIDTH = 4;
+const TUNNEL_DASH_LENGTH = 10;
+const TUNNEL_GAP_LENGTH = 6;
+const TUNNEL_ALPHA = 0.6;
 
 /**
  * Data structure for a subway station to render.
@@ -34,6 +44,17 @@ export interface SubwayStationPreviewData {
 }
 
 /**
+ * Subway tunnel segment for rendering (dashed lines in transit view).
+ */
+export interface SubwayTunnelData {
+  id: string;
+  fromStation: Point;
+  toStation: Point;
+  lineColor: string;
+  geometry?: Point[];
+}
+
+/**
  * Convert API TransitStation to SubwayStationData for rendering.
  */
 export function toSubwayStationData(station: TransitStation): SubwayStationData {
@@ -47,20 +68,30 @@ export function toSubwayStationData(station: TransitStation): SubwayStationData 
 
 /**
  * Layer for rendering subway stations with metro-style icons.
- * Lines are underground and NOT rendered.
+ * Tunnels are underground and NOT rendered by default.
+ * In transit view mode, tunnels can be shown as dashed lines.
  */
 export class SubwayStationLayer {
   private container: Container;
+  private tunnelsContainer: Container;
   private stationsContainer: Container;
   private previewContainer: Container;
   private stationGraphics: Map<string, Container> = new Map();
+  private tunnelGraphics: Map<string, Graphics> = new Map();
   private previewGraphics: Graphics | null = null;
   private previewText: Text | null = null;
   private previewLabel: Text | null = null;
+  private tunnelsVisible: boolean = false;
 
   constructor() {
     this.container = new Container();
     this.container.label = "subway-stations";
+
+    // Container for tunnel lines (below stations, hidden by default)
+    this.tunnelsContainer = new Container();
+    this.tunnelsContainer.label = "subway-tunnels";
+    this.tunnelsContainer.visible = false; // Hidden by default (underground)
+    this.container.addChild(this.tunnelsContainer);
 
     // Container for station markers
     this.stationsContainer = new Container();
@@ -101,6 +132,126 @@ export class SubwayStationLayer {
         this.stationsContainer.removeChild(graphics);
         graphics.destroy({ children: true });
         this.stationGraphics.delete(id);
+      }
+    }
+  }
+
+  /**
+   * Set the tunnel segments to render (shown as dashed lines in transit view).
+   */
+  setTunnels(tunnels: SubwayTunnelData[]): void {
+    // Track which tunnels we've seen
+    const seenIds = new Set<string>();
+
+    for (const tunnel of tunnels) {
+      seenIds.add(tunnel.id);
+
+      // Update existing or create new
+      if (this.tunnelGraphics.has(tunnel.id)) {
+        this.updateTunnelGraphics(tunnel);
+      } else {
+        this.createTunnelGraphics(tunnel);
+      }
+    }
+
+    // Remove tunnels that are no longer present
+    for (const [id, graphics] of this.tunnelGraphics.entries()) {
+      if (!seenIds.has(id)) {
+        this.tunnelsContainer.removeChild(graphics);
+        graphics.destroy();
+        this.tunnelGraphics.delete(id);
+      }
+    }
+  }
+
+  /**
+   * Toggle tunnel visibility (for transit view mode).
+   * When true, tunnels are shown as dashed lines.
+   */
+  setTunnelsVisible(visible: boolean): void {
+    this.tunnelsVisible = visible;
+    this.tunnelsContainer.visible = visible;
+  }
+
+  /**
+   * Get current tunnel visibility state.
+   */
+  getTunnelsVisible(): boolean {
+    return this.tunnelsVisible;
+  }
+
+  private createTunnelGraphics(tunnel: SubwayTunnelData): void {
+    const { id, fromStation, toStation, lineColor, geometry } = tunnel;
+    const color = lineColor ? parseInt(lineColor.replace("#", ""), 16) : SUBWAY_STATION_COLOR;
+
+    const graphics = new Graphics();
+
+    // Build list of points (from -> intermediate -> to)
+    const points: Point[] = [fromStation, ...(geometry || []), toStation];
+
+    // Draw dashed line for tunnel
+    this.drawDashedLine(graphics, points, color);
+
+    this.tunnelsContainer.addChild(graphics);
+    this.tunnelGraphics.set(id, graphics);
+  }
+
+  private updateTunnelGraphics(tunnel: SubwayTunnelData): void {
+    // For now, just recreate the graphics
+    const existing = this.tunnelGraphics.get(tunnel.id);
+    if (existing) {
+      this.tunnelsContainer.removeChild(existing);
+      existing.destroy();
+      this.tunnelGraphics.delete(tunnel.id);
+    }
+    this.createTunnelGraphics(tunnel);
+  }
+
+  /**
+   * Draw a dashed line through the given points.
+   */
+  private drawDashedLine(graphics: Graphics, points: Point[], color: number): void {
+    if (points.length < 2) return;
+
+    graphics.setStrokeStyle({
+      width: TUNNEL_WIDTH,
+      color,
+      alpha: TUNNEL_ALPHA,
+      cap: "round"
+    });
+
+    // Walk through each segment
+    for (let i = 0; i < points.length - 1; i++) {
+      const start = points[i];
+      const end = points[i + 1];
+      const dx = end.x - start.x;
+      const dy = end.y - start.y;
+      const segmentLength = Math.sqrt(dx * dx + dy * dy);
+      if (segmentLength === 0) continue;
+
+      const unitX = dx / segmentLength;
+      const unitY = dy / segmentLength;
+
+      // Draw dashes along the segment
+      let dist = 0;
+      let drawing = true;
+      while (dist < segmentLength) {
+        const dashLength = drawing ? TUNNEL_DASH_LENGTH : TUNNEL_GAP_LENGTH;
+        const remainingLength = segmentLength - dist;
+        const actualLength = Math.min(dashLength, remainingLength);
+
+        if (drawing) {
+          const x1 = start.x + unitX * dist;
+          const y1 = start.y + unitY * dist;
+          const x2 = start.x + unitX * (dist + actualLength);
+          const y2 = start.y + unitY * (dist + actualLength);
+          graphics.moveTo(x1, y1);
+          graphics.lineTo(x2, y2);
+          graphics.stroke();
+        }
+
+        dist += actualLength;
+        drawing = !drawing;
       }
     }
   }
@@ -258,18 +409,25 @@ export class SubwayStationLayer {
   }
 
   /**
-   * Clear all stations.
+   * Clear all stations and tunnels.
    */
   clear(): void {
-    for (const [id, graphics] of this.stationGraphics.entries()) {
+    for (const [, graphics] of this.stationGraphics.entries()) {
       this.stationsContainer.removeChild(graphics);
       graphics.destroy({ children: true });
     }
     this.stationGraphics.clear();
+
+    for (const [, graphics] of this.tunnelGraphics.entries()) {
+      this.tunnelsContainer.removeChild(graphics);
+      graphics.destroy();
+    }
+    this.tunnelGraphics.clear();
   }
 
   destroy(): void {
     this.container.destroy({ children: true });
     this.stationGraphics.clear();
+    this.tunnelGraphics.clear();
   }
 }

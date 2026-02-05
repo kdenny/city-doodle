@@ -16,6 +16,7 @@ import {
   SeedsLayer,
   DrawingLayer,
   RailStationLayer,
+  SubwayStationLayer,
   generateMockTerrain,
   generateMockFeatures,
   generateMockLabels,
@@ -86,6 +87,7 @@ export const MapCanvas = forwardRef<MapCanvasHandle, MapCanvasProps>(
   const seedsLayerRef = useRef<SeedsLayer | null>(null);
   const drawingLayerRef = useRef<DrawingLayer | null>(null);
   const railStationLayerRef = useRef<RailStationLayer | null>(null);
+  const subwayStationLayerRef = useRef<SubwayStationLayer | null>(null);
   const gridContainerRef = useRef<Container | null>(null);
   const [isReady, setIsReady] = useState(false);
   const [layerVisibility, setLayerVisibility] = useState<LayerVisibility>(
@@ -283,11 +285,15 @@ export const MapCanvas = forwardRef<MapCanvasHandle, MapCanvasProps>(
       const seedsLayer = new SeedsLayer();
       viewport.addChild(seedsLayer.getContainer());
 
-      // Create and add rail station layer (above seeds, below drawing)
+      // Create and add rail station layer (above seeds, below subway stations)
       const railStationLayer = new RailStationLayer();
       viewport.addChild(railStationLayer.getContainer());
 
-      // Create and add drawing layer (above rail stations, below grid)
+      // Create and add subway station layer (above rail stations, below drawing)
+      const subwayStationLayer = new SubwayStationLayer();
+      viewport.addChild(subwayStationLayer.getContainer());
+
+      // Create and add drawing layer (above subway stations, below grid)
       const drawingLayer = new DrawingLayer();
       viewport.addChild(drawingLayer.getContainer());
 
@@ -345,6 +351,7 @@ export const MapCanvas = forwardRef<MapCanvasHandle, MapCanvasProps>(
         labelLayer.destroy();
         seedsLayer.destroy();
         railStationLayer.destroy();
+        subwayStationLayer.destroy();
         drawingLayer.destroy();
         app.destroy(true, { children: true });
         return;
@@ -358,6 +365,7 @@ export const MapCanvas = forwardRef<MapCanvasHandle, MapCanvasProps>(
       labelLayerRef.current = labelLayer;
       seedsLayerRef.current = seedsLayer;
       railStationLayerRef.current = railStationLayer;
+      subwayStationLayerRef.current = subwayStationLayer;
       drawingLayerRef.current = drawingLayer;
       gridContainerRef.current = gridContainer;
       setIsReady(true);
@@ -400,6 +408,10 @@ export const MapCanvas = forwardRef<MapCanvasHandle, MapCanvasProps>(
       if (railStationLayerRef.current) {
         railStationLayerRef.current.destroy();
         railStationLayerRef.current = null;
+      }
+      if (subwayStationLayerRef.current) {
+        subwayStationLayerRef.current.destroy();
+        subwayStationLayerRef.current = null;
       }
       if (drawingLayerRef.current) {
         drawingLayerRef.current.destroy();
@@ -603,6 +615,43 @@ export const MapCanvas = forwardRef<MapCanvasHandle, MapCanvasProps>(
       });
     } else {
       railStationLayerRef.current.setPreview(null);
+    }
+  }, [
+    isReady,
+    placementContext?.isPlacing,
+    placementContext?.previewPosition,
+    placementContext?.selectedSeed?.id,
+    transitContext,
+  ]);
+
+  // Update subway station layer when transit context changes
+  useEffect(() => {
+    if (!isReady || !subwayStationLayerRef.current || !transitContext) return;
+
+    subwayStationLayerRef.current.setStations(transitContext.subwayStations);
+    subwayStationLayerRef.current.setTunnels(transitContext.subwayTunnels);
+  }, [isReady, transitContext?.subwayStations, transitContext?.subwayTunnels]);
+
+  // Update subway station preview when placing a subway seed
+  useEffect(() => {
+    if (!isReady || !subwayStationLayerRef.current) return;
+
+    // Only show subway station preview if placing a subway seed
+    if (
+      placementContext?.isPlacing &&
+      placementContext.previewPosition &&
+      placementContext.selectedSeed?.id === "subway" &&
+      transitContext
+    ) {
+      const validation = transitContext.validateSubwayStationPlacement(
+        placementContext.previewPosition
+      );
+      subwayStationLayerRef.current.setPreview({
+        position: placementContext.previewPosition,
+        isValid: validation.isValid,
+      });
+    } else {
+      subwayStationLayerRef.current.setPreview(null);
     }
   }, [
     isReady,

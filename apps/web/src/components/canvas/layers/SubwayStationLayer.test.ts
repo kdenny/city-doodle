@@ -37,8 +37,11 @@ describe("SubwayStationLayer", () => {
 
       layer.setStations(stations);
 
-      // Container should have children for both stations plus preview container
-      expect(layer.getContainer().children.length).toBe(2);
+      // Container should have 3 sub-containers: tunnels, stations, preview
+      expect(layer.getContainer().children.length).toBe(3);
+      // Stations container (index 1) should have both stations
+      const stationsContainer = layer.getContainer().children[1];
+      expect(stationsContainer.children.length).toBe(2);
     });
 
     it("should update existing stations", () => {
@@ -55,8 +58,8 @@ describe("SubwayStationLayer", () => {
 
       layer.setStations(updatedStations);
 
-      // Should still have same number of containers
-      expect(layer.getContainer().children.length).toBe(2);
+      // Should still have same number of containers (3: tunnels, stations, preview)
+      expect(layer.getContainer().children.length).toBe(3);
     });
 
     it("should remove stations that are no longer present", () => {
@@ -70,13 +73,16 @@ describe("SubwayStationLayer", () => {
       // Remove one station
       layer.setStations([stations[0]]);
 
-      // Should have only one station now plus preview container
-      expect(layer.getContainer().children.length).toBe(2);
+      // Should still have 3 containers (tunnels, stations, preview)
+      expect(layer.getContainer().children.length).toBe(3);
+      // Stations container should have only 1 station now
+      const stationsContainer = layer.getContainer().children[1];
+      expect(stationsContainer.children.length).toBe(1);
     });
 
     it("should handle empty stations array", () => {
       layer.setStations([]);
-      expect(layer.getContainer().children.length).toBe(2); // Just the sub-containers
+      expect(layer.getContainer().children.length).toBe(3); // tunnels, stations, preview containers
     });
   });
 
@@ -89,8 +95,8 @@ describe("SubwayStationLayer", () => {
 
       layer.setPreview(preview);
 
-      // Preview container should have children
-      const previewContainer = layer.getContainer().children[1];
+      // Preview container (index 2) should have children
+      const previewContainer = layer.getContainer().children[2];
       expect(previewContainer.children.length).toBeGreaterThan(0);
     });
 
@@ -103,8 +109,8 @@ describe("SubwayStationLayer", () => {
       layer.setPreview(preview);
       layer.setPreview(null);
 
-      // Preview container should be empty
-      const previewContainer = layer.getContainer().children[1];
+      // Preview container (index 2) should be empty
+      const previewContainer = layer.getContainer().children[2];
       expect(previewContainer.children.length).toBe(0);
     });
 
@@ -116,8 +122,8 @@ describe("SubwayStationLayer", () => {
 
       layer.setPreview(preview);
 
-      // Preview container should have warning text
-      const previewContainer = layer.getContainer().children[1];
+      // Preview container (index 2) should have warning text
+      const previewContainer = layer.getContainer().children[2];
       // At least 3 children: graphics, icon text, warning label
       expect(previewContainer.children.length).toBeGreaterThanOrEqual(3);
     });
@@ -146,9 +152,36 @@ describe("SubwayStationLayer", () => {
       layer.setStations(stations);
       layer.clear();
 
-      // Stations container should be empty
-      const stationsContainer = layer.getContainer().children[0];
+      // Stations container (index 1) should be empty
+      const stationsContainer = layer.getContainer().children[1];
       expect(stationsContainer.children.length).toBe(0);
+    });
+  });
+
+  describe("tunnels", () => {
+    it("should be hidden by default", () => {
+      // Tunnels container (index 0) should be hidden by default (underground)
+      const tunnelsContainer = layer.getContainer().children[0];
+      expect(tunnelsContainer.visible).toBe(false);
+    });
+
+    it("should show tunnels when setTunnelsVisible(true) is called", () => {
+      layer.setTunnelsVisible(true);
+      const tunnelsContainer = layer.getContainer().children[0];
+      expect(tunnelsContainer.visible).toBe(true);
+    });
+
+    it("should hide tunnels when setTunnelsVisible(false) is called", () => {
+      layer.setTunnelsVisible(true);
+      layer.setTunnelsVisible(false);
+      const tunnelsContainer = layer.getContainer().children[0];
+      expect(tunnelsContainer.visible).toBe(false);
+    });
+
+    it("should report tunnel visibility correctly", () => {
+      expect(layer.getTunnelsVisible()).toBe(false);
+      layer.setTunnelsVisible(true);
+      expect(layer.getTunnelsVisible()).toBe(true);
     });
   });
 });
