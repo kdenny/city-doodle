@@ -141,7 +141,7 @@ export function EditorShell({
   return (
     <ViewModeProvider>
       <ZoomProvider initialZoom={initialZoom} onZoomChange={onZoomChange}>
-        <FeaturesProvider>
+        <FeaturesProvider worldId={worldId}>
           <PlacedSeedsProvider worldId={worldId}>
             <PlacementWithSeeds>
               <SelectionProvider>

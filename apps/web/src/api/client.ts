@@ -6,6 +6,10 @@
 import {
   ApiClientError,
   AuthResponse,
+  District,
+  DistrictBulkCreate,
+  DistrictCreate,
+  DistrictUpdate,
   Job,
   JobCreate,
   PlacedSeed,
@@ -312,6 +316,51 @@ export const seeds = {
 };
 
 // ============================================================================
+// District Endpoints
+// ============================================================================
+
+export const districts = {
+  /** List all districts in a world */
+  async list(worldId: string, options?: { historicOnly?: boolean }): Promise<District[]> {
+    return request<District[]>("GET", `/worlds/${worldId}/districts`, {
+      params: { historic_only: options?.historicOnly },
+    });
+  },
+
+  /** Create a new district */
+  async create(worldId: string, data: Omit<DistrictCreate, "world_id">): Promise<District> {
+    return request<District>("POST", `/worlds/${worldId}/districts`, {
+      body: { ...data, world_id: worldId },
+    });
+  },
+
+  /** Create multiple districts in a single request */
+  async createBulk(worldId: string, data: DistrictBulkCreate): Promise<District[]> {
+    return request<District[]>("POST", `/worlds/${worldId}/districts/bulk`, { body: data });
+  },
+
+  /** Get a district by ID */
+  async get(districtId: string): Promise<District> {
+    return request<District>("GET", `/districts/${districtId}`);
+  },
+
+  /** Update a district */
+  async update(districtId: string, data: DistrictUpdate): Promise<District> {
+    return request<District>("PATCH", `/districts/${districtId}`, { body: data });
+  },
+
+  /** Delete a district */
+  async delete(districtId: string): Promise<void> {
+    return request<void>("DELETE", `/districts/${districtId}`);
+  },
+
+  /** Delete all districts in a world */
+  async deleteAll(worldId: string): Promise<void> {
+    return request<void>("DELETE", `/worlds/${worldId}/districts`);
+  },
+};
+
+// ============================================================================
 // Default Export
 // ============================================================================
 
@@ -321,6 +370,7 @@ export const api = {
   tiles,
   jobs,
   seeds,
+  districts,
 };
 
 export default api;

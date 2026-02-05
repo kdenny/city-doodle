@@ -228,28 +228,51 @@ export interface Job {
 // ============================================================================
 
 export type DistrictType =
-  | "residential"
+  | "residential_low"
+  | "residential_med"
+  | "residential_high"
   | "commercial"
   | "industrial"
   | "mixed_use"
   | "park"
   | "civic"
-  | "transit_hub";
+  | "transit";
 
 export interface DistrictCreate {
-  tile_id: UUID;
+  world_id: UUID;
   type: DistrictType;
   geometry: Record<string, unknown>;
   name?: string;
+  density?: number;
+  max_height?: number;
+  transit_access?: boolean;
+  historic?: boolean;
+}
+
+export interface DistrictUpdate {
+  type?: DistrictType;
+  name?: string;
+  geometry?: Record<string, unknown>;
+  density?: number;
+  max_height?: number;
+  transit_access?: boolean;
+  historic?: boolean;
+}
+
+export interface DistrictBulkCreate {
+  districts: DistrictCreate[];
 }
 
 export interface District {
   id: UUID;
-  tile_id: UUID;
+  world_id: UUID;
   type: DistrictType;
   name?: string;
   geometry: Record<string, unknown>;
-  properties: Record<string, unknown>;
+  density: number;
+  max_height: number;
+  transit_access: boolean;
+  historic: boolean;
   created_at: DateTime;
   updated_at: DateTime;
 }
