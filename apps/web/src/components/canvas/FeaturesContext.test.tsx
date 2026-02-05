@@ -43,6 +43,7 @@ describe("FeaturesContext", () => {
         districts: [],
         roads: [],
         pois: [],
+        neighborhoods: [],
       });
     });
 
