@@ -31,7 +31,9 @@ import {
 } from "../../api/hooks";
 import type {
   TransitStation,
+  TransitLine,
   StationType,
+  LineType,
 } from "../../api/types";
 import { useFeaturesOptional } from "./FeaturesContext";
 import { useToastOptional } from "../../contexts";
@@ -104,6 +106,15 @@ function distance(a: Point, b: Point): number {
   return Math.sqrt(dx * dx + dy * dy);
 }
 
+/**
+ * Properties for creating a new transit line manually.
+ */
+export interface CreateLineParams {
+  name: string;
+  color: string;
+  type: LineType;
+}
+
 interface TransitContextValue {
   /** Rail stations data for rendering */
   railStations: RailStationData[];
@@ -129,6 +140,17 @@ interface TransitContextValue {
   getNearbyStations: (position: Point, excludeId?: string) => RailStationData[];
   /** Get nearby subway stations that could be auto-connected */
   getNearbySubwayStations: (position: Point, excludeId?: string) => SubwayStationData[];
+  /** Create a new transit line manually */
+  createLine: (params: CreateLineParams) => Promise<TransitLine | null>;
+  /** Create a segment connecting two stations on a line */
+  createLineSegment: (
+    lineId: string,
+    fromStationId: string,
+    toStationId: string,
+    isUnderground?: boolean
+  ) => Promise<boolean>;
+  /** Get the count of existing lines */
+  lineCount: number;
   /** Loading state */
   isLoading: boolean;
   /** Error state */
@@ -639,6 +661,81 @@ export function TransitProvider({ children, worldId }: TransitProviderProps) {
     [worldId, deleteStation, toast]
   );
 
+  /**
+   * Create a new transit line manually (for manual line drawing).
+   */
+  const createLineManual = useCallback(
+    async (params: CreateLineParams): Promise<TransitLine | null> => {
+      if (!worldId) {
+        toast?.addToast("Cannot create line: No world selected", "error");
+        return null;
+      }
+
+      try {
+        const line = await createLine.mutateAsync({
+          worldId,
+          data: {
+            line_type: params.type,
+            name: params.name,
+            color: params.color,
+            is_auto_generated: false,
+          },
+        });
+
+        toast?.addToast(`Created ${params.name}`, "success");
+        return line;
+      } catch (error) {
+        console.error("Failed to create transit line:", error);
+        toast?.addToast("Failed to create transit line", "error");
+        return null;
+      }
+    },
+    [worldId, createLine, toast]
+  );
+
+  /**
+   * Create a segment connecting two stations on a line (for manual line drawing).
+   */
+  const createLineSegment = useCallback(
+    async (
+      lineId: string,
+      fromStationId: string,
+      toStationId: string,
+      isUnderground: boolean = false
+    ): Promise<boolean> => {
+      if (!worldId) {
+        toast?.addToast("Cannot create segment: No world selected", "error");
+        return false;
+      }
+
+      try {
+        // Get the current segment count for ordering
+        const existingLine = transitNetwork?.lines.find((l) => l.id === lineId);
+        const segmentOrder = existingLine?.segments.length || 0;
+
+        await createSegment.mutateAsync({
+          lineId,
+          worldId,
+          data: {
+            from_station_id: fromStationId,
+            to_station_id: toStationId,
+            geometry: [],
+            is_underground: isUnderground,
+            order_in_line: segmentOrder,
+          },
+        });
+
+        return true;
+      } catch (error) {
+        console.error("Failed to create line segment:", error);
+        toast?.addToast("Failed to connect stations", "error");
+        return false;
+      }
+    },
+    [worldId, transitNetwork, createSegment, toast]
+  );
+
+  const lineCount = transitNetwork?.lines.length || 0;
   const isLoading = isLoadingNetwork || createStation.isPending || createLine.isPending;
   const error = networkError || createStation.error || null;
 
@@ -657,6 +754,10 @@ export function TransitProvider({ children, worldId }: TransitProviderProps) {
     placeSubwayStation,
     removeSubwayStation,
     getNearbySubwayStations,
+    // Manual line drawing
+    createLine: createLineManual,
+    createLineSegment,
+    lineCount,
     // Loading/Error
     isLoading,
     error,
