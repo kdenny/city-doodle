@@ -1,6 +1,7 @@
 """Placed seeds CRUD endpoints."""
 
 import logging
+import traceback
 from uuid import UUID
 
 from fastapi import APIRouter, Depends, HTTPException, status
@@ -39,8 +40,17 @@ async def list_seeds(
     user_id: UUID = Depends(get_current_user),
 ) -> list[PlacedSeed]:
     """List all placed seeds in a world."""
-    await _verify_world_ownership(db, world_id, user_id)
-    return await seed_repo.list_seeds_by_world(db, world_id)
+    logger.debug(f"Listing seeds: world_id={world_id}")
+    try:
+        await _verify_world_ownership(db, world_id, user_id)
+        result = await seed_repo.list_seeds_by_world(db, world_id)
+        logger.debug(f"Found {len(result)} seeds")
+        return result
+    except HTTPException:
+        raise
+    except Exception as e:
+        logger.error(f"Failed to list seeds: {type(e).__name__}: {e}\n{traceback.format_exc()}")
+        raise
 
 
 @router.post(
@@ -55,8 +65,17 @@ async def create_seed(
     user_id: UUID = Depends(get_current_user),
 ) -> PlacedSeed:
     """Create a new placed seed in a world."""
-    await _verify_world_ownership(db, world_id, user_id)
-    return await seed_repo.create_seed(db, world_id, seed_create)
+    logger.debug(f"Creating seed: world_id={world_id}, seed_type_id={seed_create.seed_type_id}")
+    try:
+        await _verify_world_ownership(db, world_id, user_id)
+        result = await seed_repo.create_seed(db, world_id, seed_create)
+        logger.debug(f"Seed created: id={result.id}")
+        return result
+    except HTTPException:
+        raise
+    except Exception as e:
+        logger.error(f"Failed to create seed: {type(e).__name__}: {e}\n{traceback.format_exc()}")
+        raise
 
 
 @router.post(
