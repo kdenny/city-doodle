@@ -108,7 +108,7 @@ def _cells_to_polygon(
     resolution: int,
 ) -> Polygon | None:
     """Convert grid cells to a polygon using marching squares-like approach."""
-    if len(cells) < 4:
+    if len(cells) < 3:
         return None
 
     # Create a mini-grid for this region (bounds used for potential future expansion)
@@ -136,17 +136,23 @@ def _cells_to_polygon(
             world_y = tile_y * tile_size + (i + 0.5) * cell_size
             boundary_points.append((world_x, world_y))
 
-    if len(boundary_points) < 3:
+    if len(boundary_points) < 2:
         return None
 
-    # Sort points to form a rough polygon (convex hull as approximation)
     try:
         from shapely.geometry import MultiPoint
 
         mp = MultiPoint(boundary_points)
         hull = mp.convex_hull
-        if isinstance(hull, Polygon):
+
+        if isinstance(hull, Polygon) and hull.is_valid:
             return hull
+        elif hasattr(hull, "buffer"):
+            # For thin/linear regions, the convex hull might be a line
+            # Buffer it slightly to create a polygon
+            buffered = hull.buffer(cell_size * 0.5)
+            if isinstance(buffered, Polygon) and buffered.is_valid:
+                return buffered
         return None
     except Exception:
         return None

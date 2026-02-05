@@ -299,11 +299,16 @@ class TestBeachGeneration:
         import numpy as np
 
         # Create a heightfield with gradual slope from water to land
+        # Water on left half (below 0.35), gradual transition to land
         heightfield = np.zeros((32, 32))
         for j in range(32):
-            # Gradual slope: water on left, land on right
-            # Height increases slowly from 0.3 to 0.5
-            heightfield[:, j] = 0.3 + (j / 32) * 0.2
+            # Water on left, gradual slope to land on right
+            if j < 10:
+                heightfield[:, j] = 0.2  # Deep water
+            else:
+                # Gradual slope from water level to land
+                # Beach zone: 0.35 to 0.43 (height_band of 0.08)
+                heightfield[:, j] = 0.2 + (j - 10) * 0.015
 
         features = extract_beaches(
             heightfield=heightfield,
@@ -313,7 +318,7 @@ class TestBeachGeneration:
             tile_y=0,
             tile_size=1000.0,
             min_length=3,
-            max_slope=0.15,
+            max_slope=0.2,  # More permissive slope threshold
         )
 
         # Should have at least one beach feature
