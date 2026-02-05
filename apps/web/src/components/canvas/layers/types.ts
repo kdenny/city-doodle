@@ -97,6 +97,12 @@ export interface DistrictPersonality {
    * Values: 1200, 1300, 1400, 1500, 1600, 1700, 1800, 1850, 1875, 1900, 1920, 1940, 1960, 1980, 2024 (Present)
    */
   era_year: number;
+  /**
+   * Block density on a 0-10 scale.
+   * Affects block size per formula: actual_size = base_size * (1.5 - density/10)
+   * 0 = sparse (rural, large lots), 10 = dense (urban core, small blocks)
+   */
+  density?: number;
 }
 
 /** Default personality values (balanced/neutral, Contemporary era) */
@@ -105,6 +111,23 @@ export const DEFAULT_DISTRICT_PERSONALITY: DistrictPersonality = {
   sprawl_compact: 0.5,
   transit_car: 0.5,
   era_year: 2024, // Contemporary/Present
+  density: 5, // Medium density
+};
+
+/**
+ * Default density values by district type (0-10 scale).
+ * Used when a district doesn't have an explicit density override.
+ */
+export const DEFAULT_DENSITY_BY_TYPE: Record<DistrictType, number> = {
+  residential: 3, // Low-medium residential
+  downtown: 8, // Dense urban core
+  commercial: 6, // Moderate commercial
+  industrial: 3, // Sparse industrial
+  hospital: 5, // Medium density campus
+  university: 4, // Campus with green space
+  k12: 4, // School campus
+  park: 1, // Very sparse (mostly open space)
+  airport: 2, // Sparse infrastructure
 };
 
 export interface District {
