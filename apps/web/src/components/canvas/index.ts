@@ -12,3 +12,8 @@ export {
   useMapCanvasExport,
   useMapCanvasExportOptional,
 } from "./MapCanvasContext";
+export {
+  FeaturesProvider,
+  useFeatures,
+  useFeaturesOptional,
+} from "./FeaturesContext";

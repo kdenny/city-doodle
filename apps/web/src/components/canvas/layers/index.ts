@@ -5,6 +5,15 @@ export { LabelLayer, generateMockLabels } from "./LabelLayer";
 export { SeedsLayer } from "./SeedsLayer";
 export type { PlacedSeedData, PreviewSeedData } from "./SeedsLayer";
 export { generateMockTerrain } from "./mockTerrain";
+export {
+  generateDistrictGeometry,
+  wouldOverlap,
+  seedIdToDistrictType,
+} from "./districtGenerator";
+export type {
+  DistrictGenerationConfig,
+  GeneratedDistrict,
+} from "./districtGenerator";
 export type {
   TerrainData,
   LayerVisibility,
