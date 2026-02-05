@@ -29,11 +29,17 @@ export interface PlacedSeed {
   seed: SeedType;
   position: { x: number; y: number };
   placedAt: number; // timestamp
+  /** Optional metadata for park-specific configuration */
+  metadata?: Record<string, unknown>;
 }
 
 interface PlacedSeedsContextValue {
   seeds: PlacedSeed[];
-  addSeed: (seed: SeedType, position: { x: number; y: number }) => PlacedSeed;
+  addSeed: (
+    seed: SeedType,
+    position: { x: number; y: number },
+    metadata?: Record<string, unknown>
+  ) => PlacedSeed;
   removeSeed: (id: string) => void;
   updateSeedPosition: (id: string, position: { x: number; y: number }) => void;
   clearSeeds: () => void;
@@ -74,6 +80,7 @@ function fromApiSeed(apiSeed: ApiPlacedSeed): PlacedSeed | null {
     seed: seedType,
     position: { x: apiSeed.position.x, y: apiSeed.position.y },
     placedAt: new Date(apiSeed.placed_at).getTime(),
+    metadata: apiSeed.metadata,
   };
 }
 
@@ -113,13 +120,18 @@ export function PlacedSeedsProvider({
   }, [worldId, apiSeeds]);
 
   const addSeed = useCallback(
-    (seedType: SeedType, position: { x: number; y: number }): PlacedSeed => {
+    (
+      seedType: SeedType,
+      position: { x: number; y: number },
+      metadata?: Record<string, unknown>
+    ): PlacedSeed => {
       const tempId = generateSeedId();
       const newSeed: PlacedSeed = {
         id: tempId,
         seed: seedType,
         position,
         placedAt: Date.now(),
+        metadata,
       };
 
       // Optimistically add the seed to local state
@@ -136,6 +148,7 @@ export function PlacedSeedsProvider({
             data: {
               seed_type_id: seedType.id,
               position: { x: position.x, y: position.y },
+              metadata,
             },
           },
           {

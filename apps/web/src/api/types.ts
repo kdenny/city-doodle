@@ -320,9 +320,27 @@ export interface Position {
   y: number;
 }
 
+/**
+ * Park size presets for configurable park placement.
+ */
+export type ParkSize = "pocket" | "neighborhood" | "community" | "regional" | "city";
+
+/**
+ * Metadata for park seeds.
+ */
+export interface ParkMetadata {
+  size: ParkSize;
+  name?: string;
+  has_pond?: boolean;
+  has_trails?: boolean;
+  connected_road_id?: string;
+}
+
 export interface PlacedSeedCreate {
   seed_type_id: string;
   position: Position;
+  /** Optional metadata for park-specific configuration */
+  metadata?: Record<string, unknown>;
 }
 
 export interface PlacedSeedBulkCreate {
@@ -335,6 +353,8 @@ export interface PlacedSeed {
   seed_type_id: string;
   position: Position;
   placed_at: DateTime;
+  /** Optional metadata (e.g., park size, features) */
+  metadata?: Record<string, unknown>;
 }
 
 // ============================================================================
