@@ -20,6 +20,8 @@ export interface WaterFeature {
   id: string;
   type: "ocean" | "lake";
   polygon: Polygon;
+  /** Auto-generated or user-edited name for lakes (oceans typically don't have names) */
+  name?: string;
 }
 
 export interface CoastlineFeature {
@@ -31,6 +33,8 @@ export interface RiverFeature {
   id: string;
   line: Line;
   width: number; // varies along length
+  /** Auto-generated or user-edited name */
+  name?: string;
 }
 
 export interface ContourLine {

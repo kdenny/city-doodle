@@ -4,6 +4,7 @@
  */
 
 import type { TerrainData, Point } from "./types";
+import { generateLakeName, generateRiverName } from "../../../utils/nameGenerator";
 
 // Simple seeded random number generator for determinism
 function seededRandom(seed: number) {
@@ -105,13 +106,17 @@ export function generateMockTerrain(
     });
   }
 
+  // Generate names for water features based on seed for determinism
+  const lakeName = generateLakeName({ seed: seed + 1000 });
+  const riverName = generateRiverName({ seed: seed + 2000 });
+
   return {
     water: [
       { id: "ocean-1", type: "ocean", polygon: oceanPolygon },
-      { id: "lake-1", type: "lake", polygon: { points: lakePoints } },
+      { id: "lake-1", type: "lake", polygon: { points: lakePoints }, name: lakeName },
     ],
     coastlines: [{ id: "coast-1", line: { points: coastlinePoints, width: 2 } }],
-    rivers: [{ id: "river-1", line: { points: riverPoints }, width: 3 }],
+    rivers: [{ id: "river-1", line: { points: riverPoints }, width: 3, name: riverName }],
     contours,
   };
 }

@@ -319,3 +319,240 @@ export function generateNeighborhoodNameSuggestions(
 
   return Array.from(names);
 }
+
+// ============================================
+// Natural Feature Name Generation (CITY-188)
+// ============================================
+
+// River/stream name components
+const RIVER_DESCRIPTORS = [
+  "Clear",
+  "Stone",
+  "Copper",
+  "Silver",
+  "Mill",
+  "Deer",
+  "Bear",
+  "Fox",
+  "Willow",
+  "Cedar",
+  "Pine",
+  "Oak",
+  "Maple",
+  "Swift",
+  "Muddy",
+  "Rocky",
+  "Sandy",
+  "Black",
+  "White",
+  "Blue",
+];
+
+const RIVER_SUFFIXES = [
+  "River",
+  "Creek",
+  "Brook",
+  "Run",
+  "Stream",
+];
+
+// Lake/pond name components
+const LAKE_DESCRIPTORS = [
+  "Mirror",
+  "Crystal",
+  "Blue",
+  "Hidden",
+  "Shadow",
+  "Founders",
+  "Memorial",
+  "Silver",
+  "Golden",
+  "Emerald",
+  "Moonlight",
+  "Sunrise",
+  "Sunset",
+  "Cedar",
+  "Pine",
+  "Willow",
+  "Deep",
+  "Clear",
+  "Still",
+  "Echo",
+];
+
+const LAKE_SUFFIXES = [
+  "Lake",
+  "Pond",
+  "Reservoir",
+  "Waters",
+];
+
+// Bridge name components
+const BRIDGE_PREFIXES = [
+  "Iron",
+  "Stone",
+  "Old",
+  "New",
+  "Market",
+  "Mill",
+  "Harbor",
+  "River",
+  "Memorial",
+  "Veterans",
+  "Liberty",
+  "Unity",
+  "Commerce",
+];
+
+const BRIDGE_SUFFIXES = [
+  "Bridge",
+  "Crossing",
+  "Span",
+];
+
+// Plaza/square name components
+const PLAZA_PREFIXES = [
+  "Liberty",
+  "Founders",
+  "Market",
+  "Commerce",
+  "Union",
+  "Veterans",
+  "Memorial",
+  "Central",
+  "Grand",
+  "City",
+];
+
+const PLAZA_SUFFIXES = [
+  "Plaza",
+  "Square",
+  "Commons",
+  "Green",
+];
+
+/**
+ * Generate a river or stream name.
+ */
+export function generateRiverName(options: NameGeneratorOptions = {}): string {
+  const seed = options.seed ?? Math.floor(Math.random() * 1000000);
+  const rng = new SeededRandom(seed);
+
+  const descriptor = rng.pick(RIVER_DESCRIPTORS);
+  const suffix = rng.pick(RIVER_SUFFIXES);
+
+  return `${descriptor} ${suffix}`;
+}
+
+/**
+ * Generate a lake or pond name.
+ */
+export function generateLakeName(options: NameGeneratorOptions = {}): string {
+  const seed = options.seed ?? Math.floor(Math.random() * 1000000);
+  const rng = new SeededRandom(seed);
+
+  const descriptor = rng.pick(LAKE_DESCRIPTORS);
+  const suffix = rng.pick(LAKE_SUFFIXES);
+
+  return `${descriptor} ${suffix}`;
+}
+
+/**
+ * Generate a bridge name.
+ */
+export function generateBridgeName(options: NameGeneratorOptions = {}): string {
+  const seed = options.seed ?? Math.floor(Math.random() * 1000000);
+  const rng = new SeededRandom(seed);
+
+  const prefix = rng.pick(BRIDGE_PREFIXES);
+  const suffix = rng.pick(BRIDGE_SUFFIXES);
+
+  return `${prefix} ${suffix}`;
+}
+
+/**
+ * Generate a plaza or square name.
+ */
+export function generatePlazaName(options: NameGeneratorOptions = {}): string {
+  const seed = options.seed ?? Math.floor(Math.random() * 1000000);
+  const rng = new SeededRandom(seed);
+
+  const prefix = rng.pick(PLAZA_PREFIXES);
+  const suffix = rng.pick(PLAZA_SUFFIXES);
+
+  return `${prefix} ${suffix}`;
+}
+
+/**
+ * Generate a park name (enhanced version for standalone parks, not district-type parks).
+ * Uses more varied naming patterns than the district park naming.
+ */
+export function generateParkName(options: NameGeneratorOptions = {}): string {
+  const seed = options.seed ?? Math.floor(Math.random() * 1000000);
+  const rng = new SeededRandom(seed);
+
+  // Park name patterns:
+  // 1. Nature word + Park/Gardens/Green/Reserve (40%)
+  // 2. Founder/Memorial + Park (30%)
+  // 3. Geographic feature + Park (20%)
+  // 4. Tree/Plant + suffix (10%)
+
+  const pattern = rng.next();
+
+  if (pattern < 0.4) {
+    // Nature word + suffix
+    const natureWords = ["Pinehurst", "Riverside", "Meadow", "Sunset", "Valley", "Hillside", "Lakefront", "Woodland"];
+    const suffixes = ["Park", "Gardens", "Green", "Reserve", "Commons"];
+    return `${rng.pick(natureWords)} ${rng.pick(suffixes)}`;
+  } else if (pattern < 0.7) {
+    // Memorial/Founder pattern
+    const founderNames = ["Jefferson", "Washington", "Lincoln", "Roosevelt", "Kennedy", "King", "Adams", "Hamilton"];
+    const suffixes = ["Memorial Park", "Park", "Memorial"];
+    return `${rng.pick(founderNames)} ${rng.pick(suffixes)}`;
+  } else if (pattern < 0.9) {
+    // Geographic pattern
+    const geoWords = ["Hilltop", "Lakeside", "Riverside", "Creekside", "Bayside", "Mountain View", "Valley"];
+    return `${rng.pick(geoWords)} Park`;
+  } else {
+    // Tree/Plant pattern
+    const trees = ["Oak", "Cedar", "Pine", "Willow", "Maple", "Birch", "Magnolia", "Elm"];
+    const suffixes = ["Park", "Grove", "Gardens"];
+    return `${rng.pick(trees)} ${rng.pick(suffixes)}`;
+  }
+}
+
+/**
+ * Generate a shopping/commercial district name.
+ */
+export function generateShoppingDistrictName(options: NameGeneratorOptions = {}): string {
+  const seed = options.seed ?? Math.floor(Math.random() * 1000000);
+  const rng = new SeededRandom(seed);
+
+  // Shopping district patterns:
+  // 1. The + Name (30%)
+  // 2. Name + Row/Square/District/Plaza (50%)
+  // 3. Contextual reference pattern (20%)
+
+  const pattern = rng.next();
+
+  if (pattern < 0.3) {
+    // "The" pattern
+    const names = ["Galleria", "Marketplace", "Promenade", "Arcade", "Mall", "Centre", "Exchange"];
+    return `The ${rng.pick(names)}`;
+  } else if (pattern < 0.8) {
+    // Standard pattern
+    const prefixes = ["Merchant", "Market", "Commerce", "Trade", "Harbor", "Gateway", "Grand"];
+    const suffixes = ["Row", "Square", "District", "Plaza", "Center"];
+    return `${rng.pick(prefixes)} ${rng.pick(suffixes)}`;
+  } else {
+    // Contextual pattern (references a nearby feature type)
+    const contexts = options.nearbyContexts ?? [];
+    if (contexts.includes("water")) {
+      return rng.pick(["Waterfront Shops", "Harbor Market", "Marina District", "Bayside Center"]);
+    } else if (contexts.includes("downtown")) {
+      return rng.pick(["Downtown Market", "City Center Shops", "Main Street District", "Central Market"]);
+    } else {
+      return rng.pick(["Village Square", "Town Center", "Crossroads Market", "Station Plaza"]);
+    }
+  }
+}
