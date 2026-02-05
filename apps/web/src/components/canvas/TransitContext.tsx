@@ -31,6 +31,7 @@ import {
 } from "../../api/hooks";
 import type {
   TransitStation,
+  TransitNetwork,
   TransitLine,
   StationType,
   LineType,
@@ -124,6 +125,8 @@ interface TransitContextValue {
   subwayStations: SubwayStationData[];
   /** Subway tunnel segments for rendering (shown in transit view as dashed lines) */
   subwayTunnels: SubwayTunnelData[];
+  /** Raw transit network data for panels/stats (includes lines with segments) */
+  transitNetwork: TransitNetwork | null;
   /** Validate if a position is valid for rail station placement */
   validateRailStationPlacement: (position: Point) => StationValidation;
   /** Validate if a position is valid for subway station placement */
@@ -754,6 +757,8 @@ export function TransitProvider({ children, worldId }: TransitProviderProps) {
     placeSubwayStation,
     removeSubwayStation,
     getNearbySubwayStations,
+    // Raw network data for panels
+    transitNetwork: transitNetwork ?? null,
     // Manual line drawing
     createLine: createLineManual,
     createLineSegment,

@@ -4,8 +4,8 @@ import { TransitView } from "./TransitView";
 import { TransitLine } from "./TransitLinesPanel";
 
 const mockLines: TransitLine[] = [
-  { id: "red", name: "Red Line", color: "#DC2626", stations: 10, miles: 5.5 },
-  { id: "blue", name: "Blue Line", color: "#2563EB", stations: 8, miles: 4.2 },
+  { id: "red", name: "Red Line", color: "#DC2626", stations: 10, miles: 5.5, lineType: "subway" },
+  { id: "blue", name: "Blue Line", color: "#2563EB", stations: 8, miles: 4.2, lineType: "rail" },
 ];
 
 describe("TransitView", () => {
