@@ -1,4 +1,6 @@
-# Claude.md - AI Agent Instructions
+# CLAUDE.md – AI Agent Instructions
+
+**Filename:** This file must be named **CLAUDE.md** (all caps) in the project root so Cursor and other tools load it as the project's agent instructions.
 
 This file contains instructions for AI agents (Claude, GPT, etc.) working on City Doodle.
 
@@ -58,6 +60,45 @@ When working on infrastructure tasks:
 
 ---
 
+## Language-Agnostic Tooling
+
+**This boilerplate works with any programming language.** The CLI tools (`bin/vibe`, `bin/ticket`) are written in Python, but they're workflow automation that runs **alongside** your project, not part of it.
+
+**If the project uses JavaScript, Go, Rust, Ruby, or any other language:**
+- The Python tooling is for workflow automation only (tickets, worktrees, PR policies)
+- No Python dependencies are added to your project's package.json, Cargo.toml, go.mod, etc.
+- Your app's build, test, and deploy processes are unchanged
+- When writing code, use the project's actual language and frameworks
+
+---
+
+## Multi-Assistant Support
+
+This boilerplate supports multiple AI coding assistants. A single source of truth in `agent_instructions/` generates format-specific files for:
+
+| Assistant | File Generated |
+|-----------|----------------|
+| Claude Code | `CLAUDE.md` |
+| Cursor IDE | `.cursor/rules` |
+| GitHub Copilot | `.github/copilot-instructions.md` |
+
+### Maintaining Instructions
+
+Edit the source files in `agent_instructions/`:
+- `CORE.md` - Project context and core rules
+- `COMMANDS.md` - Available commands
+- `WORKFLOW.md` - Standard workflows
+
+Then regenerate assistant files:
+
+```bash
+bin/vibe generate-agent-instructions
+```
+
+See `agent_instructions/` for the full template.
+
+---
+
 ## README Maintenance
 
 Keep the project **README.md** accurate so humans and agents can onboard quickly.
@@ -89,23 +130,94 @@ See `recipes/agents/readme-maintenance.md` for the full guide.
 
 ## Configuration Reference
 
-The canonical configuration is in `.vibe/config.json`. Key fields (actual values are populated in the config file):
+The canonical configuration is in `.vibe/config.json`. Key fields are populated when you run `bin/vibe setup` (tracker, `github.owner`, `github.repo`, etc.). Example shape:
 
 ```json
 {
-  "tracker": { "type": "linear", "config": {} },
-  "github": { "auth_method": "gh_cli", "owner": "", "repo": "" },
-  "branching": { "pattern": "{PROJ}-{num}", "always_rebase": true },
-  "labels": {
-    "type": ["Bug", "Feature", "Chore", "Refactor"],
-    "risk": ["Low Risk", "Medium Risk", "High Risk"],
-    "area": ["Frontend", "Backend", "Infra", "Docs"],
-    "special": ["HUMAN ‼️", "Milestone", "Blocked"]
-  }
+ "tracker": { "type": "linear", "config": { "deployed_state": "Deployed" } },
+ "github": { "auth_method": "gh_cli", "owner": "<your-org>", "repo": "<your-repo>" },
+ "branching": { "pattern": "{PROJ}-{num}", "always_rebase": true },
+ "labels": {
+ "type": ["Bug", "Feature", "Chore", "Refactor"],
+ "risk": ["Low Risk", "Medium Risk", "High Risk"],
+ "area": ["Frontend", "Backend", "Infra", "Docs"],
+ "special": ["HUMAN", "Milestone", "Blocked"]
+ }
 }
 ```
 
-> **Note:** The empty strings shown above are placeholders. See `.vibe/config.json` for the actual configured values (GitHub owner/repo, Linear team, etc.).
+- **tracker.config.github_integration** (optional): `"native"` or `"fallback"`. Set during setup wizard.
+  - `"native"` (recommended): Use Linear's native GitHub integration. The fallback workflows are not needed.
+  - `"fallback"`: Use custom GitHub Actions workflows (`pr-opened.yml`, `pr-merged.yml`).
+- **tracker.config.deployed_state** (optional): State name to use when a PR is merged (e.g. `Deployed`, `Done`, `Released`). Only used with fallback workflows.
+- **tracker.config.in_review_state** (optional): State name when a PR is opened (default: `In Review`). Only used with fallback workflows.
+- **tracker.config.done_state** (optional): Final "done" state name (e.g. `Done`, `Closed`). Used when UAT workflow is enabled—tickets go to `deployed_state` (e.g. `To Test`) on merge, then manually to `done_state` after verification. See `recipes/workflows/uat-testing.md`.
+
+### Context Loading: Native vs Fallback Workflows
+
+**IMPORTANT for AI agents:** Before referencing the fallback PR workflows, check the configuration:
+
+```bash
+# Check github_integration setting
+cat .vibe/config.json | grep github_integration
+```
+
+- If `github_integration: "native"` → **Do NOT reference** `pr-opened.yml`, `pr-merged.yml`, or the fallback workflow recipes. These are not in use.
+- If `github_integration: "fallback"` or not set → The fallback workflows are active and relevant.
+
+This prevents loading unnecessary context about workflows that aren't being used.
+
+---
+
+## Agent Commands Quick Reference
+
+**Use these blessed commands.** They handle edge cases, update state correctly, and follow project conventions.
+
+### Essential Commands
+
+| Command | When to Use | What It Does |
+|---------|-------------|--------------|
+| `bin/vibe do PROJ-123` | Starting work on a ticket | Creates worktree from latest main, sets up branch |
+| `bin/vibe pr` | Done with feature | Opens PR with template, from worktree |
+| `bin/vibe doctor` | After any git/worktree changes | Validates setup, syncs state |
+| `bin/vibe setup --quick` | New project setup | Sensible defaults, no prompts |
+
+### Ticket Operations
+
+| Command | When to Use |
+|---------|-------------|
+| `bin/ticket list` | See available tickets |
+| `bin/ticket get PROJ-123` | Get ticket details before starting |
+| `bin/ticket create "Title"` | Create new ticket |
+| `bin/ticket update PROJ-123 --status "In Progress"` | Update ticket status |
+
+### Debugging
+
+| Command | When to Use |
+|---------|-------------|
+| `bin/vibe cors-check <url>` | Diagnosing CORS errors |
+| `bin/vibe retrofit --analyze-only` | See what retrofit would change |
+| `bin/vibe init-actions --dry-run` | Preview GitHub Actions setup |
+
+### Integration Setup
+
+| Command | What It Configures |
+|---------|-------------------|
+| `bin/vibe setup -w tracker` | Linear/Shortcut |
+| `bin/vibe setup -w vercel` | Vercel deployment |
+| `bin/vibe setup -w fly` | Fly.io deployment |
+| `bin/vibe setup -w supabase` | Supabase database |
+| `bin/vibe setup -w sentry` | Sentry error monitoring |
+| `bin/vibe init-actions` | GitHub Actions workflows |
+
+### Worktree Cleanup
+
+After PR is merged:
+```bash
+git worktree remove ../project-worktrees/PROJ-123
+git branch -d PROJ-123
+bin/vibe doctor
+```
 
 ---
 
@@ -130,29 +242,29 @@ See `recipes/agents/asking-clarifying-questions.md` for examples.
 
 ### When to Create HUMAN Tickets
 
-**HUMAN tickets are for tasks that genuinely require human action** — things the AI agent cannot do. Before creating a HUMAN ticket, ask: "Can I do this programmatically?" If yes, create a regular ticket and do the work.
+The `HUMAN` label means "I cannot proceed without human action." Use it sparingly.
 
 **DO create HUMAN tickets for:**
-- **Obtaining secrets** — Actual credential values (database passwords, API keys) that the human must retrieve from external services
-- **External account actions** — Creating accounts, enabling billing, changing plan tiers on third-party services
-- **Subjective decisions** — UI/UX choices, branding, copy tone, product direction
-- **Legal/compliance review** — Terms of service, privacy policy, licensing decisions
-- **External communications** — Emails to users, public announcements, support responses
+- Obtaining **actual secret values** (API keys, passwords the human must retrieve)
+- External account actions (creating accounts on third-party services, enabling billing)
+- Subjective decisions (UI/UX choices, branding, product direction)
+- Legal/compliance review
+- External communications (emails to users, public announcements)
 
 **DO NOT create HUMAN tickets for:**
-- **Writing code or config** — Even if it involves security (auth, access control), the agent can write it
-- **Running CLI commands** — `fly secrets set`, `gh secret set`, etc. — create a regular ticket
-- **Setting up infrastructure** — Dockerfiles, workflows, terraform — the agent can do this
-- **Documentation** — README, comments, ADRs — the agent can write these
-- **Architecture decisions** — If requirements are clear, the agent can design and implement
+- Writing code or config files (even security-related code)
+- Running CLI commands (`fly secrets set`, `gh secret set`, etc.)
+- Setting up infrastructure (Dockerfiles, workflows, terraform)
+- Documentation
+- Architecture decisions (if requirements are clear, just implement)
+- Installing dependencies or tools
 
-**Example — Fly.io deployment setup:**
-- ❌ HUMAN ticket: "Configure Fly.io secrets and environment" (too broad, agent can do most of this)
-- ✅ Regular ticket: "Create Fly.io deployment workflow and Dockerfiles" (agent does this)
-- ✅ Regular ticket: "Add fly secrets set commands to set DATABASE_URL, JWT_SECRET" (agent writes the commands)
-- ✅ HUMAN ticket: "Provide DATABASE_URL connection string from Neon dashboard" (human must retrieve actual value)
+**Ask yourself:** "Can I do this programmatically?" If yes, do it. If no, create a HUMAN ticket.
 
-**When in doubt:** Create a regular ticket and attempt the work. Only escalate to HUMAN if you hit a genuine blocker requiring human action.
+**Example:**
+- "Provide DATABASE_URL" → HUMAN (need actual credential value)
+- "Configure Fly.io secrets" → NOT HUMAN (you can run `fly secrets set`)
+- "Write RLS policies" → NOT HUMAN (you can write the code)
 
 See `recipes/agents/human-required-work.md` for the full guide.
 
@@ -167,20 +279,33 @@ See `recipes/agents/human-required-work.md` for the full guide.
 
 **No files in this repo are protected.** You may edit any file freely. Do not treat any path as read-only or off-limits; apply changes wherever they are needed to complete the task.
 
+### Efficient Command Execution
+
+**Prefer absolute paths and command-specific directory flags over `cd path && command`.** The latter causes sequential execution, resets shell working directory between commands, and adds unnecessary overhead.
+
+| Avoid | Prefer |
+|-------|--------|
+| `cd /path && git status` | `git -C /path status` |
+| `cd /path && git add . && git commit -m "..."` | `git -C /path add .` then `git -C /path commit -m "..."` (or one invocation with multiple args) |
+| `cd /path && git push -u origin BRANCH` | `git -C /path push -u origin BRANCH` |
+| `cd /path && npm install` | `npm --prefix /path install` |
+| `cd /path && npm run build` | `npm --prefix /path run build` |
+| `cd /path && gh pr create ...` | `gh pr create --repo owner/repo ...` (repo from main checkout or config; use `--head branch` if needed) |
+
+**Worktree workflows:** When operating on a worktree (e.g. `../project-worktrees/PROJ-123`), use `git -C <worktree-path> ...` for all git commands from the main repo or from another shell. Use `gh pr create --repo owner/repo --head PROJ-123 ...` so you don't need to `cd` into the worktree to open the PR. This allows parallel or independent commands without changing directory.
+
 ---
 
 ## Ticket Management
 
 ### "Do this ticket {ticket}" – What it means
 
-When the user says **"do this ticket PROJ-123"** (or simply **"do PROJ-123"**), that means:
+When the user says **"do this ticket PROJ-123"** (or any ticket ID), that means:
 
-1. **Create a fresh worktree** – Use `bin/vibe do PROJ-123` to create a dedicated worktree. Do all work there, not in the main checkout.
-2. **Rebase onto latest main** – Fetch origin and run `git rebase origin/main` to ensure the branch is up to date before starting work.
-3. **Do the work** – Implement the ticket requirements.
-4. **Open a PR when complete** – Commit, push, and open a PR (title with ticket ref, risk label, etc.). Do not leave the work only local.
+1. **Do the work on a fresh worktree** – Create a dedicated worktree for that ticket (`bin/vibe do PROJ-123`), do all work there (no work in the main checkout).
+2. **Open a PR when complete** – When the work is done, commit, push, and open a PR (title with ticket ref, risk label, etc.). Do not leave the work only local.
 
-So: **"do {ticket}"** = **fresh worktree + rebase + do the work + open a PR.**
+So: **"do this ticket {ticket}"** = **do this ticket on a fresh worktree and open a PR when complete.**
 
 ### Ticketing System (Linear) Must Be Configured First
 
@@ -195,7 +320,7 @@ When writing tickets or advising the user to create tickets, either ensure the p
 
 ### Starting Work on a Ticket
 
-When asked to "do" a ticket, follow the steps in ["Do this ticket"](#do-this-ticket-ticket--what-it-means) above.
+When asked to "do" a ticket, use a fresh worktree and open a PR when done (see ["Do this ticket"](#do-this-ticket-ticket--what-it-means) above).
 
 ```bash
 # Use the vibe CLI to create a worktree
@@ -209,7 +334,7 @@ This creates:
 ### Creating Tickets
 
 When creating tickets programmatically:
-1. **Check for duplicates first** — Search existing tickets (open and recently closed) for similar work before creating a new ticket. If a ticket already covers the same scope, update that ticket instead of creating a duplicate.
+1. **Check for duplicates first** — Search existing tickets (open and recently closed) for similar work before creating a new ticket. If a ticket already covers the same scope, update that ticket instead.
 2. Use descriptive titles: "Verb + Object" format
 3. **Apply labels** (see [Label checklist](#label-checklist-for-ticket-creation) below)
 4. Include acceptance criteria
@@ -254,17 +379,18 @@ Direction matters. The **prerequisite** (foundation) ticket **blocks** the depen
 
 When linking: set the **foundation ticket** as blocking the **dependent ticket(s)**. Do not set the foundation as "blocked by" the later tickets.
 
-**When to use blocking relationships:**
-- **True dependencies** — Code in ticket B literally cannot be written until ticket A's code exists
-- **HUMAN prerequisites** — A HUMAN ticket blocks work that needs the human's output (e.g., "Provide DATABASE_URL" blocks "Deploy to production")
-- **Sequential deployments** — Infrastructure must exist before app deployment
+**When to use blocking:**
+- True code dependencies (B imports from A, B needs A's API)
+- HUMAN prerequisites (need credential value before next step)
+- Sequential deployments (database migration before app deploy)
 
-**When NOT to use blocking relationships:**
-- **Parallel work** — Two tickets that touch different files can be done simultaneously
-- **Nice-to-have order** — "It would be cleaner to do A first" isn't a blocker
-- **Same milestone** — Being part of the same feature doesn't mean blocking; use the Milestone label instead
+**When NOT to use blocking:**
+- Parallel work on different files/components
+- "Nice-to-have" ordering preferences
+- Same milestone tickets (use milestone label instead)
+- Related but independent features
 
-**Keep the dependency graph shallow.** Deep chains (A→B→C→D→E) slow down work. Prefer parallel tickets where possible.
+**Keep the dependency graph shallow.** Deep chains slow down work. If you have A → B → C → D, consider if B and C can actually be parallel.
 
 See `recipes/tickets/creating-tickets.md` for full guidance.
 
@@ -277,7 +403,7 @@ When creating a ticket, assign:
 - **Area** (at least one): Frontend, Backend, Infra, Docs
 - **Milestone** (for backlog items): v1, v2, or Future
 
-Optional: **HUMAN ‼️**, **Blocked** (see [Special Labels](#special-labels)).
+Optional: **HUMAN**, **Milestone**, **Blocked** (see [Special Labels](#special-labels)).
 
 #### Milestone labels
 
@@ -314,35 +440,57 @@ Update ticket status as work progresses:
 - **In Progress** → **In Review**: When PR is opened
 - **In Review** → **Done**: When PR is merged
 
-### Ticket Hygiene
+### Finding Actionable Tickets
 
-**Keep the board clean and accurate.** Stale or inaccurate tickets slow everyone down.
+When asked to "find unblocked tickets" or "look for work to do", follow this systematic triage process:
 
-#### When completing work
-- **Always close tickets** when the work is done — don't leave them in "In Review" after merge
-- **Update descriptions** if requirements changed during implementation
-- **Add comments** explaining any deviations from the original plan
+#### Step 1: Filter for candidates
 
-#### When fixing bugs silently discovered
-If you discover and fix a bug while working on something else:
-1. **Create a ticket retroactively** documenting what was broken and how it was fixed
-2. **Link it to the PR** that contains the fix
-3. **Close the ticket** immediately (it's already done)
+```bash
+bin/ticket list --status "Todo,Backlog"
+```
 
-This maintains a searchable history of all fixes.
+Exclude tickets that are:
+- Already **Done**, **Deployed**, **Canceled**, or **In Progress**
+- Labeled **HUMAN** (requires human action)
+- Blocked by other tickets (check `blockedBy` relationships)
 
-#### Periodic board review
-Regularly check for:
-- **Stale tickets** — Backlog items that are no longer relevant (cancel them)
-- **Duplicate tickets** — Same work described twice (cancel the duplicate, link to canonical)
-- **Missing labels** — All tickets should have type, risk, area, and milestone labels
-- **Orphaned tickets** — In Progress tickets with no recent activity (investigate)
-- **Completed but open** — Work that's done but ticket wasn't closed (close it)
+#### Step 2: Validate each candidate
 
-#### Silently fixing issues
-**Never fix an issue without a ticket trail.** Even quick fixes need documentation:
-- Create ticket → Link to PR → Close ticket
-- Or: Create ticket retrospectively with "Already fixed in PR #X" → Close immediately
+For each potential ticket, fetch details and check:
+
+| Issue | Detection | Action |
+|-------|-----------|--------|
+| Actually blocked | Depends on work that doesn't exist yet | Add blocking relationship to prerequisite ticket |
+| Already completed | Work already exists in codebase | Cancel ticket with comment explaining it's done |
+| Requires human action | Needs external access, secrets, decisions | Add **HUMAN** label |
+| Missing HUMAN label | Title starts with "HUMAN:" | Add **HUMAN** label for consistency |
+| Stale/obsolete | Requirements no longer make sense | Cancel with explanation |
+
+#### Step 3: Fix ticket hygiene issues
+
+Before picking a ticket, fix any issues found:
+- Add missing blocking relationships
+- Cancel completed tickets (with comment)
+- Add **HUMAN** labels where needed
+- Update stale descriptions
+
+#### Step 4: Pick highest-priority actionable ticket
+
+Priority order:
+1. **Milestone priority** - v1 before v2/Future
+2. **Ticket number** - Lower numbers first (within same milestone)
+3. **Foundation work** - Prerequisites before dependent work
+4. **Risk level** - Lower risk first (for quick wins)
+
+### HUMAN Follow-Up for Deployment Infrastructure
+
+When a deployment infrastructure ticket is completed (e.g. added `fly.toml`, `vercel.json`, `.env.example`), create a **HUMAN-labeled follow-up ticket** so a human can set up production accounts and deploy. Use:
+
+- **Manual:** `bin/ticket create-human-followup` (optionally `--parent PROJ-123` or `--files fly.toml --files vercel.json`)
+- **Auto:** The workflow `.github/workflows/human-followup-on-deployment.yml` creates the ticket on merge to main when deployment config files were added (requires repo secrets `LINEAR_API_KEY`, `LINEAR_TEAM_ID`)
+
+See `recipes/tickets/human-followup-deployment.md` for full guidance.
 
 ---
 
@@ -402,6 +550,92 @@ Worktrees are tracked in `.vibe/local_state.json` (gitignored). Stale entries ca
 
 ---
 
+## Multi-Agent Coordination
+
+When multiple AI agents work on the same codebase simultaneously, follow these rules to prevent conflicts.
+
+### Worktree Isolation (Mandatory)
+
+**Each agent MUST use its own worktree.** Never share a working directory with another agent.
+
+```bash
+# Create a dedicated worktree for your work
+bin/vibe do PROJ-123  # Creates ../repo-worktrees/PROJ-123
+```
+
+This prevents:
+- Merge conflicts from concurrent edits
+- Uncommitted changes being overwritten
+- Branch switching interfering with other agents
+
+### Situational Awareness
+
+Before starting significant work, understand what's in flight:
+
+```bash
+# See all active feature branches
+git fetch --all
+git branch -r | grep -v 'main\|HEAD'
+
+# See recent commits across ALL branches
+git log --all --oneline --graph -20
+
+# Check what files are being modified on other branches
+git diff main...<other-branch> --name-only
+```
+
+### High-Risk Overlap Areas
+
+These files are commonly edited and prone to conflicts:
+- `CLAUDE.md` - Documentation updates
+- `package.json` / `package-lock.json` - Dependencies
+- `migrations/` - Database migrations (use timestamps)
+- Shared components / utilities
+
+**When touching these areas:**
+1. Pull the latest `main` first
+2. Make changes quickly and push
+3. Consider coordinating with user if multiple agents need the same file
+
+### File Conflict Prevention
+
+1. **Check file history before editing:**
+   ```bash
+   git log --all --oneline -5 -- path/to/file.ts
+   ```
+
+2. **Avoid editing files with active changes on other branches**
+
+3. **Keep your branch up to date:**
+   ```bash
+   git fetch origin main && git rebase origin/main
+   ```
+
+### Communication Signals
+
+Since agents cannot directly communicate:
+
+| Signal | How |
+|--------|-----|
+| **Claim work area** | Branch name describes scope: `PROJ-123-auth-refactor` |
+| **Signal file changes** | Commit messages list affected files |
+| **Warn of conflicts** | PR description notes overlap with known branches |
+| **Coordinate via tracker** | Keep tickets "In Progress" so others see claimed work |
+
+### Pre-Work Checklist
+
+Before starting any task:
+- [ ] `git fetch --all` - Get latest remote state
+- [ ] `git branch -r` - Check what branches exist
+- [ ] Check tracker for "In Progress" tickets
+- [ ] Verify your branch is up to date with `main`
+- [ ] Identify which files you'll modify
+- [ ] Check those files aren't being actively modified elsewhere
+
+See `recipes/workflows/multi-agent-coordination.md` for the full guide.
+
+---
+
 ## PR Opening Checklist
 
 Before opening a PR, ensure:
@@ -409,7 +643,7 @@ Before opening a PR, ensure:
 ### Required
 - [ ] Branch follows naming convention (`{PROJ}-{num}`)
 - [ ] Rebased onto latest main (`git rebase origin/main`)
-- [ ] All tests pass locally (if they exist)
+- [ ] All tests pass locally (if tests exist)
 - [ ] PR title includes ticket reference
 - [ ] Risk label selected (Low/Medium/High Risk)
 
@@ -523,7 +757,7 @@ def test_1():
 ### Special Labels
 | Label | Purpose |
 |-------|---------|
-| **HUMAN ‼️** | Requires human decision/action |
+| **HUMAN** | Requires human decision/action |
 | **Milestone** | Part of a larger feature |
 | **Blocked** | Waiting on external dependency |
 
@@ -540,19 +774,35 @@ See `recipes/tickets/creating-tickets.md` for details.
 
 ### Understanding CI Failures
 
+**Always read the actual failure first.** Do not guess the cause from workflow names or assumptions.
+
+1. **PR comments and review threads** – CodeQL and other checks post inline comments (e.g. from `github-advanced-security`). Read them to see the exact finding (e.g. "Incomplete URL substring sanitization") and the file/line.
+2. **Failed run logs** – `gh pr checks <number>` to see which check failed; then `gh run view <run-id> --log-failed` (or open the failed job in the GitHub Checks tab) to read the error output.
+3. **PR policy bot comment** – If the bot commented on the PR, it lists missing items (ticket reference, risk label, etc.).
+
+Only after you know the real failure (e.g. "CodeQL alert on line 45", "missing risk label", "test X failed") should you fix it. See below for common workflows and responses.
+
 When a workflow fails, check:
 
 1. **security.yml**
    - Gitleaks: Secret detected in code
    - Dependency review: Vulnerable dependency in PR
-   - CodeQL: Security issue in code
+   - CodeQL: Security finding in code (see PR review comments from github-advanced-security for file/line and query name, e.g. `py/incomplete-url-substring-sanitization`)
 
 2. **pr-policy.yml**
    - Missing ticket reference in PR
    - Missing risk label
    - Branch naming violation
 
-3. **tests.yml** (if tests exist)
+3. **pr-opened.yml** (fallback - prefer native Linear GitHub integration)
+   - Runs when a PR is opened or reopened; updates the Linear ticket (from branch name) to "In Review" state. Requires repo secret `LINEAR_API_KEY`. Optional repo variable `LINEAR_IN_REVIEW_STATE` (default: `In Review`). On failure, logs a warning and does not fail the job.
+   - **Note**: If using Linear's native GitHub integration (recommended), this workflow is not needed. See `recipes/tickets/linear-github-integration.md`.
+
+4. **pr-merged.yml** (fallback - prefer native Linear GitHub integration)
+   - Runs when a PR is merged; updates the Linear ticket (from branch name) to the "deployed" state. Requires repo secret `LINEAR_API_KEY`. Optional repo variable `LINEAR_DEPLOYED_STATE` (default: `Deployed`). On failure (e.g. no API key, ticket not found), logs a warning and does not fail the job.
+   - **Note**: If using Linear's native GitHub integration (recommended), this workflow is not needed. See `recipes/tickets/linear-github-integration.md`.
+
+5. **tests.yml** (if tests exist)
    - Test failure (check output for details)
    - No tests detected (may be intentional for new projects)
 
@@ -566,8 +816,13 @@ When a workflow fails, check:
 **Missing labels:**
 1. Add the required label via GitHub UI or `gh pr edit`
 
+**CodeQL / security findings** (see PR review comments for the exact alert):
+1. Read the inline comment: query ID, file, line, and "Show more details" link
+2. Fix the finding (e.g. avoid URL substring checks in tests; use allowlists in production code) or add a documented suppression if it is a false positive
+3. Push the fix
+
 **Test failures** (if the project has tests):
-1. Read the failure output
+1. Read the failure output (from logs or `gh run view ... --log-failed`)
 2. Fix the failing test or the code
 3. Push the fix
 
@@ -580,8 +835,20 @@ When implementing specific features, consult these recipes:
 ### Workflow
 - `recipes/workflows/git-worktrees.md` - Parallel development
 - `recipes/workflows/branching-and-rebasing.md` - Git workflow
+- `recipes/workflows/multi-agent-coordination.md` - Preventing conflicts with multiple agents
+- `recipes/workflows/multi-agent-terminals.md` - Terminal setup for multiple agents (iTerm2, tmux)
+- `recipes/workflows/linear-hooks.md` - Local hooks for automatic Linear updates
+- `recipes/workflows/pr-opened-linear.md` - PR opened → Linear status (In Review)
+- `recipes/workflows/pr-merge-linear.md` - PR merge → Linear status (Deployed)
+- `recipes/workflows/uat-testing.md` - Optional UAT workflow (To Test → Done)
 - `recipes/workflows/pr-risk-assessment.md` - Risk classification
 - `recipes/workflows/testing-instructions-writing.md` - Testing docs
+
+### Agents
+- `recipes/agents/sub-agent-patterns.md` - Breaking complex tasks into specialized sub-agents
+- `recipes/agents/asking-clarifying-questions.md` - When to ask vs. proceed
+- `recipes/agents/human-required-work.md` - When to create HUMAN tickets
+- `recipes/agents/readme-maintenance.md` - Keeping README up to date
 
 ### Security
 - `recipes/security/secret-management.md` - Handling secrets
@@ -593,16 +860,80 @@ When implementing specific features, consult these recipes:
 
 ### Tickets
 - `recipes/tickets/creating-tickets.md` - Creating tickets (blocking, labels, milestones)
+- `recipes/tickets/human-followup-deployment.md` - HUMAN follow-up tickets for deployment setup
 - `recipes/tickets/linear-setup.md` - Linear configuration
-- `recipes/tickets/shortcut.md` - Shortcut (stub)
+- `recipes/tickets/linear-github-integration.md` - Native Linear GitHub integration (recommended)
+- `recipes/tickets/shortcut.md` - Shortcut configuration
+
+### Testing
+- `recipes/testing/playwright.md` - E2E testing with Playwright (setup, retrofit, CI/CD)
+- `recipes/testing/vitest.md` - Unit testing with Vitest
+
+### Debugging
+- `recipes/debugging/cors-errors.md` - CORS diagnosis and framework-specific fixes
+
+### Integrations
+- `recipes/integrations/promptvault.md` - PromptVault for LLM prompt management
+- `recipes/integrations/sentry.md` - Sentry error monitoring and performance tracking
+- `recipes/integrations/neon.md` - Neon serverless Postgres with database branching
+
+### Deployment
+- `recipes/deployment/fly-io.md` - Fly.io container deployment (global distribution, volumes, managed services)
+- `recipes/deployment/vercel.md` - Vercel deployment (Next.js, serverless, edge functions)
+
+### Databases
+- `recipes/databases/supabase.md` - Supabase (Postgres, auth, real-time, storage)
+- `recipes/databases/neon.md` - Neon serverless Postgres with database branching
+- `recipes/databases/byo-postgres.md` - Bring your own Postgres configuration
+
+### Design
+- `recipes/design/figma-ai-prompts.md` - Optimizing Figma AI prompts with codebase context
+- `recipes/design/figma-to-code.md` - Design-to-implementation workflow guide
 
 ---
 
-## Command Reference
+## Skills Reference
+
+Use these slash commands for common workflows:
+
+| Skill | Description |
+|-------|-------------|
+| `/assess` | **Business validation** - Research competitors and validate your idea before building |
+| `/setup` | Run the initial project setup wizard |
+| `/do PROJ-123` | Start working on a ticket (creates worktree) |
+| `/pr` | Create a pull request for the current branch |
+| `/doctor` | Check project health and configuration |
+| `/ticket list` | List tickets from the tracker |
+| `/ticket get PROJ-123` | Get ticket details |
+| `/ticket create "Title"` | Create a new ticket |
+| `/cleanup` | Clean up merged worktrees |
+| `/promptvault` | Manage PromptVault prompts, snippets, and variables |
+| `/vercel` | Deploy and manage Vercel projects |
+| `/fly` | Deploy and manage Fly.io applications |
+| `/supabase` | Manage Supabase database, auth, and local development |
+| `/sentry` | Configure Sentry error monitoring and releases |
+| `/neon` | Manage Neon serverless Postgres and database branches |
+| `/figma` | Design-to-code workflow: analyze codebase, generate Figma AI prompts, create tickets |
+
+Skills are defined in `.claude/commands/` and can be customized per project.
+
+---
+
+## CLI Reference
+
+These are the underlying CLI commands (skills call these automatically):
 
 ```bash
 # Setup and health
 bin/vibe setup              # Initial configuration
+bin/vibe retrofit           # Apply boilerplate to existing project
+bin/vibe retrofit --analyze-only  # See what retrofit would change
+bin/vibe setup --wizard vercel     # Configure Vercel deployment
+bin/vibe setup --wizard fly        # Configure Fly.io deployment
+bin/vibe setup --wizard supabase   # Configure Supabase database
+bin/vibe setup --wizard sentry     # Configure Sentry error monitoring
+bin/vibe setup --wizard neon       # Configure Neon serverless Postgres
+bin/vibe setup --wizard playwright # Configure Playwright E2E testing
 bin/vibe doctor             # Health check
 bin/doctor                  # Alias for doctor
 
@@ -610,17 +941,27 @@ bin/doctor                  # Alias for doctor
 bin/ticket list             # List tickets
 bin/ticket get PROJ-123     # Get ticket details
 bin/ticket create "Title"   # Create ticket
-bin/ticket update PROJ-123 --status "In Progress"  # Update ticket
-bin/ticket close PROJ-123   # Close ticket (Done)
-bin/ticket close PROJ-123 --cancel  # Close ticket (Canceled)
-bin/ticket comment PROJ-123 "message"  # Add comment
+bin/ticket labels           # List label IDs
+bin/ticket create-human-followup   # Create HUMAN follow-up for deployment
 
-# Working on tickets ("do this ticket" = fresh worktree + rebase + open PR when done)
+# Working on tickets
 bin/vibe do PROJ-123        # Create worktree for ticket
 
 # Secrets
 bin/secrets list            # List secrets
 bin/secrets sync            # Sync to provider
+
+# Multi-assistant support
+bin/vibe generate-agent-instructions  # Generate instruction files for all assistants
+bin/vibe generate-agent-instructions --format cursor  # Generate for specific format
+bin/vibe generate-agent-instructions --dry-run  # Preview without writing
+
+# Design-to-code workflow
+bin/vibe figma analyze      # Analyze frontend (frameworks, tokens, components)
+bin/vibe figma analyze --figma-context  # Output context for Figma AI prompts
+bin/vibe figma analyze --json  # JSON output for scripting
+bin/vibe figma prompt       # Generate optimized Figma AI prompt
+bin/vibe figma tickets      # Break design into implementation tickets
 ```
 
 ---
@@ -636,18 +977,17 @@ bin/ticket get PROJ-123
 # 2. Create worktree
 bin/vibe do PROJ-123
 
-# 3. Navigate to worktree
-cd ../project-worktrees/PROJ-123
+# 3. Work in the worktree (or use absolute path for commands from elsewhere)
+WORKTREE=../project-worktrees/PROJ-123  # or absolute path
+# ... implement feature in that directory ...
 
-# 4. Implement feature...
+# 4. Commit and push (from anywhere, using git -C)
+git -C "$WORKTREE" add .
+git -C "$WORKTREE" commit -m "PROJ-123: Add feature description"
+git -C "$WORKTREE" push -u origin PROJ-123
 
-# 5. Commit and push
-git add .
-git commit -m "PROJ-123: Add feature description"
-git push -u origin PROJ-123
-
-# 6. Create PR
-gh pr create --title "PROJ-123: Add feature" --body "..."
+# 5. Create PR (no cd needed; use --repo and --head)
+gh pr create --repo owner/repo --head PROJ-123 --title "PROJ-123: Add feature" --body "..."
 ```
 
 ### Fixing a Bug
@@ -656,22 +996,26 @@ gh pr create --title "PROJ-123: Add feature" --body "..."
 # 1. Create worktree
 bin/vibe do PROJ-456
 
-# 2. Fix the bug
-cd ../project-worktrees/PROJ-456
-# ... make changes ...
+# 2. Fix the bug in the worktree (e.g. cd there to edit, or use your editor with the path)
+# ... make changes in ../project-worktrees/PROJ-456 ...
 
 # 3. Add tests that would have caught it
-# 4. Commit with bug ticket reference
-git commit -m "PROJ-456: Fix null pointer in auth flow"
+# 4. Commit with bug ticket reference (git -C from anywhere)
+git -C ../project-worktrees/PROJ-456 commit -m "PROJ-456: Fix null pointer in auth flow"
 ```
 
 ### Handling CI Failures
 
-```bash
-# 1. Check what failed
-gh pr checks
+**First:** Read the actual failure. Check PR comments (e.g. CodeQL inline comments from github-advanced-security), PR policy bot comment, and failed run logs. Do not guess from workflow names.
 
-# 2. If tests failed (and the project has tests), run locally
+```bash
+# 1. See which check failed
+gh pr checks <number>
+
+# 2. Read failed run logs (use run ID from the failed check link)
+gh run view <run-id> --log-failed
+
+# 3. If tests failed (and the project has tests), run locally
 pytest  # or npm test, etc.
 
 # 3. If secret scanning failed
@@ -685,58 +1029,16 @@ git push
 
 ## Anti-Patterns to Avoid
 
-1. **Don't merge main into feature branches** - Always rebase
-2. **Don't force push to main** - Only to feature branches
-3. **Don't skip CI** - Wait for checks to pass
-4. **Don't commit secrets** - Even for "testing"
-5. **Don't skip risk labels** - Every PR needs one
-6. **Don't create PRs without ticket references** - Link to tickets
-7. **Don't work in the main checkout** - Use worktrees for ticket work
-8. **Don't leave merged worktrees around** - After a PR is merged, remove the worktree, delete the local branch, and run `bin/vibe doctor`
-9. **Don't use `cd path && command`** - Use absolute paths instead (see below)
-
----
-
-## Efficient Command Execution
-
-**Prefer absolute paths over `cd && command` patterns.** This is faster and avoids working directory issues.
-
-### Bad (inefficient)
-```bash
-cd /path/to/worktree && git push -u origin branch-name
-cd /path/to/worktree && gh pr create --title "..." --body "..."
-```
-
-### Good (efficient)
-```bash
-git -C /path/to/worktree push -u origin branch-name
-gh pr create --repo owner/repo --head branch-name --title "..." --body "..."
-```
-
-### Common commands with absolute paths
-
-| Command | Absolute path version |
-|---------|----------------------|
-| `cd dir && git ...` | `git -C /absolute/path ...` |
-| `cd dir && npm ...` | `npm --prefix /absolute/path ...` |
-| `cd dir && pytest` | `pytest /absolute/path/tests` |
-| `cd dir && gh pr create` | `gh pr create --repo owner/repo --head branch` |
-
-### When working in worktrees
-
-Instead of:
-```bash
-cd ../city-doodle-worktrees/CITY-123 && git push -u origin CITY-123
-cd ../city-doodle-worktrees/CITY-123 && gh pr create ...
-```
-
-Use:
-```bash
-git -C ../city-doodle-worktrees/CITY-123 push -u origin CITY-123
-gh pr create --repo kdenny/city-doodle --head CITY-123 --title "..." --body "..."
-```
-
-This eliminates sequential commands and shell resets between operations.
+1. **Don't guess CI failures** - Read PR comments (CodeQL, policy bot) and failed run logs first
+2. **Don't merge main into feature branches** - Always rebase
+3. **Don't force push to main** - Only to feature branches
+4. **Don't skip CI** - Wait for checks to pass
+5. **Don't commit secrets** - Even for "testing"
+6. **Don't skip risk labels** - Every PR needs one
+7. **Don't create PRs without ticket references** - Link to tickets
+8. **Don't work in the main checkout** - Use worktrees for ticket work.
+9. **Don't leave merged worktrees around** - After a PR is merged, remove the worktree, delete the local branch, and run `bin/vibe doctor`.
+10. **Don't use `cd path && command`** - Use `git -C path`, `npm --prefix path`, or `gh pr create --repo owner/repo` so commands can run without changing directory and can be parallelized when appropriate.
 
 ---
 
@@ -766,3 +1068,21 @@ git branch -D PROJ-123
 bin/vibe do PROJ-123
 ```
 See [Cleaning Up Worktrees](#cleaning-up-worktrees--follow-this-order) for the full cleanup procedure.
+
+### CORS Errors
+
+When you see CORS errors (browser blocking API requests):
+
+1. **Diagnose first:**
+   ```bash
+   bin/vibe cors-check https://api.example.com/endpoint -o http://localhost:3000
+   ```
+
+2. **Check the output** for missing headers and specific suggestions.
+
+3. **Apply framework-specific fix** from `recipes/debugging/cors-errors.md`.
+
+Common quick fixes:
+- **Missing headers entirely**: Add CORS middleware to your server
+- **Wrong origin**: Add your frontend's URL to allowed origins
+- **Credentials issue**: Can't use `*` with credentials; specify exact origins

@@ -6,14 +6,29 @@ import click
 
 from lib.vibe.config import DEFAULT_CONFIG, config_exists, load_config, save_config
 from lib.vibe.state import DEFAULT_STATE, save_state, state_exists
+from lib.vibe.ui.components import (
+    MultiSelect,
+    ProgressIndicator,
+    SkillLevel,
+    SkillLevelSelector,
+    WhatNextFlow,
+)
+from lib.vibe.ui.context import WizardContext
 from lib.vibe.wizards.branch import run_branch_wizard
+from lib.vibe.wizards.database import run_database_wizard
 from lib.vibe.wizards.env import run_env_wizard
+from lib.vibe.wizards.fly import run_fly_wizard
 from lib.vibe.wizards.github import (
     run_dependency_graph_prompt,
     run_github_wizard,
     try_auto_configure_github,
 )
+from lib.vibe.wizards.neon import run_neon_wizard
+from lib.vibe.wizards.playwright import run_playwright_wizard
+from lib.vibe.wizards.sentry import run_sentry_wizard
+from lib.vibe.wizards.supabase import run_supabase_wizard
 from lib.vibe.wizards.tracker import run_tracker_wizard
+from lib.vibe.wizards.vercel import run_vercel_wizard
 
 # Default PR template when .github/PULL_REQUEST_TEMPLATE.md is missing
 _DEFAULT_PR_TEMPLATE = """## Summary
@@ -124,7 +139,58 @@ def ensure_commit_convention(base_path: Path | None = None) -> bool:
     return True
 
 
-def run_setup(force: bool = False) -> bool:
+def _run_multi_assistant_generation() -> None:
+    """Run multi-assistant instruction file generation."""
+    try:
+        from lib.vibe.agents.generator import InstructionGenerator
+        from lib.vibe.agents.spec import AssistantFormat, InstructionSpec
+    except ImportError:
+        click.echo("  Agent instruction generation modules not available.")
+        return
+
+    source_path = Path("agent_instructions")
+    if not source_path.exists():
+        click.echo("  No agent_instructions/ directory found. Skipping.")
+        click.echo("  Create agent_instructions/ with CORE.md, COMMANDS.md, WORKFLOW.md")
+        return
+
+    # Multi-select for format selection
+    format_select = MultiSelect(
+        title="Select formats to generate:",
+        options=[
+            ("CLAUDE.md", "Claude Code instructions", True),
+            (".cursor/rules", "Cursor IDE instructions", True),
+            (".github/copilot-instructions.md", "GitHub Copilot instructions", False),
+        ],
+    )
+    selected = format_select.show()
+
+    if not selected:
+        click.echo("  No formats selected. Skipping generation.")
+        return
+
+    format_map = {
+        1: AssistantFormat.CLAUDE,
+        2: AssistantFormat.CURSOR,
+        3: AssistantFormat.COPILOT,
+    }
+    selected_formats = [format_map[i] for i in selected]
+
+    # Load spec and generate
+    try:
+        click.echo("  Loading instruction spec...")
+        spec = InstructionSpec.from_files(source_path)
+        generator = InstructionGenerator(spec)
+        results = generator.generate_all(Path("."), selected_formats)
+
+        click.echo("  Generated files:")
+        for format_name, file_path in results.items():
+            click.echo(f"    - {file_path}")
+    except Exception as e:
+        click.echo(f"  Error generating instructions: {e}")
+
+
+def run_setup(force: bool = False, quick: bool = False) -> bool:
     """
     Run the initial setup wizard.
 
@@ -133,6 +199,7 @@ def run_setup(force: bool = False) -> bool:
 
     Args:
         force: Force re-running setup even if config exists
+        quick: Quick mode - sensible defaults, no prompts, skip optional config
 
     Returns:
         True if setup completed successfully
@@ -140,8 +207,8 @@ def run_setup(force: bool = False) -> bool:
     config_file_existed = config_exists()
     config = load_config()
 
-    # Fresh project: zero-prompt auto-initialization (never drop into interactive wizard)
-    if is_fresh_project(config, config_file_existed) and not force:
+    # Quick mode OR fresh project: zero-prompt auto-initialization
+    if quick or (is_fresh_project(config, config_file_existed) and not force):
         apply_git_workflow_defaults(config)
         config["tracker"]["type"] = None
         config["tracker"]["config"] = {}
@@ -185,6 +252,11 @@ def run_setup(force: bool = False) -> bool:
         next_num += 1
         click.echo(f"  {next_num}. Check recipes/ for best practices")
         click.echo()
+        click.echo("Infrastructure (configure early for smooth deploys):")
+        click.echo("  • Database: bin/vibe setup -w database")
+        click.echo("  • Hosting:  bin/vibe setup -w vercel  (or -w fly)")
+        click.echo("  • Errors:   Add SENTRY_DSN to .env.local")
+        click.echo()
         return True
 
     # Existing config or reconfiguration: show wizard header and possibly confirm
@@ -202,14 +274,28 @@ def run_setup(force: bool = False) -> bool:
             return False
         config = load_config()
 
+    # Ask for skill level to adapt wizard verbosity
+    skill_selector = SkillLevelSelector()
+    skill_level = skill_selector.show()
+
+    # Calculate total steps (varies based on what's already configured)
+    github_configured = config.get("github", {}).get("auth_method") and config.get(
+        "github", {}
+    ).get("owner")
+    total_steps = 2 if github_configured else 3  # GitHub + Tracker (+ optional)
+
+    progress = ProgressIndicator(total_steps=total_steps)
+
     # Essential wizards (required)
     click.echo("\n--- Essential Configuration ---\n")
 
     # 1. GitHub auth (skip if already configured)
-    if config.get("github", {}).get("auth_method") and config.get("github", {}).get("owner"):
-        click.echo("Step 1: GitHub already configured, skipping.")
+    if github_configured:
+        click.echo("GitHub already configured, skipping.")
     else:
-        click.echo("Step 1: GitHub Authentication")
+        progress.advance("GitHub Authentication")
+        if skill_level == SkillLevel.BEGINNER:
+            click.echo("Info: GitHub is used for repository access, PR creation, and CI/CD.")
         if not run_github_wizard(config):
             click.echo("GitHub authentication is required. Setup cancelled.")
             return False
@@ -217,7 +303,9 @@ def run_setup(force: bool = False) -> bool:
     run_dependency_graph_prompt(config)
 
     # 2. Tracker selection
-    click.echo("\nStep 2: Ticket Tracker")
+    progress.advance("Ticket Tracker")
+    if skill_level == SkillLevel.BEGINNER:
+        click.echo("Info: A ticket tracker helps organize work and link PRs to tasks.")
     if not run_tracker_wizard(config):
         click.echo("Tracker configuration is required. Setup cancelled.")
         return False
@@ -225,16 +313,23 @@ def run_setup(force: bool = False) -> bool:
     # Save after essentials
     save_config(config)
 
-    # Optional wizards
-    click.echo("\n--- Optional Configuration ---\n")
+    # Optional wizards (skip for experts)
+    if skill_level != SkillLevel.EXPERT:
+        click.echo("\n--- Optional Configuration ---\n")
 
-    if click.confirm("Configure branch naming convention?", default=False):
-        run_branch_wizard(config)
-        save_config(config)
+        if click.confirm("Configure branch naming convention?", default=False):
+            run_branch_wizard(config)
+            save_config(config)
 
-    if click.confirm("Configure environment/secrets handling?", default=False):
-        run_env_wizard(config)
-        save_config(config)
+        if click.confirm("Configure environment/secrets handling?", default=False):
+            run_env_wizard(config)
+            save_config(config)
+
+        # Multi-assistant instruction generation
+        if click.confirm("Generate instruction files for multiple AI assistants?", default=False):
+            _run_multi_assistant_generation()
+    else:
+        click.echo("\n(Skipping optional configuration for expert mode)")
 
     # Final save and summary
     save_config(config)
@@ -245,25 +340,45 @@ def run_setup(force: bool = False) -> bool:
     click.echo()
     click.echo("Configuration saved to .vibe/config.json")
     click.echo()
+
+    # Prominent reminder about CLAUDE.md
+    click.echo("+" + "-" * 58 + "+")
+    click.echo("|  IMPORTANT: Update the Project Overview in CLAUDE.md    |")
+    click.echo("+" + "-" * 58 + "+")
+    click.echo("|                                                          |")
+    click.echo("|  AI agents need project context to help effectively.     |")
+    click.echo("|  Open CLAUDE.md and fill in:                             |")
+    click.echo("|                                                          |")
+    click.echo("|  - What this project does                                |")
+    click.echo("|  - Tech stack (backend, frontend, database, deployment)  |")
+    click.echo("|  - Key features / domains                                |")
+    click.echo("|                                                          |")
+    click.echo("+" + "-" * 58 + "+")
+    click.echo()
+
     click.echo("Next steps:")
-    click.echo("  1. Run 'bin/doctor' to verify your setup")
-    click.echo("  2. Review .vibe/config.json and adjust as needed")
-    click.echo("  3. Fill in the Project Overview in CLAUDE.md (for AI agent context)")
-    click.echo(
-        "  4. Update README.md with app name, description, tech stack, and setup instructions"
-    )
+    click.echo("  1. Run 'bin/vibe doctor' to verify your setup")
+    click.echo("  2. Update CLAUDE.md Project Overview (see above)")
+    click.echo("  3. Update README.md with app name, tech stack, and setup instructions")
+    click.echo("  4. If using Linear: add LINEAR_API_KEY to .env.local")
     click.echo("  5. Check out the recipes/ directory for best practices")
+    click.echo()
+    click.echo("Infrastructure (configure early for smooth deploys):")
+    click.echo("  • Database: bin/vibe setup -w database")
+    click.echo("  • Hosting:  bin/vibe setup -w vercel  (or -w fly)")
+    click.echo("  • Errors:   Add SENTRY_DSN to .env.local")
     click.echo()
 
     return True
 
 
-def run_individual_wizard(wizard_name: str) -> bool:
+def run_individual_wizard(wizard_name: str, show_what_next: bool = True) -> bool:
     """
     Run a specific wizard by name.
 
     Args:
         wizard_name: Name of wizard to run (github, tracker, branch, env)
+        show_what_next: Whether to show the 'what next?' flow after completion
 
     Returns:
         True if wizard completed successfully
@@ -275,6 +390,13 @@ def run_individual_wizard(wizard_name: str) -> bool:
         "tracker": run_tracker_wizard,
         "branch": run_branch_wizard,
         "env": run_env_wizard,
+        "vercel": run_vercel_wizard,
+        "fly": run_fly_wizard,
+        "supabase": run_supabase_wizard,
+        "neon": run_neon_wizard,
+        "database": run_database_wizard,
+        "sentry": run_sentry_wizard,
+        "playwright": run_playwright_wizard,
     }
 
     if wizard_name not in wizards:
@@ -285,5 +407,21 @@ def run_individual_wizard(wizard_name: str) -> bool:
     result = wizards[wizard_name](config)
     if result:
         save_config(config)
+
+        # Show context-aware recommendations
+        context = WizardContext(config)
+        recommendation = context.get_recommendation(wizard_name)
+        if recommendation:
+            rec_wizard, reason = recommendation
+            click.echo()
+            click.echo(f"Tip: {reason}")
+
+        # Show 'what next?' flow for natural wizard chaining
+        if show_what_next:
+            what_next = WhatNextFlow(wizard_name, config)
+            next_wizard = what_next.show()
+            if next_wizard:
+                click.echo()
+                return run_individual_wizard(next_wizard, show_what_next=True)
 
     return result

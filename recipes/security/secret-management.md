@@ -1,5 +1,8 @@
 # Secret Management
 
+> **CRITICAL: Never commit `.env.local` or any file containing real secrets.**
+> The `.env.local` file is gitignored by default. If yours isn't, fix your `.gitignore` immediately.
+
 ## When to Use This Recipe
 
 Use this recipe when you need to:
@@ -109,6 +112,67 @@ bin/secrets sync .env.local --provider github
 3. **Audit access** - Know who can access what
 4. **Prefer short-lived tokens** - OAuth refresh tokens > long-lived API keys
 5. **Use the principle of least privilege** - Only grant what's needed
+
+## Common Mistakes
+
+### Accidentally Committing Secrets
+
+**Symptoms:**
+- CI fails with "secret detected" error
+- Gitleaks blocks your push
+- Someone messages you about exposed credentials
+
+**Fix:**
+1. Remove the secret from the file
+2. Commit the removal
+3. **Rotate the secret immediately** - assume it's compromised
+4. If needed, add to `.vibe/secrets.allowlist.json` (only for false positives)
+
+### .env.local Not Gitignored
+
+**Check:**
+```bash
+git check-ignore .env.local
+# Should output: .env.local
+```
+
+**Fix (if not gitignored):**
+```bash
+echo ".env.local" >> .gitignore
+git add .gitignore
+git commit -m "Ensure .env.local is gitignored"
+```
+
+### Using .env Instead of .env.local
+
+The `.env` file is NOT automatically gitignored in many setups. Always use `.env.local` for secrets.
+
+**Pattern:**
+- `.env` - Can be committed (non-secret defaults)
+- `.env.local` - Never committed (your secrets)
+- `.env.example` - Always committed (template)
+
+## Linear API Key Safety
+
+When setting up Linear integration:
+
+1. **Add the key to `.env.local`, not `.env`:**
+   ```bash
+   echo "LINEAR_API_KEY=lin_api_xxxxx" >> .env.local
+   ```
+
+2. **Never pass the key in command arguments:**
+   ```bash
+   # BAD - key visible in shell history
+   LINEAR_API_KEY=xxx bin/ticket list
+
+   # GOOD - key in .env.local
+   bin/ticket list
+   ```
+
+3. **Use GitHub secrets for CI:**
+   - Go to Settings → Secrets → Actions
+   - Add `LINEAR_API_KEY` as a repository secret
 
 ## Extension Points
 

@@ -19,14 +19,44 @@ jobs:
     runs-on: ubuntu-latest
     steps:
       - name: Checkout
-        uses: actions/checkout@v4
+        uses: actions/checkout@v6
         with:
           fetch-depth: 0
 
-      - name: Gitleaks
-        uses: gitleaks/gitleaks-action@v2
-        env:
-          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+      - name: Install gitleaks
+        run: |
+          curl -sSfL https://github.com/gitleaks/gitleaks/releases/download/v8.24.3/gitleaks_8.24.3_linux_x64.tar.gz | tar xz
+          chmod +x gitleaks
+          sudo mv gitleaks /usr/local/bin/
+
+      - name: Scan for secrets
+        run: |
+          # Try to scan git history for the PR
+          if [ "${{ github.event_name }}" = "pull_request" ]; then
+            BASE_SHA="${{ github.event.pull_request.base.sha }}"
+            HEAD_SHA="${{ github.event.pull_request.head.sha }}"
+
+            # Check if the base commit exists (may not for unrelated-histories merges)
+            if git cat-file -e "$BASE_SHA" 2>/dev/null; then
+              echo "Scanning commits $BASE_SHA..$HEAD_SHA"
+              gitleaks detect --log-opts="$BASE_SHA..$HEAD_SHA" --redact -v --exit-code=2 || {
+                EXIT_CODE=$?
+                if [ $EXIT_CODE -eq 2 ]; then
+                  echo "::error::Gitleaks found secrets in the commits"
+                  exit 1
+                elif [ $EXIT_CODE -ne 0 ]; then
+                  echo "::warning::Git history scan failed, falling back to directory scan"
+                  gitleaks detect --no-git --redact -v --exit-code=2
+                fi
+              }
+            else
+              echo "::warning::Base commit not found (unrelated-histories merge?), scanning directory"
+              gitleaks detect --no-git --redact -v --exit-code=2
+            fi
+          else
+            # For push events, scan the entire repo
+            gitleaks detect --redact -v --exit-code=2
+          fi
 
   dependency-review:
     name: Dependency Review
@@ -34,7 +64,7 @@ jobs:
     if: github.event_name == 'pull_request'
     steps:
       - name: Checkout
-        uses: actions/checkout@v4
+        uses: actions/checkout@v6
 
       - name: Check Dependency graph status
         id: depgraph
@@ -67,7 +97,7 @@ jobs:
       contents: write
     steps:
       - name: Checkout
-        uses: actions/checkout@v4
+        uses: actions/checkout@v6
 
       - name: Install Syft
         uses: anchore/sbom-action/download-syft@v0
@@ -76,7 +106,7 @@ jobs:
         run: syft . -o spdx-json > sbom.spdx.json
 
       - name: Upload SBOM
-        uses: actions/upload-artifact@v4
+        uses: actions/upload-artifact@v6
         with:
           name: sbom
           path: sbom.spdx.json
@@ -89,7 +119,7 @@ jobs:
       security-events: write
     steps:
       - name: Checkout
-        uses: actions/checkout@v4
+        uses: actions/checkout@v6
 
       - name: Initialize CodeQL
         uses: github/codeql-action/init@v3

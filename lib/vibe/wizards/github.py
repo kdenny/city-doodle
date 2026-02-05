@@ -5,6 +5,9 @@ from typing import Any
 
 import click
 
+from lib.vibe.tools import require_interactive
+from lib.vibe.ui.components import NumberedMenu
+
 
 def run_github_wizard(config: dict[str, Any]) -> bool:
     """
@@ -16,6 +19,12 @@ def run_github_wizard(config: dict[str, Any]) -> bool:
     Returns:
         True if configuration was successful
     """
+    # Check prerequisites
+    ok, error = require_interactive("GitHub")
+    if not ok:
+        click.echo(f"\n{error}")
+        return False
+
     click.echo("GitHub is used for repository access and CI/CD.")
     click.echo()
 
@@ -31,11 +40,16 @@ def run_github_wizard(config: dict[str, Any]) -> bool:
             return True
 
     # Offer auth methods
-    click.echo("\nAuthentication options:")
-    click.echo("  1. GitHub CLI (gh) - Recommended")
-    click.echo("  2. Personal Access Token (PAT)")
+    menu = NumberedMenu(
+        title="Authentication options:",
+        options=[
+            ("GitHub CLI (gh)", "Recommended - uses gh auth"),
+            ("Personal Access Token", "Manual token management"),
+        ],
+        default=1,
+    )
 
-    choice = click.prompt("Select option", type=int, default=1)
+    choice = menu.show()
 
     if choice == 1:
         return _setup_gh_cli(config)
