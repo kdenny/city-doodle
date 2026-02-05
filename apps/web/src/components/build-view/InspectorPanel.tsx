@@ -4,10 +4,16 @@
  * Shows properties of the selected district, road, or POI and allows editing.
  */
 
-import { useState, useCallback } from "react";
+import { useState, useCallback, useMemo } from "react";
 import { CollapsiblePersonalitySliders } from "./PersonalitySliders";
 import type { DistrictPersonality, RoadClass } from "../canvas/layers/types";
 import { DEFAULT_DISTRICT_PERSONALITY } from "../canvas/layers/types";
+import {
+  canBeHistoric,
+  getEraByYear,
+  DEFAULT_ERA_YEAR,
+  HISTORIC_THRESHOLD_YEAR,
+} from "./EraSelector";
 
 // Feature types that can be selected
 export type SelectableFeatureType = "district" | "road" | "poi" | null;
@@ -152,6 +158,19 @@ function DistrictInspector({
     district.personality ?? DEFAULT_DISTRICT_PERSONALITY
   );
 
+  // Check if the current era allows historic designation
+  const eraYear = personality.era_year ?? DEFAULT_ERA_YEAR;
+  const canMarkHistoric = canBeHistoric(eraYear);
+  const currentEra = getEraByYear(eraYear);
+
+  // Auto-disable historic flag if era is changed to a non-historic era
+  useMemo(() => {
+    if (!canMarkHistoric && isHistoric) {
+      setIsHistoric(false);
+      onUpdate?.({ ...district, isHistoric: false, personality });
+    }
+  }, [canMarkHistoric, isHistoric, district, onUpdate, personality]);
+
   const handleNameChange = useCallback(
     (e: React.ChangeEvent<HTMLInputElement>) => {
       const newName = e.target.value;
@@ -162,17 +181,31 @@ function DistrictInspector({
   );
 
   const handleHistoricToggle = useCallback(() => {
+    if (!canMarkHistoric) return;
     const newValue = !isHistoric;
     setIsHistoric(newValue);
     onUpdate?.({ ...district, isHistoric: newValue });
-  }, [district, isHistoric, onUpdate]);
+  }, [district, isHistoric, onUpdate, canMarkHistoric]);
 
   const handlePersonalityChange = useCallback(
     (newPersonality: DistrictPersonality) => {
       setPersonality(newPersonality);
-      onUpdate?.({ ...district, personality: newPersonality });
+      // If era changes to non-historic, auto-disable historic flag
+      const newCanMarkHistoric = canBeHistoric(
+        newPersonality.era_year ?? DEFAULT_ERA_YEAR
+      );
+      if (!newCanMarkHistoric && isHistoric) {
+        setIsHistoric(false);
+        onUpdate?.({
+          ...district,
+          personality: newPersonality,
+          isHistoric: false,
+        });
+      } else {
+        onUpdate?.({ ...district, personality: newPersonality });
+      }
     },
-    [district, onUpdate]
+    [district, onUpdate, isHistoric]
   );
 
   return (
@@ -200,19 +233,37 @@ function DistrictInspector({
         />
       </div>
 
-      {/* Historic toggle */}
-      <label className="flex items-center gap-2 cursor-pointer">
-        <input
-          type="checkbox"
-          checked={isHistoric}
-          onChange={handleHistoricToggle}
-          className="w-4 h-4 rounded border-gray-300 text-amber-600 focus:ring-amber-500"
-        />
-        <span className="text-sm text-gray-600">Historic District</span>
-        {isHistoric && (
-          <span className="text-xs text-amber-600">🏛️</span>
+      {/* Historic toggle with era-based validation */}
+      <div className="relative group">
+        <label
+          className={`flex items-center gap-2 ${
+            canMarkHistoric ? "cursor-pointer" : "cursor-not-allowed opacity-60"
+          }`}
+        >
+          <input
+            type="checkbox"
+            checked={isHistoric}
+            onChange={handleHistoricToggle}
+            disabled={!canMarkHistoric}
+            className="w-4 h-4 rounded border-gray-300 text-amber-600 focus:ring-amber-500 disabled:opacity-50"
+            data-testid="historic-checkbox"
+          />
+          <span className="text-sm text-gray-600">Historic District</span>
+          {isHistoric && <span className="text-xs text-amber-600">🏛️</span>}
+        </label>
+        {/* Tooltip explaining why historic is disabled */}
+        {!canMarkHistoric && (
+          <div
+            className="absolute left-0 bottom-full mb-1 hidden group-hover:block
+                       bg-gray-800 text-white text-xs rounded px-2 py-1 w-48 z-10"
+            data-testid="historic-disabled-tooltip"
+          >
+            Historic designation is only available for eras before{" "}
+            {HISTORIC_THRESHOLD_YEAR}. Current era:{" "}
+            {currentEra?.label ?? "Unknown"} ({eraYear})
+          </div>
         )}
-      </label>
+      </div>
 
       {/* Personality Sliders */}
       <CollapsiblePersonalitySliders

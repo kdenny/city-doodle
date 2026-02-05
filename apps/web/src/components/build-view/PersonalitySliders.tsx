@@ -3,16 +3,18 @@
  *
  * Each slider controls a 0.0-1.0 value that affects how the district
  * generates and evolves during city growth simulation.
+ * The era selector replaces the historic_modern slider with year-based selection.
  */
 
 import { useCallback } from "react";
 import type { DistrictPersonality } from "../canvas/layers/types";
+import { EraSelector, DEFAULT_ERA_YEAR } from "./EraSelector";
 
 /**
- * Slider configuration for display
+ * Slider configuration for display (excludes era which has its own component)
  */
 interface SliderConfig {
-  key: keyof DistrictPersonality;
+  key: "grid_organic" | "sprawl_compact" | "transit_car";
   leftLabel: string;
   rightLabel: string;
   description: string;
@@ -30,12 +32,6 @@ const SLIDER_CONFIGS: SliderConfig[] = [
     leftLabel: "Sprawl",
     rightLabel: "Compact",
     description: "Block size and density",
-  },
-  {
-    key: "historic_modern",
-    leftLabel: "Historic",
-    rightLabel: "Modern",
-    description: "Redevelopment tendency",
   },
   {
     key: "transit_car",
@@ -127,10 +123,20 @@ export function PersonalitySliders({
   disabled = false,
 }: PersonalitySlidersProps) {
   const handleSliderChange = useCallback(
-    (key: keyof DistrictPersonality, value: number) => {
+    (key: "grid_organic" | "sprawl_compact" | "transit_car", value: number) => {
       onChange({
         ...values,
         [key]: value,
+      });
+    },
+    [values, onChange]
+  );
+
+  const handleEraChange = useCallback(
+    (year: number) => {
+      onChange({
+        ...values,
+        era_year: year,
       });
     },
     [values, onChange]
@@ -151,6 +157,13 @@ export function PersonalitySliders({
           disabled={disabled}
         />
       ))}
+      {/* Era selector replaces the historic_modern slider */}
+      <EraSelector
+        value={values.era_year ?? DEFAULT_ERA_YEAR}
+        onChange={handleEraChange}
+        compact={compact}
+        disabled={disabled}
+      />
     </div>
   );
 }

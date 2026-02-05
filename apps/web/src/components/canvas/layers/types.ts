@@ -65,24 +65,29 @@ export type DistrictType =
 /**
  * Personality settings for a district.
  * Each slider is 0.0-1.0, affecting how the district generates and grows.
+ * Era year determines the architectural period.
  */
 export interface DistrictPersonality {
   /** 0 = strict grid, 1 = fully organic street layout */
   grid_organic: number;
   /** 0 = sprawling suburbs, 1 = dense urban core */
   sprawl_compact: number;
-  /** 0 = historic preservation focus, 1 = modern redevelopment */
-  historic_modern: number;
   /** 0 = transit-oriented, 1 = car-dependent */
   transit_car: number;
+  /**
+   * The architectural era year for this district.
+   * Replaces the 0-1 historic_modern slider.
+   * Values: 1200, 1300, 1400, 1500, 1600, 1700, 1800, 1850, 1875, 1900, 1920, 1940, 1960, 1980, 2024 (Present)
+   */
+  era_year: number;
 }
 
-/** Default personality values (balanced/neutral) */
+/** Default personality values (balanced/neutral, Contemporary era) */
 export const DEFAULT_DISTRICT_PERSONALITY: DistrictPersonality = {
   grid_organic: 0.5,
   sprawl_compact: 0.5,
-  historic_modern: 0.5,
   transit_car: 0.5,
+  era_year: 2024, // Contemporary/Present
 };
 
 export interface District {

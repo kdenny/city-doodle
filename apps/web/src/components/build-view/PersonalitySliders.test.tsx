@@ -6,25 +6,26 @@ import {
 } from "./PersonalitySliders";
 import type { DistrictPersonality } from "../canvas/layers/types";
 import { DEFAULT_DISTRICT_PERSONALITY } from "../canvas/layers/types";
+import { DEFAULT_ERA_YEAR } from "./EraSelector";
 
 describe("PersonalitySliders", () => {
   const defaultValues: DistrictPersonality = {
     grid_organic: 0.5,
     sprawl_compact: 0.5,
-    historic_modern: 0.5,
     transit_car: 0.5,
+    era_year: DEFAULT_ERA_YEAR,
   };
 
   describe("rendering", () => {
-    it("renders all four sliders", () => {
+    it("renders three sliders and era selector", () => {
       const onChange = vi.fn();
       render(<PersonalitySliders values={defaultValues} onChange={onChange} />);
 
       expect(screen.getByTestId("personality-sliders")).toBeInTheDocument();
       expect(screen.getByTestId("slider-grid_organic")).toBeInTheDocument();
       expect(screen.getByTestId("slider-sprawl_compact")).toBeInTheDocument();
-      expect(screen.getByTestId("slider-historic_modern")).toBeInTheDocument();
       expect(screen.getByTestId("slider-transit_car")).toBeInTheDocument();
+      expect(screen.getByTestId("era-selector")).toBeInTheDocument();
     });
 
     it("renders slider labels", () => {
@@ -34,14 +35,14 @@ describe("PersonalitySliders", () => {
       // Check left labels
       expect(screen.getByText("Grid")).toBeInTheDocument();
       expect(screen.getByText("Sprawl")).toBeInTheDocument();
-      expect(screen.getByText("Historic")).toBeInTheDocument();
       expect(screen.getByText("Transit")).toBeInTheDocument();
+      expect(screen.getByText("Era")).toBeInTheDocument();
 
       // Check right labels
       expect(screen.getByText("Organic")).toBeInTheDocument();
       expect(screen.getByText("Compact")).toBeInTheDocument();
-      expect(screen.getByText("Modern")).toBeInTheDocument();
       expect(screen.getByText("Car")).toBeInTheDocument();
+      expect(screen.getByText("Contemporary")).toBeInTheDocument();
     });
 
     it("renders descriptions in non-compact mode", () => {
@@ -50,10 +51,10 @@ describe("PersonalitySliders", () => {
 
       expect(screen.getByText("Street pattern style")).toBeInTheDocument();
       expect(screen.getByText("Block size and density")).toBeInTheDocument();
-      expect(screen.getByText("Redevelopment tendency")).toBeInTheDocument();
       expect(
         screen.getByText("Road width and transit access")
       ).toBeInTheDocument();
+      expect(screen.getByText("Present Day")).toBeInTheDocument();
     });
 
     it("hides descriptions in compact mode", () => {
@@ -77,8 +78,8 @@ describe("PersonalitySliders", () => {
       const customValues: DistrictPersonality = {
         grid_organic: 0.2,
         sprawl_compact: 0.8,
-        historic_modern: 0.1,
         transit_car: 0.9,
+        era_year: 1900,
       };
       const onChange = vi.fn();
       render(
@@ -91,17 +92,14 @@ describe("PersonalitySliders", () => {
       const sprawlSlider = screen.getByTestId(
         "slider-sprawl_compact"
       ) as HTMLInputElement;
-      const historicSlider = screen.getByTestId(
-        "slider-historic_modern"
-      ) as HTMLInputElement;
       const transitSlider = screen.getByTestId(
         "slider-transit_car"
       ) as HTMLInputElement;
 
       expect(gridSlider.value).toBe("0.2");
       expect(sprawlSlider.value).toBe("0.8");
-      expect(historicSlider.value).toBe("0.1");
       expect(transitSlider.value).toBe("0.9");
+      expect(screen.getByTestId("era-label")).toHaveTextContent("Streetcar Era");
     });
 
     it("calls onChange with updated values when slider changes", () => {
@@ -117,13 +115,27 @@ describe("PersonalitySliders", () => {
       });
     });
 
+    it("calls onChange with era_year when era selector changes", () => {
+      const onChange = vi.fn();
+      render(<PersonalitySliders values={defaultValues} onChange={onChange} />);
+
+      const eraSlider = screen.getByTestId("era-slider");
+      // Change to index 0 (Medieval 1200)
+      fireEvent.change(eraSlider, { target: { value: "0" } });
+
+      expect(onChange).toHaveBeenCalledWith({
+        ...defaultValues,
+        era_year: 1200,
+      });
+    });
+
     it("preserves other values when one slider changes", () => {
       const onChange = vi.fn();
       const customValues: DistrictPersonality = {
         grid_organic: 0.3,
         sprawl_compact: 0.6,
-        historic_modern: 0.4,
         transit_car: 0.8,
+        era_year: 1920,
       };
       render(
         <PersonalitySliders values={customValues} onChange={onChange} />
@@ -135,14 +147,14 @@ describe("PersonalitySliders", () => {
       expect(onChange).toHaveBeenCalledWith({
         grid_organic: 0.3,
         sprawl_compact: 0.9,
-        historic_modern: 0.4,
         transit_car: 0.8,
+        era_year: 1920,
       });
     });
   });
 
   describe("disabled state", () => {
-    it("disables all sliders when disabled prop is true", () => {
+    it("disables all sliders and era selector when disabled prop is true", () => {
       const onChange = vi.fn();
       render(
         <PersonalitySliders values={defaultValues} onChange={onChange} disabled />
@@ -167,12 +179,12 @@ describe("PersonalitySliders", () => {
         screen.getByLabelText(/Sprawl to Compact: Block size and density/i)
       ).toBeInTheDocument();
       expect(
-        screen.getByLabelText(/Historic to Modern: Redevelopment tendency/i)
-      ).toBeInTheDocument();
-      expect(
         screen.getByLabelText(
           /Transit to Car: Road width and transit access/i
         )
+      ).toBeInTheDocument();
+      expect(
+        screen.getByLabelText(/Era: Contemporary/i)
       ).toBeInTheDocument();
     });
   });

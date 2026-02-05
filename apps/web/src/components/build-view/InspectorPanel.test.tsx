@@ -8,6 +8,7 @@ import {
   type SelectedPOI,
 } from "./InspectorPanel";
 import { renderHook, act } from "@testing-library/react";
+import { HISTORIC_THRESHOLD_YEAR, DEFAULT_ERA_YEAR } from "./EraSelector";
 
 describe("InspectorPanel", () => {
   describe("when nothing is selected", () => {
@@ -28,6 +29,12 @@ describe("InspectorPanel", () => {
       name: "Downtown",
       districtType: "downtown",
       isHistoric: false,
+      personality: {
+        grid_organic: 0.5,
+        sprawl_compact: 0.5,
+        transit_car: 0.5,
+        era_year: 1900, // Streetcar Era - can be historic
+      },
     };
 
     it("renders district inspector", () => {
@@ -37,11 +44,13 @@ describe("InspectorPanel", () => {
       expect(screen.getByText("Downtown")).toBeInTheDocument();
     });
 
-    it("shows historic toggle", () => {
+    it("shows historic toggle enabled for pre-1940 era", () => {
       render(<InspectorPanel selection={mockDistrict} />);
 
       expect(screen.getByText("Historic District")).toBeInTheDocument();
-      expect(screen.getByRole("checkbox")).not.toBeChecked();
+      const checkbox = screen.getByTestId("historic-checkbox");
+      expect(checkbox).not.toBeChecked();
+      expect(checkbox).not.toBeDisabled();
     });
 
     it("calls onUpdate when name changes", () => {
@@ -56,11 +65,11 @@ describe("InspectorPanel", () => {
       );
     });
 
-    it("calls onUpdate when historic is toggled", () => {
+    it("calls onUpdate when historic is toggled for pre-1940 era", () => {
       const onUpdate = vi.fn();
       render(<InspectorPanel selection={mockDistrict} onUpdate={onUpdate} />);
 
-      const checkbox = screen.getByRole("checkbox");
+      const checkbox = screen.getByTestId("historic-checkbox");
       fireEvent.click(checkbox);
 
       expect(onUpdate).toHaveBeenCalledWith(
@@ -82,6 +91,122 @@ describe("InspectorPanel", () => {
       fireEvent.click(screen.getByText("Delete District"));
 
       expect(onDelete).toHaveBeenCalledWith(mockDistrict);
+    });
+  });
+
+  describe("historic flag validation based on era", () => {
+    it("disables historic checkbox for contemporary era (>= 1940)", () => {
+      const modernDistrict: SelectedDistrict = {
+        type: "district",
+        id: "district-1",
+        name: "Modern District",
+        districtType: "residential",
+        isHistoric: false,
+        personality: {
+          grid_organic: 0.5,
+          sprawl_compact: 0.5,
+          transit_car: 0.5,
+          era_year: DEFAULT_ERA_YEAR, // Contemporary
+        },
+      };
+
+      render(<InspectorPanel selection={modernDistrict} />);
+
+      const checkbox = screen.getByTestId("historic-checkbox");
+      expect(checkbox).toBeDisabled();
+    });
+
+    it("enables historic checkbox for pre-1940 era", () => {
+      const historicDistrict: SelectedDistrict = {
+        type: "district",
+        id: "district-1",
+        name: "Historic District",
+        districtType: "residential",
+        isHistoric: false,
+        personality: {
+          grid_organic: 0.5,
+          sprawl_compact: 0.5,
+          transit_car: 0.5,
+          era_year: 1920, // Jazz Age - can be historic
+        },
+      };
+
+      render(<InspectorPanel selection={historicDistrict} />);
+
+      const checkbox = screen.getByTestId("historic-checkbox");
+      expect(checkbox).not.toBeDisabled();
+    });
+
+    it("disables historic checkbox at the exact threshold year (1940)", () => {
+      const thresholdDistrict: SelectedDistrict = {
+        type: "district",
+        id: "district-1",
+        name: "Threshold District",
+        districtType: "residential",
+        isHistoric: false,
+        personality: {
+          grid_organic: 0.5,
+          sprawl_compact: 0.5,
+          transit_car: 0.5,
+          era_year: HISTORIC_THRESHOLD_YEAR, // Exactly 1940
+        },
+      };
+
+      render(<InspectorPanel selection={thresholdDistrict} />);
+
+      const checkbox = screen.getByTestId("historic-checkbox");
+      expect(checkbox).toBeDisabled();
+    });
+
+    it("shows tooltip explaining why historic is disabled", () => {
+      const modernDistrict: SelectedDistrict = {
+        type: "district",
+        id: "district-1",
+        name: "Modern District",
+        districtType: "residential",
+        isHistoric: false,
+        personality: {
+          grid_organic: 0.5,
+          sprawl_compact: 0.5,
+          transit_car: 0.5,
+          era_year: 1960, // Car Suburbs era
+        },
+      };
+
+      render(<InspectorPanel selection={modernDistrict} />);
+
+      // Tooltip should be visible when disabled
+      expect(screen.getByTestId("historic-disabled-tooltip")).toBeInTheDocument();
+      expect(screen.getByTestId("historic-disabled-tooltip")).toHaveTextContent(
+        /Historic designation is only available for eras before 1940/
+      );
+    });
+
+    it("prevents toggling historic when checkbox is disabled", () => {
+      const onUpdate = vi.fn();
+      const modernDistrict: SelectedDistrict = {
+        type: "district",
+        id: "district-1",
+        name: "Modern District",
+        districtType: "residential",
+        isHistoric: false,
+        personality: {
+          grid_organic: 0.5,
+          sprawl_compact: 0.5,
+          transit_car: 0.5,
+          era_year: 2024, // Contemporary
+        },
+      };
+
+      render(<InspectorPanel selection={modernDistrict} onUpdate={onUpdate} />);
+
+      const checkbox = screen.getByTestId("historic-checkbox");
+      fireEvent.click(checkbox);
+
+      // onUpdate should not have been called with isHistoric: true
+      expect(onUpdate).not.toHaveBeenCalledWith(
+        expect.objectContaining({ isHistoric: true })
+      );
     });
   });
 
