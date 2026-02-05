@@ -27,14 +27,14 @@ class TestCreateDistrict:
             f"/worlds/{TEST_WORLD_ID}/districts",
             json={
                 "world_id": TEST_WORLD_ID,
-                "type": "residential_low",
+                "type": "residential",
                 "geometry": SAMPLE_GEOMETRY,
             },
             headers={"X-User-Id": TEST_USER_ID},
         )
         assert response.status_code == 201
         data = response.json()
-        assert data["type"] == "residential_low"
+        assert data["type"] == "residential"
         assert data["world_id"] == TEST_WORLD_ID
         assert data["geometry"] == SAMPLE_GEOMETRY
         assert "id" in data
@@ -70,19 +70,19 @@ class TestCreateDistrict:
     @pytest.mark.asyncio
     async def test_create_district_applies_type_defaults(self, client: AsyncClient):
         """Create district should apply type-specific defaults."""
-        # residential_high has default density=7.0 and max_height=30
+        # downtown has default density=7.0 and max_height=30
         response = await client.post(
             f"/worlds/{TEST_WORLD_ID}/districts",
             json={
                 "world_id": TEST_WORLD_ID,
-                "type": "residential_high",
+                "type": "downtown",
                 "geometry": SAMPLE_GEOMETRY,
             },
             headers={"X-User-Id": TEST_USER_ID},
         )
         assert response.status_code == 201
         data = response.json()
-        assert data["type"] == "residential_high"
+        assert data["type"] == "downtown"
         assert data["density"] == 7.0
         assert data["max_height"] == 30
 
@@ -128,7 +128,7 @@ class TestBulkCreateDistricts:
                 "districts": [
                     {
                         "world_id": TEST_WORLD_ID,
-                        "type": "residential_low",
+                        "type": "residential",
                         "name": "Neighborhood 1",
                         "geometry": SAMPLE_GEOMETRY,
                     },
@@ -178,7 +178,7 @@ class TestListDistricts:
             f"/worlds/{TEST_WORLD_ID}/districts",
             json={
                 "world_id": TEST_WORLD_ID,
-                "type": "residential_med",
+                "type": "residential",
                 "name": "Test District",
                 "geometry": SAMPLE_GEOMETRY,
             },
@@ -203,7 +203,7 @@ class TestListDistricts:
             f"/worlds/{TEST_WORLD_ID}/districts",
             json={
                 "world_id": TEST_WORLD_ID,
-                "type": "civic",
+                "type": "hospital",
                 "name": "Historic Town Hall",
                 "geometry": SAMPLE_GEOMETRY,
                 "historic": True,
@@ -214,7 +214,7 @@ class TestListDistricts:
             f"/worlds/{TEST_WORLD_ID}/districts",
             json={
                 "world_id": TEST_WORLD_ID,
-                "type": "residential_low",
+                "type": "residential",
                 "name": "New Suburb",
                 "geometry": SAMPLE_GEOMETRY,
                 "historic": False,
@@ -251,7 +251,7 @@ class TestGetDistrict:
             f"/worlds/{TEST_WORLD_ID}/districts",
             json={
                 "world_id": TEST_WORLD_ID,
-                "type": "mixed_use",
+                "type": "downtown",
                 "name": "Mixed District",
                 "geometry": SAMPLE_GEOMETRY,
             },
@@ -267,7 +267,7 @@ class TestGetDistrict:
         assert response.status_code == 200
         data = response.json()
         assert data["name"] == "Mixed District"
-        assert data["type"] == "mixed_use"
+        assert data["type"] == "downtown"
 
     @pytest.mark.asyncio
     async def test_get_district_not_found(self, client: AsyncClient):
@@ -287,7 +287,7 @@ class TestGetDistrict:
             f"/worlds/{TEST_WORLD_ID}/districts",
             json={
                 "world_id": TEST_WORLD_ID,
-                "type": "transit",
+                "type": "airport",
                 "geometry": SAMPLE_GEOMETRY,
             },
             headers={"X-User-Id": TEST_USER_ID},
@@ -313,7 +313,7 @@ class TestUpdateDistrict:
             f"/worlds/{TEST_WORLD_ID}/districts",
             json={
                 "world_id": TEST_WORLD_ID,
-                "type": "residential_low",
+                "type": "residential",
                 "name": "Original Name",
                 "geometry": SAMPLE_GEOMETRY,
             },
@@ -340,7 +340,7 @@ class TestUpdateDistrict:
             f"/worlds/{TEST_WORLD_ID}/districts",
             json={
                 "world_id": TEST_WORLD_ID,
-                "type": "residential_low",
+                "type": "residential",
                 "geometry": SAMPLE_GEOMETRY,
             },
             headers={"X-User-Id": TEST_USER_ID},
@@ -441,7 +441,7 @@ class TestDeleteDistrict:
             f"/worlds/{TEST_WORLD_ID}/districts",
             json={
                 "world_id": TEST_WORLD_ID,
-                "type": "civic",
+                "type": "hospital",
                 "geometry": SAMPLE_GEOMETRY,
             },
             headers={"X-User-Id": TEST_USER_ID},
@@ -475,7 +475,7 @@ class TestDeleteAllDistricts:
                 f"/worlds/{TEST_WORLD_ID}/districts",
                 json={
                     "world_id": TEST_WORLD_ID,
-                    "type": "residential_low",
+                    "type": "residential",
                     "name": f"District {i}",
                     "geometry": SAMPLE_GEOMETRY,
                 },
@@ -520,15 +520,15 @@ class TestDistrictTypes:
     async def test_all_district_types_valid(self, client: AsyncClient):
         """All district types should be valid."""
         district_types = [
-            "residential_low",
-            "residential_med",
-            "residential_high",
+            "residential",
+            "downtown",
             "commercial",
             "industrial",
-            "mixed_use",
+            "hospital",
+            "university",
+            "k12",
             "park",
-            "civic",
-            "transit",
+            "airport",
         ]
         for dtype in district_types:
             response = await client.post(

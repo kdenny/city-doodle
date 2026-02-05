@@ -17,17 +17,20 @@ if TYPE_CHECKING:
 
 
 class DistrictType(str, Enum):
-    """Types of zoning districts."""
+    """Types of zoning districts.
 
-    RESIDENTIAL_LOW = "residential_low"
-    RESIDENTIAL_MED = "residential_med"
-    RESIDENTIAL_HIGH = "residential_high"
+    These match the frontend district types from the placement palette.
+    """
+
+    RESIDENTIAL = "residential"
+    DOWNTOWN = "downtown"
     COMMERCIAL = "commercial"
     INDUSTRIAL = "industrial"
-    MIXED_USE = "mixed_use"
+    HOSPITAL = "hospital"
+    UNIVERSITY = "university"
+    K12 = "k12"
     PARK = "park"
-    CIVIC = "civic"
-    TRANSIT = "transit"
+    AIRPORT = "airport"
 
 
 class District(Base):
@@ -79,13 +82,13 @@ class District(Base):
 
 # Default district properties by type
 DISTRICT_TYPE_DEFAULTS: dict[DistrictType, dict] = {
-    DistrictType.RESIDENTIAL_LOW: {"density": 1.0, "max_height": 3},
-    DistrictType.RESIDENTIAL_MED: {"density": 3.0, "max_height": 8},
-    DistrictType.RESIDENTIAL_HIGH: {"density": 7.0, "max_height": 30},
+    DistrictType.RESIDENTIAL: {"density": 3.0, "max_height": 8},
+    DistrictType.DOWNTOWN: {"density": 7.0, "max_height": 30},
     DistrictType.COMMERCIAL: {"density": 5.0, "max_height": 15},
     DistrictType.INDUSTRIAL: {"density": 2.0, "max_height": 4},
-    DistrictType.MIXED_USE: {"density": 6.0, "max_height": 20},
+    DistrictType.HOSPITAL: {"density": 2.0, "max_height": 6},
+    DistrictType.UNIVERSITY: {"density": 2.5, "max_height": 8},
+    DistrictType.K12: {"density": 1.5, "max_height": 4},
     DistrictType.PARK: {"density": 0.1, "max_height": 1},
-    DistrictType.CIVIC: {"density": 2.0, "max_height": 6},
-    DistrictType.TRANSIT: {"density": 4.0, "max_height": 10},
+    DistrictType.AIRPORT: {"density": 0.5, "max_height": 3},
 }

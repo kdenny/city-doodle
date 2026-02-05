@@ -23,8 +23,8 @@ async def create_test_district(client: AsyncClient) -> str:
         f"/worlds/{TEST_WORLD_ID}/districts",
         json={
             "world_id": TEST_WORLD_ID,
-            "type": "transit",
-            "name": "Test Transit District",
+            "type": "airport",
+            "name": "Test Airport District",
             "geometry": SAMPLE_GEOMETRY,
         },
         headers={"X-User-Id": TEST_USER_ID},

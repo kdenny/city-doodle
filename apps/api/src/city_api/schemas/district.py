@@ -9,17 +9,20 @@ from pydantic import BaseModel, Field
 
 
 class DistrictType(StrEnum):
-    """Types of zoning districts."""
+    """Types of zoning districts.
 
-    RESIDENTIAL_LOW = "residential_low"
-    RESIDENTIAL_MED = "residential_med"
-    RESIDENTIAL_HIGH = "residential_high"
+    These match the frontend district types from the placement palette.
+    """
+
+    RESIDENTIAL = "residential"
+    DOWNTOWN = "downtown"
     COMMERCIAL = "commercial"
     INDUSTRIAL = "industrial"
-    MIXED_USE = "mixed_use"
+    HOSPITAL = "hospital"
+    UNIVERSITY = "university"
+    K12 = "k12"
     PARK = "park"
-    CIVIC = "civic"
-    TRANSIT = "transit"
+    AIRPORT = "airport"
 
 
 class DistrictProperties(BaseModel):

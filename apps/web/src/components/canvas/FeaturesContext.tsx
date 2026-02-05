@@ -144,39 +144,20 @@ const EMPTY_FEATURES: FeaturesData = {
 
 /**
  * Map frontend district type to API district type.
- * The API has more granular residential types.
+ * Frontend and API now use the same district type values.
  */
 function toApiDistrictType(frontendType: string): ApiDistrictType {
-  const mapping: Record<string, ApiDistrictType> = {
-    residential: "residential_med",
-    downtown: "commercial",
-    commercial: "commercial",
-    industrial: "industrial",
-    hospital: "civic",
-    university: "civic",
-    k12: "civic",
-    park: "park",
-    airport: "transit",
-  };
-  return mapping[frontendType] || "mixed_use";
+  // Types now match directly between frontend and API
+  return frontendType as ApiDistrictType;
 }
 
 /**
  * Map API district type back to frontend type.
+ * Frontend and API now use the same district type values.
  */
 function fromApiDistrictType(apiType: ApiDistrictType): string {
-  const mapping: Record<ApiDistrictType, string> = {
-    residential_low: "residential",
-    residential_med: "residential",
-    residential_high: "downtown",
-    commercial: "commercial",
-    industrial: "industrial",
-    mixed_use: "commercial",
-    park: "park",
-    civic: "hospital",
-    transit: "airport",
-  };
-  return mapping[apiType] || "commercial";
+  // Types now match directly between frontend and API
+  return apiType;
 }
 
 /**
