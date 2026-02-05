@@ -26,6 +26,7 @@ export type {
   ContourLine,
   District,
   DistrictType,
+  DistrictPersonality,
   Road,
   RoadClass,
   POI,
@@ -36,4 +37,4 @@ export type {
   LabelLayerData,
   LabelType,
 } from "./types";
-export { DEFAULT_LAYER_VISIBILITY } from "./types";
+export { DEFAULT_LAYER_VISIBILITY, DEFAULT_DISTRICT_PERSONALITY } from "./types";

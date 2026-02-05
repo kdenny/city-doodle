@@ -4,11 +4,15 @@
 
 import { createContext, useContext, useState, useCallback, ReactNode } from "react";
 import type { SeedType } from "./types";
+import type { DistrictPersonality } from "../canvas/layers/types";
+import { DEFAULT_DISTRICT_PERSONALITY } from "../canvas/layers/types";
 
 interface PlacementState {
   selectedSeed: SeedType | null;
   isPlacing: boolean;
   previewPosition: { x: number; y: number } | null;
+  /** Personality settings to use when placing a district */
+  placementPersonality: DistrictPersonality;
 }
 
 interface PlacementContextValue extends PlacementState {
@@ -17,13 +21,19 @@ interface PlacementContextValue extends PlacementState {
   cancelPlacing: () => void;
   setPreviewPosition: (position: { x: number; y: number } | null) => void;
   confirmPlacement: (position: { x: number; y: number }) => void;
+  /** Update the personality settings for district placement */
+  setPlacementPersonality: (personality: DistrictPersonality) => void;
 }
 
 const PlacementContext = createContext<PlacementContextValue | null>(null);
 
 interface PlacementProviderProps {
   children: ReactNode;
-  onPlaceSeed?: (seed: SeedType, position: { x: number; y: number }) => void;
+  onPlaceSeed?: (
+    seed: SeedType,
+    position: { x: number; y: number },
+    personality?: DistrictPersonality
+  ) => void;
 }
 
 export function PlacementProvider({ children, onPlaceSeed }: PlacementProviderProps) {
@@ -31,6 +41,7 @@ export function PlacementProvider({ children, onPlaceSeed }: PlacementProviderPr
     selectedSeed: null,
     isPlacing: false,
     previewPosition: null,
+    placementPersonality: DEFAULT_DISTRICT_PERSONALITY,
   });
 
   const selectSeed = useCallback((seed: SeedType | null) => {
@@ -39,6 +50,8 @@ export function PlacementProvider({ children, onPlaceSeed }: PlacementProviderPr
       selectedSeed: seed,
       isPlacing: seed !== null,
       previewPosition: null,
+      // Reset personality to defaults when selecting a new seed
+      placementPersonality: DEFAULT_DISTRICT_PERSONALITY,
     }));
   }, []);
 
@@ -54,7 +67,15 @@ export function PlacementProvider({ children, onPlaceSeed }: PlacementProviderPr
       selectedSeed: null,
       isPlacing: false,
       previewPosition: null,
+      placementPersonality: DEFAULT_DISTRICT_PERSONALITY,
     });
+  }, []);
+
+  const setPlacementPersonality = useCallback((personality: DistrictPersonality) => {
+    setState((prev) => ({
+      ...prev,
+      placementPersonality: personality,
+    }));
   }, []);
 
   const setPreviewPosition = useCallback((position: { x: number; y: number } | null) => {
@@ -67,7 +88,12 @@ export function PlacementProvider({ children, onPlaceSeed }: PlacementProviderPr
   const confirmPlacement = useCallback(
     (position: { x: number; y: number }) => {
       if (state.selectedSeed && onPlaceSeed) {
-        onPlaceSeed(state.selectedSeed, position);
+        // Pass personality for district seeds
+        if (state.selectedSeed.category === "district") {
+          onPlaceSeed(state.selectedSeed, position, state.placementPersonality);
+        } else {
+          onPlaceSeed(state.selectedSeed, position);
+        }
       }
       // Stay in placement mode with same seed selected for quick consecutive placements
       setState((prev) => ({
@@ -75,7 +101,7 @@ export function PlacementProvider({ children, onPlaceSeed }: PlacementProviderPr
         previewPosition: null,
       }));
     },
-    [state.selectedSeed, onPlaceSeed]
+    [state.selectedSeed, state.placementPersonality, onPlaceSeed]
   );
 
   const value: PlacementContextValue = {
@@ -85,6 +111,7 @@ export function PlacementProvider({ children, onPlaceSeed }: PlacementProviderPr
     cancelPlacing,
     setPreviewPosition,
     confirmPlacement,
+    setPlacementPersonality,
   };
 
   return (

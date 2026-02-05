@@ -58,12 +58,37 @@ export type DistrictType =
   | "park"
   | "airport";
 
+/**
+ * Personality settings for a district.
+ * Each slider is 0.0-1.0, affecting how the district generates and grows.
+ */
+export interface DistrictPersonality {
+  /** 0 = strict grid, 1 = fully organic street layout */
+  grid_organic: number;
+  /** 0 = sprawling suburbs, 1 = dense urban core */
+  sprawl_compact: number;
+  /** 0 = historic preservation focus, 1 = modern redevelopment */
+  historic_modern: number;
+  /** 0 = transit-oriented, 1 = car-dependent */
+  transit_car: number;
+}
+
+/** Default personality values (balanced/neutral) */
+export const DEFAULT_DISTRICT_PERSONALITY: DistrictPersonality = {
+  grid_organic: 0.5,
+  sprawl_compact: 0.5,
+  historic_modern: 0.5,
+  transit_car: 0.5,
+};
+
 export interface District {
   id: string;
   type: DistrictType;
   name: string;
   polygon: Polygon;
   isHistoric?: boolean;
+  /** Per-district personality settings */
+  personality?: DistrictPersonality;
 }
 
 // Road hierarchy classes

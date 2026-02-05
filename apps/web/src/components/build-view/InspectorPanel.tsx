@@ -5,6 +5,9 @@
  */
 
 import { useState, useCallback } from "react";
+import { CollapsiblePersonalitySliders } from "./PersonalitySliders";
+import type { DistrictPersonality } from "../canvas/layers/types";
+import { DEFAULT_DISTRICT_PERSONALITY } from "../canvas/layers/types";
 
 // Feature types that can be selected
 export type SelectableFeatureType = "district" | "road" | "poi" | null;
@@ -17,6 +20,8 @@ export interface SelectedDistrict {
   isHistoric: boolean;
   area?: number;
   population?: number;
+  /** Per-district personality settings */
+  personality?: DistrictPersonality;
 }
 
 export interface SelectedRoad {
@@ -143,6 +148,9 @@ function DistrictInspector({
 }: DistrictInspectorProps) {
   const [editedName, setEditedName] = useState(district.name);
   const [isHistoric, setIsHistoric] = useState(district.isHistoric);
+  const [personality, setPersonality] = useState<DistrictPersonality>(
+    district.personality ?? DEFAULT_DISTRICT_PERSONALITY
+  );
 
   const handleNameChange = useCallback(
     (e: React.ChangeEvent<HTMLInputElement>) => {
@@ -158,6 +166,14 @@ function DistrictInspector({
     setIsHistoric(newValue);
     onUpdate?.({ ...district, isHistoric: newValue });
   }, [district, isHistoric, onUpdate]);
+
+  const handlePersonalityChange = useCallback(
+    (newPersonality: DistrictPersonality) => {
+      setPersonality(newPersonality);
+      onUpdate?.({ ...district, personality: newPersonality });
+    },
+    [district, onUpdate]
+  );
 
   return (
     <div className="space-y-3">
@@ -197,6 +213,13 @@ function DistrictInspector({
           <span className="text-xs text-amber-600">🏛️</span>
         )}
       </label>
+
+      {/* Personality Sliders */}
+      <CollapsiblePersonalitySliders
+        values={personality}
+        onChange={handlePersonalityChange}
+        compact
+      />
 
       {/* Stats */}
       {(district.area || district.population) && (
