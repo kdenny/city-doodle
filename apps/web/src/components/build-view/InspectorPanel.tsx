@@ -68,7 +68,14 @@ export interface SelectedSubwayStation {
   isTerminus: boolean;
 }
 
-export type SelectedFeature = SelectedDistrict | SelectedRoad | SelectedPOI | SelectedNeighborhood | SelectedRailStation | SelectedSubwayStation | null;
+export interface SelectedCityLimits {
+  type: "cityLimits";
+  id: string;
+  name: string;
+  established?: number;
+}
+
+export type SelectedFeature = SelectedDistrict | SelectedRoad | SelectedPOI | SelectedNeighborhood | SelectedRailStation | SelectedSubwayStation | SelectedCityLimits | null;
 
 interface InspectorPanelProps {
   selection: SelectedFeature;

@@ -14,7 +14,7 @@ import {
 } from "react";
 import type { Point } from "./layers";
 
-export type DrawingMode = "neighborhood" | "split" | null;
+export type DrawingMode = "neighborhood" | "cityLimits" | "split" | null;
 
 interface DrawingState {
   /** Current drawing mode */

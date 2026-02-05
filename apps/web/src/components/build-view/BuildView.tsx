@@ -77,8 +77,11 @@ export function BuildView({
     if (activeTool === "draw") {
       // Start drawing neighborhood when draw tool is selected
       drawingContext.startDrawing("neighborhood");
+    } else if (activeTool === "city-limits") {
+      // Start drawing city limits when city-limits tool is selected
+      drawingContext.startDrawing("cityLimits");
     } else {
-      // Cancel drawing when switching away from draw tool
+      // Cancel drawing when switching away from draw tools
       if (drawingContext.state.isDrawing) {
         drawingContext.cancelDrawing();
       }
@@ -90,7 +93,8 @@ export function BuildView({
     if (!drawingContext) return;
 
     // If we were drawing and now we're not (polygon completed), switch to pan
-    if (activeTool === "draw" && !drawingContext.state.isDrawing && drawingContext.state.mode === null) {
+    const isDrawingTool = activeTool === "draw" || activeTool === "city-limits";
+    if (isDrawingTool && !drawingContext.state.isDrawing && drawingContext.state.mode === null) {
       setActiveTool("pan");
     }
   }, [activeTool, drawingContext?.state.isDrawing, drawingContext?.state.mode, setActiveTool]);

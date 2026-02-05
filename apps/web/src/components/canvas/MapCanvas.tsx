@@ -51,7 +51,7 @@ import { useZoomOptional } from "../shell/ZoomContext";
 import { usePlacementOptional, usePlacedSeedsOptional } from "../palette";
 import { useSelectionContextOptional } from "../build-view/SelectionContext";
 import type { SelectedFeature } from "../build-view/SelectionContext";
-import type { District, Road, POI } from "./layers";
+import type { District, Road, POI, CityLimits } from "./layers";
 
 // Tile size in world coordinates
 const TILE_SIZE = 256;
@@ -1247,6 +1247,15 @@ function hitTestResultToSelectedFeature(hitResult: HitTestResult): SelectedFeatu
         type: "neighborhood",
         id: neighborhood.id,
         name: neighborhood.name,
+      };
+    }
+    case "cityLimits": {
+      const cityLimits = hitResult.feature as CityLimits;
+      return {
+        type: "cityLimits",
+        id: cityLimits.id,
+        name: cityLimits.name,
+        established: cityLimits.established,
       };
     }
   }

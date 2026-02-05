@@ -13,6 +13,7 @@ import type {
   FeaturesData,
   District,
   Neighborhood,
+  CityLimits,
   Road,
   POI,
   Bridge,
@@ -142,17 +143,28 @@ const ROAD_HIT_DISTANCE = 8;
 // Default neighborhood colors (used when no custom color is set)
 const DEFAULT_NEIGHBORHOOD_COLOR = 0x4a90d9; // Blue
 
+// City limits styling
+const CITY_LIMITS_STYLE = {
+  borderColor: 0x5a5a5a, // Dark gray/civic color
+  borderWidth: 4, // Thicker than neighborhoods
+  fillColor: 0x5a5a5a,
+  fillAlpha: 0.05, // Very subtle tint inside
+  dashLength: 16,
+  gapLength: 8,
+};
+
 /**
  * Result of a hit test on the features layer.
  */
 export interface HitTestResult {
-  type: "district" | "road" | "poi" | "neighborhood";
-  feature: District | Road | POI | Neighborhood;
+  type: "district" | "road" | "poi" | "neighborhood" | "cityLimits";
+  feature: District | Road | POI | Neighborhood | CityLimits;
 }
 
 export class FeaturesLayer {
   private container: Container;
   private neighborhoodsGraphics: Graphics;
+  private cityLimitsGraphics: Graphics;
   private districtsGraphics: Graphics;
   private roadsGraphics: Graphics;
   private bridgesGraphics: Graphics;
@@ -170,7 +182,12 @@ export class FeaturesLayer {
     this.neighborhoodsGraphics.label = "neighborhoods";
     this.container.addChild(this.neighborhoodsGraphics);
 
-    // Districts above neighborhoods
+    // City limits above neighborhoods (municipal boundary)
+    this.cityLimitsGraphics = new Graphics();
+    this.cityLimitsGraphics.label = "cityLimits";
+    this.container.addChild(this.cityLimitsGraphics);
+
+    // Districts above city limits
     this.districtsGraphics = new Graphics();
     this.districtsGraphics.label = "districts";
     this.container.addChild(this.districtsGraphics);
@@ -200,8 +217,9 @@ export class FeaturesLayer {
     this.render();
   }
 
-  setVisibility(visibility: LayerVisibility & { neighborhoods?: boolean; bridges?: boolean }): void {
+  setVisibility(visibility: LayerVisibility & { neighborhoods?: boolean; cityLimits?: boolean; bridges?: boolean }): void {
     this.neighborhoodsGraphics.visible = visibility.neighborhoods ?? true;
+    this.cityLimitsGraphics.visible = visibility.cityLimits ?? true;
     this.districtsGraphics.visible = visibility.districts;
     this.roadsGraphics.visible = visibility.roads;
     this.bridgesGraphics.visible = visibility.bridges ?? visibility.roads; // Default to road visibility
@@ -226,6 +244,7 @@ export class FeaturesLayer {
     if (!this.data) return;
 
     this.renderNeighborhoods(this.data.neighborhoods || []);
+    this.renderCityLimits(this.data.cityLimits);
     this.renderDistricts(this.data.districts);
     this.renderRoads(this.data.roads);
     this.renderBridges(this.data.bridges || []);
@@ -300,6 +319,84 @@ export class FeaturesLayer {
           this.neighborhoodsGraphics.moveTo(startX, startY);
           this.neighborhoodsGraphics.lineTo(endX, endY);
           this.neighborhoodsGraphics.stroke();
+        }
+
+        currentLength = nextLength;
+        drawing = !drawing;
+      }
+    }
+  }
+
+  /**
+   * Render the city limits boundary.
+   * City limits uses a thicker dashed line with a distinct civic color.
+   */
+  private renderCityLimits(cityLimits: CityLimits | undefined): void {
+    if (this.cityLimitsGraphics.clear) {
+      this.cityLimitsGraphics.clear();
+    }
+
+    if (!cityLimits) return;
+
+    const points = cityLimits.boundary.points;
+    if (points.length < 3) return;
+
+    // Draw very subtle fill inside city limits
+    this.cityLimitsGraphics.moveTo(points[0].x, points[0].y);
+    for (let i = 1; i < points.length; i++) {
+      this.cityLimitsGraphics.lineTo(points[i].x, points[i].y);
+    }
+    this.cityLimitsGraphics.closePath();
+    this.cityLimitsGraphics.fill({
+      color: CITY_LIMITS_STYLE.fillColor,
+      alpha: CITY_LIMITS_STYLE.fillAlpha,
+    });
+
+    // Draw thicker dashed border
+    this.drawCityLimitsBorder(points);
+  }
+
+  /**
+   * Draw the city limits border with a distinct thicker dashed style.
+   */
+  private drawCityLimitsBorder(points: Point[]): void {
+    const { borderColor, borderWidth, dashLength, gapLength } = CITY_LIMITS_STYLE;
+
+    this.cityLimitsGraphics.setStrokeStyle({
+      width: borderWidth,
+      color: borderColor,
+      alpha: 0.8,
+      cap: "round",
+    });
+
+    // Draw dashed border for each edge
+    for (let i = 0; i < points.length; i++) {
+      const start = points[i];
+      const end = points[(i + 1) % points.length];
+      const dx = end.x - start.x;
+      const dy = end.y - start.y;
+      const segmentLength = Math.sqrt(dx * dx + dy * dy);
+      if (segmentLength === 0) continue;
+
+      const unitX = dx / segmentLength;
+      const unitY = dy / segmentLength;
+
+      let currentLength = 0;
+      let drawing = true;
+
+      while (currentLength < segmentLength) {
+        const stepLength = drawing ? dashLength : gapLength;
+        const nextLength = Math.min(currentLength + stepLength, segmentLength);
+
+        if (drawing) {
+          const startX = start.x + unitX * currentLength;
+          const startY = start.y + unitY * currentLength;
+          const endX = start.x + unitX * nextLength;
+          const endY = start.y + unitY * nextLength;
+
+          this.cityLimitsGraphics.moveTo(startX, startY);
+          this.cityLimitsGraphics.lineTo(endX, endY);
+          this.cityLimitsGraphics.stroke();
         }
 
         currentLength = nextLength;
@@ -656,6 +753,13 @@ export class FeaturesLayer {
       }
     }
 
+    // Check city limits
+    if (this.cityLimitsGraphics.visible && this.data.cityLimits) {
+      if (this.hitTestCityLimits(this.data.cityLimits, worldX, worldY)) {
+        return { type: "cityLimits", feature: this.data.cityLimits };
+      }
+    }
+
     // Check neighborhoods last (they're at the bottom)
     if (this.neighborhoodsGraphics.visible && this.data.neighborhoods) {
       for (const neighborhood of this.data.neighborhoods) {
@@ -710,6 +814,13 @@ export class FeaturesLayer {
    */
   private hitTestNeighborhood(neighborhood: Neighborhood, x: number, y: number): boolean {
     return pointInPolygon(x, y, neighborhood.polygon.points);
+  }
+
+  /**
+   * Check if a point hits the city limits (point-in-polygon test).
+   */
+  private hitTestCityLimits(cityLimits: CityLimits, x: number, y: number): boolean {
+    return pointInPolygon(x, y, cityLimits.boundary.points);
   }
 
   destroy(): void {

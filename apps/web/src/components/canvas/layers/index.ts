@@ -50,6 +50,7 @@ export type {
   DistrictType,
   DistrictPersonality,
   Neighborhood,
+  CityLimits,
   Road,
   RoadClass,
   POI,
