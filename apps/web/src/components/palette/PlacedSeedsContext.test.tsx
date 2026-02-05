@@ -1,6 +1,7 @@
-import { describe, it, expect, vi } from "vitest";
-import { renderHook, act } from "@testing-library/react";
+import { describe, it, expect, vi, beforeEach } from "vitest";
+import { renderHook, act, waitFor } from "@testing-library/react";
 import { ReactNode } from "react";
+import { QueryClient, QueryClientProvider } from "@tanstack/react-query";
 import {
   PlacedSeedsProvider,
   usePlacedSeeds,
@@ -8,11 +9,28 @@ import {
 } from "./PlacedSeedsContext";
 import type { SeedType } from "./types";
 
+// Mock the API hooks
+vi.mock("../../api/hooks", () => ({
+  useWorldSeeds: vi.fn(() => ({
+    data: undefined,
+    isLoading: false,
+    error: null,
+  })),
+  useCreateSeed: vi.fn(() => ({
+    mutate: vi.fn(),
+  })),
+  useDeleteSeed: vi.fn(() => ({
+    mutate: vi.fn(),
+  })),
+}));
+
+import { useWorldSeeds, useCreateSeed, useDeleteSeed } from "../../api/hooks";
+
 const mockSeedType: SeedType = {
   id: "residential",
   label: "Residential",
   category: "district",
-  icon: "🏘️",
+  icon: "",
   description: "Housing and neighborhoods",
 };
 
@@ -20,24 +38,54 @@ const anotherMockSeedType: SeedType = {
   id: "hospital",
   label: "Hospital",
   category: "poi",
-  icon: "🏥",
+  icon: "",
   description: "Medical center",
 };
 
-function createWrapper(props: { onSeedAdded?: () => void; onSeedRemoved?: () => void } = {}) {
+function createWrapper(props: {
+  worldId?: string;
+  onSeedAdded?: () => void;
+  onSeedRemoved?: () => void;
+} = {}) {
+  const queryClient = new QueryClient({
+    defaultOptions: {
+      queries: { retry: false },
+      mutations: { retry: false },
+    },
+  });
+
   return function Wrapper({ children }: { children: ReactNode }) {
     return (
-      <PlacedSeedsProvider
-        onSeedAdded={props.onSeedAdded}
-        onSeedRemoved={props.onSeedRemoved}
-      >
-        {children}
-      </PlacedSeedsProvider>
+      <QueryClientProvider client={queryClient}>
+        <PlacedSeedsProvider
+          worldId={props.worldId}
+          onSeedAdded={props.onSeedAdded}
+          onSeedRemoved={props.onSeedRemoved}
+        >
+          {children}
+        </PlacedSeedsProvider>
+      </QueryClientProvider>
     );
   };
 }
 
 describe("PlacedSeedsContext", () => {
+  beforeEach(() => {
+    vi.clearAllMocks();
+    // Reset mock implementations
+    (useWorldSeeds as ReturnType<typeof vi.fn>).mockReturnValue({
+      data: undefined,
+      isLoading: false,
+      error: null,
+    });
+    (useCreateSeed as ReturnType<typeof vi.fn>).mockReturnValue({
+      mutate: vi.fn(),
+    });
+    (useDeleteSeed as ReturnType<typeof vi.fn>).mockReturnValue({
+      mutate: vi.fn(),
+    });
+  });
+
   describe("usePlacedSeeds", () => {
     it("throws error when used outside provider", () => {
       expect(() => {
@@ -51,6 +99,15 @@ describe("PlacedSeedsContext", () => {
       });
 
       expect(result.current.seeds).toEqual([]);
+    });
+
+    it("provides isLoading and error states", () => {
+      const { result } = renderHook(() => usePlacedSeeds(), {
+        wrapper: createWrapper(),
+      });
+
+      expect(result.current.isLoading).toBe(false);
+      expect(result.current.error).toBeNull();
     });
   });
 
@@ -71,7 +128,7 @@ describe("PlacedSeedsContext", () => {
     });
   });
 
-  describe("addSeed", () => {
+  describe("addSeed (in-memory mode)", () => {
     it("adds a seed to the seeds array", () => {
       const { result } = renderHook(() => usePlacedSeeds(), {
         wrapper: createWrapper(),
@@ -152,7 +209,7 @@ describe("PlacedSeedsContext", () => {
     });
   });
 
-  describe("removeSeed", () => {
+  describe("removeSeed (in-memory mode)", () => {
     it("removes a seed by id", () => {
       const { result } = renderHook(() => usePlacedSeeds(), {
         wrapper: createWrapper(),
@@ -347,6 +404,133 @@ describe("PlacedSeedsContext", () => {
       });
 
       expect(result.current.seeds).toHaveLength(0);
+    });
+  });
+
+  describe("API integration (with worldId)", () => {
+    it("shows loading state while fetching seeds", () => {
+      (useWorldSeeds as ReturnType<typeof vi.fn>).mockReturnValue({
+        data: undefined,
+        isLoading: true,
+        error: null,
+      });
+
+      const { result } = renderHook(() => usePlacedSeeds(), {
+        wrapper: createWrapper({ worldId: "test-world-id" }),
+      });
+
+      expect(result.current.isLoading).toBe(true);
+    });
+
+    it("loads seeds from API when worldId is provided", async () => {
+      const apiSeeds = [
+        {
+          id: "api-seed-1",
+          world_id: "test-world-id",
+          seed_type_id: "residential",
+          position: { x: 100, y: 200 },
+          placed_at: "2024-01-01T00:00:00Z",
+        },
+      ];
+
+      (useWorldSeeds as ReturnType<typeof vi.fn>).mockReturnValue({
+        data: apiSeeds,
+        isLoading: false,
+        error: null,
+      });
+
+      const { result } = renderHook(() => usePlacedSeeds(), {
+        wrapper: createWrapper({ worldId: "test-world-id" }),
+      });
+
+      await waitFor(() => {
+        expect(result.current.seeds).toHaveLength(1);
+      });
+
+      expect(result.current.seeds[0].id).toBe("api-seed-1");
+      expect(result.current.seeds[0].seed.id).toBe("residential");
+      expect(result.current.seeds[0].position).toEqual({ x: 100, y: 200 });
+    });
+
+    it("calls createSeed API when adding a seed with worldId", () => {
+      const mockMutate = vi.fn();
+      (useCreateSeed as ReturnType<typeof vi.fn>).mockReturnValue({
+        mutate: mockMutate,
+      });
+
+      const { result } = renderHook(() => usePlacedSeeds(), {
+        wrapper: createWrapper({ worldId: "test-world-id" }),
+      });
+
+      act(() => {
+        result.current.addSeed(mockSeedType, { x: 100, y: 200 });
+      });
+
+      expect(mockMutate).toHaveBeenCalledWith(
+        expect.objectContaining({
+          worldId: "test-world-id",
+          data: {
+            seed_type_id: "residential",
+            position: { x: 100, y: 200 },
+          },
+        }),
+        expect.any(Object)
+      );
+    });
+
+    it("calls deleteSeed API when removing a seed with worldId", async () => {
+      const mockMutate = vi.fn();
+      (useDeleteSeed as ReturnType<typeof vi.fn>).mockReturnValue({
+        mutate: mockMutate,
+      });
+
+      // Pre-load a seed from the API
+      const apiSeeds = [
+        {
+          id: "api-seed-1",
+          world_id: "test-world-id",
+          seed_type_id: "residential",
+          position: { x: 100, y: 200 },
+          placed_at: "2024-01-01T00:00:00Z",
+        },
+      ];
+      (useWorldSeeds as ReturnType<typeof vi.fn>).mockReturnValue({
+        data: apiSeeds,
+        isLoading: false,
+        error: null,
+      });
+
+      const { result } = renderHook(() => usePlacedSeeds(), {
+        wrapper: createWrapper({ worldId: "test-world-id" }),
+      });
+
+      await waitFor(() => {
+        expect(result.current.seeds).toHaveLength(1);
+      });
+
+      act(() => {
+        result.current.removeSeed("api-seed-1");
+      });
+
+      expect(mockMutate).toHaveBeenCalledWith(
+        { seedId: "api-seed-1", worldId: "test-world-id" },
+        expect.any(Object)
+      );
+    });
+
+    it("shows error state when API fails", () => {
+      const error = new Error("API Error");
+      (useWorldSeeds as ReturnType<typeof vi.fn>).mockReturnValue({
+        data: undefined,
+        isLoading: false,
+        error,
+      });
+
+      const { result } = renderHook(() => usePlacedSeeds(), {
+        wrapper: createWrapper({ worldId: "test-world-id" }),
+      });
+
+      expect(result.current.error).toBe(error);
     });
   });
 

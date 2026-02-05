@@ -195,6 +195,32 @@ export interface District {
 }
 
 // ============================================================================
+// Placed Seed Types
+// ============================================================================
+
+export interface Position {
+  x: number;
+  y: number;
+}
+
+export interface PlacedSeedCreate {
+  seed_type_id: string;
+  position: Position;
+}
+
+export interface PlacedSeedBulkCreate {
+  seeds: PlacedSeedCreate[];
+}
+
+export interface PlacedSeed {
+  id: UUID;
+  world_id: UUID;
+  seed_type_id: string;
+  position: Position;
+  placed_at: DateTime;
+}
+
+// ============================================================================
 // API Error Types
 // ============================================================================
 

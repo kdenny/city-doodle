@@ -10,6 +10,7 @@ from sqlalchemy.orm import Mapped, mapped_column, relationship
 from city_api.database import Base, JSONVariant
 
 if TYPE_CHECKING:
+    from city_api.models.seed import PlacedSeed
     from city_api.models.tile import Tile
 
 
@@ -30,3 +31,6 @@ class World(Base):
     )
 
     tiles: Mapped[list["Tile"]] = relationship("Tile", back_populates="world")
+    placed_seeds: Mapped[list["PlacedSeed"]] = relationship(
+        "PlacedSeed", back_populates="world", cascade="all, delete-orphan"
+    )

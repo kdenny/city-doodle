@@ -14,6 +14,9 @@ import {
   AuthResponse,
   Job,
   JobCreate,
+  PlacedSeed,
+  PlacedSeedBulkCreate,
+  PlacedSeedCreate,
   Tile,
   TileCreate,
   TileLock,
@@ -47,6 +50,9 @@ export const queryKeys = {
   jobs: (filters?: { tileId?: string }) =>
     filters?.tileId ? (["jobs", { tileId: filters.tileId }] as const) : (["jobs"] as const),
   job: (id: string) => ["jobs", id] as const,
+
+  // Seeds
+  worldSeeds: (worldId: string) => ["worlds", worldId, "seeds"] as const,
 };
 
 // ============================================================================
@@ -329,6 +335,82 @@ export function useCancelJob(options?: UseMutationOptions<Job, Error, string>) {
     onSuccess: (job) => {
       queryClient.setQueryData(queryKeys.job(job.id), job);
       queryClient.invalidateQueries({ queryKey: queryKeys.jobs() });
+    },
+    ...options,
+  });
+}
+
+// ============================================================================
+// Seed Hooks
+// ============================================================================
+
+export function useWorldSeeds(
+  worldId: string,
+  options?: Omit<UseQueryOptions<PlacedSeed[]>, "queryKey" | "queryFn">
+) {
+  return useQuery({
+    queryKey: queryKeys.worldSeeds(worldId),
+    queryFn: () => api.seeds.list(worldId),
+    enabled: !!worldId,
+    ...options,
+  });
+}
+
+export function useCreateSeed(
+  options?: UseMutationOptions<PlacedSeed, Error, { worldId: string; data: PlacedSeedCreate }>
+) {
+  const queryClient = useQueryClient();
+  return useMutation({
+    mutationFn: ({ worldId, data }) => api.seeds.create(worldId, data),
+    onSuccess: (_, { worldId }) => {
+      queryClient.invalidateQueries({
+        queryKey: queryKeys.worldSeeds(worldId),
+      });
+    },
+    ...options,
+  });
+}
+
+export function useCreateSeedsBulk(
+  options?: UseMutationOptions<PlacedSeed[], Error, { worldId: string; data: PlacedSeedBulkCreate }>
+) {
+  const queryClient = useQueryClient();
+  return useMutation({
+    mutationFn: ({ worldId, data }) => api.seeds.createBulk(worldId, data),
+    onSuccess: (_, { worldId }) => {
+      queryClient.invalidateQueries({
+        queryKey: queryKeys.worldSeeds(worldId),
+      });
+    },
+    ...options,
+  });
+}
+
+export function useDeleteSeed(
+  options?: UseMutationOptions<void, Error, { seedId: string; worldId: string }>
+) {
+  const queryClient = useQueryClient();
+  return useMutation({
+    mutationFn: ({ seedId }) => api.seeds.delete(seedId),
+    onSuccess: (_, { worldId }) => {
+      queryClient.invalidateQueries({
+        queryKey: queryKeys.worldSeeds(worldId),
+      });
+    },
+    ...options,
+  });
+}
+
+export function useDeleteAllSeeds(
+  options?: UseMutationOptions<void, Error, string>
+) {
+  const queryClient = useQueryClient();
+  return useMutation({
+    mutationFn: (worldId: string) => api.seeds.deleteAll(worldId),
+    onSuccess: (_, worldId) => {
+      queryClient.invalidateQueries({
+        queryKey: queryKeys.worldSeeds(worldId),
+      });
     },
     ...options,
   });
