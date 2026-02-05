@@ -1,7 +1,7 @@
 """Add districts table
 
 Revision ID: 008
-Revises: 006
+Revises: 007
 Create Date: 2026-02-04
 
 """
@@ -13,7 +13,7 @@ from alembic import op
 from sqlalchemy.dialects import postgresql
 
 revision: str = "008"
-down_revision: str = "006"
+down_revision: str = "007"
 branch_labels: str | Sequence[str] | None = None
 depends_on: str | Sequence[str] | None = None
 
