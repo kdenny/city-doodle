@@ -5,6 +5,7 @@ from typing import Any
 
 import numpy as np
 
+from city_worker.terrain.bays import BayConfig, extract_bays
 from city_worker.terrain.noise import apply_erosion, generate_heightfield
 from city_worker.terrain.types import (
     TerrainConfig,
@@ -17,6 +18,7 @@ from city_worker.terrain.barrier_islands import (
     extract_barrier_islands,
 )
 from city_worker.terrain.water import (
+    calculate_flow_accumulation,
     extract_beaches,
     extract_coastlines,
     extract_lakes,
@@ -88,6 +90,9 @@ class TerrainGenerator:
         # Apply erosion for more realistic features
         heightfield = apply_erosion(heightfield, iterations=30)
 
+        # Calculate flow accumulation for river and bay detection
+        flow_accumulation = calculate_flow_accumulation(heightfield)
+
         # Extract water features
         features: list[TerrainFeature] = []
 
@@ -101,6 +106,28 @@ class TerrainGenerator:
             smoothing_iterations=cfg.coastline_smoothing,
         )
         features.extend(coastlines)
+
+        # Bays (concave coastline formations)
+        if cfg.bay_enabled:
+            bay_config = BayConfig(
+                min_concavity_angle=cfg.bay_min_concavity_angle,
+                min_area=cfg.bay_min_area,
+                max_depth_ratio=cfg.bay_max_depth_ratio,
+                cove_max_area=cfg.bay_cove_max_area,
+                harbor_min_area=cfg.bay_harbor_min_area,
+                river_mouth_factor=cfg.bay_river_mouth_factor,
+            )
+            bays = extract_bays(
+                heightfield=heightfield,
+                water_level=cfg.water_level,
+                tile_x=tx,
+                tile_y=ty,
+                tile_size=cfg.tile_size,
+                seed=cfg.world_seed + tx * 1000 + ty,  # Tile-specific seed
+                flow_accumulation=flow_accumulation,
+                config=bay_config,
+            )
+            features.extend(bays)
 
         # Beaches (transition zones between water and land)
         if cfg.beach_enabled:
