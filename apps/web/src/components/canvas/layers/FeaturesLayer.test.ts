@@ -55,6 +55,7 @@ describe("FeaturesLayer", () => {
           position: { x: 50, y: 50 },
         },
       ],
+      neighborhoods: [],
     };
 
     expect(() => layer.setData(data)).not.toThrow();
@@ -152,6 +153,7 @@ describe("FeaturesLayer", () => {
         districts: [],
         roads: [],
         pois: [],
+        neighborhoods: [],
       };
       layer.setData(data);
 
@@ -171,6 +173,7 @@ describe("FeaturesLayer", () => {
             position: { x: 50, y: 50 },
           },
         ],
+        neighborhoods: [],
       };
       layer.setData(data);
 
@@ -192,6 +195,7 @@ describe("FeaturesLayer", () => {
             position: { x: 50, y: 50 },
           },
         ],
+        neighborhoods: [],
       };
       layer.setData(data);
 
@@ -213,6 +217,7 @@ describe("FeaturesLayer", () => {
             position: { x: 50, y: 50 },
           },
         ],
+        neighborhoods: [],
       };
       layer.setData(data);
 
@@ -238,6 +243,7 @@ describe("FeaturesLayer", () => {
           },
         ],
         pois: [],
+        neighborhoods: [],
       };
       layer.setData(data);
 
@@ -263,6 +269,7 @@ describe("FeaturesLayer", () => {
           },
         ],
         pois: [],
+        neighborhoods: [],
       };
       layer.setData(data);
 
@@ -291,6 +298,7 @@ describe("FeaturesLayer", () => {
         ],
         roads: [],
         pois: [],
+        neighborhoods: [],
       };
       layer.setData(data);
 
@@ -319,6 +327,7 @@ describe("FeaturesLayer", () => {
         ],
         roads: [],
         pois: [],
+        neighborhoods: [],
       };
       layer.setData(data);
 
@@ -349,6 +358,7 @@ describe("FeaturesLayer", () => {
             position: { x: 50, y: 50 },
           },
         ],
+        neighborhoods: [],
       };
       layer.setData(data);
 
@@ -386,6 +396,7 @@ describe("FeaturesLayer", () => {
           },
         ],
         pois: [],
+        neighborhoods: [],
       };
       layer.setData(data);
 
@@ -405,6 +416,7 @@ describe("FeaturesLayer", () => {
             position: { x: 50, y: 50 },
           },
         ],
+        neighborhoods: [],
       };
       layer.setData(data);
       layer.setVisibility({
@@ -439,6 +451,7 @@ describe("FeaturesLayer", () => {
           },
         ],
         pois: [],
+        neighborhoods: [],
       };
       layer.setData(data);
       layer.setVisibility({
@@ -476,6 +489,7 @@ describe("FeaturesLayer", () => {
         ],
         roads: [],
         pois: [],
+        neighborhoods: [],
       };
       layer.setData(data);
       layer.setVisibility({
@@ -505,6 +519,7 @@ describe("FeaturesLayer", () => {
         districts: [],
         roads: [],
         pois: [],
+        neighborhoods: [],
       };
       layer.setData(data);
       expect(layer.getData()).toBe(data);

@@ -16,7 +16,7 @@ import {
 } from "./EraSelector";
 
 // Feature types that can be selected
-export type SelectableFeatureType = "district" | "road" | "poi" | null;
+export type SelectableFeatureType = "district" | "road" | "poi" | "neighborhood" | null;
 
 export interface SelectedDistrict {
   type: "district";
@@ -45,7 +45,15 @@ export interface SelectedPOI {
   poiType: string;
 }
 
-export type SelectedFeature = SelectedDistrict | SelectedRoad | SelectedPOI | null;
+export interface SelectedNeighborhood {
+  type: "neighborhood";
+  id: string;
+  name: string;
+  labelColor?: string;
+  accentColor?: string;
+}
+
+export type SelectedFeature = SelectedDistrict | SelectedRoad | SelectedPOI | SelectedNeighborhood | null;
 
 interface InspectorPanelProps {
   selection: SelectedFeature;
@@ -136,6 +144,9 @@ export function InspectorPanel({
       )}
       {selection.type === "poi" && (
         <POIInspector poi={selection} onUpdate={onUpdate} onDelete={onDelete} />
+      )}
+      {selection.type === "neighborhood" && (
+        <NeighborhoodInspector neighborhood={selection} onUpdate={onUpdate} onDelete={onDelete} />
       )}
     </div>
   );
@@ -447,6 +458,59 @@ function POIInspector({ poi, onUpdate, onDelete }: POIInspectorProps) {
           className="w-full mt-2 px-3 py-1.5 text-sm text-red-600 border border-red-300 rounded hover:bg-red-50 transition-colors"
         >
           Delete POI
+        </button>
+      )}
+    </div>
+  );
+}
+
+interface NeighborhoodInspectorProps {
+  neighborhood: SelectedNeighborhood;
+  onUpdate?: (feature: SelectedFeature) => void;
+  onDelete?: (feature: SelectedFeature) => void;
+}
+
+function NeighborhoodInspector({ neighborhood, onUpdate, onDelete }: NeighborhoodInspectorProps) {
+  const [editedName, setEditedName] = useState(neighborhood.name);
+
+  const handleNameChange = useCallback(
+    (e: React.ChangeEvent<HTMLInputElement>) => {
+      const newName = e.target.value;
+      setEditedName(newName);
+      onUpdate?.({ ...neighborhood, name: newName });
+    },
+    [neighborhood, onUpdate]
+  );
+
+  return (
+    <div className="space-y-3">
+      {/* Type badge */}
+      <div className="flex items-center gap-2">
+        <span className="text-xs font-medium text-white bg-purple-500 px-2 py-0.5 rounded">
+          Neighborhood
+        </span>
+      </div>
+
+      {/* Name field */}
+      <div>
+        <label className="block text-xs font-medium text-gray-600 mb-1">
+          Name
+        </label>
+        <input
+          type="text"
+          value={editedName}
+          onChange={handleNameChange}
+          className="w-full px-2 py-1 text-sm border border-gray-300 rounded focus:outline-none focus:ring-1 focus:ring-blue-500"
+        />
+      </div>
+
+      {/* Delete button */}
+      {onDelete && (
+        <button
+          onClick={() => onDelete(neighborhood)}
+          className="w-full mt-2 px-3 py-1.5 text-sm text-red-600 border border-red-300 rounded hover:bg-red-50 transition-colors"
+        >
+          Delete Neighborhood
         </button>
       )}
     </div>

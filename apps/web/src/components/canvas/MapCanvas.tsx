@@ -14,6 +14,7 @@ import {
   FeaturesLayer,
   LabelLayer,
   SeedsLayer,
+  DrawingLayer,
   generateMockTerrain,
   generateMockFeatures,
   generateMockLabels,
@@ -22,7 +23,9 @@ import {
   type PlacedSeedData,
   type HitTestResult,
   type FeaturesData,
+  type Neighborhood,
 } from "./layers";
+import { useDrawingOptional } from "./DrawingContext";
 import { LayerControls } from "./LayerControls";
 import {
   exportCanvasAsPng,
@@ -79,6 +82,7 @@ export const MapCanvas = forwardRef<MapCanvasHandle, MapCanvasProps>(
   const featuresLayerRef = useRef<FeaturesLayer | null>(null);
   const labelLayerRef = useRef<LabelLayer | null>(null);
   const seedsLayerRef = useRef<SeedsLayer | null>(null);
+  const drawingLayerRef = useRef<DrawingLayer | null>(null);
   const gridContainerRef = useRef<Container | null>(null);
   const [isReady, setIsReady] = useState(false);
   const [layerVisibility, setLayerVisibility] = useState<LayerVisibility>(
@@ -103,7 +107,7 @@ export const MapCanvas = forwardRef<MapCanvasHandle, MapCanvasProps>(
   const selectionContext = useSelectionContextOptional();
   const onFeatureSelect = onFeatureSelectProp ?? selectionContext?.selectFeature;
 
-  // Get features context for dynamic features (districts, roads, POIs)
+  // Get features context for dynamic features (districts, roads, POIs, neighborhoods)
   const featuresContext = useFeaturesOptional();
 
   // Get terrain context for sharing terrain data (water features) for collision detection
@@ -114,6 +118,9 @@ export const MapCanvas = forwardRef<MapCanvasHandle, MapCanvasProps>(
   useEffect(() => {
     setTerrainDataRef.current = terrainContext?.setTerrainData;
   }, [terrainContext?.setTerrainData]);
+
+  // Get drawing context for polygon drawing mode
+  const drawingContext = useDrawingOptional();
 
   // Create the export handle object
   const exportHandle = {
@@ -245,10 +252,10 @@ export const MapCanvas = forwardRef<MapCanvasHandle, MapCanvasProps>(
       // Generate and set features data (only if showMockFeatures is enabled)
       if (showMockFeatures) {
         const featuresData = generateMockFeatures(WORLD_SIZE, seed);
-        featuresLayer.setData(featuresData);
+        featuresLayer.setData({ ...featuresData, neighborhoods: [] });
       } else {
         // Empty features for new worlds
-        featuresLayer.setData({ districts: [], roads: [], pois: [] });
+        featuresLayer.setData({ districts: [], roads: [], pois: [], neighborhoods: [] });
       }
       featuresLayer.setVisibility(layerVisibility);
 
@@ -266,9 +273,13 @@ export const MapCanvas = forwardRef<MapCanvasHandle, MapCanvasProps>(
       }
       labelLayer.setVisibility(layerVisibility);
 
-      // Create and add seeds layer (above labels, below grid)
+      // Create and add seeds layer (above labels, below drawing)
       const seedsLayer = new SeedsLayer();
       viewport.addChild(seedsLayer.getContainer());
+
+      // Create and add drawing layer (above seeds, below grid)
+      const drawingLayer = new DrawingLayer();
+      viewport.addChild(drawingLayer.getContainer());
 
       // Create tile grid (above all layers)
       const gridContainer = new Container();
@@ -323,6 +334,7 @@ export const MapCanvas = forwardRef<MapCanvasHandle, MapCanvasProps>(
         featuresLayer.destroy();
         labelLayer.destroy();
         seedsLayer.destroy();
+        drawingLayer.destroy();
         app.destroy(true, { children: true });
         return;
       }
@@ -334,6 +346,7 @@ export const MapCanvas = forwardRef<MapCanvasHandle, MapCanvasProps>(
       featuresLayerRef.current = featuresLayer;
       labelLayerRef.current = labelLayer;
       seedsLayerRef.current = seedsLayer;
+      drawingLayerRef.current = drawingLayer;
       gridContainerRef.current = gridContainer;
       setIsReady(true);
 
@@ -371,6 +384,10 @@ export const MapCanvas = forwardRef<MapCanvasHandle, MapCanvasProps>(
       if (seedsLayerRef.current) {
         seedsLayerRef.current.destroy();
         seedsLayerRef.current = null;
+      }
+      if (drawingLayerRef.current) {
+        drawingLayerRef.current.destroy();
+        drawingLayerRef.current = null;
       }
       if (appRef.current) {
         appRef.current.destroy(true, { children: true });
@@ -453,7 +470,8 @@ export const MapCanvas = forwardRef<MapCanvasHandle, MapCanvasProps>(
     // The context tracks user-placed features separately
     if (featuresContext.features.districts.length > 0 ||
         featuresContext.features.roads.length > 0 ||
-        featuresContext.features.pois.length > 0) {
+        featuresContext.features.pois.length > 0 ||
+        featuresContext.features.neighborhoods.length > 0) {
 
       // Start with mock features if they exist, otherwise empty
       const baseData: FeaturesData = showMockFeatures && currentData
@@ -468,14 +486,16 @@ export const MapCanvas = forwardRef<MapCanvasHandle, MapCanvasProps>(
             pois: currentData.pois.filter(p =>
               !featuresContext.features.pois.some(fp => fp.id === p.id)
             ),
+            neighborhoods: [],
           }
-        : { districts: [], roads: [], pois: [] };
+        : { districts: [], roads: [], pois: [], neighborhoods: [] };
 
       // Merge with context features
       const mergedData: FeaturesData = {
         districts: [...baseData.districts, ...featuresContext.features.districts],
         roads: [...baseData.roads, ...featuresContext.features.roads],
         pois: [...baseData.pois, ...featuresContext.features.pois],
+        neighborhoods: [...featuresContext.features.neighborhoods],
       };
 
       featuresLayerRef.current.setData(mergedData);
@@ -523,7 +543,23 @@ export const MapCanvas = forwardRef<MapCanvasHandle, MapCanvasProps>(
     placementContext?.selectedSeed,
   ]);
 
-  // Handle clicks for seed placement and feature selection
+  // Update drawing layer when drawing state changes
+  useEffect(() => {
+    if (!isReady || !drawingLayerRef.current || !drawingContext) return;
+
+    drawingLayerRef.current.setState({
+      vertices: drawingContext.state.vertices,
+      previewPoint: drawingContext.state.previewPoint,
+      isDrawing: drawingContext.state.isDrawing,
+    });
+  }, [
+    isReady,
+    drawingContext?.state.vertices,
+    drawingContext?.state.previewPoint,
+    drawingContext?.state.isDrawing,
+  ]);
+
+  // Handle clicks for seed placement, feature selection, and polygon drawing
   useEffect(() => {
     if (!isReady || !viewportRef.current) return;
 
@@ -531,6 +567,12 @@ export const MapCanvas = forwardRef<MapCanvasHandle, MapCanvasProps>(
     const isPlacing = placementContext?.isPlacing ?? false;
     const confirmPlacement = placementContext?.confirmPlacement;
     const setPreviewPosition = placementContext?.setPreviewPosition;
+    const isDrawing = drawingContext?.state.isDrawing ?? false;
+    const addVertex = drawingContext?.addVertex;
+    const setDrawingPreviewPoint = drawingContext?.setPreviewPoint;
+    const completeDrawing = drawingContext?.completeDrawing;
+    const cancelDrawing = drawingContext?.cancelDrawing;
+    const canComplete = drawingContext?.canComplete;
 
     // Track if we're dragging to avoid triggering click after drag
     let isDragging = false;
@@ -549,10 +591,17 @@ export const MapCanvas = forwardRef<MapCanvasHandle, MapCanvasProps>(
         isDragging = true;
       }
 
-      // Update preview position if placing
+      // Convert to world position
+      const worldPos = viewport.toWorld(event.global.x, event.global.y);
+
+      // Update preview position if placing seeds
       if (isPlacing && setPreviewPosition) {
-        const worldPos = viewport.toWorld(event.global.x, event.global.y);
         setPreviewPosition({ x: worldPos.x, y: worldPos.y });
+      }
+
+      // Update preview point if drawing
+      if (isDrawing && setDrawingPreviewPoint) {
+        setDrawingPreviewPoint({ x: worldPos.x, y: worldPos.y });
       }
     };
 
@@ -563,9 +612,25 @@ export const MapCanvas = forwardRef<MapCanvasHandle, MapCanvasProps>(
       // Convert screen position to world position
       const worldPos = viewport.toWorld(event.global.x, event.global.y);
 
+      // Handle drawing mode
+      if (isDrawing && addVertex) {
+        // Check if clicking near first vertex to close the polygon
+        if (canComplete && canComplete() && drawingLayerRef.current?.isNearFirstVertex(worldPos)) {
+          completeDrawing?.();
+          return;
+        }
+        addVertex({ x: worldPos.x, y: worldPos.y });
+        return;
+      }
+
+      // Handle seed placement mode
       if (isPlacing && confirmPlacement) {
         confirmPlacement({ x: worldPos.x, y: worldPos.y });
-      } else if (onFeatureSelect && featuresLayerRef.current) {
+        return;
+      }
+
+      // Handle feature selection (default mode)
+      if (onFeatureSelect && featuresLayerRef.current) {
         // Perform hit test and select feature
         const hitResult = featuresLayerRef.current.hitTest(worldPos.x, worldPos.y);
         if (hitResult) {
@@ -578,16 +643,43 @@ export const MapCanvas = forwardRef<MapCanvasHandle, MapCanvasProps>(
       }
     };
 
+    // Keyboard handlers for drawing
+    const handleKeyDown = (event: KeyboardEvent) => {
+      if (!isDrawing) return;
+
+      if (event.key === "Escape") {
+        event.preventDefault();
+        cancelDrawing?.();
+      } else if (event.key === "Enter" && canComplete && canComplete()) {
+        event.preventDefault();
+        completeDrawing?.();
+      }
+    };
+
     viewport.on("pointerdown", handlePointerDown);
     viewport.on("pointermove", handlePointerMove);
     viewport.on("pointerup", handleClick);
+    window.addEventListener("keydown", handleKeyDown);
 
     return () => {
       viewport.off("pointerdown", handlePointerDown);
       viewport.off("pointermove", handlePointerMove);
       viewport.off("pointerup", handleClick);
+      window.removeEventListener("keydown", handleKeyDown);
     };
-  }, [isReady, placementContext?.isPlacing, placementContext?.confirmPlacement, placementContext?.setPreviewPosition, onFeatureSelect]);
+  }, [
+    isReady,
+    placementContext?.isPlacing,
+    placementContext?.confirmPlacement,
+    placementContext?.setPreviewPosition,
+    drawingContext?.state.isDrawing,
+    drawingContext?.addVertex,
+    drawingContext?.setPreviewPoint,
+    drawingContext?.completeDrawing,
+    drawingContext?.cancelDrawing,
+    drawingContext?.canComplete,
+    onFeatureSelect,
+  ]);
 
   return (
     <div
@@ -641,6 +733,14 @@ function hitTestResultToSelectedFeature(hitResult: HitTestResult): SelectedFeatu
         id: poi.id,
         name: poi.name,
         poiType: poi.type,
+      };
+    }
+    case "neighborhood": {
+      const neighborhood = hitResult.feature as Neighborhood;
+      return {
+        type: "neighborhood",
+        id: neighborhood.id,
+        name: neighborhood.name,
       };
     }
   }

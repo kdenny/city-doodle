@@ -18,6 +18,10 @@ import {
   DistrictUpdate,
   Job,
   JobCreate,
+  Neighborhood,
+  NeighborhoodBulkCreate,
+  NeighborhoodCreate,
+  NeighborhoodUpdate,
   PlacedSeed,
   PlacedSeedBulkCreate,
   PlacedSeedCreate,
@@ -62,6 +66,10 @@ export const queryKeys = {
   // Districts
   worldDistricts: (worldId: string) => ["worlds", worldId, "districts"] as const,
   district: (id: string) => ["districts", id] as const,
+
+  // Neighborhoods
+  worldNeighborhoods: (worldId: string) => ["worlds", worldId, "neighborhoods"] as const,
+  neighborhood: (id: string) => ["neighborhoods", id] as const,
 };
 
 // ============================================================================
@@ -540,6 +548,113 @@ export function useDeleteAllDistricts(
     onSuccess: (_, worldId) => {
       queryClient.invalidateQueries({
         queryKey: queryKeys.worldDistricts(worldId),
+      });
+    },
+    ...options,
+  });
+}
+
+// ============================================================================
+// Neighborhood Hooks
+// ============================================================================
+
+export function useWorldNeighborhoods(
+  worldId: string,
+  options?: Omit<UseQueryOptions<Neighborhood[]>, "queryKey" | "queryFn">
+) {
+  return useQuery({
+    queryKey: queryKeys.worldNeighborhoods(worldId),
+    queryFn: () => api.neighborhoods.list(worldId),
+    enabled: !!worldId,
+    ...options,
+  });
+}
+
+export function useNeighborhood(
+  neighborhoodId: string,
+  options?: Omit<UseQueryOptions<Neighborhood>, "queryKey" | "queryFn">
+) {
+  return useQuery({
+    queryKey: queryKeys.neighborhood(neighborhoodId),
+    queryFn: () => api.neighborhoods.get(neighborhoodId),
+    enabled: !!neighborhoodId,
+    ...options,
+  });
+}
+
+export function useCreateNeighborhood(
+  options?: UseMutationOptions<Neighborhood, Error, { worldId: string; data: Omit<NeighborhoodCreate, "world_id"> }>
+) {
+  const queryClient = useQueryClient();
+  return useMutation({
+    mutationFn: ({ worldId, data }) => api.neighborhoods.create(worldId, data),
+    onSuccess: (_, { worldId }) => {
+      queryClient.invalidateQueries({
+        queryKey: queryKeys.worldNeighborhoods(worldId),
+      });
+    },
+    ...options,
+  });
+}
+
+export function useCreateNeighborhoodsBulk(
+  options?: UseMutationOptions<Neighborhood[], Error, { worldId: string; data: NeighborhoodBulkCreate }>
+) {
+  const queryClient = useQueryClient();
+  return useMutation({
+    mutationFn: ({ worldId, data }) => api.neighborhoods.createBulk(worldId, data),
+    onSuccess: (_, { worldId }) => {
+      queryClient.invalidateQueries({
+        queryKey: queryKeys.worldNeighborhoods(worldId),
+      });
+    },
+    ...options,
+  });
+}
+
+export function useUpdateNeighborhood(
+  options?: UseMutationOptions<Neighborhood, Error, { neighborhoodId: string; data: NeighborhoodUpdate; worldId?: string }>
+) {
+  const queryClient = useQueryClient();
+  return useMutation({
+    mutationFn: ({ neighborhoodId, data }) => api.neighborhoods.update(neighborhoodId, data),
+    onSuccess: (neighborhood, { worldId }) => {
+      queryClient.setQueryData(queryKeys.neighborhood(neighborhood.id), neighborhood);
+      if (worldId) {
+        queryClient.invalidateQueries({
+          queryKey: queryKeys.worldNeighborhoods(worldId),
+        });
+      }
+    },
+    ...options,
+  });
+}
+
+export function useDeleteNeighborhood(
+  options?: UseMutationOptions<void, Error, { neighborhoodId: string; worldId: string }>
+) {
+  const queryClient = useQueryClient();
+  return useMutation({
+    mutationFn: ({ neighborhoodId }) => api.neighborhoods.delete(neighborhoodId),
+    onSuccess: (_, { neighborhoodId, worldId }) => {
+      queryClient.removeQueries({ queryKey: queryKeys.neighborhood(neighborhoodId) });
+      queryClient.invalidateQueries({
+        queryKey: queryKeys.worldNeighborhoods(worldId),
+      });
+    },
+    ...options,
+  });
+}
+
+export function useDeleteAllNeighborhoods(
+  options?: UseMutationOptions<void, Error, string>
+) {
+  const queryClient = useQueryClient();
+  return useMutation({
+    mutationFn: (worldId: string) => api.neighborhoods.deleteAll(worldId),
+    onSuccess: (_, worldId) => {
+      queryClient.invalidateQueries({
+        queryKey: queryKeys.worldNeighborhoods(worldId),
       });
     },
     ...options,

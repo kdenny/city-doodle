@@ -8,6 +8,12 @@ from city_api.schemas.district import (
     DistrictUpdate,
 )
 from city_api.schemas.job import Job, JobCreate, JobStatus, JobType
+from city_api.schemas.neighborhood import (
+    Neighborhood,
+    NeighborhoodBulkCreate,
+    NeighborhoodCreate,
+    NeighborhoodUpdate,
+)
 from city_api.schemas.road_network import (
     NodeType,
     Point,
@@ -86,6 +92,11 @@ __all__ = [
     "DistrictCreate",
     "DistrictType",
     "DistrictUpdate",
+    # Neighborhood
+    "Neighborhood",
+    "NeighborhoodBulkCreate",
+    "NeighborhoodCreate",
+    "NeighborhoodUpdate",
     # Road Network
     "RoadClass",
     "NodeType",

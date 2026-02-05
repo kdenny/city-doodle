@@ -58,6 +58,7 @@ describe("FeaturesContext", () => {
         ],
         roads: [] as Road[],
         pois: [] as POI[],
+        neighborhoods: [],
       };
 
       let capturedFeatures: ReturnType<typeof useFeatures>["features"] | null = null;
@@ -746,6 +747,7 @@ describe("FeaturesContext", () => {
         ],
         roads: [],
         pois: [],
+        neighborhoods: [],
       };
 
       act(() => {

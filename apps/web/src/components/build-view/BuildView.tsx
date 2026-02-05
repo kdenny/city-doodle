@@ -1,4 +1,4 @@
-import { ReactNode, useCallback } from "react";
+import { ReactNode, useCallback, useEffect } from "react";
 import { Toolbar, useToolbar, Tool } from "./Toolbar";
 import { LayersPanel, useLayers, LayerVisibility } from "./LayersPanel";
 import { PopulationPanel } from "./PopulationPanel";
@@ -7,6 +7,7 @@ import { ScaleBar } from "./ScaleBar";
 import { InspectorPanel, type SelectedFeature } from "./InspectorPanel";
 import { useSelectionContextOptional } from "./SelectionContext";
 import { useZoomOptional } from "../shell/ZoomContext";
+import { useDrawingOptional } from "../canvas/DrawingContext";
 
 interface BuildViewProps {
   children: ReactNode;
@@ -53,6 +54,34 @@ export function BuildView({
   const selectedFeature = selectedFeatureProp ?? selectionContext?.selection ?? null;
   const onFeatureUpdate = onFeatureUpdateProp ?? selectionContext?.updateSelection;
   const onSelectionClear = onSelectionClearProp ?? selectionContext?.clearSelection;
+
+  // Get drawing context for polygon drawing mode
+  const drawingContext = useDrawingOptional();
+
+  // Start/stop drawing mode when tool changes
+  useEffect(() => {
+    if (!drawingContext) return;
+
+    if (activeTool === "draw") {
+      // Start drawing neighborhood when draw tool is selected
+      drawingContext.startDrawing("neighborhood");
+    } else {
+      // Cancel drawing when switching away from draw tool
+      if (drawingContext.state.isDrawing) {
+        drawingContext.cancelDrawing();
+      }
+    }
+  }, [activeTool, drawingContext]);
+
+  // Switch back to pan tool when drawing is completed
+  useEffect(() => {
+    if (!drawingContext) return;
+
+    // If we were drawing and now we're not (polygon completed), switch to pan
+    if (activeTool === "draw" && !drawingContext.state.isDrawing && drawingContext.state.mode === null) {
+      setActiveTool("pan");
+    }
+  }, [activeTool, drawingContext?.state.isDrawing, drawingContext?.state.mode, setActiveTool]);
 
   const handleToolChange = useCallback(
     (tool: Tool) => {

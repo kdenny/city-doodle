@@ -278,6 +278,40 @@ export interface District {
 }
 
 // ============================================================================
+// Neighborhood Types
+// ============================================================================
+
+export interface NeighborhoodCreate {
+  world_id: UUID;
+  name: string;
+  geometry: Record<string, unknown>;
+  label_color?: string;
+  accent_color?: string;
+}
+
+export interface NeighborhoodUpdate {
+  name?: string;
+  geometry?: Record<string, unknown>;
+  label_color?: string;
+  accent_color?: string;
+}
+
+export interface NeighborhoodBulkCreate {
+  neighborhoods: NeighborhoodCreate[];
+}
+
+export interface Neighborhood {
+  id: UUID;
+  world_id: UUID;
+  name: string;
+  geometry: Record<string, unknown>;
+  label_color?: string;
+  accent_color?: string;
+  created_at: DateTime;
+  updated_at: DateTime;
+}
+
+// ============================================================================
 // Placed Seed Types
 // ============================================================================
 

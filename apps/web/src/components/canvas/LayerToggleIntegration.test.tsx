@@ -402,6 +402,7 @@ describe("Edge cases", () => {
       districts: [],
       roads: [],
       pois: [],
+      neighborhoods: [],
     });
     labelLayer.setData({
       labels: [],

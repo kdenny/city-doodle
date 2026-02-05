@@ -133,10 +133,19 @@ export interface POI {
   position: Point;
 }
 
+export interface Neighborhood {
+  id: string;
+  name: string;
+  polygon: Polygon;
+  labelColor?: string;
+  accentColor?: string;
+}
+
 export interface FeaturesData {
   districts: District[];
   roads: Road[];
   pois: POI[];
+  neighborhoods: Neighborhood[];
 }
 
 // Label types
