@@ -26,6 +26,7 @@ async def create_seed(
         seed_type_id=seed_create.seed_type_id,
         position_x=seed_create.position.x,
         position_y=seed_create.position.y,
+        seed_metadata=seed_create.metadata,
     )
     db.add(seed)
     await db.commit()
@@ -43,6 +44,7 @@ async def create_seeds_bulk(
             seed_type_id=seed.seed_type_id,
             position_x=seed.position.x,
             position_y=seed.position.y,
+            seed_metadata=seed.metadata,
         )
         for seed in seeds
     ]
@@ -98,4 +100,5 @@ def _to_schema(seed: PlacedSeedModel) -> PlacedSeed:
         seed_type_id=seed.seed_type_id,
         position=Position(x=seed.position_x, y=seed.position_y),
         placed_at=_ensure_utc(seed.placed_at),
+        metadata=seed.seed_metadata,
     )

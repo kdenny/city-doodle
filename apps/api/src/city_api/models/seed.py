@@ -2,19 +2,23 @@
 
 import uuid
 from datetime import datetime
-from typing import TYPE_CHECKING
+from typing import TYPE_CHECKING, Any
 
 from sqlalchemy import DateTime, Float, ForeignKey, Index, String, Uuid, func
 from sqlalchemy.orm import Mapped, mapped_column, relationship
 
-from city_api.database import Base
+from city_api.database import Base, JSONVariant
 
 if TYPE_CHECKING:
     from city_api.models.world import World
 
 
 class PlacedSeed(Base):
-    """A seed placed by a user on the world map."""
+    """A seed placed by a user on the world map.
+
+    For park seeds (seed_type_id starting with "park_"), the metadata field
+    contains ParkMetadata-compatible JSON with size, name, and feature flags.
+    """
 
     __tablename__ = "placed_seeds"
 
@@ -27,6 +31,9 @@ class PlacedSeed(Base):
     position_y: Mapped[float] = mapped_column(Float, nullable=False)
     placed_at: Mapped[datetime] = mapped_column(
         DateTime(timezone=True), server_default=func.now(), nullable=False
+    )
+    seed_metadata: Mapped[dict[str, Any] | None] = mapped_column(
+        JSONVariant, nullable=True, default=None
     )
 
     world: Mapped["World"] = relationship("World", back_populates="placed_seeds")
