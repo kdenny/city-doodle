@@ -7,6 +7,7 @@ import {
 import type { DistrictPersonality } from "../canvas/layers/types";
 import { DEFAULT_DISTRICT_PERSONALITY } from "../canvas/layers/types";
 import { DEFAULT_ERA_YEAR } from "./EraSelector";
+import { HISTORIC_SPRAWL_MIN } from "./sliderValidation";
 
 describe("PersonalitySliders", () => {
   const defaultValues: DistrictPersonality = {
@@ -115,20 +116,6 @@ describe("PersonalitySliders", () => {
       });
     });
 
-    it("calls onChange with era_year when era selector changes", () => {
-      const onChange = vi.fn();
-      render(<PersonalitySliders values={defaultValues} onChange={onChange} />);
-
-      const eraSlider = screen.getByTestId("era-slider");
-      // Change to index 0 (Medieval 1200)
-      fireEvent.change(eraSlider, { target: { value: "0" } });
-
-      expect(onChange).toHaveBeenCalledWith({
-        ...defaultValues,
-        era_year: 1200,
-      });
-    });
-
     it("preserves other values when one slider changes", () => {
       const onChange = vi.fn();
       const customValues: DistrictPersonality = {
@@ -163,6 +150,169 @@ describe("PersonalitySliders", () => {
       const sliders = screen.getAllByRole("slider");
       sliders.forEach((slider) => {
         expect(slider).toBeDisabled();
+      });
+    });
+  });
+
+  describe("validation constraints", () => {
+    describe("sprawl_compact constraint for pre-1940 eras", () => {
+      it("shows constraint marker for historic eras", () => {
+        const onChange = vi.fn();
+        const historicValues: DistrictPersonality = {
+          ...defaultValues,
+          era_year: 1900,
+        };
+        render(
+          <PersonalitySliders values={historicValues} onChange={onChange} />
+        );
+
+        expect(screen.getByTestId("constraint-marker-sprawl_compact")).toBeInTheDocument();
+      });
+
+      it("does not show constraint marker for modern eras", () => {
+        const onChange = vi.fn();
+        render(<PersonalitySliders values={defaultValues} onChange={onChange} />);
+
+        expect(
+          screen.queryByTestId("constraint-marker-sprawl_compact")
+        ).not.toBeInTheDocument();
+      });
+
+      it("snaps sprawl value to minimum for historic eras", () => {
+        const onChange = vi.fn();
+        const historicValues: DistrictPersonality = {
+          ...defaultValues,
+          era_year: 1900,
+          sprawl_compact: 0.5,
+        };
+        render(
+          <PersonalitySliders values={historicValues} onChange={onChange} />
+        );
+
+        const sprawlSlider = screen.getByTestId("slider-sprawl_compact");
+        // Try to set value below minimum
+        fireEvent.change(sprawlSlider, { target: { value: "0.1" } });
+
+        // Should snap to minimum
+        expect(onChange).toHaveBeenCalledWith(
+          expect.objectContaining({
+            sprawl_compact: HISTORIC_SPRAWL_MIN,
+          })
+        );
+      });
+
+      it("shows constraint tooltip on hover for constrained sliders", () => {
+        const onChange = vi.fn();
+        const historicValues: DistrictPersonality = {
+          ...defaultValues,
+          era_year: 1900,
+        };
+        render(
+          <PersonalitySliders values={historicValues} onChange={onChange} />
+        );
+
+        // Find the sprawl slider wrapper and hover
+        const sprawlSlider = screen.getByTestId("slider-sprawl_compact");
+        fireEvent.mouseEnter(sprawlSlider.closest(".relative")!.parentElement!);
+
+        expect(screen.getByTestId("constraint-tooltip-sprawl_compact")).toBeInTheDocument();
+        expect(
+          screen.getByTestId("constraint-tooltip-sprawl_compact").textContent
+        ).toContain("Historic districts");
+      });
+    });
+
+    describe("transit_car disabled for historic districts", () => {
+      it("disables transit slider when isHistoric is true", () => {
+        const onChange = vi.fn();
+        render(
+          <PersonalitySliders
+            values={defaultValues}
+            onChange={onChange}
+            isHistoric={true}
+          />
+        );
+
+        const transitSlider = screen.getByTestId("slider-transit_car");
+        expect(transitSlider).toBeDisabled();
+      });
+
+      it("shows tooltip explaining why transit is disabled for historic", () => {
+        const onChange = vi.fn();
+        render(
+          <PersonalitySliders
+            values={defaultValues}
+            onChange={onChange}
+            isHistoric={true}
+          />
+        );
+
+        const transitSlider = screen.getByTestId("slider-transit_car");
+        fireEvent.mouseEnter(transitSlider.closest(".relative")!.parentElement!);
+
+        expect(screen.getByTestId("constraint-tooltip-transit_car")).toBeInTheDocument();
+        expect(
+          screen.getByTestId("constraint-tooltip-transit_car").textContent
+        ).toContain("Historic Districts");
+      });
+
+      it("enables transit slider when isHistoric is false", () => {
+        const onChange = vi.fn();
+        render(
+          <PersonalitySliders
+            values={defaultValues}
+            onChange={onChange}
+            isHistoric={false}
+          />
+        );
+
+        const transitSlider = screen.getByTestId("slider-transit_car");
+        expect(transitSlider).not.toBeDisabled();
+      });
+    });
+
+    describe("transit_car disabled when no transit stations", () => {
+      it("disables transit slider when hasTransitStations is false", () => {
+        const onChange = vi.fn();
+        render(
+          <PersonalitySliders
+            values={defaultValues}
+            onChange={onChange}
+            hasTransitStations={false}
+          />
+        );
+
+        const transitSlider = screen.getByTestId("slider-transit_car");
+        expect(transitSlider).toBeDisabled();
+      });
+
+      it("shows tooltip explaining why transit is disabled for no stations", () => {
+        const onChange = vi.fn();
+        render(
+          <PersonalitySliders
+            values={defaultValues}
+            onChange={onChange}
+            hasTransitStations={false}
+          />
+        );
+
+        const transitSlider = screen.getByTestId("slider-transit_car");
+        fireEvent.mouseEnter(transitSlider.closest(".relative")!.parentElement!);
+
+        expect(screen.getByTestId("constraint-tooltip-transit_car")).toBeInTheDocument();
+        expect(
+          screen.getByTestId("constraint-tooltip-transit_car").textContent
+        ).toContain("No transit stations");
+      });
+
+      it("enables transit slider when hasTransitStations is true (default)", () => {
+        const onChange = vi.fn();
+        render(
+          <PersonalitySliders values={defaultValues} onChange={onChange} />
+        );
+
+        const transitSlider = screen.getByTestId("slider-transit_car");
+        expect(transitSlider).not.toBeDisabled();
       });
     });
   });
@@ -266,5 +416,37 @@ describe("CollapsiblePersonalitySliders", () => {
 
     fireEvent.click(button);
     expect(button).toHaveAttribute("aria-expanded", "true");
+  });
+
+  it("passes isHistoric prop to PersonalitySliders", () => {
+    const onChange = vi.fn();
+    render(
+      <CollapsiblePersonalitySliders
+        values={defaultValues}
+        onChange={onChange}
+        isHistoric={true}
+        defaultExpanded
+      />
+    );
+
+    // Transit slider should be disabled when isHistoric is true
+    const transitSlider = screen.getByTestId("slider-transit_car");
+    expect(transitSlider).toBeDisabled();
+  });
+
+  it("passes hasTransitStations prop to PersonalitySliders", () => {
+    const onChange = vi.fn();
+    render(
+      <CollapsiblePersonalitySliders
+        values={defaultValues}
+        onChange={onChange}
+        hasTransitStations={false}
+        defaultExpanded
+      />
+    );
+
+    // Transit slider should be disabled when no transit stations
+    const transitSlider = screen.getByTestId("slider-transit_car");
+    expect(transitSlider).toBeDisabled();
   });
 });

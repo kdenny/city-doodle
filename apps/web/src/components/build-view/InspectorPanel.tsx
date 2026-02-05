@@ -281,6 +281,7 @@ function DistrictInspector({
         values={personality}
         onChange={handlePersonalityChange}
         compact
+        isHistoric={isHistoric}
       />
 
       {/* Stats */}

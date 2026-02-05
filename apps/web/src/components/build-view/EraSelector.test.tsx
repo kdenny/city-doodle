@@ -52,10 +52,16 @@ describe("EraSelector", () => {
     });
   });
 
-  describe("slider interaction", () => {
-    it("calls onChange with new era year when slider changes", () => {
+  describe("slider interaction without warning", () => {
+    it("calls onChange directly when showChangeWarning is false", () => {
       const onChange = vi.fn();
-      render(<EraSelector value={DEFAULT_ERA_YEAR} onChange={onChange} />);
+      render(
+        <EraSelector
+          value={DEFAULT_ERA_YEAR}
+          onChange={onChange}
+          showChangeWarning={false}
+        />
+      );
 
       const slider = screen.getByTestId("era-slider");
       // Change to index 0 (Medieval 1200)
@@ -67,11 +73,17 @@ describe("EraSelector", () => {
     it("updates label when slider changes", () => {
       const onChange = vi.fn();
       const { rerender } = render(
-        <EraSelector value={DEFAULT_ERA_YEAR} onChange={onChange} />
+        <EraSelector
+          value={DEFAULT_ERA_YEAR}
+          onChange={onChange}
+          showChangeWarning={false}
+        />
       );
 
       // Simulate the parent updating the value
-      rerender(<EraSelector value={1200} onChange={onChange} />);
+      rerender(
+        <EraSelector value={1200} onChange={onChange} showChangeWarning={false} />
+      );
 
       expect(screen.getByTestId("era-label")).toHaveTextContent("Medieval");
     });
@@ -81,6 +93,125 @@ describe("EraSelector", () => {
       render(<EraSelector value={DEFAULT_ERA_YEAR} onChange={onChange} disabled />);
 
       expect(screen.getByTestId("era-slider")).toBeDisabled();
+    });
+  });
+
+  describe("era change warning dialog", () => {
+    it("shows warning dialog when era changes and showChangeWarning is true (default)", () => {
+      const onChange = vi.fn();
+      render(<EraSelector value={DEFAULT_ERA_YEAR} onChange={onChange} />);
+
+      const slider = screen.getByTestId("era-slider");
+      // Change to index 0 (Medieval 1200)
+      fireEvent.change(slider, { target: { value: "0" } });
+
+      // Dialog should appear
+      expect(screen.getByTestId("confirmation-dialog")).toBeInTheDocument();
+      expect(screen.getByText("Change Era?")).toBeInTheDocument();
+      // onChange should NOT have been called yet
+      expect(onChange).not.toHaveBeenCalled();
+    });
+
+    it("shows current and new era names in dialog message", () => {
+      const onChange = vi.fn();
+      render(<EraSelector value={DEFAULT_ERA_YEAR} onChange={onChange} />);
+
+      const slider = screen.getByTestId("era-slider");
+      // Change to Medieval 1200
+      fireEvent.change(slider, { target: { value: "0" } });
+
+      const dialog = screen.getByTestId("confirmation-dialog");
+      expect(dialog.textContent).toContain("Contemporary");
+      expect(dialog.textContent).toContain("Medieval");
+    });
+
+    it("calls onChange when user confirms era change", () => {
+      const onChange = vi.fn();
+      render(<EraSelector value={DEFAULT_ERA_YEAR} onChange={onChange} />);
+
+      const slider = screen.getByTestId("era-slider");
+      fireEvent.change(slider, { target: { value: "0" } });
+
+      // Click confirm button
+      const confirmButton = screen.getByTestId("dialog-confirm-button");
+      fireEvent.click(confirmButton);
+
+      expect(onChange).toHaveBeenCalledWith(1200);
+      // Dialog should be closed
+      expect(screen.queryByTestId("confirmation-dialog")).not.toBeInTheDocument();
+    });
+
+    it("does not call onChange when user cancels era change", () => {
+      const onChange = vi.fn();
+      render(<EraSelector value={DEFAULT_ERA_YEAR} onChange={onChange} />);
+
+      const slider = screen.getByTestId("era-slider");
+      fireEvent.change(slider, { target: { value: "0" } });
+
+      // Click cancel button
+      const cancelButton = screen.getByTestId("dialog-cancel-button");
+      fireEvent.click(cancelButton);
+
+      expect(onChange).not.toHaveBeenCalled();
+      // Dialog should be closed
+      expect(screen.queryByTestId("confirmation-dialog")).not.toBeInTheDocument();
+    });
+
+    it("closes dialog when clicking backdrop", () => {
+      const onChange = vi.fn();
+      render(<EraSelector value={DEFAULT_ERA_YEAR} onChange={onChange} />);
+
+      const slider = screen.getByTestId("era-slider");
+      fireEvent.change(slider, { target: { value: "0" } });
+
+      // Click backdrop (the dialog container itself)
+      const dialog = screen.getByTestId("confirmation-dialog");
+      fireEvent.click(dialog);
+
+      expect(onChange).not.toHaveBeenCalled();
+      expect(screen.queryByTestId("confirmation-dialog")).not.toBeInTheDocument();
+    });
+
+    it("closes dialog when pressing Escape", () => {
+      const onChange = vi.fn();
+      render(<EraSelector value={DEFAULT_ERA_YEAR} onChange={onChange} />);
+
+      const slider = screen.getByTestId("era-slider");
+      fireEvent.change(slider, { target: { value: "0" } });
+
+      // Press Escape
+      fireEvent.keyDown(document, { key: "Escape" });
+
+      expect(onChange).not.toHaveBeenCalled();
+      expect(screen.queryByTestId("confirmation-dialog")).not.toBeInTheDocument();
+    });
+
+    it("does not show dialog when changing to the same era", () => {
+      const onChange = vi.fn();
+      render(<EraSelector value={DEFAULT_ERA_YEAR} onChange={onChange} />);
+
+      const slider = screen.getByTestId("era-slider");
+      const currentIndex = getEraIndexByYear(DEFAULT_ERA_YEAR);
+      // Change to same index
+      fireEvent.change(slider, { target: { value: String(currentIndex) } });
+
+      // No dialog should appear - the component does not call onChange when the index doesn't change
+      // because the slider change event is only triggered when the value actually changes
+      expect(screen.queryByTestId("confirmation-dialog")).not.toBeInTheDocument();
+      // onChange is not called because the slider value didn't actually change
+      // (this is expected browser behavior - input events only fire on actual changes)
+    });
+
+    it("shows details about street grid changes in dialog", () => {
+      const onChange = vi.fn();
+      render(<EraSelector value={DEFAULT_ERA_YEAR} onChange={onChange} />);
+
+      const slider = screen.getByTestId("era-slider");
+      fireEvent.change(slider, { target: { value: "0" } });
+
+      const dialog = screen.getByTestId("confirmation-dialog");
+      expect(dialog.textContent).toContain("street grid");
+      expect(dialog.textContent).toContain("Street layout");
     });
   });
 

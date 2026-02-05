@@ -1,11 +1,16 @@
 /**
  * Era selector component for choosing the architectural era of a district.
  *
- * Replaces the 0-1 Historic↔Modern slider with a year-based selection
+ * Replaces the 0-1 Historic/Modern slider with a year-based selection
  * that shows era names instead of numbers.
+ *
+ * Features:
+ * - Shows warning dialog when changing eras (street grid may change)
+ * - Displays era characteristics in tooltip
  */
 
 import { useCallback, useState } from "react";
+import { ConfirmationDialog } from "./ConfirmationDialog";
 
 /**
  * Represents a historical era with its year value and display characteristics.
@@ -237,6 +242,8 @@ interface EraSelectorProps {
   compact?: boolean;
   /** Optional: disable the selector */
   disabled?: boolean;
+  /** Optional: show warning dialog when changing era (default: true) */
+  showChangeWarning?: boolean;
 }
 
 export function EraSelector({
@@ -244,19 +251,41 @@ export function EraSelector({
   onChange,
   compact = false,
   disabled = false,
+  showChangeWarning = true,
 }: EraSelectorProps) {
   const [isTooltipVisible, setIsTooltipVisible] = useState(false);
+  const [pendingEraIndex, setPendingEraIndex] = useState<number | null>(null);
 
   const currentIndex = getEraIndexByYear(value);
   const currentEra = ERAS[currentIndex];
 
+  // Get the pending era for the dialog
+  const pendingEra = pendingEraIndex !== null ? ERAS[pendingEraIndex] : null;
+
   const handleSliderChange = useCallback(
     (e: React.ChangeEvent<HTMLInputElement>) => {
-      const index = parseInt(e.target.value, 10);
-      onChange(ERAS[index].year);
+      const newIndex = parseInt(e.target.value, 10);
+
+      // If warning is enabled and era actually changes, show dialog
+      if (showChangeWarning && newIndex !== currentIndex) {
+        setPendingEraIndex(newIndex);
+      } else {
+        onChange(ERAS[newIndex].year);
+      }
     },
-    [onChange]
+    [onChange, showChangeWarning, currentIndex]
   );
+
+  const handleConfirmEraChange = useCallback(() => {
+    if (pendingEraIndex !== null) {
+      onChange(ERAS[pendingEraIndex].year);
+      setPendingEraIndex(null);
+    }
+  }, [onChange, pendingEraIndex]);
+
+  const handleCancelEraChange = useCallback(() => {
+    setPendingEraIndex(null);
+  }, []);
 
   const handleMouseEnter = useCallback(() => {
     setIsTooltipVisible(true);
@@ -267,73 +296,92 @@ export function EraSelector({
   }, []);
 
   return (
-    <div
-      className={compact ? "space-y-0.5" : "space-y-1"}
-      data-testid="era-selector"
-    >
-      <div className="flex justify-between items-center">
-        <span
-          className={`font-medium ${
-            compact ? "text-xs text-gray-500" : "text-xs text-gray-600"
-          }`}
-        >
-          Era
-        </span>
-        <span
-          className={`font-medium ${
-            compact ? "text-xs text-gray-500" : "text-xs text-gray-600"
-          }`}
-          data-testid="era-label"
-        >
-          {currentEra.label}
-        </span>
-      </div>
+    <>
       <div
-        className="relative"
-        onMouseEnter={handleMouseEnter}
-        onMouseLeave={handleMouseLeave}
+        className={compact ? "space-y-0.5" : "space-y-1"}
+        data-testid="era-selector"
       >
-        <input
-          type="range"
-          min="0"
-          max={ERAS.length - 1}
-          step="1"
-          value={currentIndex}
-          onChange={handleSliderChange}
-          disabled={disabled}
-          className={`
-            w-full cursor-pointer
-            accent-amber-500
-            disabled:opacity-50 disabled:cursor-not-allowed
-            ${compact ? "h-1" : "h-2"}
-          `}
-          aria-label={`Era: ${currentEra.label} (${currentEra.description})`}
-          data-testid="era-slider"
-        />
-        {/* Tooltip */}
-        {isTooltipVisible && !disabled && (
-          <div
-            className="absolute bottom-full left-1/2 transform -translate-x-1/2 mb-2
-                       bg-gray-800 text-white text-xs rounded-lg p-2 w-48 z-10 shadow-lg"
-            data-testid="era-tooltip"
+        <div className="flex justify-between items-center">
+          <span
+            className={`font-medium ${
+              compact ? "text-xs text-gray-500" : "text-xs text-gray-600"
+            }`}
           >
-            <p className="font-semibold">{currentEra.label}</p>
-            <p className="text-gray-300">{currentEra.description}</p>
-            <ul className="mt-1 text-gray-300">
-              {currentEra.characteristics.map((char, i) => (
-                <li key={i} className="text-xs">
-                  - {char}
-                </li>
-              ))}
-            </ul>
-          </div>
+            Era
+          </span>
+          <span
+            className={`font-medium ${
+              compact ? "text-xs text-gray-500" : "text-xs text-gray-600"
+            }`}
+            data-testid="era-label"
+          >
+            {currentEra.label}
+          </span>
+        </div>
+        <div
+          className="relative"
+          onMouseEnter={handleMouseEnter}
+          onMouseLeave={handleMouseLeave}
+        >
+          <input
+            type="range"
+            min="0"
+            max={ERAS.length - 1}
+            step="1"
+            value={currentIndex}
+            onChange={handleSliderChange}
+            disabled={disabled}
+            className={`
+              w-full cursor-pointer
+              accent-amber-500
+              disabled:opacity-50 disabled:cursor-not-allowed
+              ${compact ? "h-1" : "h-2"}
+            `}
+            aria-label={`Era: ${currentEra.label} (${currentEra.description})`}
+            data-testid="era-slider"
+          />
+          {/* Tooltip */}
+          {isTooltipVisible && !disabled && (
+            <div
+              className="absolute bottom-full left-1/2 transform -translate-x-1/2 mb-2
+                         bg-gray-800 text-white text-xs rounded-lg p-2 w-48 z-10 shadow-lg"
+              data-testid="era-tooltip"
+            >
+              <p className="font-semibold">{currentEra.label}</p>
+              <p className="text-gray-300">{currentEra.description}</p>
+              <ul className="mt-1 text-gray-300">
+                {currentEra.characteristics.map((char, i) => (
+                  <li key={i} className="text-xs">
+                    - {char}
+                  </li>
+                ))}
+              </ul>
+            </div>
+          )}
+        </div>
+        {!compact && (
+          <p className="text-xs text-gray-400 text-center">
+            {currentEra.description}
+          </p>
         )}
       </div>
-      {!compact && (
-        <p className="text-xs text-gray-400 text-center">
-          {currentEra.description}
-        </p>
-      )}
-    </div>
+
+      {/* Era Change Warning Dialog */}
+      <ConfirmationDialog
+        isOpen={pendingEraIndex !== null}
+        title="Change Era?"
+        message={`Changing from ${currentEra.label} (${currentEra.description}) to ${pendingEra?.label ?? ""} (${pendingEra?.description ?? ""}) may affect the street grid pattern.`}
+        details={[
+          "Street layout style may change based on the new era",
+          "This affects how new blocks and roads are generated",
+          "Existing roads will not be automatically modified",
+        ]}
+        variant="warning"
+        confirmLabel="Change Era"
+        cancelLabel="Keep Current"
+        onConfirm={handleConfirmEraChange}
+        onCancel={handleCancelEraChange}
+      />
+    </>
   );
 }
