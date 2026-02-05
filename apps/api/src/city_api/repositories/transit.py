@@ -44,7 +44,7 @@ async def create_station(db: AsyncSession, station_create: TransitStationCreate)
     station = TransitStationModel(
         world_id=station_create.world_id,
         district_id=station_create.district_id,
-        station_type=station_create.station_type,
+        station_type=station_create.station_type.value,  # Pass string value for PostgreSQL enum
         name=station_create.name,
         position_x=station_create.position_x,
         position_y=station_create.position_y,
@@ -64,7 +64,7 @@ async def create_stations_bulk(
         TransitStationModel(
             world_id=s.world_id,
             district_id=s.district_id,
-            station_type=s.station_type,
+            station_type=s.station_type.value,  # Pass string value for PostgreSQL enum
             name=s.name,
             position_x=s.position_x,
             position_y=s.position_y,
@@ -124,7 +124,7 @@ async def update_station(
     if station_update.district_id is not None:
         station.district_id = station_update.district_id
     if station_update.station_type is not None:
-        station.station_type = station_update.station_type
+        station.station_type = station_update.station_type.value  # Pass string value for PostgreSQL enum
     if station_update.name is not None:
         station.name = station_update.name
     if station_update.position_x is not None:
@@ -157,7 +157,7 @@ async def create_line(db: AsyncSession, line_create: TransitLineCreate) -> Trans
     """Create a new transit line."""
     line = TransitLineModel(
         world_id=line_create.world_id,
-        line_type=line_create.line_type,
+        line_type=line_create.line_type.value,  # Pass string value for PostgreSQL enum
         name=line_create.name,
         color=line_create.color,
         is_auto_generated=line_create.is_auto_generated,
@@ -175,7 +175,7 @@ async def create_lines_bulk(
     models = [
         TransitLineModel(
             world_id=l.world_id,
-            line_type=l.line_type,
+            line_type=l.line_type.value,  # Pass string value for PostgreSQL enum
             name=l.name,
             color=l.color,
             is_auto_generated=l.is_auto_generated,
@@ -254,7 +254,7 @@ async def update_line(
         return None
 
     if line_update.line_type is not None:
-        line.line_type = line_update.line_type
+        line.line_type = line_update.line_type.value  # Pass string value for PostgreSQL enum
     if line_update.name is not None:
         line.name = line_update.name
     if line_update.color is not None:

@@ -35,7 +35,7 @@ async def create_district(db: AsyncSession, district_create: DistrictCreate) -> 
 
     district = DistrictModel(
         world_id=district_create.world_id,
-        type=district_create.type,
+        type=district_create.type.value,  # Pass string value, not enum (PostgreSQL expects lowercase)
         name=district_create.name,
         geometry=district_create.geometry,
         density=density,
@@ -62,7 +62,7 @@ async def create_districts_bulk(
         models.append(
             DistrictModel(
                 world_id=d.world_id,
-                type=d.type,
+                type=d.type.value,  # Pass string value, not enum (PostgreSQL expects lowercase)
                 name=d.name,
                 geometry=d.geometry,
                 density=density,
@@ -122,7 +122,7 @@ async def update_district(
         return None
 
     if district_update.type is not None:
-        district.type = district_update.type
+        district.type = district_update.type.value  # Pass string value for PostgreSQL enum
     if district_update.name is not None:
         district.name = district_update.name
     if district_update.geometry is not None:
