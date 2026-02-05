@@ -57,6 +57,15 @@ class TerrainConfig:
     beach_slope_max: float = 0.15  # Maximum slope for beach formation (gradual slopes only)
     beach_width_multiplier: float = 1.0  # Multiplier for beach width (1.0 = normal)
 
+    # Bay parameters
+    bay_enabled: bool = True  # Whether to generate bays
+    bay_min_concavity_angle: float = 45.0  # Minimum angle (degrees) for bay detection
+    bay_min_area: float = 1000.0  # Minimum bay area in world units squared
+    bay_max_depth_ratio: float = 3.0  # Maximum bay depth / entrance width ratio
+    bay_cove_max_area: float = 50000.0  # Max area for "cove" classification
+    bay_harbor_min_area: float = 200000.0  # Min area for "harbor" classification
+    bay_river_mouth_factor: float = 2.0  # River flow multiplier for bay likelihood
+
 
 @dataclass
 class TerrainFeature:
