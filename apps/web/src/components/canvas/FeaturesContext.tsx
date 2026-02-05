@@ -24,6 +24,11 @@ import {
   type DistrictGenerationConfig,
   type GeneratedDistrict,
 } from "./layers/districtGenerator";
+import {
+  clipAndValidateDistrict,
+  type ClipResult,
+} from "./layers/polygonUtils";
+import { useTerrainOptional } from "./TerrainContext";
 
 /**
  * Extended config that includes personality settings for the district.
@@ -43,6 +48,20 @@ import type {
   DistrictType as ApiDistrictType,
 } from "../../api/types";
 
+/**
+ * Result of adding a district, includes clipping info if water overlap occurred.
+ */
+export interface AddDistrictResult {
+  /** The generated district and roads (null if placement failed) */
+  generated: GeneratedDistrict | null;
+  /** Whether the district was clipped due to water overlap */
+  wasClipped: boolean;
+  /** Clipping details if water overlap occurred */
+  clipResult?: ClipResult;
+  /** Error message if placement failed */
+  error?: string;
+}
+
 interface FeaturesContextValue {
   /** Current features data */
   features: FeaturesData;
@@ -51,7 +70,13 @@ interface FeaturesContextValue {
     position: { x: number; y: number },
     seedId: string,
     config?: AddDistrictConfig
-  ) => GeneratedDistrict | null;
+  ) => AddDistrictResult;
+  /** Preview district placement to check for water clipping */
+  previewDistrictPlacement: (
+    position: { x: number; y: number },
+    seedId: string,
+    config?: AddDistrictConfig
+  ) => ClipResult | null;
   /** Add a district with explicit geometry */
   addDistrictWithGeometry: (district: District, roads?: Road[]) => void;
   /** Add a POI */
@@ -193,6 +218,9 @@ export function FeaturesProvider({
   const [features, setFeaturesState] = useState<FeaturesData>(initialFeatures);
   const [isInitialized, setIsInitialized] = useState(!worldId);
 
+  // Get terrain context for water collision detection
+  const terrainContext = useTerrainOptional();
+
   // Track pending operations for optimistic updates
   const pendingCreates = useRef<Set<string>>(new Set());
 
@@ -238,7 +266,7 @@ export function FeaturesProvider({
       position: { x: number; y: number },
       seedId: string,
       config?: AddDistrictConfig
-    ): GeneratedDistrict | null => {
+    ): AddDistrictResult => {
       // Extract personality from config, use defaults if not provided
       const personality = config?.personality ?? DEFAULT_DISTRICT_PERSONALITY;
 
@@ -263,7 +291,48 @@ export function FeaturesProvider({
       // Check for overlap with existing districts
       if (wouldOverlap(generated.district.polygon.points, features.districts)) {
         console.warn("District would overlap with existing district");
-        return null;
+        return {
+          generated: null,
+          wasClipped: false,
+          error: "District would overlap with existing district",
+        };
+      }
+
+      // Check for water overlap and clip if necessary
+      const waterFeatures = terrainContext?.getWaterFeatures() ?? [];
+      const clipResult = clipAndValidateDistrict(
+        generated.district.polygon.points,
+        waterFeatures,
+        generated.district.type
+      );
+
+      // If district is completely in water, reject placement
+      if (clipResult.clippedPolygon.length < 3) {
+        console.warn("District would be completely in water");
+        return {
+          generated: null,
+          wasClipped: true,
+          clipResult,
+          error: "District would be completely in water",
+        };
+      }
+
+      // If clipped area is too small, reject placement
+      if (clipResult.tooSmall) {
+        console.warn("District area after clipping is too small");
+        return {
+          generated: null,
+          wasClipped: true,
+          clipResult,
+          error: "District area after water clipping is too small (minimum 2x2 blocks required)",
+        };
+      }
+
+      // Apply clipped polygon if water overlap occurred
+      if (clipResult.overlapsWater) {
+        generated.district.polygon.points = clipResult.clippedPolygon;
+        // Regenerate roads for the clipped polygon
+        // For now, we keep the existing roads - a future enhancement could regenerate them
       }
 
       const tempId = generated.district.id;
@@ -320,9 +389,45 @@ export function FeaturesProvider({
         );
       }
 
-      return generated;
+      return {
+        generated,
+        wasClipped: clipResult.overlapsWater,
+        clipResult: clipResult.overlapsWater ? clipResult : undefined,
+      };
     },
-    [worldId, features.districts, updateFeatures, createDistrictMutation]
+    [worldId, features.districts, updateFeatures, createDistrictMutation, terrainContext]
+  );
+
+  const previewDistrictPlacement = useCallback(
+    (
+      position: { x: number; y: number },
+      seedId: string,
+      config?: AddDistrictConfig
+    ): ClipResult | null => {
+      const personality = config?.personality ?? DEFAULT_DISTRICT_PERSONALITY;
+
+      const generationConfig: DistrictGenerationConfig = {
+        ...config,
+        organicFactor: personality.grid_organic,
+        scaleSettings: {
+          blockSizeMeters: config?.scaleSettings?.blockSizeMeters ?? 100,
+          districtSizeMeters: config?.scaleSettings?.districtSizeMeters ?? 500,
+          sprawlCompact: personality.sprawl_compact,
+        },
+      };
+
+      // Generate district geometry for preview
+      const generated = generateDistrictGeometry(position, seedId, generationConfig);
+
+      // Check for water overlap
+      const waterFeatures = terrainContext?.getWaterFeatures() ?? [];
+      return clipAndValidateDistrict(
+        generated.district.polygon.points,
+        waterFeatures,
+        generated.district.type
+      );
+    },
+    [terrainContext]
   );
 
   const addDistrictWithGeometry = useCallback(
@@ -474,6 +579,7 @@ export function FeaturesProvider({
   const value: FeaturesContextValue = {
     features,
     addDistrict,
+    previewDistrictPlacement,
     addDistrictWithGeometry,
     addPOI,
     addRoads,

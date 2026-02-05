@@ -12,7 +12,7 @@ import {
   type SeedType,
 } from "../palette";
 import type { DistrictPersonality } from "../canvas/layers/types";
-import { MapCanvasProvider, FeaturesProvider, useFeatures } from "../canvas";
+import { MapCanvasProvider, FeaturesProvider, useFeatures, TerrainProvider } from "../canvas";
 import { ExportView } from "../export-view";
 import { TimelapseView } from "../timelapse-view";
 import { DensityView } from "../density-view";
@@ -116,10 +116,13 @@ function PlacementWithSeeds({ children }: { children: ReactNode }) {
         // For district seeds, generate actual district geometry
         // Pass personality settings to be stored on the district
         const result = addDistrict(position, seed.id, { personality });
-        if (!result) {
-          // District overlapped or failed, don't add marker
-          console.warn("Failed to place district - may overlap with existing");
+        if (!result.generated) {
+          // District overlapped, in water, or failed
+          console.warn("Failed to place district:", result.error);
           return;
+        }
+        if (result.wasClipped) {
+          console.info("District was clipped to avoid water overlap");
         }
         // Don't add a seed marker for districts - the geometry is enough
       } else {
@@ -193,19 +196,21 @@ export function EditorShell({
   return (
     <ViewModeProvider>
       <ZoomProvider initialZoom={initialZoom} onZoomChange={onZoomChange}>
-        <FeaturesProvider worldId={worldId}>
-          <PlacedSeedsProvider worldId={worldId}>
-            <PlacementWithSeeds>
-              <SelectionWithFeatures>
-                <MapCanvasProvider>
-                  <EditorShellContent onHelp={handleHelp}>
-                    {children}
-                  </EditorShellContent>
-                </MapCanvasProvider>
-              </SelectionWithFeatures>
-            </PlacementWithSeeds>
-          </PlacedSeedsProvider>
-        </FeaturesProvider>
+        <TerrainProvider>
+          <FeaturesProvider worldId={worldId}>
+            <PlacedSeedsProvider worldId={worldId}>
+              <PlacementWithSeeds>
+                <SelectionWithFeatures>
+                  <MapCanvasProvider>
+                    <EditorShellContent onHelp={handleHelp}>
+                      {children}
+                    </EditorShellContent>
+                  </MapCanvasProvider>
+                </SelectionWithFeatures>
+              </PlacementWithSeeds>
+            </PlacedSeedsProvider>
+          </FeaturesProvider>
+        </TerrainProvider>
       </ZoomProvider>
     </ViewModeProvider>
   );
