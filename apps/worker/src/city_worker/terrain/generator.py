@@ -12,7 +12,12 @@ from city_worker.terrain.types import (
     TerrainResult,
     TileTerrainData,
 )
-from city_worker.terrain.water import extract_coastlines, extract_lakes, extract_rivers
+from city_worker.terrain.water import (
+    extract_beaches,
+    extract_coastlines,
+    extract_lakes,
+    extract_rivers,
+)
 
 logger = logging.getLogger(__name__)
 
@@ -92,6 +97,21 @@ class TerrainGenerator:
             smoothing_iterations=cfg.coastline_smoothing,
         )
         features.extend(coastlines)
+
+        # Beaches (transition zones between water and land)
+        if cfg.beach_enabled:
+            beaches = extract_beaches(
+                heightfield=heightfield,
+                water_level=cfg.water_level,
+                beach_height_band=cfg.beach_height_band,
+                tile_x=tx,
+                tile_y=ty,
+                tile_size=cfg.tile_size,
+                min_length=cfg.beach_min_length,
+                max_slope=cfg.beach_slope_max,
+                width_multiplier=cfg.beach_width_multiplier,
+            )
+            features.extend(beaches)
 
         # Rivers
         rivers = extract_rivers(

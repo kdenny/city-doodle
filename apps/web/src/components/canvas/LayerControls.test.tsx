@@ -5,6 +5,7 @@ import type { LayerVisibility } from "./layers";
 
 const defaultVisibility: LayerVisibility = {
   water: true,
+  beaches: true,
   coastlines: true,
   rivers: true,
   contours: true,

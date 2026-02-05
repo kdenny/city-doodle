@@ -45,6 +45,16 @@ class WorldSettings(BaseModel):
         le=1000,
         description="Size of a district in meters (200-1000)",
     )
+    beach_enabled: bool = Field(
+        default=True,
+        description="Whether to generate beaches along coastlines",
+    )
+    beach_width_multiplier: float = Field(
+        default=1.0,
+        ge=0.5,
+        le=2.0,
+        description="Multiplier for beach width (0.5 = narrow, 2.0 = wide)",
+    )
 
 
 class WorldCreate(BaseModel):

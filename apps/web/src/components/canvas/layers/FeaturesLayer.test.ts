@@ -64,6 +64,7 @@ describe("FeaturesLayer", () => {
   it("sets visibility correctly", () => {
     const visibility: LayerVisibility = {
       water: true,
+      beaches: true,
       coastlines: true,
       rivers: true,
       contours: false,
@@ -84,6 +85,7 @@ describe("FeaturesLayer", () => {
   it("toggles districts visibility on and off", () => {
     const allVisible: LayerVisibility = {
       water: true,
+      beaches: true,
       coastlines: true,
       rivers: true,
       contours: true,
@@ -103,6 +105,7 @@ describe("FeaturesLayer", () => {
   it("toggles roads visibility on and off", () => {
     const allVisible: LayerVisibility = {
       water: true,
+      beaches: true,
       coastlines: true,
       rivers: true,
       contours: true,
@@ -122,6 +125,7 @@ describe("FeaturesLayer", () => {
   it("toggles pois visibility on and off", () => {
     const allVisible: LayerVisibility = {
       water: true,
+      beaches: true,
       coastlines: true,
       rivers: true,
       contours: true,
@@ -421,6 +425,7 @@ describe("FeaturesLayer", () => {
       layer.setData(data);
       layer.setVisibility({
         water: true,
+        beaches: true,
         coastlines: true,
         rivers: true,
         contours: false,
@@ -456,6 +461,7 @@ describe("FeaturesLayer", () => {
       layer.setData(data);
       layer.setVisibility({
         water: true,
+        beaches: true,
         coastlines: true,
         rivers: true,
         contours: false,
@@ -494,6 +500,7 @@ describe("FeaturesLayer", () => {
       layer.setData(data);
       layer.setVisibility({
         water: true,
+        beaches: true,
         coastlines: true,
         rivers: true,
         contours: false,

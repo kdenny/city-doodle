@@ -108,7 +108,7 @@ def _cells_to_polygon(
     resolution: int,
 ) -> Polygon | None:
     """Convert grid cells to a polygon using marching squares-like approach."""
-    if len(cells) < 4:
+    if len(cells) < 3:
         return None
 
     # Create a mini-grid for this region (bounds used for potential future expansion)
@@ -136,17 +136,23 @@ def _cells_to_polygon(
             world_y = tile_y * tile_size + (i + 0.5) * cell_size
             boundary_points.append((world_x, world_y))
 
-    if len(boundary_points) < 3:
+    if len(boundary_points) < 2:
         return None
 
-    # Sort points to form a rough polygon (convex hull as approximation)
     try:
         from shapely.geometry import MultiPoint
 
         mp = MultiPoint(boundary_points)
         hull = mp.convex_hull
-        if isinstance(hull, Polygon):
+
+        if isinstance(hull, Polygon) and hull.is_valid:
             return hull
+        elif hasattr(hull, "buffer"):
+            # For thin/linear regions, the convex hull might be a line
+            # Buffer it slightly to create a polygon
+            buffered = hull.buffer(cell_size * 0.5)
+            if isinstance(buffered, Polygon) and buffered.is_valid:
+                return buffered
         return None
     except Exception:
         return None
@@ -324,6 +330,193 @@ def extract_rivers(
                         properties={"length": smoothed.length},
                     )
                 )
+
+    return features
+
+
+def _classify_water_body(
+    heightfield: NDArray[np.float64],
+    water_mask: NDArray[np.bool_],
+    beach_cell: tuple[int, int],
+    h: int,
+    w: int,
+) -> str:
+    """Classify the type of water body adjacent to a beach cell.
+
+    Args:
+        heightfield: 2D height array
+        water_mask: Boolean mask of water cells
+        beach_cell: (i, j) coordinates of a beach cell
+        h, w: Grid dimensions
+
+    Returns:
+        Beach type: "ocean", "bay", "lake", or "river"
+    """
+    i, j = beach_cell
+
+    # Find connected water region adjacent to this beach cell
+    water_neighbors = []
+    for di in [-1, 0, 1]:
+        for dj in [-1, 0, 1]:
+            if di == 0 and dj == 0:
+                continue
+            ni, nj = i + di, j + dj
+            if 0 <= ni < h and 0 <= nj < w and water_mask[ni, nj]:
+                water_neighbors.append((ni, nj))
+
+    if not water_neighbors:
+        return "ocean"  # Default
+
+    # Check if water touches tile edge (likely ocean or large bay)
+    visited_water = np.zeros_like(water_mask, dtype=bool)
+    water_cells = _flood_fill(water_mask, visited_water, water_neighbors[0][0], water_neighbors[0][1])
+    water_cell_count = len(water_cells)
+
+    # Check if water region touches tile edge
+    touches_edge = False
+    for ci, cj in water_cells:
+        if ci == 0 or ci == h - 1 or cj == 0 or cj == w - 1:
+            touches_edge = True
+            break
+
+    # Calculate aspect ratio to detect rivers (long and thin)
+    if water_cells:
+        min_i = min(c[0] for c in water_cells)
+        max_i = max(c[0] for c in water_cells)
+        min_j = min(c[1] for c in water_cells)
+        max_j = max(c[1] for c in water_cells)
+        height_span = max_i - min_i + 1
+        width_span = max_j - min_j + 1
+        aspect_ratio = max(height_span, width_span) / max(min(height_span, width_span), 1)
+    else:
+        aspect_ratio = 1.0
+
+    # Classification logic
+    if not touches_edge and water_cell_count < 100:
+        return "lake"
+    elif aspect_ratio > 5:  # Long and thin
+        return "river"
+    elif touches_edge and water_cell_count > 500:
+        return "ocean"
+    elif touches_edge:
+        return "bay"
+    else:
+        return "lake"
+
+
+def extract_beaches(
+    heightfield: NDArray[np.float64],
+    water_level: float,
+    beach_height_band: float,
+    tile_x: int,
+    tile_y: int,
+    tile_size: float,
+    min_length: int = 5,
+    max_slope: float = 0.15,
+    width_multiplier: float = 1.0,
+) -> list[TerrainFeature]:
+    """Extract beach regions where land meets water at shallow slopes.
+
+    Beaches form in the narrow transition zone between water and land,
+    where the terrain slope is gradual (not cliffs). Beach width varies
+    based on slope - more gradual slopes produce wider beaches.
+
+    Args:
+        heightfield: 2D height array normalized to [0, 1]
+        water_level: Threshold below which is water
+        beach_height_band: Height range above water for beaches (e.g., 0.08)
+        tile_x, tile_y: Tile coordinates for world positioning
+        tile_size: Size of tile in world units
+        min_length: Minimum beach segment length in cells
+        max_slope: Maximum slope gradient for beach formation
+        width_multiplier: Multiplier for beach width (1.0 = normal)
+
+    Returns:
+        List of beach polygon features with beach_type property
+    """
+    h, w = heightfield.shape
+    cell_size = tile_size / w
+
+    # Scale beach height band by width multiplier
+    effective_beach_band = beach_height_band * width_multiplier
+
+    # Beach zone: cells in the height band just above water
+    beach_min = water_level
+    beach_max = water_level + effective_beach_band
+
+    # Create beach candidate mask
+    beach_mask = (heightfield >= beach_min) & (heightfield < beach_max)
+
+    # Calculate slope (gradient magnitude)
+    # Using simple finite differences
+    grad_y = np.zeros_like(heightfield)
+    grad_x = np.zeros_like(heightfield)
+    grad_y[1:-1, :] = (heightfield[2:, :] - heightfield[:-2, :]) / 2
+    grad_x[:, 1:-1] = (heightfield[:, 2:] - heightfield[:, :-2]) / 2
+    slope = np.sqrt(grad_x**2 + grad_y**2)
+
+    # Only include cells with gentle slopes
+    beach_mask = beach_mask & (slope <= max_slope)
+
+    # Beach must be adjacent to water
+    water_mask = heightfield < water_level
+    adjacent_to_water = np.zeros_like(beach_mask)
+    for i in range(h):
+        for j in range(w):
+            if beach_mask[i, j]:
+                # Check 8-connectivity for water adjacency
+                for di in [-1, 0, 1]:
+                    for dj in [-1, 0, 1]:
+                        if di == 0 and dj == 0:
+                            continue
+                        ni, nj = i + di, j + dj
+                        if 0 <= ni < h and 0 <= nj < w and water_mask[ni, nj]:
+                            adjacent_to_water[i, j] = True
+                            break
+                    if adjacent_to_water[i, j]:
+                        break
+
+    beach_mask = beach_mask & adjacent_to_water
+
+    # Find connected beach regions
+    visited = np.zeros_like(beach_mask, dtype=bool)
+    features = []
+
+    for i in range(h):
+        for j in range(w):
+            if beach_mask[i, j] and not visited[i, j]:
+                region_cells = _flood_fill(beach_mask, visited, i, j)
+
+                if len(region_cells) >= min_length:
+                    # Convert to polygon
+                    poly = _cells_to_polygon(
+                        region_cells, tile_x, tile_y, tile_size, cell_size, w
+                    )
+                    if poly is not None and poly.is_valid:
+                        # Calculate average width based on region shape
+                        area = len(region_cells) * cell_size * cell_size
+                        perimeter = poly.length
+                        avg_width = 2 * area / perimeter if perimeter > 0 else cell_size
+
+                        # Classify beach type based on adjacent water body
+                        beach_type = _classify_water_body(
+                            heightfield, water_mask, region_cells[0], h, w
+                        )
+
+                        features.append(
+                            TerrainFeature(
+                                type="beach",
+                                geometry={
+                                    "type": "Polygon",
+                                    "coordinates": [list(poly.exterior.coords)],
+                                },
+                                properties={
+                                    "area": poly.area,
+                                    "width": avg_width,
+                                    "beach_type": beach_type,
+                                },
+                            )
+                        )
 
     return features
 
