@@ -1,6 +1,12 @@
 """Pydantic schemas for API request/response models."""
 
-from city_api.schemas.district import District, DistrictCreate, DistrictType
+from city_api.schemas.district import (
+    District,
+    DistrictBulkCreate,
+    DistrictCreate,
+    DistrictType,
+    DistrictUpdate,
+)
 from city_api.schemas.job import Job, JobCreate, JobStatus, JobType
 from city_api.schemas.road_network import (
     NodeType,
@@ -56,8 +62,10 @@ __all__ = [
     "JobType",
     # District
     "District",
+    "DistrictBulkCreate",
     "DistrictCreate",
     "DistrictType",
+    "DistrictUpdate",
     # Road Network
     "RoadClass",
     "NodeType",
