@@ -18,6 +18,7 @@ const LAYER_LABELS: Record<keyof LayerVisibility, string> = {
   districts: "Districts",
   roads: "Roads",
   pois: "POIs",
+  bridges: "Bridges",
   grid: "Grid",
   labels: "Labels",
 };

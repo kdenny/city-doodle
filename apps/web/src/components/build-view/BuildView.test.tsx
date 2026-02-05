@@ -12,15 +12,16 @@ describe("BuildView", () => {
     expect(screen.getByTestId("content")).toBeInTheDocument();
   });
 
-  it("renders toolbar with pan, zone, build tools", () => {
+  it("renders toolbar with pan, draw, build, and transit-line tools", () => {
     render(
       <BuildView>
         <div>Content</div>
       </BuildView>
     );
     expect(screen.getByLabelText("Pan")).toBeInTheDocument();
-    expect(screen.getByLabelText("Zone")).toBeInTheDocument();
+    expect(screen.getByLabelText("Draw")).toBeInTheDocument();
     expect(screen.getByLabelText("Build")).toBeInTheDocument();
+    expect(screen.getByLabelText("Draw Transit Line")).toBeInTheDocument();
   });
 
   it("renders layers panel with toggles", () => {

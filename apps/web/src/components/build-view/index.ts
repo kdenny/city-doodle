@@ -46,6 +46,7 @@ export {
 } from "./SeedControl";
 export { ConfirmationDialog } from "./ConfirmationDialog";
 export type { ConfirmationDialogProps } from "./ConfirmationDialog";
+export { TransitLinePropertiesDialog } from "./TransitLinePropertiesDialog";
 export {
   validateSliders,
   snapToValidRange,

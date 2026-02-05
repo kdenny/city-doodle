@@ -12,6 +12,7 @@ const defaultVisibility: LayerVisibility = {
   districts: true,
   roads: true,
   pois: true,
+  bridges: true,
   grid: true,
   labels: true,
 };

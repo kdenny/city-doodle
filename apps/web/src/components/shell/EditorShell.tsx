@@ -1,4 +1,4 @@
-import { ReactNode, useCallback } from "react";
+import { ReactNode, useCallback, useState } from "react";
 import { ViewModeProvider, useViewMode, ViewMode } from "./ViewModeContext";
 import { ZoomProvider, useZoom } from "./ZoomContext";
 import { Header } from "./Header";
@@ -12,7 +12,9 @@ import {
   type SeedType,
 } from "../palette";
 import type { DistrictPersonality, Point } from "../canvas/layers/types";
-import { MapCanvasProvider, FeaturesProvider, useFeatures, TerrainProvider, TransitProvider, useTransitOptional } from "../canvas";
+import { MapCanvasProvider, FeaturesProvider, useFeatures, TerrainProvider, TransitProvider, useTransitOptional, useTransit, TransitLineDrawingProvider } from "../canvas";
+import type { TransitLineProperties } from "../canvas";
+import type { RailStationData } from "../canvas/layers";
 import { DrawingProvider, type DrawingMode } from "../canvas/DrawingContext";
 import { generateNeighborhoodName } from "../../utils/nameGenerator";
 import { ExportView } from "../export-view";
@@ -248,6 +250,66 @@ function DrawingWithFeatures({ children }: { children: ReactNode }) {
   );
 }
 
+/**
+ * Inner component that connects TransitLineDrawingProvider to TransitContext.
+ * Handles segment creation when drawing transit lines.
+ */
+function TransitLineDrawingWithTransit({ children }: { children: ReactNode }) {
+  const transitContext = useTransit();
+  const [currentLineId, setCurrentLineId] = useState<string | null>(null);
+
+  const handleSegmentCreate = useCallback(
+    async (
+      fromStation: RailStationData,
+      toStation: RailStationData,
+      lineProperties: TransitLineProperties,
+      lineId: string | null
+    ) => {
+      // If no line exists yet, create one
+      let actualLineId = lineId || currentLineId;
+      if (!actualLineId) {
+        const newLine = await transitContext.createLine({
+          name: lineProperties.name,
+          color: lineProperties.color,
+          type: lineProperties.type,
+        });
+        if (newLine) {
+          actualLineId = newLine.id;
+          setCurrentLineId(newLine.id);
+        } else {
+          console.error("Failed to create transit line");
+          return;
+        }
+      }
+
+      // Create the segment
+      const isUnderground = lineProperties.type === "subway";
+      await transitContext.createLineSegment(
+        actualLineId,
+        fromStation.id,
+        toStation.id,
+        isUnderground
+      );
+    },
+    [transitContext, currentLineId]
+  );
+
+  const handleLineComplete = useCallback(() => {
+    // Reset the current line ID when drawing is complete
+    setCurrentLineId(null);
+  }, []);
+
+  return (
+    <TransitLineDrawingProvider
+      onSegmentCreate={handleSegmentCreate}
+      onLineComplete={handleLineComplete}
+      existingLineCount={transitContext.lineCount}
+    >
+      {children}
+    </TransitLineDrawingProvider>
+  );
+}
+
 export function EditorShell({
   children,
   worldId,
@@ -265,19 +327,21 @@ export function EditorShell({
         <TerrainProvider>
           <FeaturesProvider worldId={worldId}>
             <TransitProvider worldId={worldId}>
-              <PlacedSeedsProvider worldId={worldId}>
-                <PlacementWithSeeds>
-                  <SelectionWithFeatures>
-                    <DrawingWithFeatures>
-                      <MapCanvasProvider>
-                        <EditorShellContent onHelp={handleHelp}>
-                          {children}
-                        </EditorShellContent>
-                      </MapCanvasProvider>
-                    </DrawingWithFeatures>
-                  </SelectionWithFeatures>
-                </PlacementWithSeeds>
-              </PlacedSeedsProvider>
+              <TransitLineDrawingWithTransit>
+                <PlacedSeedsProvider worldId={worldId}>
+                  <PlacementWithSeeds>
+                    <SelectionWithFeatures>
+                      <DrawingWithFeatures>
+                        <MapCanvasProvider>
+                          <EditorShellContent onHelp={handleHelp}>
+                            {children}
+                          </EditorShellContent>
+                        </MapCanvasProvider>
+                      </DrawingWithFeatures>
+                    </SelectionWithFeatures>
+                  </PlacementWithSeeds>
+                </PlacedSeedsProvider>
+              </TransitLineDrawingWithTransit>
             </TransitProvider>
           </FeaturesProvider>
         </TerrainProvider>

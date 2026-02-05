@@ -28,7 +28,13 @@ export {
   useTransit,
   useTransitOptional,
 } from "./TransitContext";
-export type { RailStationValidation } from "./TransitContext";
+export type { RailStationValidation, CreateLineParams } from "./TransitContext";
+export {
+  TransitLineDrawingProvider,
+  useTransitLineDrawing,
+  useTransitLineDrawingOptional,
+} from "./TransitLineDrawingContext";
+export type { TransitLineProperties } from "./TransitLineDrawingContext";
 export {
   usePopulationStats,
   calculatePopulation,
