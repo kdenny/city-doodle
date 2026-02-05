@@ -6,9 +6,13 @@ export { SeedsLayer } from "./SeedsLayer";
 export { DrawingLayer } from "./DrawingLayer";
 export { RailStationLayer } from "./RailStationLayer";
 export { SubwayStationLayer, toSubwayStationData } from "./SubwayStationLayer";
+export { TransitLineDrawingLayer } from "./TransitLineDrawingLayer";
+export { RoadEndpointLayer } from "./RoadEndpointLayer";
+export type { EndpointHitResult, EndpointDragPreview } from "./RoadEndpointLayer";
 export type { PlacedSeedData, PreviewSeedData } from "./SeedsLayer";
 export type { RailStationData, TrackSegmentData, RailStationPreviewData } from "./RailStationLayer";
 export type { SubwayStationData, SubwayStationPreviewData, SubwayTunnelData } from "./SubwayStationLayer";
+export type { TransitLineDrawingState } from "./TransitLineDrawingLayer";
 export { generateMockTerrain } from "./mockTerrain";
 export {
   generateDistrictGeometry,
@@ -50,6 +54,8 @@ export type {
   RoadClass,
   POI,
   POIType,
+  Bridge,
+  WaterCrossingType,
   FeaturesData,
   LabelData,
   LabelConfig,
@@ -57,3 +63,5 @@ export type {
   LabelType,
 } from "./types";
 export { DEFAULT_LAYER_VISIBILITY, DEFAULT_DISTRICT_PERSONALITY } from "./types";
+export { detectBridges, roadCrossesWater } from "./bridgeDetection";
+export type { BridgeDetectionConfig, BridgeDetectionResult } from "./bridgeDetection";

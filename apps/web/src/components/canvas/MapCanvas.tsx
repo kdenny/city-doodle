@@ -6,6 +6,7 @@ import {
   forwardRef,
   useImperativeHandle,
   useContext,
+  useMemo,
 } from "react";
 import { Application, Container, Graphics } from "pixi.js";
 import { Viewport } from "pixi-viewport";
@@ -17,6 +18,8 @@ import {
   DrawingLayer,
   RailStationLayer,
   SubwayStationLayer,
+  RoadEndpointLayer,
+  TransitLineDrawingLayer,
   generateMockTerrain,
   generateMockFeatures,
   generateMockLabels,
@@ -26,8 +29,13 @@ import {
   type HitTestResult,
   type FeaturesData,
   type Neighborhood,
+  type RailStationData,
 } from "./layers";
 import { useDrawingOptional } from "./DrawingContext";
+import { useEndpointDragOptional } from "./EndpointDragContext";
+import { SnapEngine } from "./snap";
+import type { SnapLineSegment } from "./snap";
+import { useTransitLineDrawingOptional } from "./TransitLineDrawingContext";
 import { LayerControls } from "./LayerControls";
 import {
   exportCanvasAsPng,
@@ -88,6 +96,8 @@ export const MapCanvas = forwardRef<MapCanvasHandle, MapCanvasProps>(
   const drawingLayerRef = useRef<DrawingLayer | null>(null);
   const railStationLayerRef = useRef<RailStationLayer | null>(null);
   const subwayStationLayerRef = useRef<SubwayStationLayer | null>(null);
+  const roadEndpointLayerRef = useRef<RoadEndpointLayer | null>(null);
+  const transitLineDrawingLayerRef = useRef<TransitLineDrawingLayer | null>(null);
   const gridContainerRef = useRef<Container | null>(null);
   const [isReady, setIsReady] = useState(false);
   const [layerVisibility, setLayerVisibility] = useState<LayerVisibility>(
@@ -121,6 +131,9 @@ export const MapCanvas = forwardRef<MapCanvasHandle, MapCanvasProps>(
   // Get transit context for rail station placement and rendering
   const transitContext = useTransitOptional();
 
+  // Get transit line drawing context for manual line drawing mode
+  const transitLineDrawingContext = useTransitLineDrawingOptional();
+
   // Ref to setTerrainData for use in init effect (avoids stale closure)
   const setTerrainDataRef = useRef(terrainContext?.setTerrainData);
   useEffect(() => {
@@ -129,6 +142,22 @@ export const MapCanvas = forwardRef<MapCanvasHandle, MapCanvasProps>(
 
   // Get drawing context for polygon drawing mode
   const drawingContext = useDrawingOptional();
+
+  // Get endpoint drag context for road endpoint dragging (CITY-147)
+  const endpointDragContext = useEndpointDragOptional();
+
+  // Create snap engine for snapping to district perimeters (CITY-147)
+  const snapEngine = useMemo(() => {
+    const engine = new SnapEngine({
+      threshold: 20,
+      snapToVertex: true,
+      snapToNearest: true,
+      snapToMidpoint: false,
+      snapToIntersection: false,
+      geometryTypes: ["district"],
+    });
+    return engine;
+  }, []);
 
   // Create the export handle object
   const exportHandle = {
@@ -183,6 +212,11 @@ export const MapCanvas = forwardRef<MapCanvasHandle, MapCanvasProps>(
       // Update grid visibility
       if (gridContainerRef.current) {
         gridContainerRef.current.visible = visibility.grid;
+      }
+
+      // Update subway tunnel visibility (CITY-196)
+      if (subwayStationLayerRef.current) {
+        subwayStationLayerRef.current.setTunnelsVisible(visibility.subwayTunnels);
       }
     },
     []
@@ -263,7 +297,7 @@ export const MapCanvas = forwardRef<MapCanvasHandle, MapCanvasProps>(
         featuresLayer.setData({ ...featuresData, neighborhoods: [] });
       } else {
         // Empty features for new worlds
-        featuresLayer.setData({ districts: [], roads: [], pois: [], neighborhoods: [] });
+        featuresLayer.setData({ districts: [], roads: [], pois: [], neighborhoods: [], bridges: [] });
       }
       featuresLayer.setVisibility(layerVisibility);
 
@@ -281,7 +315,11 @@ export const MapCanvas = forwardRef<MapCanvasHandle, MapCanvasProps>(
       }
       labelLayer.setVisibility(layerVisibility);
 
-      // Create and add seeds layer (above labels, below rail stations)
+      // Create and add road endpoint layer (above labels, below seeds)
+      const roadEndpointLayer = new RoadEndpointLayer();
+      viewport.addChild(roadEndpointLayer.getContainer());
+
+      // Create and add seeds layer (above road endpoints, below rail stations)
       const seedsLayer = new SeedsLayer();
       viewport.addChild(seedsLayer.getContainer());
 
@@ -289,11 +327,15 @@ export const MapCanvas = forwardRef<MapCanvasHandle, MapCanvasProps>(
       const railStationLayer = new RailStationLayer();
       viewport.addChild(railStationLayer.getContainer());
 
-      // Create and add subway station layer (above rail stations, below drawing)
+      // Create and add subway station layer (above rail stations, below transit line drawing)
       const subwayStationLayer = new SubwayStationLayer();
       viewport.addChild(subwayStationLayer.getContainer());
 
-      // Create and add drawing layer (above subway stations, below grid)
+      // Create and add transit line drawing layer (above subway stations, below drawing)
+      const transitLineDrawingLayer = new TransitLineDrawingLayer();
+      viewport.addChild(transitLineDrawingLayer.getContainer());
+
+      // Create and add drawing layer (above transit line drawing, below grid)
       const drawingLayer = new DrawingLayer();
       viewport.addChild(drawingLayer.getContainer());
 
@@ -349,9 +391,11 @@ export const MapCanvas = forwardRef<MapCanvasHandle, MapCanvasProps>(
         terrainLayer.destroy();
         featuresLayer.destroy();
         labelLayer.destroy();
+        roadEndpointLayer.destroy();
         seedsLayer.destroy();
         railStationLayer.destroy();
         subwayStationLayer.destroy();
+        transitLineDrawingLayer.destroy();
         drawingLayer.destroy();
         app.destroy(true, { children: true });
         return;
@@ -363,9 +407,11 @@ export const MapCanvas = forwardRef<MapCanvasHandle, MapCanvasProps>(
       terrainLayerRef.current = terrainLayer;
       featuresLayerRef.current = featuresLayer;
       labelLayerRef.current = labelLayer;
+      roadEndpointLayerRef.current = roadEndpointLayer;
       seedsLayerRef.current = seedsLayer;
       railStationLayerRef.current = railStationLayer;
       subwayStationLayerRef.current = subwayStationLayer;
+      transitLineDrawingLayerRef.current = transitLineDrawingLayer;
       drawingLayerRef.current = drawingLayer;
       gridContainerRef.current = gridContainer;
       setIsReady(true);
@@ -401,6 +447,10 @@ export const MapCanvas = forwardRef<MapCanvasHandle, MapCanvasProps>(
         labelLayerRef.current.destroy();
         labelLayerRef.current = null;
       }
+      if (roadEndpointLayerRef.current) {
+        roadEndpointLayerRef.current.destroy();
+        roadEndpointLayerRef.current = null;
+      }
       if (seedsLayerRef.current) {
         seedsLayerRef.current.destroy();
         seedsLayerRef.current = null;
@@ -412,6 +462,10 @@ export const MapCanvas = forwardRef<MapCanvasHandle, MapCanvasProps>(
       if (subwayStationLayerRef.current) {
         subwayStationLayerRef.current.destroy();
         subwayStationLayerRef.current = null;
+      }
+      if (transitLineDrawingLayerRef.current) {
+        transitLineDrawingLayerRef.current.destroy();
+        transitLineDrawingLayerRef.current = null;
       }
       if (drawingLayerRef.current) {
         drawingLayerRef.current.destroy();
@@ -440,6 +494,10 @@ export const MapCanvas = forwardRef<MapCanvasHandle, MapCanvasProps>(
       }
       if (gridContainerRef.current) {
         gridContainerRef.current.visible = layerVisibility.grid;
+      }
+      // Update subway tunnel visibility (CITY-196)
+      if (subwayStationLayerRef.current) {
+        subwayStationLayerRef.current.setTunnelsVisible(layerVisibility.subwayTunnels);
       }
     }
   }, [layerVisibility, isReady]);
@@ -515,8 +573,9 @@ export const MapCanvas = forwardRef<MapCanvasHandle, MapCanvasProps>(
               !featuresContext.features.pois.some(fp => fp.id === p.id)
             ),
             neighborhoods: [],
+            bridges: currentData.bridges || [],
           }
-        : { districts: [], roads: [], pois: [], neighborhoods: [] };
+        : { districts: [], roads: [], pois: [], neighborhoods: [], bridges: [] };
 
       // Merge with context features
       const mergedData: FeaturesData = {
@@ -524,11 +583,85 @@ export const MapCanvas = forwardRef<MapCanvasHandle, MapCanvasProps>(
         roads: [...baseData.roads, ...featuresContext.features.roads],
         pois: [...baseData.pois, ...featuresContext.features.pois],
         neighborhoods: [...featuresContext.features.neighborhoods],
+        bridges: [...(baseData.bridges || []), ...(featuresContext.features.bridges || [])],
       };
 
       featuresLayerRef.current.setData(mergedData);
     }
   }, [isReady, featuresContext?.features, showMockFeatures]);
+
+  // Update road endpoint layer when selection changes (CITY-147)
+  useEffect(() => {
+    if (!isReady || !roadEndpointLayerRef.current) return;
+
+    // Get all roads from features context and current layer data
+    const allRoads = [
+      ...(featuresContext?.features.roads || []),
+      ...(featuresLayerRef.current?.getData()?.roads || []),
+    ];
+    roadEndpointLayerRef.current.setRoads(allRoads);
+
+    // Check if a road is selected
+    const selection = selectionContext?.selection;
+    if (selection?.type === "road") {
+      // Find the road in the data
+      const selectedRoad = allRoads.find((r) => r.id === selection.id);
+      roadEndpointLayerRef.current.setSelectedRoad(selectedRoad || null);
+    } else {
+      roadEndpointLayerRef.current.setSelectedRoad(null);
+    }
+  }, [
+    isReady,
+    selectionContext?.selection,
+    featuresContext?.features.roads,
+  ]);
+
+  // Update snap engine with district perimeters (CITY-147)
+  useEffect(() => {
+    if (!isReady) return;
+
+    // Get all districts from features context
+    const districts = featuresContext?.features.districts || [];
+
+    // Convert district perimeters to snap line segments
+    const segments: SnapLineSegment[] = [];
+    for (const district of districts) {
+      const points = district.polygon.points;
+      if (points.length < 3) continue;
+
+      // Add all edges of the district perimeter
+      for (let i = 0; i < points.length; i++) {
+        const p1 = points[i];
+        const p2 = points[(i + 1) % points.length];
+        segments.push({
+          p1,
+          p2,
+          geometryId: district.id,
+          geometryType: "district",
+        });
+      }
+    }
+
+    // Update snap engine
+    snapEngine.clear();
+    snapEngine.insertSegments(segments);
+  }, [isReady, featuresContext?.features.districts, snapEngine]);
+
+  // Sync drag preview to endpoint layer (CITY-147)
+  useEffect(() => {
+    if (!isReady || !roadEndpointLayerRef.current) return;
+
+    if (endpointDragContext?.dragState) {
+      roadEndpointLayerRef.current.setDragPreview({
+        roadId: endpointDragContext.dragState.roadId,
+        endpointIndex: endpointDragContext.dragState.endpointIndex,
+        currentPosition: endpointDragContext.dragState.currentPosition,
+        isSnapped: endpointDragContext.dragState.isSnapped,
+      });
+    } else {
+      roadEndpointLayerRef.current.setDragPreview(null);
+    }
+  }, [isReady, endpointDragContext?.dragState]);
 
   // Update seeds layer when placed seeds change
   useEffect(() => {
@@ -661,7 +794,49 @@ export const MapCanvas = forwardRef<MapCanvasHandle, MapCanvasProps>(
     transitContext,
   ]);
 
-  // Handle clicks for seed placement, feature selection, and polygon drawing
+  // Update transit line drawing layer when drawing state changes
+  useEffect(() => {
+    if (!isReady || !transitLineDrawingLayerRef.current || !transitContext) return;
+
+    const isLineDrawing = transitLineDrawingContext?.state.isDrawing ?? false;
+    const firstStation = transitLineDrawingContext?.state.firstStation;
+    const connectedStations = transitLineDrawingContext?.state.connectedStations ?? [];
+    const previewPosition = transitLineDrawingContext?.state.previewPosition;
+    const hoveredStation = transitLineDrawingContext?.state.hoveredStation;
+    const lineColor = transitLineDrawingContext?.state.lineProperties?.color ?? "#B22222";
+
+    // Convert RailStationData to the format expected by the layer
+    const firstStationData = firstStation
+      ? { id: firstStation.id, position: firstStation.position }
+      : null;
+    const connectedStationsData = connectedStations.map((s: RailStationData) => ({
+      id: s.id,
+      position: s.position,
+    }));
+    const hoveredStationData = hoveredStation
+      ? { id: hoveredStation.id, position: hoveredStation.position }
+      : null;
+
+    transitLineDrawingLayerRef.current.setState({
+      isDrawing: isLineDrawing,
+      firstStation: firstStationData,
+      connectedStations: connectedStationsData,
+      previewPosition: previewPosition || null,
+      hoveredStation: hoveredStationData,
+      lineColor,
+    });
+  }, [
+    isReady,
+    transitContext,
+    transitLineDrawingContext?.state.isDrawing,
+    transitLineDrawingContext?.state.firstStation,
+    transitLineDrawingContext?.state.connectedStations,
+    transitLineDrawingContext?.state.previewPosition,
+    transitLineDrawingContext?.state.hoveredStation,
+    transitLineDrawingContext?.state.lineProperties?.color,
+  ]);
+
+  // Handle clicks for seed placement, feature selection, polygon drawing, endpoint dragging, and transit line drawing
   useEffect(() => {
     if (!isReady || !viewportRef.current) return;
 
@@ -676,6 +851,21 @@ export const MapCanvas = forwardRef<MapCanvasHandle, MapCanvasProps>(
     const cancelDrawing = drawingContext?.cancelDrawing;
     const canComplete = drawingContext?.canComplete;
 
+    // Endpoint drag context functions (CITY-147)
+    const startEndpointDrag = endpointDragContext?.startDrag;
+    const updateEndpointDrag = endpointDragContext?.updateDrag;
+    const completeEndpointDrag = endpointDragContext?.completeDrag;
+    const cancelEndpointDrag = endpointDragContext?.cancelDrag;
+    const isEndpointDragging = endpointDragContext?.isDragging ?? false;
+
+    // Transit line drawing state
+    const isLineDrawing = transitLineDrawingContext?.state.isDrawing ?? false;
+    const selectStation = transitLineDrawingContext?.selectStation;
+    const setLineDrawingPreviewPosition = transitLineDrawingContext?.setPreviewPosition;
+    const setHoveredStation = transitLineDrawingContext?.setHoveredStation;
+    const completeLineDrawing = transitLineDrawingContext?.completeDrawing;
+    const cancelLineDrawing = transitLineDrawingContext?.cancelDrawing;
+
     // Track if we're dragging to avoid triggering click after drag
     let isDragging = false;
     let dragStartPos = { x: 0, y: 0 };
@@ -684,6 +874,21 @@ export const MapCanvas = forwardRef<MapCanvasHandle, MapCanvasProps>(
     const handlePointerDown = (event: { global: { x: number; y: number } }) => {
       dragStartPos = { x: event.global.x, y: event.global.y };
       isDragging = false;
+
+      // Check for endpoint hit (CITY-147)
+      if (roadEndpointLayerRef.current && startEndpointDrag) {
+        const worldPos = viewport.toWorld(event.global.x, event.global.y);
+        const endpointHit = roadEndpointLayerRef.current.hitTest(worldPos.x, worldPos.y);
+        if (endpointHit) {
+          // Start endpoint drag - disable viewport drag
+          viewport.plugins.pause("drag");
+          startEndpointDrag(
+            endpointHit.road.id,
+            endpointHit.endpointIndex,
+            endpointHit.position
+          );
+        }
+      }
     };
 
     const handlePointerMove = (event: { global: { x: number; y: number } }) => {
@@ -696,6 +901,41 @@ export const MapCanvas = forwardRef<MapCanvasHandle, MapCanvasProps>(
       // Convert to world position
       const worldPos = viewport.toWorld(event.global.x, event.global.y);
 
+      // Handle endpoint dragging (CITY-147)
+      if (isEndpointDragging && updateEndpointDrag) {
+        // Check for snap points on district perimeters
+        const snapResult = snapEngine.findSnapPoint(worldPos.x, worldPos.y);
+
+        if (snapResult.snapPoint) {
+          // Snapped to a district perimeter
+          updateEndpointDrag(
+            { x: snapResult.snapPoint.x, y: snapResult.snapPoint.y },
+            {
+              isSnapped: true,
+              snapTargetId: snapResult.snapPoint.geometryId,
+              snapDescription: `Snapped to ${snapResult.snapPoint.geometryType}`,
+            }
+          );
+        } else {
+          // Free drag - no snapping
+          updateEndpointDrag(
+            { x: worldPos.x, y: worldPos.y },
+            { isSnapped: false }
+          );
+        }
+        return;
+      }
+
+      // Update hover state on endpoint layer (CITY-147)
+      if (roadEndpointLayerRef.current && !isEndpointDragging) {
+        const endpointHit = roadEndpointLayerRef.current.hitTest(worldPos.x, worldPos.y);
+        if (endpointHit) {
+          roadEndpointLayerRef.current.setHoveredEndpoint(endpointHit.endpointIndex);
+        } else {
+          roadEndpointLayerRef.current.setHoveredEndpoint(null);
+        }
+      }
+
       // Update preview position if placing seeds
       if (isPlacing && setPreviewPosition) {
         setPreviewPosition({ x: worldPos.x, y: worldPos.y });
@@ -705,9 +945,52 @@ export const MapCanvas = forwardRef<MapCanvasHandle, MapCanvasProps>(
       if (isDrawing && setDrawingPreviewPoint) {
         setDrawingPreviewPoint({ x: worldPos.x, y: worldPos.y });
       }
+
+      // Update preview for transit line drawing
+      if (isLineDrawing && transitContext) {
+        setLineDrawingPreviewPosition?.({ x: worldPos.x, y: worldPos.y });
+
+        // Find station being hovered (snap distance)
+        const STATION_HOVER_THRESHOLD = 30;
+        let hoveredStation: RailStationData | null = null;
+        for (const station of transitContext.railStations) {
+          const sdx = worldPos.x - station.position.x;
+          const sdy = worldPos.y - station.position.y;
+          const dist = Math.sqrt(sdx * sdx + sdy * sdy);
+          if (dist < STATION_HOVER_THRESHOLD) {
+            hoveredStation = station;
+            break;
+          }
+        }
+        setHoveredStation?.(hoveredStation);
+      }
     };
 
-    const handleClick = (event: { global: { x: number; y: number } }) => {
+    const handlePointerUp = (event: { global: { x: number; y: number } }) => {
+      // Handle endpoint drag completion (CITY-147)
+      if (isEndpointDragging && completeEndpointDrag && featuresContext) {
+        const dragResult = completeEndpointDrag();
+        if (dragResult) {
+          // Update the road geometry with the new endpoint position
+          const road = featuresContext.features.roads.find(
+            (r) => r.id === dragResult.roadId
+          );
+          if (road) {
+            // Create updated points array
+            const newPoints = [...road.line.points];
+            newPoints[dragResult.endpointIndex] = dragResult.newPosition;
+
+            // Update the road
+            featuresContext.updateRoad(dragResult.roadId, {
+              line: { points: newPoints },
+            });
+          }
+        }
+        // Re-enable viewport drag
+        viewport.plugins.resume("drag");
+        return;
+      }
+
       // Don't trigger placement if we were dragging
       if (isDragging) return;
 
@@ -725,6 +1008,28 @@ export const MapCanvas = forwardRef<MapCanvasHandle, MapCanvasProps>(
         return;
       }
 
+      // Handle transit line drawing mode
+      if (isLineDrawing && selectStation && transitContext) {
+        // Find the station being clicked (snap to station)
+        const STATION_CLICK_THRESHOLD = 30;
+        let clickedStation: RailStationData | null = null;
+        for (const station of transitContext.railStations) {
+          const sdx = worldPos.x - station.position.x;
+          const sdy = worldPos.y - station.position.y;
+          const dist = Math.sqrt(sdx * sdx + sdy * sdy);
+          if (dist < STATION_CLICK_THRESHOLD) {
+            clickedStation = station;
+            break;
+          }
+        }
+
+        if (clickedStation) {
+          selectStation(clickedStation);
+        }
+        // Clicking off a station does nothing (user must click a station)
+        return;
+      }
+
       // Handle seed placement mode
       if (isPlacing && confirmPlacement) {
         confirmPlacement({ x: worldPos.x, y: worldPos.y });
@@ -732,41 +1037,95 @@ export const MapCanvas = forwardRef<MapCanvasHandle, MapCanvasProps>(
       }
 
       // Handle feature selection (default mode)
-      if (onFeatureSelect && featuresLayerRef.current) {
-        // Perform hit test and select feature
-        const hitResult = featuresLayerRef.current.hitTest(worldPos.x, worldPos.y);
-        if (hitResult) {
-          const selectedFeature = hitTestResultToSelectedFeature(hitResult);
-          onFeatureSelect(selectedFeature);
-        } else {
-          // Clicked on empty space - clear selection
-          onFeatureSelect(null);
+      if (onFeatureSelect) {
+        // Check rail stations first (on top)
+        if (railStationLayerRef.current) {
+          const railHit = railStationLayerRef.current.hitTest(worldPos.x, worldPos.y);
+          if (railHit) {
+            onFeatureSelect({
+              type: "rail_station",
+              id: railHit.id,
+              name: railHit.name,
+              isTerminus: railHit.isTerminus,
+              lineColor: railHit.lineColor,
+            });
+            return;
+          }
         }
+
+        // Check subway stations
+        if (subwayStationLayerRef.current) {
+          const subwayHit = subwayStationLayerRef.current.hitTest(worldPos.x, worldPos.y);
+          if (subwayHit) {
+            onFeatureSelect({
+              type: "subway_station",
+              id: subwayHit.id,
+              name: subwayHit.name,
+              isTerminus: subwayHit.isTerminus,
+            });
+            return;
+          }
+        }
+
+        // Check features layer (districts, roads, pois, neighborhoods)
+        if (featuresLayerRef.current) {
+          const hitResult = featuresLayerRef.current.hitTest(worldPos.x, worldPos.y);
+          if (hitResult) {
+            const selectedFeature = hitTestResultToSelectedFeature(hitResult);
+            onFeatureSelect(selectedFeature);
+            return;
+          }
+        }
+
+        // Clicked on empty space - clear selection
+        onFeatureSelect(null);
       }
     };
 
-    // Keyboard handlers for drawing
+    // Keyboard handlers for drawing and endpoint drag cancellation
     const handleKeyDown = (event: KeyboardEvent) => {
-      if (!isDrawing) return;
+      // Handle endpoint drag cancellation (CITY-147)
+      if (isEndpointDragging && event.key === "Escape") {
+        event.preventDefault();
+        cancelEndpointDrag?.();
+        viewport.plugins.resume("drag");
+        return;
+      }
 
-      if (event.key === "Escape") {
-        event.preventDefault();
-        cancelDrawing?.();
-      } else if (event.key === "Enter" && canComplete && canComplete()) {
-        event.preventDefault();
-        completeDrawing?.();
+      // Handle polygon drawing mode
+      if (isDrawing) {
+        if (event.key === "Escape") {
+          event.preventDefault();
+          cancelDrawing?.();
+        } else if (event.key === "Enter" && canComplete && canComplete()) {
+          event.preventDefault();
+          completeDrawing?.();
+        }
+        return;
+      }
+
+      // Handle transit line drawing mode
+      if (isLineDrawing) {
+        if (event.key === "Escape") {
+          event.preventDefault();
+          cancelLineDrawing?.();
+        } else if (event.key === "Enter") {
+          event.preventDefault();
+          completeLineDrawing?.();
+        }
+        return;
       }
     };
 
     viewport.on("pointerdown", handlePointerDown);
     viewport.on("pointermove", handlePointerMove);
-    viewport.on("pointerup", handleClick);
+    viewport.on("pointerup", handlePointerUp);
     window.addEventListener("keydown", handleKeyDown);
 
     return () => {
       viewport.off("pointerdown", handlePointerDown);
       viewport.off("pointermove", handlePointerMove);
-      viewport.off("pointerup", handleClick);
+      viewport.off("pointerup", handlePointerUp);
       window.removeEventListener("keydown", handleKeyDown);
     };
   }, [
@@ -780,7 +1139,21 @@ export const MapCanvas = forwardRef<MapCanvasHandle, MapCanvasProps>(
     drawingContext?.completeDrawing,
     drawingContext?.cancelDrawing,
     drawingContext?.canComplete,
+    transitLineDrawingContext?.state.isDrawing,
+    transitLineDrawingContext?.selectStation,
+    transitLineDrawingContext?.setPreviewPosition,
+    transitLineDrawingContext?.setHoveredStation,
+    transitLineDrawingContext?.completeDrawing,
+    transitLineDrawingContext?.cancelDrawing,
+    transitContext?.railStations,
     onFeatureSelect,
+    endpointDragContext?.startDrag,
+    endpointDragContext?.updateDrag,
+    endpointDragContext?.completeDrag,
+    endpointDragContext?.cancelDrag,
+    endpointDragContext?.isDragging,
+    featuresContext,
+    snapEngine,
   ]);
 
   return (

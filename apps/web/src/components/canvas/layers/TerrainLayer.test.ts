@@ -103,8 +103,10 @@ describe("TerrainLayer visibility", () => {
       districts: true,
       roads: true,
       pois: true,
+      bridges: true,
       grid: true,
       labels: true,
+      subwayTunnels: false,
     };
 
     layer.setVisibility(visibility);
@@ -124,8 +126,10 @@ describe("TerrainLayer visibility", () => {
       districts: true,
       roads: true,
       pois: true,
+      bridges: true,
       grid: true,
       labels: true,
+      subwayTunnels: false,
     };
 
     layer.setVisibility(visibility);
@@ -143,8 +147,10 @@ describe("TerrainLayer visibility", () => {
       districts: true,
       roads: true,
       pois: true,
+      bridges: true,
       grid: true,
       labels: true,
+      subwayTunnels: false,
     };
 
     layer.setVisibility(visibility);
@@ -162,8 +168,10 @@ describe("TerrainLayer visibility", () => {
       districts: true,
       roads: true,
       pois: true,
+      bridges: true,
       grid: true,
       labels: true,
+      subwayTunnels: false,
     };
 
     layer.setVisibility(visibility);
@@ -181,8 +189,10 @@ describe("TerrainLayer visibility", () => {
       districts: true,
       roads: true,
       pois: true,
+      bridges: true,
       grid: true,
       labels: true,
+      subwayTunnels: false,
     };
 
     expect(() => layer.setVisibility(visibility)).not.toThrow();
@@ -198,8 +208,10 @@ describe("TerrainLayer visibility", () => {
       districts: true,
       roads: true,
       pois: true,
+      bridges: true,
       grid: true,
       labels: true,
+      subwayTunnels: false,
     };
 
     expect(() => layer.setVisibility(visibility)).not.toThrow();

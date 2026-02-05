@@ -30,6 +30,18 @@ from city_api.schemas.road_network import (
     RoadNodeUpdate,
 )
 from city_api.schemas.seed import PlacedSeed, PlacedSeedBulkCreate, PlacedSeedCreate, Position
+from city_api.schemas.stadium import (
+    ParkingLot,
+    ParkingLotConfig,
+    Stadium,
+    StadiumCreate,
+    StadiumPlacement,
+    StadiumSize,
+    StadiumType,
+    StadiumWithImpact,
+    StreetGridImpact,
+    STADIUM_SIZE_CONFIG,
+)
 from city_api.schemas.transit import (
     LineType,
     StationType,
@@ -140,4 +152,15 @@ __all__ = [
     "UserResponse",
     "SessionResponse",
     "AuthResponse",
+    # Stadium
+    "Stadium",
+    "StadiumCreate",
+    "StadiumPlacement",
+    "StadiumSize",
+    "StadiumType",
+    "StadiumWithImpact",
+    "StreetGridImpact",
+    "ParkingLot",
+    "ParkingLotConfig",
+    "STADIUM_SIZE_CONFIG",
 ]

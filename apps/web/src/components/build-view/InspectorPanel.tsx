@@ -16,7 +16,7 @@ import {
 } from "./EraSelector";
 
 // Feature types that can be selected
-export type SelectableFeatureType = "district" | "road" | "poi" | "neighborhood" | null;
+export type SelectableFeatureType = "district" | "road" | "poi" | "neighborhood" | "rail_station" | "subway_station" | null;
 
 export interface SelectedDistrict {
   type: "district";
@@ -53,7 +53,22 @@ export interface SelectedNeighborhood {
   accentColor?: string;
 }
 
-export type SelectedFeature = SelectedDistrict | SelectedRoad | SelectedPOI | SelectedNeighborhood | null;
+export interface SelectedRailStation {
+  type: "rail_station";
+  id: string;
+  name: string;
+  isTerminus: boolean;
+  lineColor?: string;
+}
+
+export interface SelectedSubwayStation {
+  type: "subway_station";
+  id: string;
+  name: string;
+  isTerminus: boolean;
+}
+
+export type SelectedFeature = SelectedDistrict | SelectedRoad | SelectedPOI | SelectedNeighborhood | SelectedRailStation | SelectedSubwayStation | null;
 
 interface InspectorPanelProps {
   selection: SelectedFeature;
@@ -147,6 +162,12 @@ export function InspectorPanel({
       )}
       {selection.type === "neighborhood" && (
         <NeighborhoodInspector neighborhood={selection} onUpdate={onUpdate} onDelete={onDelete} />
+      )}
+      {selection.type === "rail_station" && (
+        <RailStationInspector station={selection} onDelete={onDelete} />
+      )}
+      {selection.type === "subway_station" && (
+        <SubwayStationInspector station={selection} onDelete={onDelete} />
       )}
     </div>
   );
@@ -512,6 +533,95 @@ function NeighborhoodInspector({ neighborhood, onUpdate, onDelete }: Neighborhoo
           className="w-full mt-2 px-3 py-1.5 text-sm text-red-600 border border-red-300 rounded hover:bg-red-50 transition-colors"
         >
           Delete Neighborhood
+        </button>
+      )}
+    </div>
+  );
+}
+
+interface RailStationInspectorProps {
+  station: SelectedRailStation;
+  onDelete?: (feature: SelectedFeature) => void;
+}
+
+function RailStationInspector({ station, onDelete }: RailStationInspectorProps) {
+  return (
+    <div className="space-y-3">
+      {/* Type badge */}
+      <div className="flex items-center gap-2">
+        <span className="text-xs font-medium text-white bg-orange-500 px-2 py-0.5 rounded">
+          Rail Station
+        </span>
+        {station.isTerminus && (
+          <span className="text-xs text-gray-500">Terminus</span>
+        )}
+      </div>
+
+      {/* Name display */}
+      <div>
+        <label className="block text-xs font-medium text-gray-600 mb-1">
+          Name
+        </label>
+        <p className="text-sm text-gray-700">{station.name}</p>
+      </div>
+
+      {/* Line color indicator */}
+      {station.lineColor && (
+        <div className="flex items-center gap-2">
+          <span className="text-xs font-medium text-gray-600">Line Color:</span>
+          <span
+            className="w-4 h-4 rounded-full border border-gray-300"
+            style={{ backgroundColor: station.lineColor }}
+          />
+        </div>
+      )}
+
+      {/* Delete button */}
+      {onDelete && (
+        <button
+          onClick={() => onDelete(station)}
+          className="w-full mt-2 px-3 py-1.5 text-sm text-red-600 border border-red-300 rounded hover:bg-red-50 transition-colors"
+        >
+          Delete Station
+        </button>
+      )}
+    </div>
+  );
+}
+
+interface SubwayStationInspectorProps {
+  station: SelectedSubwayStation;
+  onDelete?: (feature: SelectedFeature) => void;
+}
+
+function SubwayStationInspector({ station, onDelete }: SubwayStationInspectorProps) {
+  return (
+    <div className="space-y-3">
+      {/* Type badge */}
+      <div className="flex items-center gap-2">
+        <span className="text-xs font-medium text-white bg-blue-600 px-2 py-0.5 rounded">
+          Subway Station
+        </span>
+        {station.isTerminus && (
+          <span className="text-xs text-gray-500">Terminus</span>
+        )}
+      </div>
+
+      {/* Name display */}
+      <div>
+        <label className="block text-xs font-medium text-gray-600 mb-1">
+          Name
+        </label>
+        <p className="text-sm text-gray-700">{station.name}</p>
+      </div>
+
+      {/* Delete button */}
+      {onDelete && (
+        <button
+          onClick={() => onDelete(station)}
+          className="w-full mt-2 px-3 py-1.5 text-sm text-red-600 border border-red-300 rounded hover:bg-red-50 transition-colors"
+        >
+          Delete Station
         </button>
       )}
     </div>

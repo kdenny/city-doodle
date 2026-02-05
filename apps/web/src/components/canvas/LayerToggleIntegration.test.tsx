@@ -27,8 +27,10 @@ const allVisibleLayers: LayerVisibility = {
   districts: true,
   roads: true,
   pois: true,
+  bridges: true,
   grid: true,
   labels: true,
+  subwayTunnels: false,
 };
 
 const allHiddenLayers: LayerVisibility = {
@@ -40,8 +42,10 @@ const allHiddenLayers: LayerVisibility = {
   districts: false,
   roads: false,
   pois: false,
+  bridges: false,
   grid: false,
   labels: false,
+  subwayTunnels: false,
 };
 
 describe("LayerControls integration", () => {
@@ -406,6 +410,7 @@ describe("Edge cases", () => {
       roads: [],
       pois: [],
       neighborhoods: [],
+      bridges: [],
     });
     labelLayer.setData({
       labels: [],

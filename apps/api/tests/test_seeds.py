@@ -61,6 +61,49 @@ class TestCreateSeed:
         )
         assert response.status_code == 403
 
+    @pytest.mark.asyncio
+    async def test_create_park_seed_with_metadata(self, client: AsyncClient):
+        """Create park seed with metadata should persist park configuration."""
+        response = await client.post(
+            f"/worlds/{TEST_WORLD_ID}/seeds",
+            json={
+                "seed_type_id": "park_neighborhood",
+                "position": {"x": 150, "y": 150},
+                "metadata": {
+                    "size": "neighborhood",
+                    "name": "Riverside Park",
+                    "has_pond": True,
+                    "has_trails": True,
+                    "connected_road_id": "road-123",
+                },
+            },
+            headers={"X-User-Id": TEST_USER_ID},
+        )
+        assert response.status_code == 201
+        data = response.json()
+        assert data["seed_type_id"] == "park_neighborhood"
+        assert data["metadata"]["size"] == "neighborhood"
+        assert data["metadata"]["name"] == "Riverside Park"
+        assert data["metadata"]["has_pond"] is True
+        assert data["metadata"]["has_trails"] is True
+        assert data["metadata"]["connected_road_id"] == "road-123"
+
+    @pytest.mark.asyncio
+    async def test_create_seed_without_metadata(self, client: AsyncClient):
+        """Create seed without metadata should work (backward compatible)."""
+        response = await client.post(
+            f"/worlds/{TEST_WORLD_ID}/seeds",
+            json={
+                "seed_type_id": "downtown",
+                "position": {"x": 250, "y": 250},
+            },
+            headers={"X-User-Id": TEST_USER_ID},
+        )
+        assert response.status_code == 201
+        data = response.json()
+        assert data["seed_type_id"] == "downtown"
+        assert data.get("metadata") is None
+
 
 class TestCreateSeedsBulk:
     """Tests for POST /worlds/{world_id}/seeds/bulk endpoint."""
