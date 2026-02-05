@@ -1,7 +1,11 @@
 """FastAPI application entry point."""
 
-from fastapi import FastAPI
+import logging
+import traceback
+
+from fastapi import FastAPI, Request
 from fastapi.middleware.cors import CORSMiddleware
+from fastapi.responses import JSONResponse
 
 from city_api.config import settings
 from city_api.routers import auth_router
@@ -16,6 +20,8 @@ from city_api.routes import (
     transit_router,
     worlds_router,
 )
+
+logger = logging.getLogger(__name__)
 
 app = FastAPI(
     title="City Doodle API",
@@ -63,3 +69,25 @@ async def root():
 async def health():
     """Health check endpoint."""
     return {"status": "healthy"}
+
+
+@app.exception_handler(Exception)
+async def global_exception_handler(request: Request, exc: Exception):
+    """Global exception handler that logs errors and returns proper JSON responses.
+
+    This ensures that:
+    1. All errors are logged with stack traces for debugging
+    2. CORS headers are included in error responses (handled by middleware)
+    3. The frontend gets consistent error responses
+    """
+    logger.error(
+        f"Unhandled exception on {request.method} {request.url}: {exc}\n"
+        f"{traceback.format_exc()}"
+    )
+    return JSONResponse(
+        status_code=500,
+        content={
+            "detail": "Internal server error",
+            "error_type": type(exc).__name__,
+        },
+    )

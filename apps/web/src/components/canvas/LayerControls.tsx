@@ -21,6 +21,7 @@ const LAYER_LABELS: Record<keyof LayerVisibility, string> = {
   bridges: "Bridges",
   grid: "Grid",
   labels: "Labels",
+  subwayTunnels: "Subway Lines",
 };
 
 export function LayerControls({ visibility, onChange }: LayerControlsProps) {

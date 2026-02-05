@@ -242,6 +242,7 @@ export interface LayerVisibility {
   pois: boolean;
   grid: boolean;
   labels: boolean;
+  subwayTunnels: boolean;
 }
 
 export const DEFAULT_LAYER_VISIBILITY: LayerVisibility = {
@@ -256,4 +257,5 @@ export const DEFAULT_LAYER_VISIBILITY: LayerVisibility = {
   pois: true,
   grid: true,
   labels: true,
+  subwayTunnels: false,
 };
