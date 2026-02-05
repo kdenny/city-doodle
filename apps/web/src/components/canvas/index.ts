@@ -23,3 +23,8 @@ export {
   useTerrain,
   useTerrainOptional,
 } from "./TerrainContext";
+export {
+  usePopulationStats,
+  calculatePopulation,
+} from "./usePopulationStats";
+export type { PopulationStats } from "./usePopulationStats";
