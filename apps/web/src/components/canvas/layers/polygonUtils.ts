@@ -5,6 +5,7 @@
  */
 
 import type { Point, WaterFeature } from "./types";
+import { metersToWorldUnits } from "./districtGenerator";
 
 /**
  * Check if a point is inside a polygon using ray casting algorithm.
@@ -343,12 +344,13 @@ export interface ClipResult {
 }
 
 /**
- * Minimum block size for area calculations.
+ * Minimum block size for area calculations (in meters).
  * A district needs to be at least 2 blocks in each dimension.
+ * A typical city block is about 100m, so 2 blocks = 200m minimum.
  */
-const MIN_BLOCK_SIZE = 30; // meters/world units
+const MIN_BLOCK_SIZE_METERS = 100;
 const MIN_BLOCKS = 2;
-const MIN_DISTRICT_DIMENSION = MIN_BLOCK_SIZE * MIN_BLOCKS;
+const MIN_DISTRICT_METERS = MIN_BLOCK_SIZE_METERS * MIN_BLOCKS; // 200 meters minimum
 
 /**
  * Check if a clipped polygon meets the minimum size requirements.
@@ -369,7 +371,10 @@ export function meetsMinimumSize(
   const width = bounds.maxX - bounds.minX;
   const height = bounds.maxY - bounds.minY;
 
-  return width >= MIN_DISTRICT_DIMENSION && height >= MIN_DISTRICT_DIMENSION;
+  // Convert minimum size from meters to world units
+  const minDimensionWorldUnits = metersToWorldUnits(MIN_DISTRICT_METERS);
+
+  return width >= minDimensionWorldUnits && height >= minDimensionWorldUnits;
 }
 
 /**

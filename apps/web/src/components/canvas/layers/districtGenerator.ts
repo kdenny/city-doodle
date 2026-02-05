@@ -23,19 +23,56 @@ export interface ScaleSettings {
 
 /**
  * Default scale settings matching common city layouts.
+ * A typical urban block is about 100m x 100m (~330 feet).
+ * A district is typically 400-800m across (~0.25-0.5 miles).
  */
 export const DEFAULT_SCALE_SETTINGS: ScaleSettings = {
   blockSizeMeters: 100,
-  districtSizeMeters: 500,
+  districtSizeMeters: 600,
   sprawlCompact: 0.5,
 };
 
 /**
- * Convert meters to world units.
- * World units are approximately 1 unit = 1 meter for rendering purposes.
+ * World scale constants.
+ *
+ * The world is a 3x3 tile grid, 768 world units across, representing 50 miles x 50 miles.
+ * This gives us the conversion factor between world units and real-world measurements.
  */
-function metersToWorldUnits(meters: number): number {
-  return meters;
+const WORLD_SIZE_UNITS = 768;
+const WORLD_SIZE_MILES = 50;
+const METERS_PER_MILE = 1609.34;
+const WORLD_SIZE_METERS = WORLD_SIZE_MILES * METERS_PER_MILE; // ~80,467 meters
+
+/**
+ * Convert meters to world units.
+ *
+ * 768 world units = 50 miles = 80,467 meters
+ * So 1 meter = 768 / 80467 ≈ 0.00954 world units
+ * Or 1 world unit ≈ 104.8 meters
+ */
+export function metersToWorldUnits(meters: number): number {
+  return (meters / WORLD_SIZE_METERS) * WORLD_SIZE_UNITS;
+}
+
+/**
+ * Convert world units to meters.
+ */
+export function worldUnitsToMeters(units: number): number {
+  return (units / WORLD_SIZE_UNITS) * WORLD_SIZE_METERS;
+}
+
+/**
+ * Convert miles to world units.
+ */
+export function milesToWorldUnits(miles: number): number {
+  return (miles / WORLD_SIZE_MILES) * WORLD_SIZE_UNITS;
+}
+
+/**
+ * Convert world units to miles.
+ */
+export function worldUnitsToMiles(units: number): number {
+  return (units / WORLD_SIZE_UNITS) * WORLD_SIZE_MILES;
 }
 
 /**

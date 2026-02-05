@@ -6,6 +6,7 @@ import { CityNeedsPanel, CityNeeds } from "./CityNeedsPanel";
 import { ScaleBar } from "./ScaleBar";
 import { InspectorPanel, type SelectedFeature } from "./InspectorPanel";
 import { useSelectionContextOptional } from "./SelectionContext";
+import { useZoomOptional } from "../shell/ZoomContext";
 
 interface BuildViewProps {
   children: ReactNode;
@@ -44,6 +45,9 @@ export function BuildView({
   const { activeTool, setActiveTool } = useToolbar();
   const { layers, toggleLayer } = useLayers();
 
+  // Get zoom from context for scale bar
+  const zoomContext = useZoomOptional();
+
   // Get selection from context if available, otherwise use props
   const selectionContext = useSelectionContextOptional();
   const selectedFeature = selectedFeatureProp ?? selectionContext?.selection ?? null;
@@ -79,7 +83,7 @@ export function BuildView({
 
       {/* Scale bar (top) */}
       <div className="absolute top-4 left-1/2 -translate-x-1/2">
-        <ScaleBar />
+        <ScaleBar zoom={zoomContext?.zoom} />
       </div>
 
       {/* Toolbar (top-left) */}
