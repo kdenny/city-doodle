@@ -17,6 +17,7 @@ import {
   DrawingLayer,
   RailStationLayer,
   SubwayStationLayer,
+  RoadEndpointLayer,
   generateMockTerrain,
   generateMockFeatures,
   generateMockLabels,
@@ -88,6 +89,7 @@ export const MapCanvas = forwardRef<MapCanvasHandle, MapCanvasProps>(
   const drawingLayerRef = useRef<DrawingLayer | null>(null);
   const railStationLayerRef = useRef<RailStationLayer | null>(null);
   const subwayStationLayerRef = useRef<SubwayStationLayer | null>(null);
+  const roadEndpointLayerRef = useRef<RoadEndpointLayer | null>(null);
   const gridContainerRef = useRef<Container | null>(null);
   const [isReady, setIsReady] = useState(false);
   const [layerVisibility, setLayerVisibility] = useState<LayerVisibility>(
@@ -281,7 +283,11 @@ export const MapCanvas = forwardRef<MapCanvasHandle, MapCanvasProps>(
       }
       labelLayer.setVisibility(layerVisibility);
 
-      // Create and add seeds layer (above labels, below rail stations)
+      // Create and add road endpoint layer (above labels, below seeds)
+      const roadEndpointLayer = new RoadEndpointLayer();
+      viewport.addChild(roadEndpointLayer.getContainer());
+
+      // Create and add seeds layer (above road endpoints, below rail stations)
       const seedsLayer = new SeedsLayer();
       viewport.addChild(seedsLayer.getContainer());
 
@@ -349,6 +355,7 @@ export const MapCanvas = forwardRef<MapCanvasHandle, MapCanvasProps>(
         terrainLayer.destroy();
         featuresLayer.destroy();
         labelLayer.destroy();
+        roadEndpointLayer.destroy();
         seedsLayer.destroy();
         railStationLayer.destroy();
         subwayStationLayer.destroy();
@@ -363,6 +370,7 @@ export const MapCanvas = forwardRef<MapCanvasHandle, MapCanvasProps>(
       terrainLayerRef.current = terrainLayer;
       featuresLayerRef.current = featuresLayer;
       labelLayerRef.current = labelLayer;
+      roadEndpointLayerRef.current = roadEndpointLayer;
       seedsLayerRef.current = seedsLayer;
       railStationLayerRef.current = railStationLayer;
       subwayStationLayerRef.current = subwayStationLayer;
@@ -400,6 +408,10 @@ export const MapCanvas = forwardRef<MapCanvasHandle, MapCanvasProps>(
       if (labelLayerRef.current) {
         labelLayerRef.current.destroy();
         labelLayerRef.current = null;
+      }
+      if (roadEndpointLayerRef.current) {
+        roadEndpointLayerRef.current.destroy();
+        roadEndpointLayerRef.current = null;
       }
       if (seedsLayerRef.current) {
         seedsLayerRef.current.destroy();
@@ -529,6 +541,32 @@ export const MapCanvas = forwardRef<MapCanvasHandle, MapCanvasProps>(
       featuresLayerRef.current.setData(mergedData);
     }
   }, [isReady, featuresContext?.features, showMockFeatures]);
+
+  // Update road endpoint layer when selection changes (CITY-147)
+  useEffect(() => {
+    if (!isReady || !roadEndpointLayerRef.current) return;
+
+    // Get all roads from features context and current layer data
+    const allRoads = [
+      ...(featuresContext?.features.roads || []),
+      ...(featuresLayerRef.current?.getData()?.roads || []),
+    ];
+    roadEndpointLayerRef.current.setRoads(allRoads);
+
+    // Check if a road is selected
+    const selection = selectionContext?.selection;
+    if (selection?.type === "road") {
+      // Find the road in the data
+      const selectedRoad = allRoads.find((r) => r.id === selection.id);
+      roadEndpointLayerRef.current.setSelectedRoad(selectedRoad || null);
+    } else {
+      roadEndpointLayerRef.current.setSelectedRoad(null);
+    }
+  }, [
+    isReady,
+    selectionContext?.selection,
+    featuresContext?.features.roads,
+  ]);
 
   // Update seeds layer when placed seeds change
   useEffect(() => {
