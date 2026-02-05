@@ -3,6 +3,7 @@ export { FeaturesLayer, generateMockFeatures } from "./FeaturesLayer";
 export type { HitTestResult } from "./FeaturesLayer";
 export { LabelLayer, generateMockLabels } from "./LabelLayer";
 export { SeedsLayer } from "./SeedsLayer";
+export { DrawingLayer } from "./DrawingLayer";
 export type { PlacedSeedData, PreviewSeedData } from "./SeedsLayer";
 export { generateMockTerrain } from "./mockTerrain";
 export {
@@ -40,6 +41,7 @@ export type {
   District,
   DistrictType,
   DistrictPersonality,
+  Neighborhood,
   Road,
   RoadClass,
   POI,

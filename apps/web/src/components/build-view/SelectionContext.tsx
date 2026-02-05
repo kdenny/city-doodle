@@ -17,6 +17,7 @@ import type {
   SelectedDistrict,
   SelectedRoad,
   SelectedPOI,
+  SelectedNeighborhood,
 } from "./InspectorPanel";
 
 interface SelectionContextValue {
@@ -123,4 +124,5 @@ export type {
   SelectedDistrict,
   SelectedRoad,
   SelectedPOI,
+  SelectedNeighborhood,
 };

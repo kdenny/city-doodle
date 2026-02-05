@@ -16,7 +16,7 @@ import {
   useRef,
   ReactNode,
 } from "react";
-import type { District, Road, POI, FeaturesData, Point, DistrictPersonality } from "./layers";
+import type { District, Neighborhood, Road, POI, FeaturesData, Point, DistrictPersonality } from "./layers";
 import { DEFAULT_DISTRICT_PERSONALITY } from "./layers/types";
 import {
   generateDistrictGeometry,
@@ -42,10 +42,15 @@ import {
   useCreateDistrict,
   useUpdateDistrict,
   useDeleteDistrict,
+  useWorldNeighborhoods,
+  useCreateNeighborhood,
+  useUpdateNeighborhood,
+  useDeleteNeighborhood,
 } from "../../api/hooks";
 import type {
   District as ApiDistrict,
   DistrictType as ApiDistrictType,
+  Neighborhood as ApiNeighborhood,
 } from "../../api/types";
 
 /**
@@ -93,6 +98,12 @@ interface FeaturesContextValue {
   updateDistrict: (id: string, updates: Partial<Omit<District, "id">>) => void;
   /** Update a road */
   updateRoad: (id: string, updates: Partial<Omit<Road, "id">>) => void;
+  /** Add a neighborhood with explicit geometry */
+  addNeighborhood: (neighborhood: Neighborhood) => void;
+  /** Remove a neighborhood by ID */
+  removeNeighborhood: (id: string) => void;
+  /** Update a neighborhood */
+  updateNeighborhood: (id: string, updates: Partial<Omit<Neighborhood, "id">>) => void;
   /** Clear all features */
   clearFeatures: () => void;
   /** Set all features data at once */
@@ -119,6 +130,7 @@ const EMPTY_FEATURES: FeaturesData = {
   districts: [],
   roads: [],
   pois: [],
+  neighborhoods: [],
 };
 
 /**
@@ -211,6 +223,19 @@ function fromApiDistrict(apiDistrict: ApiDistrict): District {
   };
 }
 
+/**
+ * Convert API neighborhood to frontend neighborhood.
+ */
+function fromApiNeighborhood(apiNeighborhood: ApiNeighborhood): Neighborhood {
+  return {
+    id: apiNeighborhood.id,
+    name: apiNeighborhood.name,
+    polygon: { points: fromGeoJsonGeometry(apiNeighborhood.geometry) },
+    labelColor: apiNeighborhood.label_color || undefined,
+    accentColor: apiNeighborhood.accent_color || undefined,
+  };
+}
+
 export function FeaturesProvider({
   children,
   worldId,
@@ -230,8 +255,16 @@ export function FeaturesProvider({
   const {
     data: apiDistricts,
     isLoading: isLoadingDistricts,
-    error: loadError,
+    error: loadDistrictsError,
   } = useWorldDistricts(worldId || "", {
+    enabled: !!worldId,
+  });
+
+  const {
+    data: apiNeighborhoods,
+    isLoading: isLoadingNeighborhoods,
+    error: loadNeighborhoodsError,
+  } = useWorldNeighborhoods(worldId || "", {
     enabled: !!worldId,
   });
 
@@ -239,7 +272,11 @@ export function FeaturesProvider({
   const updateDistrictMutation = useUpdateDistrict();
   const deleteDistrictMutation = useDeleteDistrict();
 
-  // Load districts from API when data is available
+  const createNeighborhoodMutation = useCreateNeighborhood();
+  const updateNeighborhoodMutation = useUpdateNeighborhood();
+  const deleteNeighborhoodMutation = useDeleteNeighborhood();
+
+  // Load districts and neighborhoods from API when data is available
   useEffect(() => {
     if (worldId && apiDistricts) {
       const loadedDistricts = apiDistricts.map(fromApiDistrict);
@@ -247,9 +284,27 @@ export function FeaturesProvider({
         ...prev,
         districts: loadedDistricts,
       }));
-      setIsInitialized(true);
     }
   }, [worldId, apiDistricts]);
+
+  useEffect(() => {
+    if (worldId && apiNeighborhoods) {
+      const loadedNeighborhoods = apiNeighborhoods.map(fromApiNeighborhood);
+      setFeaturesState((prev) => ({
+        ...prev,
+        neighborhoods: loadedNeighborhoods,
+      }));
+    }
+  }, [worldId, apiNeighborhoods]);
+
+  // Mark as initialized when both districts and neighborhoods are loaded (or not using worldId)
+  useEffect(() => {
+    if (!worldId) {
+      setIsInitialized(true);
+    } else if (apiDistricts !== undefined && apiNeighborhoods !== undefined) {
+      setIsInitialized(true);
+    }
+  }, [worldId, apiDistricts, apiNeighborhoods]);
 
   // Helper to update features and notify
   const updateFeatures = useCallback(
@@ -584,6 +639,135 @@ export function FeaturesProvider({
     [features.roads, updateFeatures]
   );
 
+  const addNeighborhood = useCallback(
+    (neighborhood: Neighborhood) => {
+      const tempId = neighborhood.id;
+
+      // Optimistically add to local state
+      updateFeatures((prev) => ({
+        ...prev,
+        neighborhoods: [...prev.neighborhoods, neighborhood],
+      }));
+
+      // Persist to API if worldId is provided
+      if (worldId) {
+        pendingCreates.current.add(tempId);
+
+        createNeighborhoodMutation.mutate(
+          {
+            worldId,
+            data: {
+              name: neighborhood.name,
+              geometry: toGeoJsonGeometry(neighborhood.polygon.points),
+              label_color: neighborhood.labelColor,
+              accent_color: neighborhood.accentColor,
+            },
+          },
+          {
+            onSuccess: (apiNeighborhood) => {
+              // Replace temp ID with real ID from API
+              pendingCreates.current.delete(tempId);
+              updateFeatures((prev) => ({
+                ...prev,
+                neighborhoods: prev.neighborhoods.map((n) =>
+                  n.id === tempId ? { ...n, id: apiNeighborhood.id } : n
+                ),
+              }));
+            },
+            onError: (error) => {
+              // Remove the optimistically added neighborhood on error
+              pendingCreates.current.delete(tempId);
+              updateFeatures((prev) => ({
+                ...prev,
+                neighborhoods: prev.neighborhoods.filter((n) => n.id !== tempId),
+              }));
+              console.error("Failed to save neighborhood:", error);
+            },
+          }
+        );
+      }
+    },
+    [worldId, updateFeatures, createNeighborhoodMutation]
+  );
+
+  const removeNeighborhood = useCallback(
+    (id: string) => {
+      // Find the neighborhood first
+      const neighborhoodToRemove = features.neighborhoods.find((n) => n.id === id);
+      if (!neighborhoodToRemove) return;
+
+      // Optimistically remove from local state
+      updateFeatures((prev) => ({
+        ...prev,
+        neighborhoods: prev.neighborhoods.filter((n) => n.id !== id),
+      }));
+
+      // Delete from API if worldId is provided and not a pending create
+      if (worldId && !pendingCreates.current.has(id)) {
+        deleteNeighborhoodMutation.mutate(
+          { neighborhoodId: id, worldId },
+          {
+            onError: (error) => {
+              // Re-add the neighborhood on error
+              updateFeatures((prev) => ({
+                ...prev,
+                neighborhoods: [...prev.neighborhoods, neighborhoodToRemove],
+              }));
+              console.error("Failed to delete neighborhood:", error);
+            },
+          }
+        );
+      }
+    },
+    [worldId, features.neighborhoods, updateFeatures, deleteNeighborhoodMutation]
+  );
+
+  const updateNeighborhood = useCallback(
+    (id: string, updates: Partial<Omit<Neighborhood, "id">>) => {
+      // Find the current neighborhood for rollback
+      const currentNeighborhood = features.neighborhoods.find((n) => n.id === id);
+      if (!currentNeighborhood) return;
+
+      // Optimistically update local state
+      updateFeatures((prev) => ({
+        ...prev,
+        neighborhoods: prev.neighborhoods.map((n) =>
+          n.id === id ? { ...n, ...updates } : n
+        ),
+      }));
+
+      // Persist to API if worldId is provided and not a pending create
+      if (worldId && !pendingCreates.current.has(id)) {
+        // Build API update payload from the updates
+        const apiUpdate: Record<string, unknown> = {};
+        if (updates.name !== undefined) apiUpdate.name = updates.name;
+        if (updates.labelColor !== undefined) apiUpdate.label_color = updates.labelColor;
+        if (updates.accentColor !== undefined) apiUpdate.accent_color = updates.accentColor;
+        if (updates.polygon !== undefined) apiUpdate.geometry = toGeoJsonGeometry(updates.polygon.points);
+
+        // Only call API if there are fields to update
+        if (Object.keys(apiUpdate).length > 0) {
+          updateNeighborhoodMutation.mutate(
+            { neighborhoodId: id, data: apiUpdate, worldId },
+            {
+              onError: (error) => {
+                // Rollback to previous state on error
+                updateFeatures((prev) => ({
+                  ...prev,
+                  neighborhoods: prev.neighborhoods.map((n) =>
+                    n.id === id ? currentNeighborhood : n
+                  ),
+                }));
+                console.error("Failed to update neighborhood:", error);
+              },
+            }
+          );
+        }
+      }
+    },
+    [worldId, features.neighborhoods, updateFeatures, updateNeighborhoodMutation]
+  );
+
   const clearFeatures = useCallback(() => {
     updateFeatures(() => EMPTY_FEATURES);
   }, [updateFeatures]);
@@ -595,8 +779,8 @@ export function FeaturesProvider({
     [updateFeatures]
   );
 
-  const isLoading = !isInitialized || (!!worldId && isLoadingDistricts);
-  const error = loadError || null;
+  const isLoading = !isInitialized || (!!worldId && (isLoadingDistricts || isLoadingNeighborhoods));
+  const error = loadDistrictsError || loadNeighborhoodsError || null;
 
   const value: FeaturesContextValue = {
     features,
@@ -610,6 +794,9 @@ export function FeaturesProvider({
     removePOI,
     updateDistrict,
     updateRoad,
+    addNeighborhood,
+    removeNeighborhood,
+    updateNeighborhood,
     clearFeatures,
     setFeatures,
     isLoading,

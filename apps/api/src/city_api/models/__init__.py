@@ -2,6 +2,7 @@
 
 from city_api.models.district import District, DistrictType
 from city_api.models.job import Job
+from city_api.models.neighborhood import Neighborhood
 from city_api.models.road_network import NodeType, RoadClass, RoadEdge, RoadNode
 from city_api.models.seed import PlacedSeed
 from city_api.models.tile import Tile, TileLock
@@ -20,6 +21,7 @@ __all__ = [
     "DistrictType",
     "Job",
     "LineType",
+    "Neighborhood",
     "NodeType",
     "PlacedSeed",
     "RoadClass",

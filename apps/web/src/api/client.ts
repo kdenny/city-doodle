@@ -12,6 +12,10 @@ import {
   DistrictUpdate,
   Job,
   JobCreate,
+  Neighborhood,
+  NeighborhoodBulkCreate,
+  NeighborhoodCreate,
+  NeighborhoodUpdate,
   PlacedSeed,
   PlacedSeedBulkCreate,
   PlacedSeedCreate,
@@ -361,6 +365,49 @@ export const districts = {
 };
 
 // ============================================================================
+// Neighborhood Endpoints
+// ============================================================================
+
+export const neighborhoods = {
+  /** List all neighborhoods in a world */
+  async list(worldId: string): Promise<Neighborhood[]> {
+    return request<Neighborhood[]>("GET", `/worlds/${worldId}/neighborhoods`);
+  },
+
+  /** Create a new neighborhood */
+  async create(worldId: string, data: Omit<NeighborhoodCreate, "world_id">): Promise<Neighborhood> {
+    return request<Neighborhood>("POST", `/worlds/${worldId}/neighborhoods`, {
+      body: { ...data, world_id: worldId },
+    });
+  },
+
+  /** Create multiple neighborhoods in a single request */
+  async createBulk(worldId: string, data: NeighborhoodBulkCreate): Promise<Neighborhood[]> {
+    return request<Neighborhood[]>("POST", `/worlds/${worldId}/neighborhoods/bulk`, { body: data });
+  },
+
+  /** Get a neighborhood by ID */
+  async get(neighborhoodId: string): Promise<Neighborhood> {
+    return request<Neighborhood>("GET", `/neighborhoods/${neighborhoodId}`);
+  },
+
+  /** Update a neighborhood */
+  async update(neighborhoodId: string, data: NeighborhoodUpdate): Promise<Neighborhood> {
+    return request<Neighborhood>("PATCH", `/neighborhoods/${neighborhoodId}`, { body: data });
+  },
+
+  /** Delete a neighborhood */
+  async delete(neighborhoodId: string): Promise<void> {
+    return request<void>("DELETE", `/neighborhoods/${neighborhoodId}`);
+  },
+
+  /** Delete all neighborhoods in a world */
+  async deleteAll(worldId: string): Promise<void> {
+    return request<void>("DELETE", `/worlds/${worldId}/neighborhoods`);
+  },
+};
+
+// ============================================================================
 // Default Export
 // ============================================================================
 
@@ -371,6 +418,7 @@ export const api = {
   jobs,
   seeds,
   districts,
+  neighborhoods,
 };
 
 export default api;

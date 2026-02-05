@@ -12,6 +12,7 @@ import { Container, Graphics } from "pixi.js";
 import type {
   FeaturesData,
   District,
+  Neighborhood,
   Road,
   POI,
   LayerVisibility,
@@ -106,16 +107,20 @@ const POI_HIT_RADIUS = 12;
 // Hit test distance for roads (in world coordinates)
 const ROAD_HIT_DISTANCE = 8;
 
+// Default neighborhood colors (used when no custom color is set)
+const DEFAULT_NEIGHBORHOOD_COLOR = 0x4a90d9; // Blue
+
 /**
  * Result of a hit test on the features layer.
  */
 export interface HitTestResult {
-  type: "district" | "road" | "poi";
-  feature: District | Road | POI;
+  type: "district" | "road" | "poi" | "neighborhood";
+  feature: District | Road | POI | Neighborhood;
 }
 
 export class FeaturesLayer {
   private container: Container;
+  private neighborhoodsGraphics: Graphics;
   private districtsGraphics: Graphics;
   private roadsGraphics: Graphics;
   private poisGraphics: Graphics;
@@ -127,7 +132,12 @@ export class FeaturesLayer {
     this.container.label = "features";
 
     // Create graphics objects for each sub-layer (order matters for z-index)
-    // Districts at the bottom
+    // Neighborhoods at the very bottom (larger boundary areas)
+    this.neighborhoodsGraphics = new Graphics();
+    this.neighborhoodsGraphics.label = "neighborhoods";
+    this.container.addChild(this.neighborhoodsGraphics);
+
+    // Districts above neighborhoods
     this.districtsGraphics = new Graphics();
     this.districtsGraphics.label = "districts";
     this.container.addChild(this.districtsGraphics);
@@ -152,7 +162,8 @@ export class FeaturesLayer {
     this.render();
   }
 
-  setVisibility(visibility: LayerVisibility): void {
+  setVisibility(visibility: LayerVisibility & { neighborhoods?: boolean }): void {
+    this.neighborhoodsGraphics.visible = visibility.neighborhoods ?? true;
     this.districtsGraphics.visible = visibility.districts;
     this.roadsGraphics.visible = visibility.roads;
     this.poisGraphics.visible = visibility.pois;
@@ -175,9 +186,86 @@ export class FeaturesLayer {
   private render(): void {
     if (!this.data) return;
 
+    this.renderNeighborhoods(this.data.neighborhoods || []);
     this.renderDistricts(this.data.districts);
     this.renderRoads(this.data.roads);
     this.renderPOIs(this.data.pois);
+  }
+
+  private renderNeighborhoods(neighborhoods: Neighborhood[]): void {
+    if (this.neighborhoodsGraphics.clear) {
+      this.neighborhoodsGraphics.clear();
+    }
+
+    for (const neighborhood of neighborhoods) {
+      const points = neighborhood.polygon.points;
+      if (points.length < 3) continue;
+
+      // Parse accent color or use default
+      let fillColor = DEFAULT_NEIGHBORHOOD_COLOR;
+      if (neighborhood.accentColor) {
+        const parsed = parseInt(neighborhood.accentColor.replace("#", ""), 16);
+        if (!isNaN(parsed)) fillColor = parsed;
+      }
+
+      // Draw neighborhood polygon with dashed border
+      this.neighborhoodsGraphics.moveTo(points[0].x, points[0].y);
+      for (let i = 1; i < points.length; i++) {
+        this.neighborhoodsGraphics.lineTo(points[i].x, points[i].y);
+      }
+      this.neighborhoodsGraphics.closePath();
+      this.neighborhoodsGraphics.fill({ color: fillColor, alpha: 0.15 });
+
+      // Draw dashed border
+      this.drawNeighborhoodBorder(points, fillColor);
+    }
+  }
+
+  private drawNeighborhoodBorder(points: Point[], color: number): void {
+    const dashLength = 12;
+    const gapLength = 6;
+
+    this.neighborhoodsGraphics.setStrokeStyle({
+      width: 2,
+      color,
+      alpha: 0.6,
+      cap: "round",
+    });
+
+    // Draw dashed border for each edge
+    for (let i = 0; i < points.length; i++) {
+      const start = points[i];
+      const end = points[(i + 1) % points.length];
+      const dx = end.x - start.x;
+      const dy = end.y - start.y;
+      const segmentLength = Math.sqrt(dx * dx + dy * dy);
+      if (segmentLength === 0) continue;
+
+      const unitX = dx / segmentLength;
+      const unitY = dy / segmentLength;
+
+      let currentLength = 0;
+      let drawing = true;
+
+      while (currentLength < segmentLength) {
+        const stepLength = drawing ? dashLength : gapLength;
+        const nextLength = Math.min(currentLength + stepLength, segmentLength);
+
+        if (drawing) {
+          const startX = start.x + unitX * currentLength;
+          const startY = start.y + unitY * currentLength;
+          const endX = start.x + unitX * nextLength;
+          const endY = start.y + unitY * nextLength;
+
+          this.neighborhoodsGraphics.moveTo(startX, startY);
+          this.neighborhoodsGraphics.lineTo(endX, endY);
+          this.neighborhoodsGraphics.stroke();
+        }
+
+        currentLength = nextLength;
+        drawing = !drawing;
+      }
+    }
   }
 
   private renderDistricts(districts: District[]): void {
@@ -401,7 +489,7 @@ export class FeaturesLayer {
   /**
    * Perform a hit test at the given world coordinates.
    * Returns the topmost feature at that point, or null if nothing is hit.
-   * Priority: POIs > Roads > Districts (topmost layers first)
+   * Priority: POIs > Roads > Districts > Neighborhoods (topmost layers first)
    */
   hitTest(worldX: number, worldY: number): HitTestResult | null {
     if (!this.data) return null;
@@ -424,11 +512,20 @@ export class FeaturesLayer {
       }
     }
 
-    // Check districts last (they're at the bottom)
+    // Check districts
     if (this.districtsGraphics.visible) {
       for (const district of this.data.districts) {
         if (this.hitTestDistrict(district, worldX, worldY)) {
           return { type: "district", feature: district };
+        }
+      }
+    }
+
+    // Check neighborhoods last (they're at the bottom)
+    if (this.neighborhoodsGraphics.visible && this.data.neighborhoods) {
+      for (const neighborhood of this.data.neighborhoods) {
+        if (this.hitTestNeighborhood(neighborhood, worldX, worldY)) {
+          return { type: "neighborhood", feature: neighborhood };
         }
       }
     }
@@ -471,6 +568,13 @@ export class FeaturesLayer {
    */
   private hitTestDistrict(district: District, x: number, y: number): boolean {
     return pointInPolygon(x, y, district.polygon.points);
+  }
+
+  /**
+   * Check if a point hits a neighborhood (point-in-polygon test).
+   */
+  private hitTestNeighborhood(neighborhood: Neighborhood, x: number, y: number): boolean {
+    return pointInPolygon(x, y, neighborhood.polygon.points);
   }
 
   destroy(): void {
@@ -740,7 +844,7 @@ export function generateMockFeatures(
     },
   ];
 
-  return { districts, roads, pois };
+  return { districts, roads, pois, neighborhoods: [] };
 }
 
 /**

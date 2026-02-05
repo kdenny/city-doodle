@@ -11,8 +11,10 @@ import {
   usePlacedSeeds,
   type SeedType,
 } from "../palette";
-import type { DistrictPersonality } from "../canvas/layers/types";
+import type { DistrictPersonality, Point } from "../canvas/layers/types";
 import { MapCanvasProvider, FeaturesProvider, useFeatures, TerrainProvider } from "../canvas";
+import { DrawingProvider, type DrawingMode } from "../canvas/DrawingContext";
+import { generateNeighborhoodName } from "../../utils/nameGenerator";
 import { ExportView } from "../export-view";
 import { TimelapseView } from "../timelapse-view";
 import { DensityView } from "../density-view";
@@ -145,7 +147,7 @@ function PlacementWithSeeds({ children }: { children: ReactNode }) {
  * This allows the inspector panel to persist edits to the database.
  */
 function SelectionWithFeatures({ children }: { children: ReactNode }) {
-  const { updateDistrict, removeDistrict, updateRoad, removeRoad } = useFeatures();
+  const { updateDistrict, removeDistrict, updateRoad, removeRoad, updateNeighborhood, removeNeighborhood } = useFeatures();
 
   const handleUpdate = useCallback(
     (feature: SelectedFeature) => {
@@ -162,10 +164,14 @@ function SelectionWithFeatures({ children }: { children: ReactNode }) {
           name: feature.name,
           roadClass: feature.roadClass as "highway" | "arterial" | "collector" | "local" | "trail",
         });
+      } else if (feature.type === "neighborhood") {
+        updateNeighborhood(feature.id, {
+          name: feature.name,
+        });
       }
       // TODO: Add update handlers for POIs when those are persisted
     },
-    [updateDistrict, updateRoad]
+    [updateDistrict, updateRoad, updateNeighborhood]
   );
 
   const handleDelete = useCallback(
@@ -176,16 +182,49 @@ function SelectionWithFeatures({ children }: { children: ReactNode }) {
         removeDistrict(feature.id);
       } else if (feature.type === "road") {
         removeRoad(feature.id);
+      } else if (feature.type === "neighborhood") {
+        removeNeighborhood(feature.id);
       }
       // TODO: Add delete handlers for POIs when those are persisted
     },
-    [removeDistrict, removeRoad]
+    [removeDistrict, removeRoad, removeNeighborhood]
   );
 
   return (
     <SelectionProvider onUpdate={handleUpdate} onDelete={handleDelete}>
       {children}
     </SelectionProvider>
+  );
+}
+
+/**
+ * Inner component that connects DrawingProvider to FeaturesContext.
+ * Handles polygon completion to create neighborhoods.
+ */
+function DrawingWithFeatures({ children }: { children: ReactNode }) {
+  const { addNeighborhood } = useFeatures();
+
+  const handlePolygonComplete = useCallback(
+    (points: Point[], mode: DrawingMode) => {
+      if (mode === "neighborhood") {
+        // Create a new neighborhood from the drawn polygon
+        const neighborhood = {
+          id: `neighborhood-${Date.now()}-${Math.random().toString(36).substr(2, 9)}`,
+          name: generateNeighborhoodName(),
+          polygon: { points },
+          accentColor: "#4a90d9", // Default blue color
+        };
+        addNeighborhood(neighborhood);
+      }
+      // TODO: Handle "split" mode when implemented
+    },
+    [addNeighborhood]
+  );
+
+  return (
+    <DrawingProvider onPolygonComplete={handlePolygonComplete}>
+      {children}
+    </DrawingProvider>
   );
 }
 
@@ -208,11 +247,13 @@ export function EditorShell({
             <PlacedSeedsProvider worldId={worldId}>
               <PlacementWithSeeds>
                 <SelectionWithFeatures>
-                  <MapCanvasProvider>
-                    <EditorShellContent onHelp={handleHelp}>
-                      {children}
-                    </EditorShellContent>
-                  </MapCanvasProvider>
+                  <DrawingWithFeatures>
+                    <MapCanvasProvider>
+                      <EditorShellContent onHelp={handleHelp}>
+                        {children}
+                      </EditorShellContent>
+                    </MapCanvasProvider>
+                  </DrawingWithFeatures>
                 </SelectionWithFeatures>
               </PlacementWithSeeds>
             </PlacedSeedsProvider>
