@@ -181,9 +181,9 @@ describe("FeaturesContext", () => {
 
       act(() => {
         const result = addDistrict!({ x: 300, y: 300 }, "residential");
-        expect(result).not.toBeNull();
-        expect(result?.district.type).toBe("residential");
-        expect(result?.roads.length).toBeGreaterThan(0);
+        expect(result.generated).not.toBeNull();
+        expect(result.generated?.district.type).toBe("residential");
+        expect(result.generated?.roads.length).toBeGreaterThan(0);
       });
 
       expect(features!.districts.length).toBe(1);
@@ -218,7 +218,8 @@ describe("FeaturesContext", () => {
       // Try to add overlapping district
       act(() => {
         const result = addDistrict!({ x: 100, y: 100 }, "commercial");
-        expect(result).toBeNull();
+        expect(result.generated).toBeNull();
+        expect(result.error).toBeDefined();
       });
 
       // Should still have only one district
@@ -391,7 +392,7 @@ describe("FeaturesContext", () => {
       let districtId: string;
       act(() => {
         const result = addDistrict!({ x: 300, y: 300 }, "residential");
-        districtId = result!.district.id;
+        districtId = result.generated!.district.id;
       });
 
       expect(features!.districts.length).toBe(1);
@@ -472,7 +473,7 @@ describe("FeaturesContext", () => {
       let districtId: string;
       act(() => {
         const result = addDistrict!({ x: 300, y: 300 }, "residential");
-        districtId = result!.district.id;
+        districtId = result.generated!.district.id;
       });
 
       expect(features!.districts[0].isHistoric).toBe(false);

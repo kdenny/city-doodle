@@ -14,6 +14,15 @@ export type {
   DistrictGenerationConfig,
   GeneratedDistrict,
 } from "./districtGenerator";
+export {
+  clipAndValidateDistrict,
+  overlapsWater,
+  meetsMinimumSize,
+  pointInPolygon,
+  polygonArea,
+  getPolygonBounds,
+} from "./polygonUtils";
+export type { ClipResult } from "./polygonUtils";
 export type {
   TerrainData,
   LayerVisibility,

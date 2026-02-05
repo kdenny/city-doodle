@@ -17,3 +17,9 @@ export {
   useFeatures,
   useFeaturesOptional,
 } from "./FeaturesContext";
+export type { AddDistrictResult } from "./FeaturesContext";
+export {
+  TerrainProvider,
+  useTerrain,
+  useTerrainOptional,
+} from "./TerrainContext";

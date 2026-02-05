@@ -32,6 +32,7 @@ import {
 } from "./useCanvasExport";
 import { MapCanvasContextInternal } from "./MapCanvasContext";
 import { useFeaturesOptional } from "./FeaturesContext";
+import { useTerrainOptional } from "./TerrainContext";
 import { useZoomOptional } from "../shell/ZoomContext";
 import { usePlacementOptional, usePlacedSeedsOptional } from "../palette";
 import { useSelectionContextOptional } from "../build-view/SelectionContext";
@@ -104,6 +105,15 @@ export const MapCanvas = forwardRef<MapCanvasHandle, MapCanvasProps>(
 
   // Get features context for dynamic features (districts, roads, POIs)
   const featuresContext = useFeaturesOptional();
+
+  // Get terrain context for sharing terrain data (water features) for collision detection
+  const terrainContext = useTerrainOptional();
+
+  // Ref to setTerrainData for use in init effect (avoids stale closure)
+  const setTerrainDataRef = useRef(terrainContext?.setTerrainData);
+  useEffect(() => {
+    setTerrainDataRef.current = terrainContext?.setTerrainData;
+  }, [terrainContext?.setTerrainData]);
 
   // Create the export handle object
   const exportHandle = {
@@ -224,6 +234,9 @@ export const MapCanvas = forwardRef<MapCanvasHandle, MapCanvasProps>(
       const terrainData = generateMockTerrain(WORLD_SIZE, seed);
       terrainLayer.setData(terrainData);
       terrainLayer.setVisibility(layerVisibility);
+
+      // Share terrain data with context for water collision detection
+      setTerrainDataRef.current?.(terrainData);
 
       // Create and add features layer (above terrain)
       const featuresLayer = new FeaturesLayer();
