@@ -343,6 +343,140 @@ def labels(as_json: bool) -> None:
         sys.exit(1)
 
 
+@main.command()
+@click.argument("blocker_id")
+@click.argument("blocked_id")
+@click.option("--remove", is_flag=True, help="Remove the blocking relationship instead of adding")
+def link(blocker_id: str, blocked_id: str, remove: bool) -> None:
+    """Create or remove a blocking relationship between tickets.
+
+    BLOCKER_ID blocks BLOCKED_ID (blocker is the prerequisite, blocked is the dependent).
+
+    Example: bin/ticket link CITY-100 CITY-101
+    This means CITY-100 must be done before CITY-101 can start.
+    """
+    tracker = ensure_tracker_configured()
+
+    if not hasattr(tracker, "add_blocking"):
+        click.echo("Blocking relationships not supported for this tracker", err=True)
+        sys.exit(1)
+
+    try:
+        if remove:
+            success = tracker.remove_blocking(blocker_id, blocked_id)
+            if success:
+                click.echo(f"Removed: {blocker_id} no longer blocks {blocked_id}")
+            else:
+                click.echo(f"No blocking relationship found between {blocker_id} and {blocked_id}")
+        else:
+            success = tracker.add_blocking(blocker_id, blocked_id)
+            if success:
+                click.echo(f"Created: {blocker_id} blocks {blocked_id}")
+            else:
+                click.echo("Failed to create blocking relationship", err=True)
+                sys.exit(1)
+    except RuntimeError as e:
+        click.echo(str(e), err=True)
+        sys.exit(1)
+
+
+@main.command()
+@click.argument("ticket_id")
+def relations(ticket_id: str) -> None:
+    """Show blocking relationships for a ticket."""
+    tracker = ensure_tracker_configured()
+
+    if not hasattr(tracker, "get_blocking_relationships"):
+        click.echo("Blocking relationships not supported for this tracker", err=True)
+        sys.exit(1)
+
+    try:
+        rels = tracker.get_blocking_relationships(ticket_id)
+        click.echo(f"\n{ticket_id} relationships:")
+        click.echo("-" * 40)
+
+        if rels.get("blocks"):
+            click.echo(f"Blocks: {', '.join(rels['blocks'])}")
+        else:
+            click.echo("Blocks: (none)")
+
+        if rels.get("blocked_by"):
+            click.echo(f"Blocked by: {', '.join(rels['blocked_by'])}")
+        else:
+            click.echo("Blocked by: (none)")
+        click.echo()
+    except RuntimeError as e:
+        click.echo(str(e), err=True)
+        sys.exit(1)
+
+
+@main.command()
+@click.option("--json", "as_json", is_flag=True, help="Output as JSON")
+def projects(as_json: bool) -> None:
+    """List all projects.
+
+    Useful for finding project IDs for ticket assignment.
+    """
+    tracker = ensure_tracker_configured()
+
+    if not hasattr(tracker, "list_projects"):
+        click.echo("Projects not supported for this tracker", err=True)
+        sys.exit(1)
+
+    try:
+        project_list = tracker.list_projects()
+        if not project_list:
+            click.echo("No projects found.")
+            return
+
+        if as_json:
+            import json
+
+            click.echo(json.dumps(project_list, indent=2))
+        else:
+            click.echo("\nProjects:")
+            click.echo("-" * 60)
+            for proj in sorted(project_list, key=lambda x: x.get("name", "")):
+                name = proj.get("name", "")
+                proj_id = proj.get("id", "")
+                state = proj.get("state", "")
+                click.echo(f"  {name:<40} ({state})")
+                click.echo(f"    ID: {proj_id}")
+            click.echo()
+    except RuntimeError as e:
+        click.echo(str(e), err=True)
+        sys.exit(1)
+
+
+@main.command("set-project")
+@click.argument("ticket_id")
+@click.argument("project_name")
+def set_project(ticket_id: str, project_name: str) -> None:
+    """Assign a ticket to a project by name."""
+    tracker = ensure_tracker_configured()
+
+    if not hasattr(tracker, "set_project") or not hasattr(tracker, "_get_project_id"):
+        click.echo("Projects not supported for this tracker", err=True)
+        sys.exit(1)
+
+    try:
+        project_id = tracker._get_project_id(project_name)
+        if not project_id:
+            click.echo(f"Project not found: {project_name}", err=True)
+            click.echo("Use 'bin/ticket projects' to list available projects.")
+            sys.exit(1)
+
+        success = tracker.set_project(ticket_id, project_id)
+        if success:
+            click.echo(f"Assigned {ticket_id} to project '{project_name}'")
+        else:
+            click.echo("Failed to assign ticket to project", err=True)
+            sys.exit(1)
+    except RuntimeError as e:
+        click.echo(str(e), err=True)
+        sys.exit(1)
+
+
 def print_ticket(ticket: Ticket) -> None:
     """Print full ticket details."""
     click.echo(f"\n{ticket.id}: {ticket.title}")

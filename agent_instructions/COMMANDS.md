@@ -48,6 +48,20 @@ Create a new ticket.
 - `bin/ticket create "Add user authentication"`
 - `bin/ticket create "Fix login bug" --label Bug --label "High Risk"`
 
+### ticket link
+Create or remove blocking relationships between tickets.
+**Usage**: `bin/ticket link <blocker-id> <blocked-id>`
+**Direction**: The first ticket (blocker) must be done before the second (blocked) can start.
+**Examples:**
+- `bin/ticket link PROJ-100 PROJ-101` - PROJ-100 blocks PROJ-101
+- `bin/ticket link PROJ-100 PROJ-101 --remove` - Remove the relationship
+
+### ticket relations
+Show blocking relationships for a ticket.
+**Usage**: `bin/ticket relations <ticket-id>`
+**Examples:**
+- `bin/ticket relations PROJ-123`
+
 ## Pull Requests
 
 ### pr

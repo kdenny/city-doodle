@@ -44,6 +44,19 @@ When creating a dependency between tickets, the **foundation/prerequisite ticket
 2. In the tracker, set: **prerequisite ticket blocks dependent ticket(s)**.
 3. Do **not** set the foundation ticket as "blocked by" the later tickets.
 
+### CLI Commands for Blocking Relationships
+
+```bash
+# Create a blocking relationship (PROJ-100 must be done before PROJ-101)
+bin/ticket link PROJ-100 PROJ-101
+
+# Remove a blocking relationship
+bin/ticket link PROJ-100 PROJ-101 --remove
+
+# View all blocking relationships for a ticket
+bin/ticket relations PROJ-123
+```
+
 ---
 
 ## 2. Label Checklist (Required When Creating Tickets)

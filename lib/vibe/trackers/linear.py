@@ -345,3 +345,241 @@ class LinearTracker(TrackerBase):
             url=issue.get("url", ""),
             raw=issue,
         )
+
+    def _resolve_issue_id(self, ticket_id: str) -> str | None:
+        """Resolve a ticket identifier (e.g. CITY-123) to a Linear UUID."""
+        ticket = self.get_ticket(ticket_id)
+        if not ticket:
+            return None
+        return ticket.raw.get("id")
+
+    def add_blocking(self, blocker_id: str, blocked_id: str) -> bool:
+        """Create a blocking relationship: blocker_id blocks blocked_id.
+
+        Args:
+            blocker_id: The ticket that blocks (prerequisite)
+            blocked_id: The ticket that is blocked (dependent)
+
+        Returns:
+            True if relationship was created successfully.
+        """
+        # Resolve identifiers to UUIDs
+        blocker_uuid = self._resolve_issue_id(blocker_id)
+        blocked_uuid = self._resolve_issue_id(blocked_id)
+
+        if not blocker_uuid or not blocked_uuid:
+            raise RuntimeError(
+                f"Could not resolve ticket IDs: {blocker_id}={blocker_uuid}, {blocked_id}={blocked_uuid}"
+            )
+
+        mutation = """
+        mutation CreateIssueRelation($input: IssueRelationCreateInput!) {
+            issueRelationCreate(input: $input) {
+                success
+                issueRelation {
+                    id
+                    type
+                }
+            }
+        }
+        """
+        # In Linear, "blocks" relation type means: issueId blocks relatedIssueId
+        input_obj = {
+            "issueId": blocker_uuid,
+            "relatedIssueId": blocked_uuid,
+            "type": "blocks",
+        }
+
+        try:
+            result = self._execute_query(mutation, {"input": input_obj})
+            success = result.get("data", {}).get("issueRelationCreate", {}).get("success", False)
+            return success
+        except Exception as e:
+            raise RuntimeError(f"Failed to create blocking relationship: {e}") from e
+
+    def remove_blocking(self, blocker_id: str, blocked_id: str) -> bool:
+        """Remove a blocking relationship between two tickets.
+
+        Args:
+            blocker_id: The ticket that blocks (prerequisite)
+            blocked_id: The ticket that is blocked (dependent)
+
+        Returns:
+            True if relationship was removed successfully.
+        """
+        # First, find the relation ID
+        blocker_uuid = self._resolve_issue_id(blocker_id)
+        if not blocker_uuid:
+            raise RuntimeError(f"Could not resolve ticket ID: {blocker_id}")
+
+        # Query relations for the blocker issue
+        query = """
+        query GetIssueRelations($id: String!) {
+            issue(id: $id) {
+                relations {
+                    nodes {
+                        id
+                        type
+                        relatedIssue {
+                            identifier
+                        }
+                    }
+                }
+            }
+        }
+        """
+        try:
+            result = self._execute_query(query, {"id": blocker_id})
+            relations = (
+                result.get("data", {}).get("issue", {}).get("relations", {}).get("nodes", [])
+            )
+
+            # Find the blocking relation to the blocked ticket
+            relation_id = None
+            for rel in relations:
+                if rel.get("type") == "blocks":
+                    related = rel.get("relatedIssue", {})
+                    if related.get("identifier") == blocked_id:
+                        relation_id = rel.get("id")
+                        break
+
+            if not relation_id:
+                return False  # No such relation exists
+
+            # Delete the relation
+            mutation = """
+            mutation DeleteIssueRelation($id: String!) {
+                issueRelationDelete(id: $id) {
+                    success
+                }
+            }
+            """
+            result = self._execute_query(mutation, {"id": relation_id})
+            return result.get("data", {}).get("issueRelationDelete", {}).get("success", False)
+        except Exception as e:
+            raise RuntimeError(f"Failed to remove blocking relationship: {e}") from e
+
+    def get_blocking_relationships(self, ticket_id: str) -> dict[str, list[str]]:
+        """Get blocking relationships for a ticket.
+
+        Returns:
+            Dict with 'blocks' (tickets this one blocks) and 'blocked_by' (tickets blocking this one).
+        """
+        query = """
+        query GetIssueRelations($id: String!) {
+            issue(id: $id) {
+                relations {
+                    nodes {
+                        type
+                        relatedIssue {
+                            identifier
+                            title
+                        }
+                    }
+                }
+                inverseRelations {
+                    nodes {
+                        type
+                        issue {
+                            identifier
+                            title
+                        }
+                    }
+                }
+            }
+        }
+        """
+        try:
+            result = self._execute_query(query, {"id": ticket_id})
+            issue = result.get("data", {}).get("issue", {})
+
+            blocks = []
+            blocked_by = []
+
+            # Relations where this issue is the source
+            for rel in issue.get("relations", {}).get("nodes", []):
+                if rel.get("type") == "blocks":
+                    related = rel.get("relatedIssue", {})
+                    blocks.append(related.get("identifier", ""))
+
+            # Inverse relations where this issue is the target
+            for rel in issue.get("inverseRelations", {}).get("nodes", []):
+                if rel.get("type") == "blocks":
+                    source = rel.get("issue", {})
+                    blocked_by.append(source.get("identifier", ""))
+
+            return {"blocks": blocks, "blocked_by": blocked_by}
+        except Exception:
+            return {"blocks": [], "blocked_by": []}
+
+    def list_projects(self) -> list[dict[str, str]]:
+        """List all projects for the configured team."""
+        query = """
+        query ListProjects($teamId: String) {
+            projects(filter: { accessibleTeams: { id: { eq: $teamId } } }, first: 100) {
+                nodes {
+                    id
+                    name
+                    description
+                    state
+                    url
+                }
+            }
+        }
+        """
+        variables = {}
+        if self._team_id:
+            variables["teamId"] = self._team_id
+
+        try:
+            result = self._execute_query(query, variables if variables else None)
+            nodes = result.get("data", {}).get("projects", {}).get("nodes", [])
+            return [
+                {
+                    "id": node.get("id", ""),
+                    "name": node.get("name", ""),
+                    "description": node.get("description", ""),
+                    "state": node.get("state", ""),
+                    "url": node.get("url", ""),
+                }
+                for node in nodes
+            ]
+        except Exception:
+            return []
+
+    def _get_project_id(self, project_name: str) -> str | None:
+        """Resolve project name to project ID."""
+        projects = self.list_projects()
+        for proj in projects:
+            if proj.get("name", "").lower() == project_name.lower():
+                return proj.get("id")
+        return None
+
+    def set_project(self, ticket_id: str, project_id: str) -> bool:
+        """Assign a ticket to a project.
+
+        Args:
+            ticket_id: The ticket identifier (e.g. CITY-123)
+            project_id: The project UUID
+
+        Returns:
+            True if assignment was successful.
+        """
+        issue_uuid = self._resolve_issue_id(ticket_id)
+        if not issue_uuid:
+            raise RuntimeError(f"Could not resolve ticket ID: {ticket_id}")
+
+        mutation = """
+        mutation UpdateIssue($id: String!, $input: IssueUpdateInput!) {
+            issueUpdate(id: $id, input: $input) {
+                success
+            }
+        }
+        """
+        try:
+            result = self._execute_query(
+                mutation, {"id": ticket_id, "input": {"projectId": project_id}}
+            )
+            return result.get("data", {}).get("issueUpdate", {}).get("success", False)
+        except Exception as e:
+            raise RuntimeError(f"Failed to set project: {e}") from e
