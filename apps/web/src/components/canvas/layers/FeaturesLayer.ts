@@ -34,17 +34,59 @@ const DISTRICT_COLORS: Record<DistrictType, number> = {
   airport: 0xe0e0e0, // Light gray
 };
 
-// Road styling by class
-const ROAD_STYLES: Record<RoadClass, { width: number; color: number }> = {
-  highway: { width: 6, color: 0xf5a623 },
-  arterial: { width: 4, color: 0xffffff },
-  collector: { width: 3, color: 0xffffff },
-  local: { width: 2, color: 0xeeeeee },
-  trail: { width: 1, color: 0xb8860b },
-};
+// Road styling by class (Google Maps inspired)
+interface RoadStyle {
+  width: number;
+  color: number;
+  casingWidth: number; // Additional width for outline (0 = no casing)
+  casingColor: number;
+  dashed: boolean;
+  /** Minimum zoom level to show this road class (0 = always show) */
+  minZoom: number;
+}
 
-// Road outline (casing) colors
-const ROAD_CASING_COLOR = 0x666666;
+const ROAD_STYLES: Record<RoadClass, RoadStyle> = {
+  highway: {
+    width: 8,
+    color: 0xf9dc5c, // Yellow
+    casingWidth: 2,
+    casingColor: 0x000000, // Black outline
+    dashed: false,
+    minZoom: 0, // Always visible
+  },
+  arterial: {
+    width: 6,
+    color: 0xffffff, // White
+    casingWidth: 1,
+    casingColor: 0x888888, // Gray outline
+    dashed: false,
+    minZoom: 0, // Always visible
+  },
+  collector: {
+    width: 4,
+    color: 0xffffff, // White
+    casingWidth: 0.5,
+    casingColor: 0xaaaaaa, // Light gray outline
+    dashed: false,
+    minZoom: 0.5, // Only at medium+ zoom
+  },
+  local: {
+    width: 2,
+    color: 0xffffff, // White
+    casingWidth: 0,
+    casingColor: 0x000000,
+    dashed: false,
+    minZoom: 0.8, // Only at high zoom
+  },
+  trail: {
+    width: 2,
+    color: 0xa8d5a2, // Light green
+    casingWidth: 0,
+    casingColor: 0x000000,
+    dashed: true,
+    minZoom: 0.6, // Medium+ zoom
+  },
+};
 
 // POI colors by type
 const POI_COLORS: Record<POIType, number> = {
@@ -78,6 +120,7 @@ export class FeaturesLayer {
   private roadsGraphics: Graphics;
   private poisGraphics: Graphics;
   private data: FeaturesData | null = null;
+  private currentZoom: number = 1;
 
   constructor() {
     this.container = new Container();
@@ -113,6 +156,20 @@ export class FeaturesLayer {
     this.districtsGraphics.visible = visibility.districts;
     this.roadsGraphics.visible = visibility.roads;
     this.poisGraphics.visible = visibility.pois;
+  }
+
+  /**
+   * Set the current zoom level for zoom-based road visibility.
+   * @param zoom - Zoom level (1 = default, <1 = zoomed out, >1 = zoomed in)
+   */
+  setZoom(zoom: number): void {
+    if (this.currentZoom !== zoom) {
+      this.currentZoom = zoom;
+      // Re-render roads when zoom changes (for visibility filtering)
+      if (this.data) {
+        this.renderRoads(this.data.roads);
+      }
+    }
   }
 
   private render(): void {
@@ -201,17 +258,30 @@ export class FeaturesLayer {
       (a, b) => classOrder.indexOf(a.roadClass) - classOrder.indexOf(b.roadClass)
     );
 
-    // Draw road casings first (outlines)
-    for (const road of sortedRoads) {
+    // Filter roads by zoom level
+    const visibleRoads = sortedRoads.filter((road) => {
+      const style = ROAD_STYLES[road.roadClass];
+      return this.currentZoom >= style.minZoom;
+    });
+
+    // Scale road widths with zoom (thinner when zoomed out)
+    const zoomScale = Math.max(0.5, Math.min(1.5, this.currentZoom));
+
+    // Draw road casings first (outlines) - only for roads that have casings
+    for (const road of visibleRoads) {
       const style = ROAD_STYLES[road.roadClass];
       const points = road.line.points;
 
       if (points.length < 2) continue;
+      if (style.casingWidth <= 0) continue;
 
-      // Draw casing (darker outline)
+      const scaledWidth = style.width * zoomScale;
+      const casingWidth = scaledWidth + style.casingWidth * 2;
+
+      // Draw casing (outline)
       this.roadsGraphics.setStrokeStyle({
-        width: style.width + 2,
-        color: ROAD_CASING_COLOR,
+        width: casingWidth,
+        color: style.casingColor,
         cap: "round",
         join: "round",
       });
@@ -224,25 +294,78 @@ export class FeaturesLayer {
     }
 
     // Draw road fills
-    for (const road of sortedRoads) {
+    for (const road of visibleRoads) {
       const style = ROAD_STYLES[road.roadClass];
       const points = road.line.points;
 
       if (points.length < 2) continue;
 
-      // Draw road fill
-      this.roadsGraphics.setStrokeStyle({
-        width: style.width,
-        color: style.color,
-        cap: "round",
-        join: "round",
-      });
+      const scaledWidth = style.width * zoomScale;
 
-      this.roadsGraphics.moveTo(points[0].x, points[0].y);
-      for (let i = 1; i < points.length; i++) {
-        this.roadsGraphics.lineTo(points[i].x, points[i].y);
+      if (style.dashed) {
+        // Draw dashed line for trails
+        this.drawDashedLine(points, scaledWidth, style.color);
+      } else {
+        // Draw solid road fill
+        this.roadsGraphics.setStrokeStyle({
+          width: scaledWidth,
+          color: style.color,
+          cap: "round",
+          join: "round",
+        });
+
+        this.roadsGraphics.moveTo(points[0].x, points[0].y);
+        for (let i = 1; i < points.length; i++) {
+          this.roadsGraphics.lineTo(points[i].x, points[i].y);
+        }
+        this.roadsGraphics.stroke();
       }
-      this.roadsGraphics.stroke();
+    }
+  }
+
+  /**
+   * Draw a dashed line between points.
+   */
+  private drawDashedLine(points: Point[], width: number, color: number): void {
+    const dashLength = 8;
+    const gapLength = 4;
+
+    this.roadsGraphics.setStrokeStyle({
+      width,
+      color,
+      cap: "round",
+    });
+
+    for (let i = 0; i < points.length - 1; i++) {
+      const start = points[i];
+      const end = points[i + 1];
+      const dx = end.x - start.x;
+      const dy = end.y - start.y;
+      const segmentLength = Math.sqrt(dx * dx + dy * dy);
+      const unitX = dx / segmentLength;
+      const unitY = dy / segmentLength;
+
+      let currentLength = 0;
+      let drawing = true;
+
+      while (currentLength < segmentLength) {
+        const stepLength = drawing ? dashLength : gapLength;
+        const nextLength = Math.min(currentLength + stepLength, segmentLength);
+
+        if (drawing) {
+          const startX = start.x + unitX * currentLength;
+          const startY = start.y + unitY * currentLength;
+          const endX = start.x + unitX * nextLength;
+          const endY = start.y + unitY * nextLength;
+
+          this.roadsGraphics.moveTo(startX, startY);
+          this.roadsGraphics.lineTo(endX, endY);
+          this.roadsGraphics.stroke();
+        }
+
+        currentLength = nextLength;
+        drawing = !drawing;
+      }
     }
   }
 

@@ -397,6 +397,13 @@ export const MapCanvas = forwardRef<MapCanvasHandle, MapCanvasProps>(
     }
   }, [zoom, isReady]);
 
+  // Sync zoom to features layer for zoom-based road visibility
+  useEffect(() => {
+    if (isReady && featuresLayerRef.current && zoom !== undefined) {
+      featuresLayerRef.current.setZoom(zoom);
+    }
+  }, [zoom, isReady]);
+
   // Listen for viewport zoom changes and notify parent
   useEffect(() => {
     if (!isReady || !viewportRef.current || !onZoomChange) return;
