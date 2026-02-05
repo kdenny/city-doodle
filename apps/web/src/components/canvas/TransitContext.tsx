@@ -28,6 +28,7 @@ import {
   useCreateTransitLine,
   useCreateTransitLineSegment,
   useDeleteTransitStation,
+  useUpdateTransitLine,
 } from "../../api/hooks";
 import type {
   TransitStation,
@@ -127,6 +128,14 @@ interface TransitContextValue {
   subwayTunnels: SubwayTunnelData[];
   /** Raw transit network data for panels/stats (includes lines with segments) */
   transitNetwork: TransitNetwork | null;
+  /** Currently highlighted line ID (for visual emphasis on map) */
+  highlightedLineId: string | null;
+  /** Set the highlighted line ID */
+  setHighlightedLineId: (lineId: string | null) => void;
+  /** Get station IDs that belong to a specific line */
+  getStationIdsForLine: (lineId: string) => string[];
+  /** Get segment IDs that belong to a specific line */
+  getSegmentIdsForLine: (lineId: string) => string[];
   /** Validate if a position is valid for rail station placement */
   validateRailStationPlacement: (position: Point) => StationValidation;
   /** Validate if a position is valid for subway station placement */
@@ -152,6 +161,8 @@ interface TransitContextValue {
     toStationId: string,
     isUnderground?: boolean
   ) => Promise<boolean>;
+  /** Update a transit line (name, color) */
+  updateLine: (lineId: string, updates: { name?: string; color?: string }) => Promise<boolean>;
   /** Get the count of existing lines */
   lineCount: number;
   /** Loading state */
@@ -176,6 +187,9 @@ export function TransitProvider({ children, worldId }: TransitProviderProps) {
   const [railStations, setRailStations] = useState<RailStationData[]>([]);
   const [trackSegments, setTrackSegments] = useState<TrackSegmentData[]>([]);
 
+  // Highlighted line state (for visual emphasis when line is selected in panel)
+  const [highlightedLineId, setHighlightedLineId] = useState<string | null>(null);
+
   // Local state for UI rendering - Subway
   const [subwayStations, setSubwayStations] = useState<SubwayStationData[]>([]);
   const [subwayTunnels, setSubwayTunnels] = useState<SubwayTunnelData[]>([]);
@@ -189,6 +203,7 @@ export function TransitProvider({ children, worldId }: TransitProviderProps) {
   const createLine = useCreateTransitLine();
   const createSegment = useCreateTransitLineSegment();
   const deleteStation = useDeleteTransitStation();
+  const updateLine = useUpdateTransitLine();
 
   // Sync API data to local state for rendering
   useEffect(() => {
@@ -738,8 +753,68 @@ export function TransitProvider({ children, worldId }: TransitProviderProps) {
     [worldId, transitNetwork, createSegment, toast]
   );
 
+  /**
+   * Update a transit line (name, color).
+   */
+  const updateLineMethod = useCallback(
+    async (lineId: string, updates: { name?: string; color?: string }): Promise<boolean> => {
+      if (!worldId) {
+        toast?.addToast("Cannot update line: No world selected", "error");
+        return false;
+      }
+
+      try {
+        await updateLine.mutateAsync({
+          lineId,
+          data: updates,
+          worldId,
+        });
+
+        toast?.addToast("Transit line updated", "success");
+        return true;
+      } catch (error) {
+        console.error("Failed to update transit line:", error);
+        toast?.addToast("Failed to update transit line", "error");
+        return false;
+      }
+    },
+    [worldId, updateLine, toast]
+  );
+
+  /**
+   * Get all station IDs that belong to a specific line.
+   */
+  const getStationIdsForLine = useCallback(
+    (lineId: string): string[] => {
+      if (!transitNetwork) return [];
+      const line = transitNetwork.lines.find((l) => l.id === lineId);
+      if (!line) return [];
+
+      const stationIds = new Set<string>();
+      for (const segment of line.segments) {
+        stationIds.add(segment.from_station_id);
+        stationIds.add(segment.to_station_id);
+      }
+      return Array.from(stationIds);
+    },
+    [transitNetwork]
+  );
+
+  /**
+   * Get all segment IDs that belong to a specific line.
+   */
+  const getSegmentIdsForLine = useCallback(
+    (lineId: string): string[] => {
+      if (!transitNetwork) return [];
+      const line = transitNetwork.lines.find((l) => l.id === lineId);
+      if (!line) return [];
+      return line.segments.map((s) => s.id);
+    },
+    [transitNetwork]
+  );
+
   const lineCount = transitNetwork?.lines.length || 0;
-  const isLoading = isLoadingNetwork || createStation.isPending || createLine.isPending;
+  const isLoading = isLoadingNetwork || createStation.isPending || createLine.isPending || updateLine.isPending;
   const error = networkError || createStation.error || null;
 
   const value: TransitContextValue = {
@@ -759,9 +834,15 @@ export function TransitProvider({ children, worldId }: TransitProviderProps) {
     getNearbySubwayStations,
     // Raw network data for panels
     transitNetwork: transitNetwork ?? null,
+    // Highlighting (CITY-195)
+    highlightedLineId,
+    setHighlightedLineId,
+    getStationIdsForLine,
+    getSegmentIdsForLine,
     // Manual line drawing
     createLine: createLineManual,
     createLineSegment,
+    updateLine: updateLineMethod,
     lineCount,
     // Loading/Error
     isLoading,
