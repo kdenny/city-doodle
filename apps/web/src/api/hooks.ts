@@ -12,6 +12,10 @@ import {
 import { api } from "./client";
 import {
   AuthResponse,
+  District,
+  DistrictBulkCreate,
+  DistrictCreate,
+  DistrictUpdate,
   Job,
   JobCreate,
   PlacedSeed,
@@ -53,6 +57,10 @@ export const queryKeys = {
 
   // Seeds
   worldSeeds: (worldId: string) => ["worlds", worldId, "seeds"] as const,
+
+  // Districts
+  worldDistricts: (worldId: string) => ["worlds", worldId, "districts"] as const,
+  district: (id: string) => ["districts", id] as const,
 };
 
 // ============================================================================
@@ -410,6 +418,113 @@ export function useDeleteAllSeeds(
     onSuccess: (_, worldId) => {
       queryClient.invalidateQueries({
         queryKey: queryKeys.worldSeeds(worldId),
+      });
+    },
+    ...options,
+  });
+}
+
+// ============================================================================
+// District Hooks
+// ============================================================================
+
+export function useWorldDistricts(
+  worldId: string,
+  options?: Omit<UseQueryOptions<District[]>, "queryKey" | "queryFn">
+) {
+  return useQuery({
+    queryKey: queryKeys.worldDistricts(worldId),
+    queryFn: () => api.districts.list(worldId),
+    enabled: !!worldId,
+    ...options,
+  });
+}
+
+export function useDistrict(
+  districtId: string,
+  options?: Omit<UseQueryOptions<District>, "queryKey" | "queryFn">
+) {
+  return useQuery({
+    queryKey: queryKeys.district(districtId),
+    queryFn: () => api.districts.get(districtId),
+    enabled: !!districtId,
+    ...options,
+  });
+}
+
+export function useCreateDistrict(
+  options?: UseMutationOptions<District, Error, { worldId: string; data: Omit<DistrictCreate, "world_id"> }>
+) {
+  const queryClient = useQueryClient();
+  return useMutation({
+    mutationFn: ({ worldId, data }) => api.districts.create(worldId, data),
+    onSuccess: (_, { worldId }) => {
+      queryClient.invalidateQueries({
+        queryKey: queryKeys.worldDistricts(worldId),
+      });
+    },
+    ...options,
+  });
+}
+
+export function useCreateDistrictsBulk(
+  options?: UseMutationOptions<District[], Error, { worldId: string; data: DistrictBulkCreate }>
+) {
+  const queryClient = useQueryClient();
+  return useMutation({
+    mutationFn: ({ worldId, data }) => api.districts.createBulk(worldId, data),
+    onSuccess: (_, { worldId }) => {
+      queryClient.invalidateQueries({
+        queryKey: queryKeys.worldDistricts(worldId),
+      });
+    },
+    ...options,
+  });
+}
+
+export function useUpdateDistrict(
+  options?: UseMutationOptions<District, Error, { districtId: string; data: DistrictUpdate; worldId?: string }>
+) {
+  const queryClient = useQueryClient();
+  return useMutation({
+    mutationFn: ({ districtId, data }) => api.districts.update(districtId, data),
+    onSuccess: (district, { worldId }) => {
+      queryClient.setQueryData(queryKeys.district(district.id), district);
+      if (worldId) {
+        queryClient.invalidateQueries({
+          queryKey: queryKeys.worldDistricts(worldId),
+        });
+      }
+    },
+    ...options,
+  });
+}
+
+export function useDeleteDistrict(
+  options?: UseMutationOptions<void, Error, { districtId: string; worldId: string }>
+) {
+  const queryClient = useQueryClient();
+  return useMutation({
+    mutationFn: ({ districtId }) => api.districts.delete(districtId),
+    onSuccess: (_, { districtId, worldId }) => {
+      queryClient.removeQueries({ queryKey: queryKeys.district(districtId) });
+      queryClient.invalidateQueries({
+        queryKey: queryKeys.worldDistricts(worldId),
+      });
+    },
+    ...options,
+  });
+}
+
+export function useDeleteAllDistricts(
+  options?: UseMutationOptions<void, Error, string>
+) {
+  const queryClient = useQueryClient();
+  return useMutation({
+    mutationFn: (worldId: string) => api.districts.deleteAll(worldId),
+    onSuccess: (_, worldId) => {
+      queryClient.invalidateQueries({
+        queryKey: queryKeys.worldDistricts(worldId),
       });
     },
     ...options,
