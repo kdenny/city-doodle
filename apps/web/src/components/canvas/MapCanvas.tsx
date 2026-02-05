@@ -263,7 +263,7 @@ export const MapCanvas = forwardRef<MapCanvasHandle, MapCanvasProps>(
         featuresLayer.setData({ ...featuresData, neighborhoods: [] });
       } else {
         // Empty features for new worlds
-        featuresLayer.setData({ districts: [], roads: [], pois: [], neighborhoods: [] });
+        featuresLayer.setData({ districts: [], roads: [], pois: [], neighborhoods: [], bridges: [] });
       }
       featuresLayer.setVisibility(layerVisibility);
 
@@ -515,8 +515,9 @@ export const MapCanvas = forwardRef<MapCanvasHandle, MapCanvasProps>(
               !featuresContext.features.pois.some(fp => fp.id === p.id)
             ),
             neighborhoods: [],
+            bridges: currentData.bridges || [],
           }
-        : { districts: [], roads: [], pois: [], neighborhoods: [] };
+        : { districts: [], roads: [], pois: [], neighborhoods: [], bridges: [] };
 
       // Merge with context features
       const mergedData: FeaturesData = {
@@ -524,6 +525,7 @@ export const MapCanvas = forwardRef<MapCanvasHandle, MapCanvasProps>(
         roads: [...baseData.roads, ...featuresContext.features.roads],
         pois: [...baseData.pois, ...featuresContext.features.pois],
         neighborhoods: [...featuresContext.features.neighborhoods],
+        bridges: [...(baseData.bridges || []), ...(featuresContext.features.bridges || [])],
       };
 
       featuresLayerRef.current.setData(mergedData);

@@ -50,6 +50,8 @@ export type {
   RoadClass,
   POI,
   POIType,
+  Bridge,
+  WaterCrossingType,
   FeaturesData,
   LabelData,
   LabelConfig,
@@ -57,3 +59,5 @@ export type {
   LabelType,
 } from "./types";
 export { DEFAULT_LAYER_VISIBILITY, DEFAULT_DISTRICT_PERSONALITY } from "./types";
+export { detectBridges, roadCrossesWater } from "./bridgeDetection";
+export type { BridgeDetectionConfig, BridgeDetectionResult } from "./bridgeDetection";
