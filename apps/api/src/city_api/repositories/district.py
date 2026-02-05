@@ -1,0 +1,179 @@
+"""District repository - data access for districts."""
+
+from datetime import UTC, datetime
+from uuid import UUID
+
+from sqlalchemy import select
+from sqlalchemy.ext.asyncio import AsyncSession
+
+from city_api.models.district import District as DistrictModel
+from city_api.models.district import DISTRICT_TYPE_DEFAULTS
+from city_api.schemas import District, DistrictCreate, DistrictUpdate
+
+
+def _ensure_utc(dt: datetime) -> datetime:
+    """Ensure datetime is timezone-aware (UTC)."""
+    if dt.tzinfo is None:
+        return dt.replace(tzinfo=UTC)
+    return dt
+
+
+async def create_district(db: AsyncSession, district_create: DistrictCreate) -> District:
+    """Create a new district."""
+    # Apply type defaults if not explicitly set
+    defaults = DISTRICT_TYPE_DEFAULTS.get(district_create.type, {})
+    density = (
+        district_create.density
+        if district_create.density != 1.0
+        else defaults.get("density", 1.0)
+    )
+    max_height = (
+        district_create.max_height
+        if district_create.max_height != 4
+        else defaults.get("max_height", 4)
+    )
+
+    district = DistrictModel(
+        world_id=district_create.world_id,
+        type=district_create.type,
+        name=district_create.name,
+        geometry=district_create.geometry,
+        density=density,
+        max_height=max_height,
+        transit_access=district_create.transit_access,
+        historic=district_create.historic,
+    )
+    db.add(district)
+    await db.commit()
+    await db.refresh(district)
+    return _to_schema(district)
+
+
+async def create_districts_bulk(
+    db: AsyncSession, districts: list[DistrictCreate]
+) -> list[District]:
+    """Create multiple districts at once."""
+    models = []
+    for d in districts:
+        defaults = DISTRICT_TYPE_DEFAULTS.get(d.type, {})
+        density = d.density if d.density != 1.0 else defaults.get("density", 1.0)
+        max_height = d.max_height if d.max_height != 4 else defaults.get("max_height", 4)
+
+        models.append(
+            DistrictModel(
+                world_id=d.world_id,
+                type=d.type,
+                name=d.name,
+                geometry=d.geometry,
+                density=density,
+                max_height=max_height,
+                transit_access=d.transit_access,
+                historic=d.historic,
+            )
+        )
+    db.add_all(models)
+    await db.commit()
+    for m in models:
+        await db.refresh(m)
+    return [_to_schema(m) for m in models]
+
+
+async def get_district(db: AsyncSession, district_id: UUID) -> District | None:
+    """Get a district by ID."""
+    result = await db.execute(select(DistrictModel).where(DistrictModel.id == district_id))
+    district = result.scalar_one_or_none()
+    if district is None:
+        return None
+    return _to_schema(district)
+
+
+async def list_districts_by_world(
+    db: AsyncSession, world_id: UUID, historic_only: bool = False
+) -> list[District]:
+    """List all districts in a world."""
+    query = select(DistrictModel).where(DistrictModel.world_id == world_id)
+    if historic_only:
+        query = query.where(DistrictModel.historic == True)  # noqa: E712
+    result = await db.execute(query)
+    districts = result.scalars().all()
+    return [_to_schema(d) for d in districts]
+
+
+async def list_districts_by_type(
+    db: AsyncSession, world_id: UUID, district_type: str
+) -> list[District]:
+    """List districts of a specific type in a world."""
+    result = await db.execute(
+        select(DistrictModel).where(
+            DistrictModel.world_id == world_id, DistrictModel.type == district_type
+        )
+    )
+    districts = result.scalars().all()
+    return [_to_schema(d) for d in districts]
+
+
+async def update_district(
+    db: AsyncSession, district_id: UUID, district_update: DistrictUpdate
+) -> District | None:
+    """Update a district."""
+    result = await db.execute(select(DistrictModel).where(DistrictModel.id == district_id))
+    district = result.scalar_one_or_none()
+    if district is None:
+        return None
+
+    if district_update.type is not None:
+        district.type = district_update.type
+    if district_update.name is not None:
+        district.name = district_update.name
+    if district_update.geometry is not None:
+        district.geometry = district_update.geometry
+    if district_update.density is not None:
+        district.density = district_update.density
+    if district_update.max_height is not None:
+        district.max_height = district_update.max_height
+    if district_update.transit_access is not None:
+        district.transit_access = district_update.transit_access
+    if district_update.historic is not None:
+        district.historic = district_update.historic
+
+    await db.commit()
+    await db.refresh(district)
+    return _to_schema(district)
+
+
+async def delete_district(db: AsyncSession, district_id: UUID) -> bool:
+    """Delete a district."""
+    result = await db.execute(select(DistrictModel).where(DistrictModel.id == district_id))
+    district = result.scalar_one_or_none()
+    if district is None:
+        return False
+
+    await db.delete(district)
+    await db.commit()
+    return True
+
+
+async def clear_districts(db: AsyncSession, world_id: UUID) -> None:
+    """Delete all districts in a world."""
+    result = await db.execute(select(DistrictModel).where(DistrictModel.world_id == world_id))
+    districts = result.scalars().all()
+    for district in districts:
+        await db.delete(district)
+    await db.commit()
+
+
+def _to_schema(district: DistrictModel) -> District:
+    """Convert SQLAlchemy model to Pydantic schema."""
+    return District(
+        id=district.id,
+        world_id=district.world_id,
+        type=district.type,
+        name=district.name,
+        geometry=district.geometry,
+        density=district.density,
+        max_height=district.max_height,
+        transit_access=district.transit_access,
+        historic=district.historic,
+        created_at=_ensure_utc(district.created_at),
+        updated_at=_ensure_utc(district.updated_at),
+    )

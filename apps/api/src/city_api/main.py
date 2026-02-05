@@ -1,21 +1,18 @@
 """FastAPI application entry point."""
 
-from fastapi import FastAPI, HTTPException, status
+from fastapi import FastAPI
 from fastapi.middleware.cors import CORSMiddleware
 
 from city_api.config import settings
 from city_api.routers import auth_router
 from city_api.routes import (
+    districts_router,
     jobs_router,
     locks_router,
     road_network_router,
     seeds_router,
     tiles_router,
     worlds_router,
-)
-from city_api.schemas import (
-    District,
-    DistrictCreate,
 )
 
 app = FastAPI(
@@ -48,6 +45,7 @@ app.include_router(tiles_router)
 app.include_router(locks_router)
 app.include_router(jobs_router)
 app.include_router(seeds_router)
+app.include_router(districts_router)
 app.include_router(road_network_router)
 
 
@@ -61,35 +59,3 @@ async def root():
 async def health():
     """Health check endpoint."""
     return {"status": "healthy"}
-
-
-# =============================================================================
-# District endpoints (stubs - implementation in CITY-14)
-# =============================================================================
-
-
-@app.post("/districts", response_model=District, tags=["districts"])
-async def create_district(district: DistrictCreate) -> District:
-    """Create a new district on a tile."""
-    raise HTTPException(
-        status_code=status.HTTP_501_NOT_IMPLEMENTED,
-        detail="District creation not yet implemented",
-    )
-
-
-@app.get("/tiles/{tile_id}/districts", response_model=list[District], tags=["districts"])
-async def list_districts(tile_id: str) -> list[District]:
-    """List all districts on a tile."""
-    raise HTTPException(
-        status_code=status.HTTP_501_NOT_IMPLEMENTED,
-        detail="District listing not yet implemented",
-    )
-
-
-@app.get("/districts/{district_id}", response_model=District, tags=["districts"])
-async def get_district(district_id: str) -> District:
-    """Get a district by ID."""
-    raise HTTPException(
-        status_code=status.HTTP_501_NOT_IMPLEMENTED,
-        detail="District retrieval not yet implemented",
-    )

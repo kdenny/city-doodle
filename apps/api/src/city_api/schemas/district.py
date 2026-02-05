@@ -1,4 +1,4 @@
-"""District schemas - represents zoning districts on tiles."""
+"""District schemas - represents zoning districts in a world."""
 
 from datetime import datetime
 from enum import StrEnum
@@ -46,35 +46,60 @@ class DistrictProperties(BaseModel):
 class DistrictCreate(BaseModel):
     """Request model for creating a new district."""
 
-    tile_id: UUID
+    world_id: UUID
     type: DistrictType
+    name: str | None = Field(default=None, description="Display name for the district")
     geometry: dict[str, Any] = Field(
         ...,
         description="GeoJSON geometry for the district boundary",
     )
-    properties: DistrictProperties = Field(default_factory=DistrictProperties)
+    density: float = Field(default=1.0, ge=0.0, le=10.0)
+    max_height: int = Field(default=4, ge=1, le=100)
+    transit_access: bool = False
     historic: bool = Field(
         default=False,
         description="Historic preservation - prevents redevelopment during growth",
     )
+
+
+class DistrictUpdate(BaseModel):
+    """Request model for updating a district."""
+
+    type: DistrictType | None = None
+    name: str | None = None
+    geometry: dict[str, Any] | None = None
+    density: float | None = Field(default=None, ge=0.0, le=10.0)
+    max_height: int | None = Field(default=None, ge=1, le=100)
+    transit_access: bool | None = None
+    historic: bool | None = None
 
 
 class District(BaseModel):
-    """A zoning district placed on a tile."""
+    """A zoning district in a world."""
 
     id: UUID
-    tile_id: UUID
+    world_id: UUID
     type: DistrictType
+    name: str | None = None
     geometry: dict[str, Any] = Field(
         ...,
         description="GeoJSON geometry for the district boundary",
     )
-    properties: DistrictProperties = Field(default_factory=DistrictProperties)
-    historic: bool = Field(
-        default=False,
-        description="Historic preservation - prevents redevelopment during growth",
-    )
+    density: float
+    max_height: int
+    transit_access: bool
+    historic: bool
     created_at: datetime
     updated_at: datetime
 
     model_config = {"from_attributes": True}
+
+
+class DistrictBulkCreate(BaseModel):
+    """Request model for creating multiple districts."""
+
+    districts: list[DistrictCreate]
+
+
+# Legacy compatibility - flatten properties for simpler API
+DistrictProperties = DistrictProperties  # Keep for backward compatibility
