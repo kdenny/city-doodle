@@ -17,9 +17,7 @@ logger = logging.getLogger(__name__)
 router = APIRouter(tags=["seeds"])
 
 
-async def _verify_world_ownership(
-    db: AsyncSession, world_id: UUID, user_id: UUID
-) -> None:
+async def _verify_world_ownership(db: AsyncSession, world_id: UUID, user_id: UUID) -> None:
     """Verify that the user owns the world. Raises HTTPException if not."""
     world = await world_repo.get_world(db, world_id)
     if world is None:

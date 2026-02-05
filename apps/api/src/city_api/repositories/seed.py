@@ -87,9 +87,7 @@ async def delete_seed(db: AsyncSession, seed_id: UUID) -> bool:
 
 async def delete_all_seeds_in_world(db: AsyncSession, world_id: UUID) -> int:
     """Delete all placed seeds in a world. Returns count of deleted seeds."""
-    result = await db.execute(
-        delete(PlacedSeedModel).where(PlacedSeedModel.world_id == world_id)
-    )
+    result = await db.execute(delete(PlacedSeedModel).where(PlacedSeedModel.world_id == world_id))
     await db.commit()
     return result.rowcount
 

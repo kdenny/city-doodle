@@ -31,6 +31,4 @@ class PlacedSeed(Base):
 
     world: Mapped["World"] = relationship("World", back_populates="placed_seeds")
 
-    __table_args__ = (
-        Index("ix_placed_seeds_world_id", "world_id"),
-    )
+    __table_args__ = (Index("ix_placed_seeds_world_id", "world_id"),)
