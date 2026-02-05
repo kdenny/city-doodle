@@ -1,0 +1,76 @@
+# AI Agent Instructions
+# Format: Cursor IDE
+# Generated: 2026-02-04
+# Source: agent_instructions/
+#
+# DO NOT EDIT DIRECTLY - regenerate with: bin/vibe generate-agent-instructions
+
+
+# Project: (your project name)
+# (what this project does)
+
+# Tech Stack
+# - Backend: (e.g., FastAPI, Django, Express)
+# - Frontend: (e.g., React, Next.js, Vue)
+# - Database: (e.g., PostgreSQL, Supabase, Neon)
+# - Deployment: (e.g., Vercel, Fly.io, AWS)
+
+# Rules
+
+Read files before modifying them - understand existing code before making changes
+Use existing patterns - match the codebase's style, naming conventions, and architecture
+Prefer editing over creating - modify existing files rather than creating new ones
+Keep changes minimal - only change what's necessary to complete the task
+No security vulnerabilities - avoid XSS, SQL injection, command injection, etc.
+Handle errors gracefully - don't leave code in broken states
+Test your changes - verify code works before marking task complete
+Document non-obvious code - add comments only where the logic isn't self-evident
+
+# Avoid
+
+Do not: Guessing file contents without reading them first
+Do not: Creating new abstractions for one-time operations
+Do not: Adding features, refactoring, or "improvements" beyond what was asked
+Do not: Over-engineering with unnecessary complexity
+Do not: Leaving console.log or debug statements in production code
+Do not: Ignoring existing error handling patterns
+Do not: Making assumptions about requirements without asking
+Do not: Committing secrets, API keys, or credentials
+
+# Available Commands
+
+# doctor: bin/vibe doctor
+# setup: bin/vibe setup
+# do: bin/vibe do <ticket-id>
+# ticket list: bin/ticket list
+# ticket get: bin/ticket get <ticket-id>
+# ticket create: bin/ticket create "<title>"
+# ticket link: bin/ticket link <blocker-id> <blocked-id>
+# ticket relations: bin/ticket relations <ticket-id>
+# pr: bin/vibe pr
+# figma analyze: bin/vibe figma analyze
+# generate-agent-instructions: bin/vibe generate-agent-instructions
+
+# Workflows
+# Starting Work on a Ticket:
+#   bin/vibe do PROJ-123
+#   bin/ticket get PROJ-123
+#   git add <files>
+#   git commit -m "PROJ-123: Brief description of changes"
+#   git push -u origin PROJ-123
+#   bin/vibe pr
+# Creating a Pull Request:
+#   git status
+#   git diff origin/main
+#   git push -u origin BRANCH-NAME
+#   bin/vibe pr
+# Handling CI Failures:
+#   gh pr checks <pr-number>
+#   gh run view <run-id> --log-failed
+#   git add <files>
+#   git commit -m "Fix CI failure: <description>"
+#   git push
+# Cleaning Up After Merge:
+#   git worktree remove <worktree-path>
+#   git branch -d PROJ-123
+#   bin/vibe doctor
