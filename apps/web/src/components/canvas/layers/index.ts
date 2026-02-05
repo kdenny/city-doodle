@@ -22,6 +22,7 @@ export {
   worldUnitsToMeters,
   milesToWorldUnits,
   worldUnitsToMiles,
+  regenerateStreetGridWithAngle,
 } from "./districtGenerator";
 export type {
   DistrictGenerationConfig,

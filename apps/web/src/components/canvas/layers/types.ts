@@ -138,6 +138,12 @@ export interface District {
   isHistoric?: boolean;
   /** Per-district personality settings */
   personality?: DistrictPersonality;
+  /**
+   * Grid orientation angle in radians.
+   * If not set, a default angle is calculated from the district position.
+   * Range: typically -π/12 to π/12 (-15° to +15°) but can be any angle.
+   */
+  gridAngle?: number;
 }
 
 // Road hierarchy classes

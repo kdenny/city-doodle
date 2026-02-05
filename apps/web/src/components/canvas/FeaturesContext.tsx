@@ -23,6 +23,7 @@ import {
   generateDistrictGeometry,
   wouldOverlap,
   regenerateStreetGridForClippedDistrict,
+  regenerateStreetGridWithAngle,
   type DistrictGenerationConfig,
   type GeneratedDistrict,
 } from "./layers/districtGenerator";
@@ -422,13 +423,17 @@ export function FeaturesProvider({
       if (clipResult.overlapsWater) {
         generated.district.polygon.points = clipResult.clippedPolygon;
         // Regenerate the street grid for the clipped polygon (CITY-142)
-        generated.roads = regenerateStreetGridForClippedDistrict(
+        // Pass the existing gridAngle to preserve orientation
+        const clippedGridResult = regenerateStreetGridForClippedDistrict(
           clipResult.clippedPolygon,
           generated.district.id,
           generated.district.type,
           position,
-          personality.sprawl_compact
+          personality.sprawl_compact,
+          generated.district.gridAngle
         );
+        generated.roads = clippedGridResult.roads;
+        generated.district.gridAngle = clippedGridResult.gridAngle;
       }
 
       const tempId = generated.district.id;
@@ -637,6 +642,31 @@ export function FeaturesProvider({
       // Find the current district for rollback
       const currentDistrict = features.districts.find((d) => d.id === id);
       if (!currentDistrict) return;
+
+      // Handle gridAngle changes by regenerating street grid
+      if (updates.gridAngle !== undefined && updates.gridAngle !== currentDistrict.gridAngle) {
+        const { roads: newRoads, gridAngle: actualAngle } = regenerateStreetGridWithAngle(
+          currentDistrict,
+          updates.gridAngle,
+          currentDistrict.personality?.sprawlCompact ?? 0.5
+        );
+
+        // Update district with new gridAngle and replace its roads
+        updateFeatures((prev) => {
+          // Remove old roads belonging to this district
+          const otherRoads = prev.roads.filter((r) => r.districtId !== id);
+          return {
+            ...prev,
+            districts: prev.districts.map((d) =>
+              d.id === id ? { ...d, ...updates, gridAngle: actualAngle } : d
+            ),
+            roads: [...otherRoads, ...newRoads],
+          };
+        });
+
+        // gridAngle is a local-only property (not persisted to API), so return early
+        return;
+      }
 
       // Optimistically update local state
       updateFeatures((prev) => ({

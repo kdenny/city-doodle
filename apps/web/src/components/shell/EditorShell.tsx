@@ -182,6 +182,7 @@ function SelectionWithFeatures({ children }: { children: ReactNode }) {
           type: feature.districtType as "residential" | "downtown" | "commercial" | "industrial" | "hospital" | "university" | "k12" | "park" | "airport",
           isHistoric: feature.isHistoric,
           personality: feature.personality,
+          gridAngle: feature.gridAngle,
         });
       } else if (feature.type === "road") {
         updateRoad(feature.id, {

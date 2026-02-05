@@ -92,6 +92,82 @@ describe("InspectorPanel", () => {
 
       expect(onDelete).toHaveBeenCalledWith(mockDistrict);
     });
+
+    describe("grid angle control", () => {
+      it("renders grid angle slider", () => {
+        render(<InspectorPanel selection={mockDistrict} />);
+
+        expect(screen.getByText("Grid Angle")).toBeInTheDocument();
+        expect(screen.getByTestId("grid-angle-slider")).toBeInTheDocument();
+      });
+
+      it("displays initial angle from district", () => {
+        const districtWithAngle: SelectedDistrict = {
+          ...mockDistrict,
+          gridAngle: Math.PI / 6, // 30 degrees
+        };
+        render(<InspectorPanel selection={districtWithAngle} />);
+
+        const slider = screen.getByTestId("grid-angle-slider") as HTMLInputElement;
+        // Allow for rounding differences in radians-to-degrees conversion
+        expect(Math.abs(parseInt(slider.value) - 30)).toBeLessThanOrEqual(1);
+      });
+
+      it("calls onUpdate when slider changes", () => {
+        const onUpdate = vi.fn();
+        render(<InspectorPanel selection={mockDistrict} onUpdate={onUpdate} />);
+
+        const slider = screen.getByTestId("grid-angle-slider");
+        fireEvent.change(slider, { target: { value: "15" } });
+
+        expect(onUpdate).toHaveBeenCalledWith(
+          expect.objectContaining({
+            gridAngle: expect.closeTo(Math.PI / 12, 5), // 15 degrees in radians
+          })
+        );
+      });
+
+      it("renders preset angle buttons", () => {
+        render(<InspectorPanel selection={mockDistrict} />);
+
+        // Use getByRole to get button elements specifically
+        const buttons = screen.getAllByRole("button");
+        const buttonTexts = buttons.map(b => b.textContent);
+        expect(buttonTexts).toContain("-15°");
+        expect(buttonTexts).toContain("0°");
+        expect(buttonTexts).toContain("+15°");
+        expect(buttonTexts).toContain("+45°");
+      });
+
+      it("calls onUpdate when preset button clicked", () => {
+        const onUpdate = vi.fn();
+        render(<InspectorPanel selection={mockDistrict} onUpdate={onUpdate} />);
+
+        // Find the +45° button specifically
+        const buttons = screen.getAllByRole("button");
+        const plus45Button = buttons.find(b => b.textContent === "+45°");
+        expect(plus45Button).toBeDefined();
+        fireEvent.click(plus45Button!);
+
+        expect(onUpdate).toHaveBeenCalledWith(
+          expect.objectContaining({
+            gridAngle: expect.closeTo(Math.PI / 4, 5), // 45 degrees in radians
+          })
+        );
+      });
+
+      it("displays angle in degrees as text", () => {
+        const districtWithAngle: SelectedDistrict = {
+          ...mockDistrict,
+          gridAngle: Math.PI / 4, // 45 degrees
+        };
+        render(<InspectorPanel selection={districtWithAngle} />);
+
+        const slider = screen.getByTestId("grid-angle-slider") as HTMLInputElement;
+        // Allow for rounding differences
+        expect(Math.abs(parseInt(slider.value) - 45)).toBeLessThanOrEqual(1);
+      });
+    });
   });
 
   describe("historic flag validation based on era", () => {
