@@ -57,12 +57,22 @@ class TerrainConfig:
     beach_slope_max: float = 0.15  # Maximum slope for beach formation (gradual slopes only)
     beach_width_multiplier: float = 1.0  # Multiplier for beach width (1.0 = normal)
 
+    # Barrier island parameters
+    barrier_islands_enabled: bool = True  # Whether to generate barrier islands
+    barrier_island_offset_min: float = 8.0  # Min distance from coast (cells)
+    barrier_island_offset_max: float = 15.0  # Max distance from coast (cells)
+    barrier_island_width_min: float = 2.0  # Min island width (cells)
+    barrier_island_width_max: float = 5.0  # Max island width (cells)
+    barrier_island_length_min: float = 20.0  # Min coastline length for islands
+    barrier_inlet_spacing_min: float = 30.0  # Min spacing between inlets (cells)
+    barrier_inlet_spacing_max: float = 60.0  # Max spacing between inlets (cells)
+
 
 @dataclass
 class TerrainFeature:
     """A single terrain feature in GeoJSON-like format."""
 
-    type: str  # "coastline", "river", "lake", "contour", "beach"
+    type: str  # "coastline", "river", "lake", "contour", "beach", "barrier_island", "lagoon", "tidal_flat", "dune_ridge", "inlet"
     geometry: dict[str, Any]  # GeoJSON geometry
     properties: dict[str, Any] = field(default_factory=dict)
 

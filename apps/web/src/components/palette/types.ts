@@ -86,6 +86,28 @@ export const SEED_TYPES: SeedType[] = [
     icon: "✈️",
     description: "Regional airport",
   },
+  // Stadiums (large POIs with street grid impact)
+  {
+    id: "baseball_stadium",
+    label: "Baseball Stadium",
+    category: "poi",
+    icon: "⚾",
+    description: "Baseball stadium with parking",
+  },
+  {
+    id: "football_stadium",
+    label: "Football Stadium",
+    category: "poi",
+    icon: "🏈",
+    description: "Football stadium with parking",
+  },
+  {
+    id: "arena",
+    label: "Arena",
+    category: "poi",
+    icon: "🏟️",
+    description: "Multi-purpose arena",
+  },
   // Transit
   {
     id: "subway",

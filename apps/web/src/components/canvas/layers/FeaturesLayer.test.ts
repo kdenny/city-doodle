@@ -56,6 +56,7 @@ describe("FeaturesLayer", () => {
         },
       ],
       neighborhoods: [],
+      bridges: [],
     };
 
     expect(() => layer.setData(data)).not.toThrow();
@@ -71,8 +72,10 @@ describe("FeaturesLayer", () => {
       districts: false,
       roads: true,
       pois: false,
+      bridges: true,
       grid: true,
       labels: true,
+      subwayTunnels: false,
     };
 
     layer.setVisibility(visibility);
@@ -92,8 +95,10 @@ describe("FeaturesLayer", () => {
       districts: true,
       roads: true,
       pois: true,
+      bridges: true,
       grid: true,
       labels: true,
+      subwayTunnels: false,
     };
 
     layer.setVisibility(allVisible);
@@ -112,8 +117,10 @@ describe("FeaturesLayer", () => {
       districts: true,
       roads: true,
       pois: true,
+      bridges: true,
       grid: true,
       labels: true,
+      subwayTunnels: false,
     };
 
     layer.setVisibility(allVisible);
@@ -132,8 +139,10 @@ describe("FeaturesLayer", () => {
       districts: true,
       roads: true,
       pois: true,
+      bridges: true,
       grid: true,
       labels: true,
+      subwayTunnels: false,
     };
 
     layer.setVisibility(allVisible);
@@ -158,6 +167,7 @@ describe("FeaturesLayer", () => {
         roads: [],
         pois: [],
         neighborhoods: [],
+        bridges: [],
       };
       layer.setData(data);
 
@@ -178,6 +188,7 @@ describe("FeaturesLayer", () => {
           },
         ],
         neighborhoods: [],
+        bridges: [],
       };
       layer.setData(data);
 
@@ -200,6 +211,7 @@ describe("FeaturesLayer", () => {
           },
         ],
         neighborhoods: [],
+        bridges: [],
       };
       layer.setData(data);
 
@@ -222,6 +234,7 @@ describe("FeaturesLayer", () => {
           },
         ],
         neighborhoods: [],
+        bridges: [],
       };
       layer.setData(data);
 
@@ -248,6 +261,7 @@ describe("FeaturesLayer", () => {
         ],
         pois: [],
         neighborhoods: [],
+        bridges: [],
       };
       layer.setData(data);
 
@@ -274,6 +288,7 @@ describe("FeaturesLayer", () => {
         ],
         pois: [],
         neighborhoods: [],
+        bridges: [],
       };
       layer.setData(data);
 
@@ -303,6 +318,7 @@ describe("FeaturesLayer", () => {
         roads: [],
         pois: [],
         neighborhoods: [],
+        bridges: [],
       };
       layer.setData(data);
 
@@ -332,6 +348,7 @@ describe("FeaturesLayer", () => {
         roads: [],
         pois: [],
         neighborhoods: [],
+        bridges: [],
       };
       layer.setData(data);
 
@@ -363,6 +380,7 @@ describe("FeaturesLayer", () => {
           },
         ],
         neighborhoods: [],
+        bridges: [],
       };
       layer.setData(data);
 
@@ -401,6 +419,7 @@ describe("FeaturesLayer", () => {
         ],
         pois: [],
         neighborhoods: [],
+        bridges: [],
       };
       layer.setData(data);
 
@@ -421,6 +440,7 @@ describe("FeaturesLayer", () => {
           },
         ],
         neighborhoods: [],
+        bridges: [],
       };
       layer.setData(data);
       layer.setVisibility({
@@ -432,8 +452,10 @@ describe("FeaturesLayer", () => {
         districts: true,
         roads: true,
         pois: false, // POIs hidden
+        bridges: true,
         grid: true,
         labels: true,
+        subwayTunnels: false,
       });
 
       const result = layer.hitTest(50, 50);
@@ -457,6 +479,7 @@ describe("FeaturesLayer", () => {
         ],
         pois: [],
         neighborhoods: [],
+        bridges: [],
       };
       layer.setData(data);
       layer.setVisibility({
@@ -468,8 +491,10 @@ describe("FeaturesLayer", () => {
         districts: true,
         roads: false, // Roads hidden
         pois: true,
+        bridges: true,
         grid: true,
         labels: true,
+        subwayTunnels: false,
       });
 
       const result = layer.hitTest(50, 50);
@@ -496,6 +521,7 @@ describe("FeaturesLayer", () => {
         roads: [],
         pois: [],
         neighborhoods: [],
+        bridges: [],
       };
       layer.setData(data);
       layer.setVisibility({
@@ -507,8 +533,10 @@ describe("FeaturesLayer", () => {
         districts: false, // Districts hidden
         roads: true,
         pois: true,
+        bridges: true,
         grid: true,
         labels: true,
+        subwayTunnels: false,
       });
 
       const result = layer.hitTest(50, 50);
@@ -527,6 +555,7 @@ describe("FeaturesLayer", () => {
         roads: [],
         pois: [],
         neighborhoods: [],
+        bridges: [],
       };
       layer.setData(data);
       expect(layer.getData()).toBe(data);
