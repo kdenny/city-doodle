@@ -50,12 +50,19 @@ class TerrainConfig:
     # Coastline smoothing iterations
     coastline_smoothing: int = 3
 
+    # Beach parameters
+    beach_enabled: bool = True  # Whether to generate beaches
+    beach_height_band: float = 0.08  # Height band above water level for beaches
+    beach_min_length: int = 5  # Minimum beach segment length in cells
+    beach_slope_max: float = 0.15  # Maximum slope for beach formation (gradual slopes only)
+    beach_width_multiplier: float = 1.0  # Multiplier for beach width (1.0 = normal)
+
 
 @dataclass
 class TerrainFeature:
     """A single terrain feature in GeoJSON-like format."""
 
-    type: str  # "coastline", "river", "lake", "contour"
+    type: str  # "coastline", "river", "lake", "contour", "beach"
     geometry: dict[str, Any]  # GeoJSON geometry
     properties: dict[str, Any] = field(default_factory=dict)
 

@@ -110,6 +110,47 @@ export function generateMockTerrain(
   const lakeName = generateLakeName({ seed: seed + 1000 });
   const riverName = generateRiverName({ seed: seed + 2000 });
 
+  // Generate beach polygons along coastline
+  // Beach is a thin strip between the coastline and slightly inland
+  const beachWidth = worldSize * 0.02; // ~2% of world width
+  const beachPoints: Point[] = [];
+
+  // Create beach polygon by offsetting coastline points
+  for (const point of coastlinePoints) {
+    beachPoints.push({ x: point.x, y: point.y });
+  }
+  // Add offset points going back the other way
+  for (let i = coastlinePoints.length - 1; i >= 0; i--) {
+    const point = coastlinePoints[i];
+    beachPoints.push({
+      x: point.x + beachWidth + (random() - 0.5) * beachWidth * 0.3,
+      y: point.y,
+    });
+  }
+
+  // Generate smaller beach around the lake
+  const lakeBeachPoints: Point[] = [];
+  const lakeBeachWidth = worldSize * 0.015;
+  for (const point of lakePoints) {
+    const dx = point.x - lakeCenter.x;
+    const dy = point.y - lakeCenter.y;
+    const dist = Math.sqrt(dx * dx + dy * dy);
+    const scale = (dist + lakeBeachWidth) / dist;
+    lakeBeachPoints.push({ x: point.x, y: point.y });
+  }
+  // Outer ring
+  for (let i = lakePoints.length - 1; i >= 0; i--) {
+    const point = lakePoints[i];
+    const dx = point.x - lakeCenter.x;
+    const dy = point.y - lakeCenter.y;
+    const dist = Math.sqrt(dx * dx + dy * dy);
+    const scale = (dist + lakeBeachWidth) / dist;
+    lakeBeachPoints.push({
+      x: lakeCenter.x + dx * scale,
+      y: lakeCenter.y + dy * scale,
+    });
+  }
+
   return {
     water: [
       { id: "ocean-1", type: "ocean", polygon: oceanPolygon },
@@ -118,5 +159,9 @@ export function generateMockTerrain(
     coastlines: [{ id: "coast-1", line: { points: coastlinePoints, width: 2 } }],
     rivers: [{ id: "river-1", line: { points: riverPoints }, width: 3, name: riverName }],
     contours,
+    beaches: [
+      { id: "beach-1", beachType: "ocean", polygon: { points: beachPoints }, width: beachWidth },
+      { id: "beach-2", beachType: "lake", polygon: { points: lakeBeachPoints }, width: lakeBeachWidth },
+    ],
   };
 }

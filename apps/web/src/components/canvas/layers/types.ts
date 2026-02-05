@@ -43,11 +43,28 @@ export interface ContourLine {
   line: Line;
 }
 
+/**
+ * Beach types based on adjacent water body
+ */
+export type BeachType = "ocean" | "bay" | "lake" | "river";
+
+export interface BeachFeature {
+  id: string;
+  /** Type of water body the beach is adjacent to */
+  beachType: BeachType;
+  polygon: Polygon;
+  /** Average width of the beach in world units (varies based on slope) */
+  width?: number;
+  /** Optional name for the beach */
+  name?: string;
+}
+
 export interface TerrainData {
   water: WaterFeature[];
   coastlines: CoastlineFeature[];
   rivers: RiverFeature[];
   contours: ContourLine[];
+  beaches: BeachFeature[];
 }
 
 // District types matching the spec
@@ -186,6 +203,7 @@ export interface LabelLayerData {
 
 export interface LayerVisibility {
   water: boolean;
+  beaches: boolean;
   coastlines: boolean;
   rivers: boolean;
   contours: boolean;
@@ -198,6 +216,7 @@ export interface LayerVisibility {
 
 export const DEFAULT_LAYER_VISIBILITY: LayerVisibility = {
   water: true,
+  beaches: true,
   coastlines: true,
   rivers: true,
   contours: false,

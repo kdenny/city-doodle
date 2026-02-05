@@ -7,6 +7,7 @@ import type {
   TerrainData,
   LayerVisibility,
   WaterFeature,
+  BeachFeature,
   CoastlineFeature,
   RiverFeature,
   ContourLine,
@@ -19,11 +20,19 @@ const COLORS = {
   coastline: 0x4a90a4, // Darker blue for coastlines
   river: 0x6bb3c9, // Medium blue for rivers
   contour: 0xc9b896, // Tan/brown for contour lines
+  // Beach colors vary by type
+  beach: {
+    ocean: 0xf5e6c8, // Sandy tan for ocean beaches
+    bay: 0xf2e0bf, // Slightly warmer for bay beaches
+    lake: 0xe8dcc0, // Muted tan for lake beaches
+    river: 0xddd5b8, // Grayish tan for river beaches
+  },
 };
 
 export class TerrainLayer {
   private container: Container;
   private waterGraphics: Graphics;
+  private beachGraphics: Graphics;
   private coastlineGraphics: Graphics;
   private riverGraphics: Graphics;
   private contourGraphics: Graphics;
@@ -37,6 +46,11 @@ export class TerrainLayer {
     this.waterGraphics = new Graphics();
     this.waterGraphics.label = "water";
     this.container.addChild(this.waterGraphics);
+
+    // Beaches render on top of water, below coastlines
+    this.beachGraphics = new Graphics();
+    this.beachGraphics.label = "beaches";
+    this.container.addChild(this.beachGraphics);
 
     this.contourGraphics = new Graphics();
     this.contourGraphics.label = "contours";
@@ -62,6 +76,7 @@ export class TerrainLayer {
 
   setVisibility(visibility: LayerVisibility): void {
     this.waterGraphics.visible = visibility.water;
+    this.beachGraphics.visible = visibility.beaches;
     this.coastlineGraphics.visible = visibility.coastlines;
     this.riverGraphics.visible = visibility.rivers;
     this.contourGraphics.visible = visibility.contours;
@@ -71,6 +86,7 @@ export class TerrainLayer {
     if (!this.terrainData) return;
 
     this.renderWater(this.terrainData.water);
+    this.renderBeaches(this.terrainData.beaches || []);
     this.renderCoastlines(this.terrainData.coastlines);
     this.renderRivers(this.terrainData.rivers);
     this.renderContours(this.terrainData.contours);
@@ -91,6 +107,26 @@ export class TerrainLayer {
       }
       this.waterGraphics.closePath();
       this.waterGraphics.fill({ color, alpha: 0.7 });
+    }
+  }
+
+  private renderBeaches(features: BeachFeature[]): void {
+    this.beachGraphics.clear();
+
+    for (const feature of features) {
+      const points = feature.polygon.points;
+      if (points.length < 3) continue;
+
+      // Select color based on beach type
+      const beachType = feature.beachType || "ocean";
+      const color = COLORS.beach[beachType] || COLORS.beach.ocean;
+
+      this.beachGraphics.moveTo(points[0].x, points[0].y);
+      for (let i = 1; i < points.length; i++) {
+        this.beachGraphics.lineTo(points[i].x, points[i].y);
+      }
+      this.beachGraphics.closePath();
+      this.beachGraphics.fill({ color, alpha: 0.85 });
     }
   }
 

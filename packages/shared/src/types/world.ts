@@ -11,6 +11,10 @@ export interface WorldSettings {
   historic_modern: number
   /** 0 = transit-oriented, 1 = car-dependent */
   transit_car: number
+  /** Whether to generate beaches along coastlines */
+  beach_enabled?: boolean
+  /** Multiplier for beach width (0.5 = narrow, 2.0 = wide) */
+  beach_width_multiplier?: number
 }
 
 export interface WorldCreate {
