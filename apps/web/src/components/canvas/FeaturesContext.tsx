@@ -29,6 +29,7 @@ import {
   clipAndValidateDistrict,
   type ClipResult,
 } from "./layers/polygonUtils";
+import { generateInterDistrictRoads } from "./layers/interDistrictRoads";
 import { useTerrainOptional } from "./TerrainContext";
 import { useToastOptional } from "../../contexts";
 
@@ -413,11 +414,22 @@ export function FeaturesProvider({
 
       const tempId = generated.district.id;
 
+      // Generate inter-district roads connecting to existing districts (CITY-144)
+      const interDistrictResult = generateInterDistrictRoads(
+        generated.district,
+        features.districts,
+        waterFeatures,
+        { roadClass: "arterial", avoidWater: true }
+      );
+
+      // Combine internal roads with inter-district roads
+      const allRoads = [...generated.roads, ...interDistrictResult.roads];
+
       // Optimistically add to local state
       updateFeatures((prev) => ({
         ...prev,
         districts: [...prev.districts, generated.district],
-        roads: [...prev.roads, ...generated.roads],
+        roads: [...prev.roads, ...allRoads],
       }));
 
       // Persist to API if worldId is provided
