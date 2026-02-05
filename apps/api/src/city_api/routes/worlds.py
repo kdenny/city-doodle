@@ -9,7 +9,7 @@ from sqlalchemy.ext.asyncio import AsyncSession
 from city_api.database import get_db
 from city_api.dependencies import get_current_user
 from city_api.repositories import world as world_repo
-from city_api.schemas import World, WorldCreate
+from city_api.schemas import World, WorldCreate, WorldUpdate
 
 logger = logging.getLogger(__name__)
 
@@ -75,6 +75,50 @@ async def get_world(
         )
 
     return world_repo._to_schema(world_model)
+
+
+@router.patch("/{world_id}", response_model=World)
+async def update_world(
+    world_id: UUID,
+    update_data: WorldUpdate,
+    db: AsyncSession = Depends(get_db),
+    user_id: UUID = Depends(get_current_user),
+) -> World:
+    """
+    Update a world's name or settings.
+
+    Returns 404 if the world doesn't exist.
+    Returns 403 if the world belongs to another user.
+    """
+    # Check if world exists at all
+    world_model = await world_repo.get_world(db, world_id)
+    if world_model is None:
+        logger.warning("World not found for update: world_id=%s user_id=%s", world_id, user_id)
+        raise HTTPException(
+            status_code=status.HTTP_404_NOT_FOUND,
+            detail=f"World {world_id} not found",
+        )
+
+    # Check ownership
+    if world_model.user_id != user_id:
+        logger.warning(
+            "Unauthorized world update: world_id=%s owner=%s requester=%s",
+            world_id,
+            world_model.user_id,
+            user_id,
+        )
+        raise HTTPException(
+            status_code=status.HTTP_403_FORBIDDEN,
+            detail="You don't have access to this world",
+        )
+
+    updated_world = await world_repo.update_world(db, world_id, user_id, update_data)
+    if updated_world is None:
+        raise HTTPException(
+            status_code=status.HTTP_404_NOT_FOUND,
+            detail=f"World {world_id} not found",
+        )
+    return updated_world
 
 
 @router.delete("/{world_id}", status_code=status.HTTP_204_NO_CONTENT)

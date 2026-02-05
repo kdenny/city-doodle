@@ -183,6 +183,134 @@ class TestGetWorld:
         assert response.status_code == 403
 
 
+class TestUpdateWorld:
+    """Tests for PATCH /worlds/{world_id} endpoint."""
+
+    @pytest.mark.asyncio
+    async def test_update_world_name(self, client: AsyncClient):
+        """Update world should change the name."""
+        # Create a world
+        create_response = await client.post(
+            "/worlds",
+            json={"name": "Original Name", "seed": 88888},
+            headers={"X-User-Id": TEST_USER_ID},
+        )
+        world_id = create_response.json()["id"]
+
+        # Update the name
+        response = await client.patch(
+            f"/worlds/{world_id}",
+            json={"name": "Updated Name"},
+            headers={"X-User-Id": TEST_USER_ID},
+        )
+        assert response.status_code == 200
+        data = response.json()
+        assert data["name"] == "Updated Name"
+        # Seed should remain unchanged
+        assert data["seed"] == 88888
+
+    @pytest.mark.asyncio
+    async def test_update_world_settings(self, client: AsyncClient):
+        """Update world should change the settings."""
+        # Create a world with default settings
+        create_response = await client.post(
+            "/worlds",
+            json={"name": "Settings Test", "seed": 99999},
+            headers={"X-User-Id": TEST_USER_ID},
+        )
+        world_id = create_response.json()["id"]
+        original_settings = create_response.json()["settings"]
+
+        # Update settings
+        new_settings = {
+            "grid_organic": 0.9,
+            "sprawl_compact": 0.1,
+            "historic_modern": 0.7,
+            "transit_car": 0.3,
+        }
+        response = await client.patch(
+            f"/worlds/{world_id}",
+            json={"settings": new_settings},
+            headers={"X-User-Id": TEST_USER_ID},
+        )
+        assert response.status_code == 200
+        data = response.json()
+        assert data["settings"]["grid_organic"] == 0.9
+        assert data["settings"]["sprawl_compact"] == 0.1
+        assert data["settings"]["historic_modern"] == 0.7
+        assert data["settings"]["transit_car"] == 0.3
+        # Name should remain unchanged
+        assert data["name"] == "Settings Test"
+
+    @pytest.mark.asyncio
+    async def test_update_world_name_and_settings(self, client: AsyncClient):
+        """Update world can change both name and settings at once."""
+        # Create a world
+        create_response = await client.post(
+            "/worlds",
+            json={"name": "Old Name", "seed": 11111},
+            headers={"X-User-Id": TEST_USER_ID},
+        )
+        world_id = create_response.json()["id"]
+
+        # Update both name and settings
+        response = await client.patch(
+            f"/worlds/{world_id}",
+            json={
+                "name": "New Name",
+                "settings": {
+                    "grid_organic": 0.2,
+                    "sprawl_compact": 0.8,
+                    "historic_modern": 0.5,
+                    "transit_car": 0.5,
+                },
+            },
+            headers={"X-User-Id": TEST_USER_ID},
+        )
+        assert response.status_code == 200
+        data = response.json()
+        assert data["name"] == "New Name"
+        assert data["settings"]["grid_organic"] == 0.2
+        assert data["settings"]["sprawl_compact"] == 0.8
+
+    @pytest.mark.asyncio
+    async def test_update_world_not_found(self, client: AsyncClient):
+        """Update world should return 404 for non-existent world."""
+        fake_id = "00000000-0000-0000-0000-000000000000"
+        response = await client.patch(
+            f"/worlds/{fake_id}",
+            json={"name": "Ghost World"},
+            headers={"X-User-Id": TEST_USER_ID},
+        )
+        assert response.status_code == 404
+
+    @pytest.mark.asyncio
+    async def test_update_world_forbidden_for_other_user(self, client: AsyncClient):
+        """Update world should return 403 for another user's world."""
+        # Create world as user 1
+        create_response = await client.post(
+            "/worlds",
+            json={"name": "User 1 World", "seed": 22222},
+            headers={"X-User-Id": TEST_USER_ID},
+        )
+        world_id = create_response.json()["id"]
+
+        # Try to update as user 2
+        response = await client.patch(
+            f"/worlds/{world_id}",
+            json={"name": "Hacked Name"},
+            headers={"X-User-Id": OTHER_USER_ID},
+        )
+        assert response.status_code == 403
+
+        # Verify name is unchanged for user 1
+        get_response = await client.get(
+            f"/worlds/{world_id}",
+            headers={"X-User-Id": TEST_USER_ID},
+        )
+        assert get_response.json()["name"] == "User 1 World"
+
+
 class TestDeleteWorld:
     """Tests for DELETE /worlds/{world_id} endpoint."""
 

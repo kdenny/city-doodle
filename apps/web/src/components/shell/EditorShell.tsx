@@ -1,6 +1,7 @@
 import { ReactNode, useCallback } from "react";
 import { ViewModeProvider, useViewMode, ViewMode } from "./ViewModeContext";
 import { ZoomProvider, useZoom } from "./ZoomContext";
+import { WorldProvider } from "./WorldContext";
 import { Header } from "./Header";
 import { ZoomControls } from "./ZoomControls";
 import { HelpButton } from "./HelpButton";
@@ -141,19 +142,21 @@ export function EditorShell({
   return (
     <ViewModeProvider>
       <ZoomProvider initialZoom={initialZoom} onZoomChange={onZoomChange}>
-        <FeaturesProvider>
-          <PlacedSeedsProvider worldId={worldId}>
-            <PlacementWithSeeds>
-              <SelectionProvider>
-                <MapCanvasProvider>
-                  <EditorShellContent onHelp={handleHelp}>
-                    {children}
-                  </EditorShellContent>
-                </MapCanvasProvider>
-              </SelectionProvider>
-            </PlacementWithSeeds>
-          </PlacedSeedsProvider>
-        </FeaturesProvider>
+        <WorldProvider worldId={worldId}>
+          <FeaturesProvider>
+            <PlacedSeedsProvider worldId={worldId}>
+              <PlacementWithSeeds>
+                <SelectionProvider>
+                  <MapCanvasProvider>
+                    <EditorShellContent onHelp={handleHelp}>
+                      {children}
+                    </EditorShellContent>
+                  </MapCanvasProvider>
+                </SelectionProvider>
+              </PlacementWithSeeds>
+            </PlacedSeedsProvider>
+          </FeaturesProvider>
+        </WorldProvider>
       </ZoomProvider>
     </ViewModeProvider>
   );

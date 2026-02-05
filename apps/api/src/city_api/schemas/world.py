@@ -43,6 +43,13 @@ class WorldCreate(BaseModel):
     settings: WorldSettings = Field(default_factory=WorldSettings)
 
 
+class WorldUpdate(BaseModel):
+    """Request model for updating an existing world."""
+
+    name: str | None = Field(default=None, min_length=1, max_length=100)
+    settings: WorldSettings | None = Field(default=None)
+
+
 class World(BaseModel):
     """A world (city map) owned by a user."""
 

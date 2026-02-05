@@ -8,7 +8,7 @@ from sqlalchemy import select
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from city_api.models import World as WorldModel
-from city_api.schemas import World, WorldCreate, WorldSettings
+from city_api.schemas import World, WorldCreate, WorldSettings, WorldUpdate
 
 
 def _ensure_utc(dt: datetime) -> datetime:
@@ -73,6 +73,28 @@ async def list_worlds_for_user(db: AsyncSession, user_id: UUID) -> list[World]:
     )
     worlds = result.scalars().all()
     return [_to_schema(w) for w in worlds]
+
+
+async def update_world(
+    db: AsyncSession, world_id: UUID, user_id: UUID, update_data: WorldUpdate
+) -> World | None:
+    """Update a world. Returns updated world or None if not found/not owned."""
+    result = await db.execute(
+        select(WorldModel).where(WorldModel.id == world_id, WorldModel.user_id == user_id)
+    )
+    world = result.scalar_one_or_none()
+    if world is None:
+        return None
+
+    # Apply updates
+    if update_data.name is not None:
+        world.name = update_data.name
+    if update_data.settings is not None:
+        world.settings = update_data.settings.model_dump()
+
+    await db.commit()
+    await db.refresh(world)
+    return _to_schema(world)
 
 
 async def delete_world(db: AsyncSession, world_id: UUID, user_id: UUID) -> bool:

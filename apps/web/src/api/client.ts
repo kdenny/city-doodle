@@ -21,6 +21,7 @@ import {
   UserResponse,
   World,
   WorldCreate,
+  WorldUpdate,
 } from "./types";
 
 // ============================================================================
@@ -182,6 +183,11 @@ export const worlds = {
   /** Get a world by ID */
   async get(worldId: string): Promise<World> {
     return request<World>("GET", `/worlds/${worldId}`);
+  },
+
+  /** Update a world's name or settings */
+  async update(worldId: string, data: WorldUpdate): Promise<World> {
+    return request<World>("PATCH", `/worlds/${worldId}`, { body: data });
   },
 
   /** Delete a world */

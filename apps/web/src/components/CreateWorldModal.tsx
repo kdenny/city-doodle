@@ -3,7 +3,8 @@
  */
 
 import { useState, FormEvent } from "react";
-import { useCreateWorld } from "../api";
+import { useCreateWorld, WorldSettings } from "../api";
+import { PersonalitySliders, DEFAULT_WORLD_SETTINGS } from "./settings";
 
 interface CreateWorldModalProps {
   onClose: () => void;
@@ -13,6 +14,8 @@ interface CreateWorldModalProps {
 export function CreateWorldModal({ onClose, onCreated }: CreateWorldModalProps) {
   const [name, setName] = useState("");
   const [seed, setSeed] = useState("");
+  const [settings, setSettings] = useState<WorldSettings>(DEFAULT_WORLD_SETTINGS);
+  const [showAdvanced, setShowAdvanced] = useState(false);
   const [error, setError] = useState<string | null>(null);
 
   const createWorld = useCreateWorld();
@@ -30,6 +33,7 @@ export function CreateWorldModal({ onClose, onCreated }: CreateWorldModalProps) 
       const world = await createWorld.mutateAsync({
         name: name.trim(),
         seed: seed ? parseInt(seed, 10) : undefined,
+        settings,
       });
       onCreated(world.id);
     } catch (err) {
@@ -79,7 +83,7 @@ export function CreateWorldModal({ onClose, onCreated }: CreateWorldModalProps) 
               />
             </div>
 
-            <div className="mb-6">
+            <div className="mb-4">
               <label
                 htmlFor="seed"
                 className="block text-sm font-medium text-gray-700 mb-1"
@@ -98,6 +102,35 @@ export function CreateWorldModal({ onClose, onCreated }: CreateWorldModalProps) 
                 Use the same seed to recreate identical terrain
               </p>
             </div>
+
+            {/* Advanced Settings Toggle */}
+            <div className="mb-4">
+              <button
+                type="button"
+                onClick={() => setShowAdvanced(!showAdvanced)}
+                className="text-sm text-blue-600 hover:text-blue-700 flex items-center gap-1"
+              >
+                <span
+                  className={`transform transition-transform ${
+                    showAdvanced ? "rotate-90" : ""
+                  }`}
+                >
+                  &#9654;
+                </span>
+                {showAdvanced ? "Hide" : "Show"} City Personality
+              </button>
+            </div>
+
+            {/* Personality Sliders */}
+            {showAdvanced && (
+              <div className="mb-6 p-4 bg-gray-50 rounded-lg">
+                <PersonalitySliders
+                  settings={settings}
+                  onChange={setSettings}
+                  disabled={createWorld.isPending}
+                />
+              </div>
+            )}
 
             <div className="flex gap-3 justify-end">
               <button

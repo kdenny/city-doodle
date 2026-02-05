@@ -64,6 +64,11 @@ export interface WorldCreate {
   settings?: WorldSettings;
 }
 
+export interface WorldUpdate {
+  name?: string;
+  settings?: WorldSettings;
+}
+
 export interface World {
   id: UUID;
   name: string;
