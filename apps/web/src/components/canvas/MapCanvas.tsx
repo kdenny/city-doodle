@@ -6,6 +6,7 @@ import {
   forwardRef,
   useImperativeHandle,
   useContext,
+  useMemo,
 } from "react";
 import { Application, Container, Graphics } from "pixi.js";
 import { Viewport } from "pixi-viewport";
@@ -29,6 +30,9 @@ import {
   type Neighborhood,
 } from "./layers";
 import { useDrawingOptional } from "./DrawingContext";
+import { useEndpointDragOptional } from "./EndpointDragContext";
+import { SnapEngine } from "./snap";
+import type { SnapLineSegment } from "./snap";
 import { LayerControls } from "./LayerControls";
 import {
   exportCanvasAsPng,
@@ -131,6 +135,22 @@ export const MapCanvas = forwardRef<MapCanvasHandle, MapCanvasProps>(
 
   // Get drawing context for polygon drawing mode
   const drawingContext = useDrawingOptional();
+
+  // Get endpoint drag context for road endpoint dragging (CITY-147)
+  const endpointDragContext = useEndpointDragOptional();
+
+  // Create snap engine for snapping to district perimeters (CITY-147)
+  const snapEngine = useMemo(() => {
+    const engine = new SnapEngine({
+      threshold: 20,
+      snapToVertex: true,
+      snapToNearest: true,
+      snapToMidpoint: false,
+      snapToIntersection: false,
+      geometryTypes: ["district"],
+    });
+    return engine;
+  }, []);
 
   // Create the export handle object
   const exportHandle = {
@@ -568,6 +588,53 @@ export const MapCanvas = forwardRef<MapCanvasHandle, MapCanvasProps>(
     featuresContext?.features.roads,
   ]);
 
+  // Update snap engine with district perimeters (CITY-147)
+  useEffect(() => {
+    if (!isReady) return;
+
+    // Get all districts from features context
+    const districts = featuresContext?.features.districts || [];
+
+    // Convert district perimeters to snap line segments
+    const segments: SnapLineSegment[] = [];
+    for (const district of districts) {
+      const points = district.polygon.points;
+      if (points.length < 3) continue;
+
+      // Add all edges of the district perimeter
+      for (let i = 0; i < points.length; i++) {
+        const p1 = points[i];
+        const p2 = points[(i + 1) % points.length];
+        segments.push({
+          p1,
+          p2,
+          geometryId: district.id,
+          geometryType: "district",
+        });
+      }
+    }
+
+    // Update snap engine
+    snapEngine.clear();
+    snapEngine.insertSegments(segments);
+  }, [isReady, featuresContext?.features.districts, snapEngine]);
+
+  // Sync drag preview to endpoint layer (CITY-147)
+  useEffect(() => {
+    if (!isReady || !roadEndpointLayerRef.current) return;
+
+    if (endpointDragContext?.dragState) {
+      roadEndpointLayerRef.current.setDragPreview({
+        roadId: endpointDragContext.dragState.roadId,
+        endpointIndex: endpointDragContext.dragState.endpointIndex,
+        currentPosition: endpointDragContext.dragState.currentPosition,
+        isSnapped: endpointDragContext.dragState.isSnapped,
+      });
+    } else {
+      roadEndpointLayerRef.current.setDragPreview(null);
+    }
+  }, [isReady, endpointDragContext?.dragState]);
+
   // Update seeds layer when placed seeds change
   useEffect(() => {
     if (!isReady || !seedsLayerRef.current || !placedSeedsContext) return;
@@ -699,7 +766,7 @@ export const MapCanvas = forwardRef<MapCanvasHandle, MapCanvasProps>(
     transitContext,
   ]);
 
-  // Handle clicks for seed placement, feature selection, and polygon drawing
+  // Handle clicks for seed placement, feature selection, polygon drawing, and endpoint dragging
   useEffect(() => {
     if (!isReady || !viewportRef.current) return;
 
@@ -714,6 +781,13 @@ export const MapCanvas = forwardRef<MapCanvasHandle, MapCanvasProps>(
     const cancelDrawing = drawingContext?.cancelDrawing;
     const canComplete = drawingContext?.canComplete;
 
+    // Endpoint drag context functions (CITY-147)
+    const startEndpointDrag = endpointDragContext?.startDrag;
+    const updateEndpointDrag = endpointDragContext?.updateDrag;
+    const completeEndpointDrag = endpointDragContext?.completeDrag;
+    const cancelEndpointDrag = endpointDragContext?.cancelDrag;
+    const isEndpointDragging = endpointDragContext?.isDragging ?? false;
+
     // Track if we're dragging to avoid triggering click after drag
     let isDragging = false;
     let dragStartPos = { x: 0, y: 0 };
@@ -722,6 +796,21 @@ export const MapCanvas = forwardRef<MapCanvasHandle, MapCanvasProps>(
     const handlePointerDown = (event: { global: { x: number; y: number } }) => {
       dragStartPos = { x: event.global.x, y: event.global.y };
       isDragging = false;
+
+      // Check for endpoint hit (CITY-147)
+      if (roadEndpointLayerRef.current && startEndpointDrag) {
+        const worldPos = viewport.toWorld(event.global.x, event.global.y);
+        const endpointHit = roadEndpointLayerRef.current.hitTest(worldPos.x, worldPos.y);
+        if (endpointHit) {
+          // Start endpoint drag - disable viewport drag
+          viewport.plugins.pause("drag");
+          startEndpointDrag(
+            endpointHit.road.id,
+            endpointHit.endpointIndex,
+            endpointHit.position
+          );
+        }
+      }
     };
 
     const handlePointerMove = (event: { global: { x: number; y: number } }) => {
@@ -734,6 +823,41 @@ export const MapCanvas = forwardRef<MapCanvasHandle, MapCanvasProps>(
       // Convert to world position
       const worldPos = viewport.toWorld(event.global.x, event.global.y);
 
+      // Handle endpoint dragging (CITY-147)
+      if (isEndpointDragging && updateEndpointDrag) {
+        // Check for snap points on district perimeters
+        const snapResult = snapEngine.findSnapPoint(worldPos.x, worldPos.y);
+
+        if (snapResult.snapPoint) {
+          // Snapped to a district perimeter
+          updateEndpointDrag(
+            { x: snapResult.snapPoint.x, y: snapResult.snapPoint.y },
+            {
+              isSnapped: true,
+              snapTargetId: snapResult.snapPoint.geometryId,
+              snapDescription: `Snapped to ${snapResult.snapPoint.geometryType}`,
+            }
+          );
+        } else {
+          // Free drag - no snapping
+          updateEndpointDrag(
+            { x: worldPos.x, y: worldPos.y },
+            { isSnapped: false }
+          );
+        }
+        return;
+      }
+
+      // Update hover state on endpoint layer (CITY-147)
+      if (roadEndpointLayerRef.current && !isEndpointDragging) {
+        const endpointHit = roadEndpointLayerRef.current.hitTest(worldPos.x, worldPos.y);
+        if (endpointHit) {
+          roadEndpointLayerRef.current.setHoveredEndpoint(endpointHit.endpointIndex);
+        } else {
+          roadEndpointLayerRef.current.setHoveredEndpoint(null);
+        }
+      }
+
       // Update preview position if placing seeds
       if (isPlacing && setPreviewPosition) {
         setPreviewPosition({ x: worldPos.x, y: worldPos.y });
@@ -745,7 +869,31 @@ export const MapCanvas = forwardRef<MapCanvasHandle, MapCanvasProps>(
       }
     };
 
-    const handleClick = (event: { global: { x: number; y: number } }) => {
+    const handlePointerUp = (event: { global: { x: number; y: number } }) => {
+      // Handle endpoint drag completion (CITY-147)
+      if (isEndpointDragging && completeEndpointDrag && featuresContext) {
+        const dragResult = completeEndpointDrag();
+        if (dragResult) {
+          // Update the road geometry with the new endpoint position
+          const road = featuresContext.features.roads.find(
+            (r) => r.id === dragResult.roadId
+          );
+          if (road) {
+            // Create updated points array
+            const newPoints = [...road.line.points];
+            newPoints[dragResult.endpointIndex] = dragResult.newPosition;
+
+            // Update the road
+            featuresContext.updateRoad(dragResult.roadId, {
+              line: { points: newPoints },
+            });
+          }
+        }
+        // Re-enable viewport drag
+        viewport.plugins.resume("drag");
+        return;
+      }
+
       // Don't trigger placement if we were dragging
       if (isDragging) return;
 
@@ -783,8 +931,16 @@ export const MapCanvas = forwardRef<MapCanvasHandle, MapCanvasProps>(
       }
     };
 
-    // Keyboard handlers for drawing
+    // Keyboard handlers for drawing and endpoint drag cancellation
     const handleKeyDown = (event: KeyboardEvent) => {
+      // Handle endpoint drag cancellation (CITY-147)
+      if (isEndpointDragging && event.key === "Escape") {
+        event.preventDefault();
+        cancelEndpointDrag?.();
+        viewport.plugins.resume("drag");
+        return;
+      }
+
       if (!isDrawing) return;
 
       if (event.key === "Escape") {
@@ -798,13 +954,13 @@ export const MapCanvas = forwardRef<MapCanvasHandle, MapCanvasProps>(
 
     viewport.on("pointerdown", handlePointerDown);
     viewport.on("pointermove", handlePointerMove);
-    viewport.on("pointerup", handleClick);
+    viewport.on("pointerup", handlePointerUp);
     window.addEventListener("keydown", handleKeyDown);
 
     return () => {
       viewport.off("pointerdown", handlePointerDown);
       viewport.off("pointermove", handlePointerMove);
-      viewport.off("pointerup", handleClick);
+      viewport.off("pointerup", handlePointerUp);
       window.removeEventListener("keydown", handleKeyDown);
     };
   }, [
@@ -819,6 +975,13 @@ export const MapCanvas = forwardRef<MapCanvasHandle, MapCanvasProps>(
     drawingContext?.cancelDrawing,
     drawingContext?.canComplete,
     onFeatureSelect,
+    endpointDragContext?.startDrag,
+    endpointDragContext?.updateDrag,
+    endpointDragContext?.completeDrag,
+    endpointDragContext?.cancelDrag,
+    endpointDragContext?.isDragging,
+    featuresContext,
+    snapEngine,
   ]);
 
   return (
