@@ -331,4 +331,316 @@ describe("API Client", () => {
       );
     });
   });
+
+  describe("Transit Endpoints", () => {
+    beforeEach(() => {
+      setAuthToken("test-token");
+    });
+
+    describe("Network Operations", () => {
+      it("gets transit network for a world", async () => {
+        const mockNetwork = {
+          world_id: "world-1",
+          stations: [],
+          lines: [],
+        };
+
+        mockFetch.mockResolvedValueOnce({
+          ok: true,
+          json: () => Promise.resolve(mockNetwork),
+        });
+
+        const result = await api.transit.getNetwork("world-1");
+
+        expect(result).toEqual(mockNetwork);
+        expect(mockFetch).toHaveBeenCalledWith(
+          expect.stringContaining("/worlds/world-1/transit"),
+          expect.any(Object)
+        );
+      });
+
+      it("gets transit stats for a world", async () => {
+        const mockStats = {
+          world_id: "world-1",
+          total_stations: 5,
+          total_lines: 2,
+          total_segments: 4,
+          stations_by_type: { subway: 3, rail: 2 },
+          lines_by_type: { subway: 1, rail: 1 },
+        };
+
+        mockFetch.mockResolvedValueOnce({
+          ok: true,
+          json: () => Promise.resolve(mockStats),
+        });
+
+        const result = await api.transit.getStats("world-1");
+
+        expect(result).toEqual(mockStats);
+        expect(mockFetch).toHaveBeenCalledWith(
+          expect.stringContaining("/worlds/world-1/transit/stats"),
+          expect.any(Object)
+        );
+      });
+
+      it("clears transit network for a world", async () => {
+        mockFetch.mockResolvedValueOnce({
+          ok: true,
+          status: 204,
+          json: () => Promise.resolve(undefined),
+        });
+
+        await api.transit.clearNetwork("world-1");
+
+        expect(mockFetch).toHaveBeenCalledWith(
+          expect.stringContaining("/worlds/world-1/transit"),
+          expect.objectContaining({ method: "DELETE" })
+        );
+      });
+    });
+
+    describe("Station Operations", () => {
+      it("lists stations for a world", async () => {
+        const mockStations = [
+          {
+            id: "station-1",
+            world_id: "world-1",
+            district_id: "district-1",
+            station_type: "subway",
+            name: "Central",
+            position_x: 100,
+            position_y: 100,
+            is_terminus: false,
+            created_at: "2024-01-01",
+            updated_at: "2024-01-01",
+          },
+        ];
+
+        mockFetch.mockResolvedValueOnce({
+          ok: true,
+          json: () => Promise.resolve(mockStations),
+        });
+
+        const result = await api.transit.stations.list("world-1");
+
+        expect(result).toEqual(mockStations);
+        expect(mockFetch).toHaveBeenCalledWith(
+          expect.stringContaining("/worlds/world-1/transit/stations"),
+          expect.any(Object)
+        );
+      });
+
+      it("lists stations filtered by type", async () => {
+        mockFetch.mockResolvedValueOnce({
+          ok: true,
+          json: () => Promise.resolve([]),
+        });
+
+        await api.transit.stations.list("world-1", "subway");
+
+        expect(mockFetch).toHaveBeenCalledWith(
+          expect.stringMatching(/station_type=subway/),
+          expect.any(Object)
+        );
+      });
+
+      it("creates a station", async () => {
+        const mockStation = {
+          id: "station-1",
+          world_id: "world-1",
+          district_id: "district-1",
+          station_type: "subway",
+          name: "New Station",
+          position_x: 150,
+          position_y: 250,
+          is_terminus: false,
+          created_at: "2024-01-01",
+          updated_at: "2024-01-01",
+        };
+
+        mockFetch.mockResolvedValueOnce({
+          ok: true,
+          json: () => Promise.resolve(mockStation),
+        });
+
+        const result = await api.transit.stations.create("world-1", {
+          district_id: "district-1",
+          station_type: "subway",
+          name: "New Station",
+          position_x: 150,
+          position_y: 250,
+        });
+
+        expect(result).toEqual(mockStation);
+        expect(mockFetch).toHaveBeenCalledWith(
+          expect.stringContaining("/worlds/world-1/transit/stations"),
+          expect.objectContaining({ method: "POST" })
+        );
+      });
+
+      it("gets a station by ID", async () => {
+        const mockStation = {
+          id: "station-1",
+          station_type: "subway",
+          name: "Test Station",
+        };
+
+        mockFetch.mockResolvedValueOnce({
+          ok: true,
+          json: () => Promise.resolve(mockStation),
+        });
+
+        const result = await api.transit.stations.get("station-1");
+
+        expect(result).toEqual(mockStation);
+        expect(mockFetch).toHaveBeenCalledWith(
+          expect.stringContaining("/transit/stations/station-1"),
+          expect.any(Object)
+        );
+      });
+
+      it("updates a station", async () => {
+        const mockStation = {
+          id: "station-1",
+          name: "Updated Station",
+        };
+
+        mockFetch.mockResolvedValueOnce({
+          ok: true,
+          json: () => Promise.resolve(mockStation),
+        });
+
+        const result = await api.transit.stations.update("station-1", {
+          name: "Updated Station",
+        });
+
+        expect(result).toEqual(mockStation);
+        expect(mockFetch).toHaveBeenCalledWith(
+          expect.stringContaining("/transit/stations/station-1"),
+          expect.objectContaining({ method: "PATCH" })
+        );
+      });
+
+      it("deletes a station", async () => {
+        mockFetch.mockResolvedValueOnce({
+          ok: true,
+          status: 204,
+          json: () => Promise.resolve(undefined),
+        });
+
+        await api.transit.stations.delete("station-1");
+
+        expect(mockFetch).toHaveBeenCalledWith(
+          expect.stringContaining("/transit/stations/station-1"),
+          expect.objectContaining({ method: "DELETE" })
+        );
+      });
+    });
+
+    describe("Line Operations", () => {
+      it("creates a transit line", async () => {
+        const mockLine = {
+          id: "line-1",
+          world_id: "world-1",
+          line_type: "subway",
+          name: "Red Line",
+          color: "#FF0000",
+          is_auto_generated: false,
+          created_at: "2024-01-01",
+          updated_at: "2024-01-01",
+        };
+
+        mockFetch.mockResolvedValueOnce({
+          ok: true,
+          json: () => Promise.resolve(mockLine),
+        });
+
+        const result = await api.transit.lines.create("world-1", {
+          line_type: "subway",
+          name: "Red Line",
+          color: "#FF0000",
+        });
+
+        expect(result).toEqual(mockLine);
+        expect(mockFetch).toHaveBeenCalledWith(
+          expect.stringContaining("/worlds/world-1/transit/lines"),
+          expect.objectContaining({ method: "POST" })
+        );
+      });
+
+      it("gets a line with segments", async () => {
+        const mockLine = {
+          id: "line-1",
+          line_type: "subway",
+          name: "Blue Line",
+          segments: [
+            { id: "seg-1", from_station_id: "s1", to_station_id: "s2" },
+          ],
+        };
+
+        mockFetch.mockResolvedValueOnce({
+          ok: true,
+          json: () => Promise.resolve(mockLine),
+        });
+
+        const result = await api.transit.lines.get("line-1");
+
+        expect(result).toEqual(mockLine);
+        expect(result.segments).toHaveLength(1);
+      });
+    });
+
+    describe("Segment Operations", () => {
+      it("creates a line segment", async () => {
+        const mockSegment = {
+          id: "seg-1",
+          line_id: "line-1",
+          from_station_id: "station-1",
+          to_station_id: "station-2",
+          geometry: [],
+          is_underground: true,
+          order_in_line: 0,
+          created_at: "2024-01-01",
+          updated_at: "2024-01-01",
+        };
+
+        mockFetch.mockResolvedValueOnce({
+          ok: true,
+          json: () => Promise.resolve(mockSegment),
+        });
+
+        const result = await api.transit.segments.create("line-1", {
+          from_station_id: "station-1",
+          to_station_id: "station-2",
+          order_in_line: 0,
+        });
+
+        expect(result).toEqual(mockSegment);
+        expect(mockFetch).toHaveBeenCalledWith(
+          expect.stringContaining("/transit/lines/line-1/segments"),
+          expect.objectContaining({ method: "POST" })
+        );
+      });
+
+      it("lists segments for a line", async () => {
+        const mockSegments = [
+          { id: "seg-1", order_in_line: 0 },
+          { id: "seg-2", order_in_line: 1 },
+        ];
+
+        mockFetch.mockResolvedValueOnce({
+          ok: true,
+          json: () => Promise.resolve(mockSegments),
+        });
+
+        const result = await api.transit.segments.list("line-1");
+
+        expect(result).toEqual(mockSegments);
+        expect(mockFetch).toHaveBeenCalledWith(
+          expect.stringContaining("/transit/lines/line-1/segments"),
+          expect.any(Object)
+        );
+      });
+    });
+  });
 });

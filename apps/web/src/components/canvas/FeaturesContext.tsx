@@ -18,6 +18,7 @@ import {
 } from "react";
 import type { District, Neighborhood, Road, POI, FeaturesData, Point, DistrictPersonality } from "./layers";
 import { DEFAULT_DISTRICT_PERSONALITY } from "./layers/types";
+import { detectBridges } from "./layers/bridgeDetection";
 import {
   generateDistrictGeometry,
   wouldOverlap,
@@ -140,23 +141,31 @@ const EMPTY_FEATURES: FeaturesData = {
   roads: [],
   pois: [],
   neighborhoods: [],
+  bridges: [],
 };
 
 /**
  * Map frontend district type to API district type.
- * Frontend and API now use the same district type values.
+ * Frontend and API use the same types now.
  */
 function toApiDistrictType(frontendType: string): ApiDistrictType {
-  // Types now match directly between frontend and API
-  return frontendType as ApiDistrictType;
+  // API accepts frontend types directly
+  const validTypes: ApiDistrictType[] = [
+    "residential", "downtown", "commercial", "industrial",
+    "hospital", "university", "k12", "park", "airport"
+  ];
+  if (validTypes.includes(frontendType as ApiDistrictType)) {
+    return frontendType as ApiDistrictType;
+  }
+  return "commercial"; // Default fallback
 }
 
 /**
  * Map API district type back to frontend type.
- * Frontend and API now use the same district type values.
+ * Frontend and API use the same types now.
  */
 function fromApiDistrictType(apiType: ApiDistrictType): string {
-  // Types now match directly between frontend and API
+  // API returns frontend types directly
   return apiType;
 }
 
@@ -298,6 +307,35 @@ export function FeaturesProvider({
       setIsInitialized(true);
     }
   }, [worldId, apiDistricts, apiNeighborhoods]);
+
+  // Auto-detect bridges when roads or terrain change (CITY-148)
+  useEffect(() => {
+    const terrainData = terrainContext?.terrainData ?? null;
+
+    // Get current roads from state
+    setFeaturesState((prev) => {
+      if (prev.roads.length === 0) {
+        // No roads, no bridges
+        if (prev.bridges.length === 0) {
+          return prev; // No change needed
+        }
+        return { ...prev, bridges: [] };
+      }
+
+      // Detect bridges for all roads
+      const { bridges } = detectBridges(prev.roads, terrainData);
+
+      // Only update if bridges changed (compare by length and IDs)
+      const bridgeIds = bridges.map((b) => `${b.roadId}-${b.waterFeatureId}`).sort().join(",");
+      const prevBridgeIds = prev.bridges.map((b) => `${b.roadId}-${b.waterFeatureId}`).sort().join(",");
+
+      if (bridgeIds === prevBridgeIds) {
+        return prev; // No change needed
+      }
+
+      return { ...prev, bridges };
+    });
+  }, [features.roads, terrainContext?.terrainData]);
 
   // Helper to update features and notify
   const updateFeatures = useCallback(

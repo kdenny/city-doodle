@@ -227,6 +227,7 @@ export interface Job {
 // District Types
 // ============================================================================
 
+/** API district types - must match backend DistrictType enum */
 export type DistrictType =
   | "residential"
   | "downtown"

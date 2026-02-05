@@ -1,9 +1,14 @@
 /**
- * Context for managing transit data (rail stations, lines, and tracks).
+ * Context for managing transit data (rail and subway stations, lines, and tracks).
  *
  * Provides methods to add, remove, and update transit stations and lines.
- * Rail stations must be placed inside districts.
- * Handles auto-connection of nearby rail stations on the same line.
+ * Both rail and subway stations must be placed inside districts.
+ * Handles auto-connection of nearby stations on the same line.
+ *
+ * Key differences between rail and subway:
+ * - Rail: Visible tracks on map surface (railroad ties, parallel rails)
+ * - Subway: Underground lines NOT visible on surface (only stations visible)
+ *           In transit view, subway lines shown as dashed/dotted lines
  */
 
 import {
@@ -15,8 +20,8 @@ import {
   ReactNode,
 } from "react";
 import type { Point } from "./layers";
-import { pointInPolygon } from "./layers";
-import type { RailStationData, TrackSegmentData } from "./layers";
+import { pointInPolygon, toSubwayStationData } from "./layers";
+import type { RailStationData, TrackSegmentData, SubwayStationData, SubwayTunnelData } from "./layers";
 import {
   useTransitNetwork,
   useCreateTransitStation,
@@ -44,8 +49,31 @@ const RAIL_LINE_COLORS = [
   "#663399", // Rebecca Purple
 ];
 
+// Default colors for subway lines (more vibrant metro colors)
+const SUBWAY_LINE_COLORS = [
+  "#0066CC", // Blue (like NYC A/C/E)
+  "#FF6600", // Orange (like NYC B/D/F/M)
+  "#00933C", // Green (like NYC 4/5/6)
+  "#FCCC0A", // Yellow (like NYC N/Q/R/W)
+  "#EE352E", // Red (like NYC 1/2/3)
+  "#A626AA", // Purple (like NYC 7)
+  "#6CBE45", // Lime (like NYC G)
+  "#996633", // Brown (like NYC J/Z)
+];
+
+/**
+ * Result of a station placement validation.
+ */
+export interface StationValidation {
+  isValid: boolean;
+  districtId: string | null;
+  districtName: string | null;
+  error?: string;
+}
+
 /**
  * Result of a rail station placement validation.
+ * @deprecated Use StationValidation instead
  */
 export interface RailStationValidation {
   isValid: boolean;
@@ -53,6 +81,9 @@ export interface RailStationValidation {
   districtName: string | null;
   error?: string;
 }
+
+// Re-export SubwayTunnelData from layers for convenience
+export type { SubwayTunnelData } from "./layers";
 
 /**
  * Generate a unique station name based on the district.
@@ -78,14 +109,26 @@ interface TransitContextValue {
   railStations: RailStationData[];
   /** Track segments data for rendering */
   trackSegments: TrackSegmentData[];
+  /** Subway stations data for rendering */
+  subwayStations: SubwayStationData[];
+  /** Subway tunnel segments for rendering (shown in transit view as dashed lines) */
+  subwayTunnels: SubwayTunnelData[];
   /** Validate if a position is valid for rail station placement */
-  validateRailStationPlacement: (position: Point) => RailStationValidation;
+  validateRailStationPlacement: (position: Point) => StationValidation;
+  /** Validate if a position is valid for subway station placement */
+  validateSubwayStationPlacement: (position: Point) => StationValidation;
   /** Place a rail station at the given position (returns null if invalid) */
   placeRailStation: (position: Point) => Promise<TransitStation | null>;
+  /** Place a subway station at the given position (returns null if invalid) */
+  placeSubwayStation: (position: Point) => Promise<TransitStation | null>;
   /** Remove a rail station */
   removeRailStation: (stationId: string) => Promise<void>;
+  /** Remove a subway station */
+  removeSubwayStation: (stationId: string) => Promise<void>;
   /** Get nearby rail stations that could be auto-connected */
   getNearbyStations: (position: Point, excludeId?: string) => RailStationData[];
+  /** Get nearby subway stations that could be auto-connected */
+  getNearbySubwayStations: (position: Point, excludeId?: string) => SubwayStationData[];
   /** Loading state */
   isLoading: boolean;
   /** Error state */
@@ -104,9 +147,13 @@ export function TransitProvider({ children, worldId }: TransitProviderProps) {
   const featuresContext = useFeaturesOptional();
   const toast = useToastOptional();
 
-  // Local state for UI rendering
+  // Local state for UI rendering - Rail
   const [railStations, setRailStations] = useState<RailStationData[]>([]);
   const [trackSegments, setTrackSegments] = useState<TrackSegmentData[]>([]);
+
+  // Local state for UI rendering - Subway
+  const [subwayStations, setSubwayStations] = useState<SubwayStationData[]>([]);
+  const [subwayTunnels, setSubwayTunnels] = useState<SubwayTunnelData[]>([]);
 
   // API hooks
   const { data: transitNetwork, isLoading: isLoadingNetwork, error: networkError } = useTransitNetwork(
@@ -123,11 +170,13 @@ export function TransitProvider({ children, worldId }: TransitProviderProps) {
     if (!transitNetwork) {
       setRailStations([]);
       setTrackSegments([]);
+      setSubwayStations([]);
+      setSubwayTunnels([]);
       return;
     }
 
-    // Convert API stations to render data
-    const stations: RailStationData[] = transitNetwork.stations
+    // Convert API rail stations to render data
+    const railStationsData: RailStationData[] = transitNetwork.stations
       .filter((s) => s.station_type === "rail")
       .map((s) => {
         // Find the line this station belongs to for color
@@ -150,7 +199,12 @@ export function TransitProvider({ children, worldId }: TransitProviderProps) {
         };
       });
 
-    // Convert API segments to track render data
+    // Convert API subway stations to render data
+    const subwayStationsData: SubwayStationData[] = transitNetwork.stations
+      .filter((s) => s.station_type === "subway")
+      .map(toSubwayStationData);
+
+    // Convert API segments to track render data (for rail)
     const tracks: TrackSegmentData[] = [];
     for (const line of transitNetwork.lines) {
       if (line.line_type !== "rail") continue;
@@ -170,16 +224,37 @@ export function TransitProvider({ children, worldId }: TransitProviderProps) {
       }
     }
 
-    setRailStations(stations);
+    // Convert API segments to subway tunnel render data
+    const tunnels: SubwayTunnelData[] = [];
+    for (const line of transitNetwork.lines) {
+      if (line.line_type !== "subway") continue;
+      for (const seg of line.segments) {
+        const fromStation = transitNetwork.stations.find((s) => s.id === seg.from_station_id);
+        const toStation = transitNetwork.stations.find((s) => s.id === seg.to_station_id);
+        if (fromStation && toStation) {
+          tunnels.push({
+            id: seg.id,
+            fromStation: { x: fromStation.position_x, y: fromStation.position_y },
+            toStation: { x: toStation.position_x, y: toStation.position_y },
+            lineColor: line.color,
+            geometry: seg.geometry,
+          });
+        }
+      }
+    }
+
+    setRailStations(railStationsData);
     setTrackSegments(tracks);
+    setSubwayStations(subwayStationsData);
+    setSubwayTunnels(tunnels);
   }, [transitNetwork]);
 
   /**
-   * Validate if a position is valid for rail station placement.
-   * Rail stations must be placed inside a district.
+   * Validate if a position is valid for station placement (shared logic for rail and subway).
+   * Stations must be placed inside a district.
    */
-  const validateRailStationPlacement = useCallback(
-    (position: Point): RailStationValidation => {
+  const validateStationPlacement = useCallback(
+    (position: Point, stationType: "rail" | "subway"): StationValidation => {
       if (!featuresContext) {
         return {
           isValid: false,
@@ -204,10 +279,28 @@ export function TransitProvider({ children, worldId }: TransitProviderProps) {
         isValid: false,
         districtId: null,
         districtName: null,
-        error: "Rail stations must be placed inside a district",
+        error: `${stationType === "rail" ? "Rail" : "Subway"} stations must be placed inside a district`,
       };
     },
     [featuresContext]
+  );
+
+  /**
+   * Validate if a position is valid for rail station placement.
+   * Rail stations must be placed inside a district.
+   */
+  const validateRailStationPlacement = useCallback(
+    (position: Point): StationValidation => validateStationPlacement(position, "rail"),
+    [validateStationPlacement]
+  );
+
+  /**
+   * Validate if a position is valid for subway station placement.
+   * Subway stations must be placed inside a district.
+   */
+  const validateSubwayStationPlacement = useCallback(
+    (position: Point): StationValidation => validateStationPlacement(position, "subway"),
+    [validateStationPlacement]
   );
 
   /**
@@ -221,6 +314,19 @@ export function TransitProvider({ children, worldId }: TransitProviderProps) {
       });
     },
     [railStations]
+  );
+
+  /**
+   * Get nearby subway stations that could be auto-connected.
+   */
+  const getNearbySubwayStations = useCallback(
+    (position: Point, excludeId?: string): SubwayStationData[] => {
+      return subwayStations.filter((station) => {
+        if (station.id === excludeId) return false;
+        return distance(position, station.position) <= AUTO_CONNECT_DISTANCE;
+      });
+    },
+    [subwayStations]
   );
 
   /**
@@ -361,6 +467,143 @@ export function TransitProvider({ children, worldId }: TransitProviderProps) {
   );
 
   /**
+   * Place a subway station at the given position.
+   * Validates placement, creates the station, and auto-connects to nearby subway stations.
+   * Subway lines are underground and NOT visible on the map surface.
+   */
+  const placeSubwayStation = useCallback(
+    async (position: Point): Promise<TransitStation | null> => {
+      if (!worldId) {
+        toast?.addToast("Cannot place station: No world selected", "error");
+        return null;
+      }
+
+      // Validate placement
+      const validation = validateSubwayStationPlacement(position);
+      if (!validation.isValid || !validation.districtId) {
+        toast?.addToast(validation.error || "Invalid placement location", "error");
+        return null;
+      }
+
+      // Count existing subway stations in this district for naming
+      const districtStations = subwayStations.filter((s) => {
+        const districtValidation = validateSubwayStationPlacement(s.position);
+        return districtValidation.districtId === validation.districtId;
+      });
+
+      const stationName = generateStationName(
+        validation.districtName || "Metro",
+        districtStations.length
+      );
+
+      try {
+        // Create the station
+        const station = await createStation.mutateAsync({
+          worldId,
+          data: {
+            district_id: validation.districtId,
+            station_type: "subway" as StationType,
+            name: stationName,
+            position_x: position.x,
+            position_y: position.y,
+            is_terminus: false,
+          },
+        });
+
+        toast?.addToast(`Created ${stationName}`, "success");
+
+        // Auto-connect to nearby subway stations
+        const nearbyStations = getNearbySubwayStations(position);
+        if (nearbyStations.length > 0) {
+          // Find or create a subway line
+          let lineId: string | null = null;
+
+          // Check if any nearby station is already on a subway line
+          if (transitNetwork) {
+            for (const nearby of nearbyStations) {
+              for (const line of transitNetwork.lines) {
+                if (line.line_type !== "subway") continue;
+                for (const seg of line.segments) {
+                  if (
+                    seg.from_station_id === nearby.id ||
+                    seg.to_station_id === nearby.id
+                  ) {
+                    lineId = line.id;
+                    break;
+                  }
+                }
+                if (lineId) break;
+              }
+              if (lineId) break;
+            }
+          }
+
+          // If no existing line, create a new one
+          if (!lineId) {
+            const lineIndex =
+              (transitNetwork?.lines.filter((l) => l.line_type === "subway").length || 0) %
+              SUBWAY_LINE_COLORS.length;
+            const lineColor = SUBWAY_LINE_COLORS[lineIndex];
+
+            const line = await createLine.mutateAsync({
+              worldId,
+              data: {
+                line_type: "subway",
+                name: `Subway Line ${(transitNetwork?.lines.filter((l) => l.line_type === "subway").length || 0) + 1}`,
+                color: lineColor,
+                is_auto_generated: true,
+              },
+            });
+            lineId = line.id;
+          }
+
+          // Connect to the nearest station
+          if (lineId && nearbyStations.length > 0) {
+            const nearest = nearbyStations.reduce((a, b) =>
+              distance(position, a.position) < distance(position, b.position) ? a : b
+            );
+
+            // Get the current segment count for ordering
+            const existingLine = transitNetwork?.lines.find((l) => l.id === lineId);
+            const segmentOrder = existingLine?.segments.length || 0;
+
+            await createSegment.mutateAsync({
+              lineId,
+              worldId,
+              data: {
+                from_station_id: nearest.id,
+                to_station_id: station.id,
+                geometry: [],
+                is_underground: true, // Subway tunnels are always underground
+                order_in_line: segmentOrder,
+              },
+            });
+
+            toast?.addToast(`Connected to ${nearest.name}`, "info");
+          }
+        }
+
+        return station;
+      } catch (error) {
+        console.error("Failed to create subway station:", error);
+        toast?.addToast("Failed to create subway station", "error");
+        return null;
+      }
+    },
+    [
+      worldId,
+      validateSubwayStationPlacement,
+      subwayStations,
+      getNearbySubwayStations,
+      transitNetwork,
+      createStation,
+      createLine,
+      createSegment,
+      toast,
+    ]
+  );
+
+  /**
    * Remove a rail station.
    */
   const removeRailStation = useCallback(
@@ -369,9 +612,27 @@ export function TransitProvider({ children, worldId }: TransitProviderProps) {
 
       try {
         await deleteStation.mutateAsync({ stationId, worldId });
-        toast?.addToast("Station removed", "success");
+        toast?.addToast("Rail station removed", "success");
       } catch (error) {
         console.error("Failed to remove rail station:", error);
+        toast?.addToast("Failed to remove station", "error");
+      }
+    },
+    [worldId, deleteStation, toast]
+  );
+
+  /**
+   * Remove a subway station.
+   */
+  const removeSubwayStation = useCallback(
+    async (stationId: string): Promise<void> => {
+      if (!worldId) return;
+
+      try {
+        await deleteStation.mutateAsync({ stationId, worldId });
+        toast?.addToast("Subway station removed", "success");
+      } catch (error) {
+        console.error("Failed to remove subway station:", error);
         toast?.addToast("Failed to remove station", "error");
       }
     },
@@ -382,12 +643,21 @@ export function TransitProvider({ children, worldId }: TransitProviderProps) {
   const error = networkError || createStation.error || null;
 
   const value: TransitContextValue = {
+    // Rail
     railStations,
     trackSegments,
     validateRailStationPlacement,
     placeRailStation,
     removeRailStation,
     getNearbyStations,
+    // Subway
+    subwayStations,
+    subwayTunnels,
+    validateSubwayStationPlacement,
+    placeSubwayStation,
+    removeSubwayStation,
+    getNearbySubwayStations,
+    // Loading/Error
     isLoading,
     error,
   };

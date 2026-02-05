@@ -15,11 +15,13 @@ import type {
   Neighborhood,
   Road,
   POI,
+  Bridge,
   LayerVisibility,
   DistrictType,
   RoadClass,
   POIType,
   Point,
+  WaterCrossingType,
 } from "./types";
 
 // District colors by type
@@ -101,6 +103,36 @@ const POI_COLORS: Record<POIType, number> = {
   industrial: 0x888888,
 };
 
+// Bridge styling by water type
+interface BridgeStyle {
+  color: number;
+  railingColor: number;
+  alpha: number;
+}
+
+const BRIDGE_STYLES: Record<WaterCrossingType, BridgeStyle> = {
+  river: {
+    color: 0xd4c4a8, // Sandy/concrete color
+    railingColor: 0x8b7355, // Brown railing
+    alpha: 1.0,
+  },
+  lake: {
+    color: 0xc8b896, // Slightly darker
+    railingColor: 0x7a6548,
+    alpha: 1.0,
+  },
+  ocean: {
+    color: 0xb8a888, // Darker concrete for major bridges
+    railingColor: 0x6b5b4a,
+    alpha: 1.0,
+  },
+  bay: {
+    color: 0xc0b090, // Medium tone
+    railingColor: 0x706048,
+    alpha: 1.0,
+  },
+};
+
 // Hit test radius for POIs (in world coordinates)
 const POI_HIT_RADIUS = 12;
 
@@ -123,6 +155,7 @@ export class FeaturesLayer {
   private neighborhoodsGraphics: Graphics;
   private districtsGraphics: Graphics;
   private roadsGraphics: Graphics;
+  private bridgesGraphics: Graphics;
   private poisGraphics: Graphics;
   private data: FeaturesData | null = null;
   private currentZoom: number = 1;
@@ -147,6 +180,11 @@ export class FeaturesLayer {
     this.roadsGraphics.label = "roads";
     this.container.addChild(this.roadsGraphics);
 
+    // Bridges render on top of roads (they're elevated)
+    this.bridgesGraphics = new Graphics();
+    this.bridgesGraphics.label = "bridges";
+    this.container.addChild(this.bridgesGraphics);
+
     // POIs on top
     this.poisGraphics = new Graphics();
     this.poisGraphics.label = "pois";
@@ -162,10 +200,11 @@ export class FeaturesLayer {
     this.render();
   }
 
-  setVisibility(visibility: LayerVisibility & { neighborhoods?: boolean }): void {
+  setVisibility(visibility: LayerVisibility & { neighborhoods?: boolean; bridges?: boolean }): void {
     this.neighborhoodsGraphics.visible = visibility.neighborhoods ?? true;
     this.districtsGraphics.visible = visibility.districts;
     this.roadsGraphics.visible = visibility.roads;
+    this.bridgesGraphics.visible = visibility.bridges ?? visibility.roads; // Default to road visibility
     this.poisGraphics.visible = visibility.pois;
   }
 
@@ -189,6 +228,7 @@ export class FeaturesLayer {
     this.renderNeighborhoods(this.data.neighborhoods || []);
     this.renderDistricts(this.data.districts);
     this.renderRoads(this.data.roads);
+    this.renderBridges(this.data.bridges || []);
     this.renderPOIs(this.data.pois);
   }
 
@@ -453,6 +493,101 @@ export class FeaturesLayer {
 
         currentLength = nextLength;
         drawing = !drawing;
+      }
+    }
+  }
+
+  /**
+   * Render bridges where roads cross water features.
+   * Bridges are drawn with a distinct style: wider road with railings.
+   */
+  private renderBridges(bridges: Bridge[]): void {
+    if (this.bridgesGraphics.clear) {
+      this.bridgesGraphics.clear();
+    }
+
+    if (bridges.length === 0) return;
+
+    // Find parent road to get road class for proper width scaling
+    const roadMap = new Map<string, Road>();
+    if (this.data?.roads) {
+      for (const road of this.data.roads) {
+        roadMap.set(road.id, road);
+      }
+    }
+
+    // Scale bridge widths with zoom
+    const zoomScale = Math.max(0.5, Math.min(1.5, this.currentZoom));
+
+    for (const bridge of bridges) {
+      const style = BRIDGE_STYLES[bridge.waterType] || BRIDGE_STYLES.river;
+      const parentRoad = roadMap.get(bridge.roadId);
+      const roadStyle = parentRoad ? ROAD_STYLES[parentRoad.roadClass] : ROAD_STYLES.arterial;
+
+      // Bridge is slightly wider than the road it carries
+      const roadWidth = roadStyle.width * zoomScale;
+      const bridgeWidth = roadWidth + 4;
+      const railingWidth = 2;
+
+      const { startPoint, endPoint } = bridge;
+
+      // Draw bridge deck (main surface)
+      this.bridgesGraphics.setStrokeStyle({
+        width: bridgeWidth,
+        color: style.color,
+        alpha: style.alpha,
+        cap: "butt",
+        join: "miter",
+      });
+      this.bridgesGraphics.moveTo(startPoint.x, startPoint.y);
+      this.bridgesGraphics.lineTo(endPoint.x, endPoint.y);
+      this.bridgesGraphics.stroke();
+
+      // Draw railings (parallel lines on sides)
+      const dx = endPoint.x - startPoint.x;
+      const dy = endPoint.y - startPoint.y;
+      const len = Math.sqrt(dx * dx + dy * dy);
+      if (len < 1) continue;
+
+      const perpX = (-dy / len) * (bridgeWidth / 2);
+      const perpY = (dx / len) * (bridgeWidth / 2);
+
+      this.bridgesGraphics.setStrokeStyle({
+        width: railingWidth,
+        color: style.railingColor,
+        alpha: style.alpha,
+        cap: "round",
+      });
+
+      // Left railing
+      this.bridgesGraphics.moveTo(startPoint.x + perpX, startPoint.y + perpY);
+      this.bridgesGraphics.lineTo(endPoint.x + perpX, endPoint.y + perpY);
+      this.bridgesGraphics.stroke();
+
+      // Right railing
+      this.bridgesGraphics.moveTo(startPoint.x - perpX, startPoint.y - perpY);
+      this.bridgesGraphics.lineTo(endPoint.x - perpX, endPoint.y - perpY);
+      this.bridgesGraphics.stroke();
+
+      // Draw small cross-supports for longer bridges
+      if (bridge.length > 15) {
+        const supportCount = Math.floor(bridge.length / 10);
+
+        this.bridgesGraphics.setStrokeStyle({
+          width: 1,
+          color: style.railingColor,
+          alpha: style.alpha * 0.8,
+        });
+
+        for (let i = 1; i <= supportCount; i++) {
+          const t = i / (supportCount + 1);
+          const cx = startPoint.x + dx * t;
+          const cy = startPoint.y + dy * t;
+
+          this.bridgesGraphics.moveTo(cx + perpX * 0.8, cy + perpY * 0.8);
+          this.bridgesGraphics.lineTo(cx - perpX * 0.8, cy - perpY * 0.8);
+          this.bridgesGraphics.stroke();
+        }
       }
     }
   }
@@ -844,7 +979,7 @@ export function generateMockFeatures(
     },
   ];
 
-  return { districts, roads, pois, neighborhoods: [] };
+  return { districts, roads, pois, neighborhoods: [], bridges: [] };
 }
 
 /**

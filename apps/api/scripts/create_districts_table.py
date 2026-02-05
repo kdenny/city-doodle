@@ -24,19 +24,19 @@ def main():
     engine = create_engine(url)
 
     with engine.connect() as conn:
-        # Create district_type enum if it doesn't exist
+        # Create district_type enum if it doesn't exist - matches frontend types
         conn.execute(text("""
             DO $$ BEGIN
                 CREATE TYPE district_type AS ENUM (
-                    'residential_low',
-                    'residential_med',
-                    'residential_high',
+                    'residential',
+                    'downtown',
                     'commercial',
                     'industrial',
-                    'mixed_use',
+                    'hospital',
+                    'university',
+                    'k12',
                     'park',
-                    'civic',
-                    'transit'
+                    'airport'
                 );
             EXCEPTION
                 WHEN duplicate_object THEN null;
