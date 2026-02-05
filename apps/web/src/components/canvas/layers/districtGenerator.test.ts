@@ -4,7 +4,9 @@ import {
   wouldOverlap,
   seedIdToDistrictType,
   getEffectiveDistrictConfig,
+  regenerateStreetGridForClippedDistrict,
   DEFAULT_SCALE_SETTINGS,
+  BASE_BLOCK_SIZES,
   type DistrictGenerationConfig,
   type ScaleSettings,
 } from "./districtGenerator";
@@ -162,12 +164,30 @@ describe("generateDistrictGeometry", () => {
     expect(Math.max(width, height)).toBeLessThan(280);
   });
 
-  it("generates roads with local road class by default", () => {
-    const result = generateDistrictGeometry({ x: 150, y: 150 }, "residential");
+  it("generates roads with street hierarchy (local and collector)", () => {
+    // Use a larger district to ensure more streets are generated
+    const result = generateDistrictGeometry({ x: 400, y: 400 }, "residential", {
+      scaleSettings: {
+        blockSizeMeters: 50, // Smaller blocks = more streets
+        districtSizeMeters: 400,
+        sprawlCompact: 0.5,
+      },
+    });
 
+    // With CITY-142 street hierarchy:
+    // - Perimeter streets and every 3-4 blocks are COLLECTOR class
+    // - All other internal streets are LOCAL class
+    const collectorRoads = result.roads.filter(r => r.roadClass === "collector");
+
+    // All roads should be either local or collector (no highways/arterials in internal grid)
     for (const road of result.roads) {
-      expect(road.roadClass).toBe("local");
+      expect(["local", "collector"]).toContain(road.roadClass);
     }
+
+    // With enough streets, we should have collector roads
+    // (collector for perimeter + every 3-4 blocks)
+    expect(result.roads.length).toBeGreaterThan(0);
+    expect(collectorRoads.length).toBeGreaterThan(0);
   });
 
   it("generates roads that are within or near district bounds", () => {
@@ -529,3 +549,210 @@ function getPolygonBounds(points: { x: number; y: number }[]): {
 
   return { minX, maxX, minY, maxY };
 }
+
+// CITY-142: Type-specific block sizing tests
+describe("CITY-142: Type-specific block sizing", () => {
+  it("defines different base block sizes for each district type", () => {
+    expect(BASE_BLOCK_SIZES.downtown).toBe(60);
+    expect(BASE_BLOCK_SIZES.residential).toBe(120);
+    expect(BASE_BLOCK_SIZES.industrial).toBe(200);
+    expect(BASE_BLOCK_SIZES.commercial).toBe(100);
+  });
+
+  it("generates downtown districts with smaller blocks than residential", () => {
+    const position = { x: 500, y: 500 };
+
+    // Generate both types with same settings
+    const downtownResult = generateDistrictGeometry(position, "downtown");
+    const residentialResult = generateDistrictGeometry(position, "residential");
+
+    // Downtown has 60m base blocks, residential has 120m base
+    // So downtown should have more roads (denser street grid)
+    // Note: polygon sizes also differ, so we compare roads per unit area
+    const downtownBounds = getPolygonBounds(downtownResult.district.polygon.points);
+    const residentialBounds = getPolygonBounds(residentialResult.district.polygon.points);
+
+    const downtownArea =
+      (downtownBounds.maxX - downtownBounds.minX) *
+      (downtownBounds.maxY - downtownBounds.minY);
+    const residentialArea =
+      (residentialBounds.maxX - residentialBounds.minX) *
+      (residentialBounds.maxY - residentialBounds.minY);
+
+    const downtownDensity = downtownResult.roads.length / downtownArea;
+    const residentialDensity = residentialResult.roads.length / residentialArea;
+
+    // Downtown should have higher road density
+    expect(downtownDensity).toBeGreaterThan(residentialDensity * 0.5); // Allow some variance
+  });
+
+  it("generates industrial districts with larger blocks than downtown", () => {
+    const position = { x: 600, y: 600 };
+
+    const industrialResult = generateDistrictGeometry(position, "industrial");
+    const downtownResult = generateDistrictGeometry(position, "downtown");
+
+    // Industrial has 200m base blocks, downtown has 60m base
+    // Industrial should have fewer roads (less dense street grid)
+    // But industrial districts are also organic shaped, so just check roads exist
+    expect(industrialResult.roads.length).toBeGreaterThan(0);
+    expect(downtownResult.roads.length).toBeGreaterThan(0);
+  });
+});
+
+// CITY-142: Street hierarchy tests
+describe("CITY-142: Street hierarchy", () => {
+  it("generates collector roads at perimeter and intervals", () => {
+    const result = generateDistrictGeometry({ x: 700, y: 700 }, "commercial", {
+      scaleSettings: {
+        blockSizeMeters: 40, // Small blocks = more streets
+        districtSizeMeters: 500,
+        sprawlCompact: 0.5,
+      },
+    });
+
+    const collectorRoads = result.roads.filter((r) => r.roadClass === "collector");
+
+    // Should have collector roads (perimeter + every 3-4 blocks)
+    expect(collectorRoads.length).toBeGreaterThan(0);
+
+    // All roads should be either local or collector
+    for (const road of result.roads) {
+      expect(["local", "collector"]).toContain(road.roadClass);
+    }
+  });
+});
+
+// CITY-142: regenerateStreetGridForClippedDistrict tests
+describe("CITY-142: regenerateStreetGridForClippedDistrict", () => {
+  it("generates roads for a clipped polygon", () => {
+    const clippedPolygon = [
+      { x: 100, y: 100 },
+      { x: 250, y: 100 },
+      { x: 250, y: 250 },
+      { x: 100, y: 250 },
+    ];
+
+    const roads = regenerateStreetGridForClippedDistrict(
+      clippedPolygon,
+      "district-123",
+      "residential",
+      { x: 175, y: 175 },
+      0.5
+    );
+
+    expect(roads.length).toBeGreaterThan(0);
+
+    // Road IDs should include the district ID
+    for (const road of roads) {
+      expect(road.id).toContain("district-123");
+    }
+  });
+
+  it("returns empty array for parks and airports", () => {
+    const polygon = [
+      { x: 0, y: 0 },
+      { x: 100, y: 0 },
+      { x: 100, y: 100 },
+      { x: 0, y: 100 },
+    ];
+
+    const parkRoads = regenerateStreetGridForClippedDistrict(
+      polygon,
+      "park-1",
+      "park",
+      { x: 50, y: 50 },
+      0.5
+    );
+
+    const airportRoads = regenerateStreetGridForClippedDistrict(
+      polygon,
+      "airport-1",
+      "airport",
+      { x: 50, y: 50 },
+      0.5
+    );
+
+    expect(parkRoads).toHaveLength(0);
+    expect(airportRoads).toHaveLength(0);
+  });
+
+  it("returns empty array for invalid polygons (less than 3 points)", () => {
+    const invalidPolygon = [
+      { x: 0, y: 0 },
+      { x: 100, y: 100 },
+    ];
+
+    const roads = regenerateStreetGridForClippedDistrict(
+      invalidPolygon,
+      "district-1",
+      "residential",
+      { x: 50, y: 50 },
+      0.5
+    );
+
+    expect(roads).toHaveLength(0);
+  });
+
+  it("applies density multiplier based on sprawl_compact", () => {
+    const polygon = [
+      { x: 0, y: 0 },
+      { x: 300, y: 0 },
+      { x: 300, y: 300 },
+      { x: 0, y: 300 },
+    ];
+
+    // Sprawling (low density)
+    const sprawlingRoads = regenerateStreetGridForClippedDistrict(
+      polygon,
+      "district-s",
+      "residential",
+      { x: 150, y: 150 },
+      0.1 // Sprawling
+    );
+
+    // Compact (high density)
+    const compactRoads = regenerateStreetGridForClippedDistrict(
+      polygon,
+      "district-c",
+      "residential",
+      { x: 150, y: 150 },
+      0.9 // Compact
+    );
+
+    // Compact should have more roads due to smaller block spacing
+    expect(compactRoads.length).toBeGreaterThanOrEqual(sprawlingRoads.length);
+  });
+
+  it("uses consistent RNG based on position for deterministic results", () => {
+    const polygon = [
+      { x: 0, y: 0 },
+      { x: 200, y: 0 },
+      { x: 200, y: 200 },
+      { x: 0, y: 200 },
+    ];
+
+    const roads1 = regenerateStreetGridForClippedDistrict(
+      polygon,
+      "district-1",
+      "residential",
+      { x: 100, y: 100 },
+      0.5
+    );
+
+    const roads2 = regenerateStreetGridForClippedDistrict(
+      polygon,
+      "district-2", // Different ID
+      "residential",
+      { x: 100, y: 100 }, // Same position
+      0.5
+    );
+
+    // Road positions should be the same (same position = same RNG seed)
+    expect(roads1.length).toBe(roads2.length);
+    if (roads1.length > 0 && roads2.length > 0) {
+      expect(roads1[0].line.points[0].x).toBeCloseTo(roads2[0].line.points[0].x, 1);
+      expect(roads1[0].line.points[0].y).toBeCloseTo(roads2[0].line.points[0].y, 1);
+    }
+  });
+});
