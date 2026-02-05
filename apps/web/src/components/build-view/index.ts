@@ -44,3 +44,19 @@ export {
   seedToHash,
   hashToSeed,
 } from "./SeedControl";
+export { ConfirmationDialog } from "./ConfirmationDialog";
+export type { ConfirmationDialogProps } from "./ConfirmationDialog";
+export {
+  validateSliders,
+  snapToValidRange,
+  isValueValid,
+  applyConstraints,
+  getValidationWarnings,
+  isHistoricEra,
+  HISTORIC_SPRAWL_MIN,
+} from "./sliderValidation";
+export type {
+  SliderValidationContext,
+  SliderState,
+  SliderValidationResult,
+} from "./sliderValidation";
