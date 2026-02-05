@@ -12,6 +12,10 @@ from city_worker.terrain.types import (
     TerrainResult,
     TileTerrainData,
 )
+from city_worker.terrain.barrier_islands import (
+    BarrierIslandConfig,
+    extract_barrier_islands,
+)
 from city_worker.terrain.water import (
     extract_beaches,
     extract_coastlines,
@@ -135,6 +139,28 @@ class TerrainGenerator:
             min_area_cells=20,
         )
         features.extend(lakes)
+
+        # Barrier islands (along gradual coastal slopes)
+        if cfg.barrier_islands_enabled:
+            barrier_island_config = BarrierIslandConfig(
+                island_offset_min=cfg.barrier_island_offset_min,
+                island_offset_max=cfg.barrier_island_offset_max,
+                island_width_min=cfg.barrier_island_width_min,
+                island_width_max=cfg.barrier_island_width_max,
+                island_length_min=cfg.barrier_island_length_min,
+                inlet_spacing_min=cfg.barrier_inlet_spacing_min,
+                inlet_spacing_max=cfg.barrier_inlet_spacing_max,
+            )
+            barrier_islands = extract_barrier_islands(
+                heightfield=heightfield,
+                water_level=cfg.water_level,
+                tile_x=tx,
+                tile_y=ty,
+                tile_size=cfg.tile_size,
+                seed=cfg.world_seed,
+                config=barrier_island_config,
+            )
+            features.extend(barrier_islands)
 
         # Generate contour lines
         contours = self._generate_contours(
