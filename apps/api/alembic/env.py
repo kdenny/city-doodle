@@ -1,6 +1,7 @@
 """Alembic migration environment configuration."""
 
 import os
+import re
 from logging.config import fileConfig
 
 from alembic import context
@@ -20,12 +21,28 @@ from city_api.models import Job, Session, Tile, TileLock, User, World  # noqa: E
 target_metadata = Base.metadata
 
 
+def transform_url_for_sync(url: str) -> str:
+    """Transform async database URL for sync psycopg2 usage.
+
+    - Removes +asyncpg driver suffix (uses default psycopg2)
+    - Converts ssl= back to sslmode= for psycopg2
+    """
+    # Remove asyncpg driver suffix
+    url = url.replace("postgresql+asyncpg://", "postgresql://")
+    # Convert ssl= to sslmode= for psycopg2
+    url = re.sub(r"\bssl=(\w+)", r"sslmode=\1", url)
+    return url
+
+
 def get_url():
     """Get database URL from environment."""
-    return os.getenv(
-        "DATABASE_URL_SYNC",
-        os.getenv("DATABASE_URL", "postgresql://localhost/city_doodle"),
-    )
+    # Prefer explicit sync URL, otherwise transform async URL
+    sync_url = os.getenv("DATABASE_URL_SYNC")
+    if sync_url:
+        return sync_url
+
+    url = os.getenv("DATABASE_URL", "postgresql://localhost/city_doodle")
+    return transform_url_for_sync(url)
 
 
 def run_migrations_offline() -> None:
