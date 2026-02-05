@@ -75,6 +75,7 @@ describe("FeaturesLayer", () => {
       bridges: true,
       grid: true,
       labels: true,
+      subwayTunnels: false,
     };
 
     layer.setVisibility(visibility);
@@ -97,6 +98,7 @@ describe("FeaturesLayer", () => {
       bridges: true,
       grid: true,
       labels: true,
+      subwayTunnels: false,
     };
 
     layer.setVisibility(allVisible);
@@ -118,6 +120,7 @@ describe("FeaturesLayer", () => {
       bridges: true,
       grid: true,
       labels: true,
+      subwayTunnels: false,
     };
 
     layer.setVisibility(allVisible);
@@ -139,6 +142,7 @@ describe("FeaturesLayer", () => {
       bridges: true,
       grid: true,
       labels: true,
+      subwayTunnels: false,
     };
 
     layer.setVisibility(allVisible);
@@ -451,6 +455,7 @@ describe("FeaturesLayer", () => {
         bridges: true,
         grid: true,
         labels: true,
+        subwayTunnels: false,
       });
 
       const result = layer.hitTest(50, 50);
@@ -489,6 +494,7 @@ describe("FeaturesLayer", () => {
         bridges: true,
         grid: true,
         labels: true,
+        subwayTunnels: false,
       });
 
       const result = layer.hitTest(50, 50);
@@ -530,6 +536,7 @@ describe("FeaturesLayer", () => {
         bridges: true,
         grid: true,
         labels: true,
+        subwayTunnels: false,
       });
 
       const result = layer.hitTest(50, 50);
