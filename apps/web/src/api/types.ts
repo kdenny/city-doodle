@@ -56,12 +56,72 @@ export interface WorldSettings {
   historic_modern: number;
   /** 0 = transit-oriented, 1 = car-dependent */
   transit_car: number;
+  /** Size of a city block in meters (50-300) */
+  block_size_meters: number;
+  /** Size of a district in meters (200-1000) */
+  district_size_meters: number;
 }
+
+/** Default world settings */
+export const DEFAULT_WORLD_SETTINGS: WorldSettings = {
+  grid_organic: 0.5,
+  sprawl_compact: 0.5,
+  historic_modern: 0.5,
+  transit_car: 0.5,
+  block_size_meters: 100,
+  district_size_meters: 500,
+};
+
+/** City scale presets for different city types */
+export interface CityScalePreset {
+  name: string;
+  description: string;
+  block_size_meters: number;
+  district_size_meters: number;
+}
+
+export const CITY_SCALE_PRESETS: Record<string, CityScalePreset> = {
+  manhattan: {
+    name: "Manhattan",
+    description: "Dense urban grid with small blocks",
+    block_size_meters: 80,
+    district_size_meters: 300,
+  },
+  portland: {
+    name: "Portland",
+    description: "Small walkable blocks, medium districts",
+    block_size_meters: 60,
+    district_size_meters: 400,
+  },
+  houston: {
+    name: "Houston",
+    description: "Large sprawling blocks and districts",
+    block_size_meters: 200,
+    district_size_meters: 800,
+  },
+  european: {
+    name: "European",
+    description: "Irregular small blocks, compact districts",
+    block_size_meters: 70,
+    district_size_meters: 350,
+  },
+  default: {
+    name: "Default",
+    description: "Standard American city layout",
+    block_size_meters: 100,
+    district_size_meters: 500,
+  },
+};
 
 export interface WorldCreate {
   name: string;
   seed?: number;
-  settings?: WorldSettings;
+  settings?: Partial<WorldSettings>;
+}
+
+export interface WorldUpdate {
+  name?: string;
+  settings?: Partial<WorldSettings>;
 }
 
 export interface World {

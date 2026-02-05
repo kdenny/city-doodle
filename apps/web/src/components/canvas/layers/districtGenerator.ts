@@ -9,6 +9,48 @@
 import type { District, Road, Point, DistrictType, RoadClass } from "./types";
 
 /**
+ * Scale settings for district and block sizes.
+ */
+export interface ScaleSettings {
+  /** Size of a city block in meters (50-300) */
+  blockSizeMeters: number;
+  /** Size of a district in meters (200-1000) */
+  districtSizeMeters: number;
+  /** Sprawl-compact slider value (0-1), affects size multiplier */
+  sprawlCompact?: number;
+}
+
+/**
+ * Default scale settings matching common city layouts.
+ */
+export const DEFAULT_SCALE_SETTINGS: ScaleSettings = {
+  blockSizeMeters: 100,
+  districtSizeMeters: 500,
+  sprawlCompact: 0.5,
+};
+
+/**
+ * Convert meters to world units.
+ * World units are approximately 1 unit = 1 meter for rendering purposes.
+ */
+function metersToWorldUnits(meters: number): number {
+  return meters;
+}
+
+/**
+ * Apply sprawl/compact multiplier to a size value.
+ * sprawlCompact = 0 means sprawling (larger), sprawlCompact = 1 means compact (smaller)
+ */
+function applySprawlCompactMultiplier(
+  baseValue: number,
+  sprawlCompact: number
+): number {
+  // Multiplier ranges from 1.5 (sprawl) to 0.7 (compact)
+  const multiplier = 1.5 - sprawlCompact * 0.8;
+  return baseValue * multiplier;
+}
+
+/**
  * Configuration for district generation.
  */
 export interface DistrictGenerationConfig {
@@ -26,9 +68,13 @@ export interface DistrictGenerationConfig {
   streetSpacing?: number;
   /** Road class for internal streets */
   streetClass?: RoadClass;
+  /** Scale settings for configurable block/district sizes */
+  scaleSettings?: ScaleSettings;
 }
 
-const DEFAULT_CONFIG: Required<DistrictGenerationConfig> = {
+const DEFAULT_CONFIG: Required<Omit<DistrictGenerationConfig, "scaleSettings">> & {
+  scaleSettings: ScaleSettings;
+} = {
   size: 120,
   minSize: 80,
   maxSize: 160,
@@ -36,7 +82,45 @@ const DEFAULT_CONFIG: Required<DistrictGenerationConfig> = {
   organicFactor: 0.3,
   streetSpacing: 30,
   streetClass: "local",
+  scaleSettings: DEFAULT_SCALE_SETTINGS,
 };
+
+/**
+ * Calculate effective district config based on scale settings.
+ */
+export function getEffectiveDistrictConfig(
+  config: DistrictGenerationConfig = {}
+): Required<Omit<DistrictGenerationConfig, "scaleSettings">> & {
+  scaleSettings: ScaleSettings;
+} {
+  const scaleSettings = config.scaleSettings ?? DEFAULT_SCALE_SETTINGS;
+  const sprawlCompact = scaleSettings.sprawlCompact ?? 0.5;
+
+  // Calculate base district size from settings
+  const baseDistrictSize = metersToWorldUnits(scaleSettings.districtSizeMeters);
+  const effectiveDistrictSize = applySprawlCompactMultiplier(
+    baseDistrictSize,
+    sprawlCompact
+  );
+
+  // Calculate street spacing from block size
+  const baseBlockSize = metersToWorldUnits(scaleSettings.blockSizeMeters);
+  const effectiveStreetSpacing = applySprawlCompactMultiplier(
+    baseBlockSize,
+    sprawlCompact
+  );
+
+  return {
+    size: config.size ?? effectiveDistrictSize,
+    minSize: config.minSize ?? effectiveDistrictSize * 0.7,
+    maxSize: config.maxSize ?? effectiveDistrictSize * 1.3,
+    polygonPoints: config.polygonPoints ?? DEFAULT_CONFIG.polygonPoints,
+    organicFactor: config.organicFactor ?? DEFAULT_CONFIG.organicFactor,
+    streetSpacing: config.streetSpacing ?? effectiveStreetSpacing * 0.3, // ~30% of block for streets
+    streetClass: config.streetClass ?? DEFAULT_CONFIG.streetClass,
+    scaleSettings,
+  };
+}
 
 /**
  * Result of generating district geometry.
@@ -396,7 +480,8 @@ export function generateDistrictGeometry(
   seedId: string,
   config: DistrictGenerationConfig = {}
 ): GeneratedDistrict {
-  const cfg = { ...DEFAULT_CONFIG, ...config };
+  // Use effective config which applies scale settings
+  const cfg = getEffectiveDistrictConfig(config);
 
   // Use position to seed the RNG for deterministic results
   const seed = Math.floor(position.x * 1000 + position.y * 7919);

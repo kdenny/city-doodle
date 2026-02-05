@@ -27,6 +27,7 @@ import {
   UserResponse,
   World,
   WorldCreate,
+  WorldUpdate,
 } from "./types";
 
 // ============================================================================
@@ -140,6 +141,20 @@ export function useCreateWorld(
   return useMutation({
     mutationFn: (data: WorldCreate) => api.worlds.create(data),
     onSuccess: () => {
+      queryClient.invalidateQueries({ queryKey: queryKeys.worlds });
+    },
+    ...options,
+  });
+}
+
+export function useUpdateWorld(
+  options?: UseMutationOptions<World, Error, { worldId: string; data: WorldUpdate }>
+) {
+  const queryClient = useQueryClient();
+  return useMutation({
+    mutationFn: ({ worldId, data }) => api.worlds.update(worldId, data),
+    onSuccess: (world) => {
+      queryClient.setQueryData(queryKeys.world(world.id), world);
       queryClient.invalidateQueries({ queryKey: queryKeys.worlds });
     },
     ...options,

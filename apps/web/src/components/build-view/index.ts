@@ -7,6 +7,8 @@ export { PopulationPanel } from "./PopulationPanel";
 export { CityNeedsPanel } from "./CityNeedsPanel";
 export type { CityNeeds, NeedLevel } from "./CityNeedsPanel";
 export { ScaleBar } from "./ScaleBar";
+export { ScaleSettings, useScaleSettings } from "./ScaleSettings";
+export type { ScaleSettingsValues } from "./ScaleSettings";
 export { InspectorPanel, useSelection } from "./InspectorPanel";
 export type {
   SelectedFeature,
