@@ -16,7 +16,7 @@
 export * from "./types";
 
 // API client
-export { api, auth, worlds, tiles, jobs } from "./client";
+export { api, auth, worlds, tiles, jobs, seeds } from "./client";
 export {
   setAuthToken,
   getAuthToken,

@@ -33,6 +33,18 @@ class WorldSettings(BaseModel):
         le=1.0,
         description="0 = transit-oriented, 1 = car-dependent",
     )
+    block_size_meters: int = Field(
+        default=100,
+        ge=50,
+        le=300,
+        description="Size of a city block in meters (50-300)",
+    )
+    district_size_meters: int = Field(
+        default=500,
+        ge=200,
+        le=1000,
+        description="Size of a district in meters (200-1000)",
+    )
 
 
 class WorldCreate(BaseModel):
@@ -41,6 +53,13 @@ class WorldCreate(BaseModel):
     name: str = Field(..., min_length=1, max_length=100)
     seed: int | None = Field(default=None, description="Random seed for generation")
     settings: WorldSettings = Field(default_factory=WorldSettings)
+
+
+class WorldUpdate(BaseModel):
+    """Request model for updating a world."""
+
+    name: str | None = Field(default=None, min_length=1, max_length=100)
+    settings: WorldSettings | None = Field(default=None)
 
 
 class World(BaseModel):

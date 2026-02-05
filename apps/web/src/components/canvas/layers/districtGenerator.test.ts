@@ -3,7 +3,10 @@ import {
   generateDistrictGeometry,
   wouldOverlap,
   seedIdToDistrictType,
+  getEffectiveDistrictConfig,
+  DEFAULT_SCALE_SETTINGS,
   type DistrictGenerationConfig,
+  type ScaleSettings,
 } from "./districtGenerator";
 import type { District } from "./types";
 
@@ -282,6 +285,153 @@ describe("seedIdToDistrictType", () => {
 
   it("maps unknown seed to residential as default", () => {
     expect(seedIdToDistrictType("unknown")).toBe("residential");
+  });
+});
+
+describe("getEffectiveDistrictConfig", () => {
+  it("returns default config when no options provided", () => {
+    const config = getEffectiveDistrictConfig();
+
+    expect(config.scaleSettings).toEqual(DEFAULT_SCALE_SETTINGS);
+    expect(config.polygonPoints).toBe(8);
+    expect(config.organicFactor).toBe(0.3);
+    expect(config.streetClass).toBe("local");
+  });
+
+  it("uses custom scale settings when provided", () => {
+    const customSettings: ScaleSettings = {
+      blockSizeMeters: 150,
+      districtSizeMeters: 700,
+      sprawlCompact: 0.5,
+    };
+
+    const config = getEffectiveDistrictConfig({ scaleSettings: customSettings });
+
+    expect(config.scaleSettings).toEqual(customSettings);
+  });
+
+  it("applies sprawl multiplier to increase sizes when sprawlCompact is low", () => {
+    const sprawlingConfig = getEffectiveDistrictConfig({
+      scaleSettings: {
+        blockSizeMeters: 100,
+        districtSizeMeters: 500,
+        sprawlCompact: 0, // Sprawling
+      },
+    });
+
+    const compactConfig = getEffectiveDistrictConfig({
+      scaleSettings: {
+        blockSizeMeters: 100,
+        districtSizeMeters: 500,
+        sprawlCompact: 1, // Compact
+      },
+    });
+
+    // Sprawling should have larger sizes
+    expect(sprawlingConfig.size).toBeGreaterThan(compactConfig.size);
+    expect(sprawlingConfig.streetSpacing).toBeGreaterThan(compactConfig.streetSpacing);
+  });
+
+  it("respects explicit size overrides over calculated values", () => {
+    const config = getEffectiveDistrictConfig({
+      size: 999,
+      minSize: 888,
+      maxSize: 1111,
+      scaleSettings: {
+        blockSizeMeters: 100,
+        districtSizeMeters: 500,
+        sprawlCompact: 0.5,
+      },
+    });
+
+    expect(config.size).toBe(999);
+    expect(config.minSize).toBe(888);
+    expect(config.maxSize).toBe(1111);
+  });
+});
+
+describe("generateDistrictGeometry with scale settings", () => {
+  it("generates larger districts with larger districtSizeMeters", () => {
+    const smallConfig: DistrictGenerationConfig = {
+      scaleSettings: {
+        blockSizeMeters: 60,
+        districtSizeMeters: 300,
+        sprawlCompact: 0.5,
+      },
+    };
+
+    const largeConfig: DistrictGenerationConfig = {
+      scaleSettings: {
+        blockSizeMeters: 200,
+        districtSizeMeters: 900,
+        sprawlCompact: 0.5,
+      },
+    };
+
+    const smallResult = generateDistrictGeometry({ x: 100, y: 100 }, "residential", smallConfig);
+    const largeResult = generateDistrictGeometry({ x: 100, y: 100 }, "residential", largeConfig);
+
+    const smallBounds = getPolygonBounds(smallResult.district.polygon.points);
+    const largeBounds = getPolygonBounds(largeResult.district.polygon.points);
+
+    const smallArea = (smallBounds.maxX - smallBounds.minX) * (smallBounds.maxY - smallBounds.minY);
+    const largeArea = (largeBounds.maxX - largeBounds.minX) * (largeBounds.maxY - largeBounds.minY);
+
+    expect(largeArea).toBeGreaterThan(smallArea);
+  });
+
+  it("generates districts with more roads when blockSizeMeters is smaller", () => {
+    const denseConfig: DistrictGenerationConfig = {
+      scaleSettings: {
+        blockSizeMeters: 50,
+        districtSizeMeters: 500,
+        sprawlCompact: 0.5,
+      },
+    };
+
+    const sparseConfig: DistrictGenerationConfig = {
+      scaleSettings: {
+        blockSizeMeters: 200,
+        districtSizeMeters: 500,
+        sprawlCompact: 0.5,
+      },
+    };
+
+    const denseResult = generateDistrictGeometry({ x: 200, y: 200 }, "commercial", denseConfig);
+    const sparseResult = generateDistrictGeometry({ x: 200, y: 200 }, "commercial", sparseConfig);
+
+    // More roads in dense configuration due to smaller block sizes
+    expect(denseResult.roads.length).toBeGreaterThanOrEqual(sparseResult.roads.length);
+  });
+
+  it("applies sprawl multiplier correctly", () => {
+    const sprawlingConfig: DistrictGenerationConfig = {
+      scaleSettings: {
+        blockSizeMeters: 100,
+        districtSizeMeters: 500,
+        sprawlCompact: 0.1, // Very sprawling
+      },
+    };
+
+    const compactConfig: DistrictGenerationConfig = {
+      scaleSettings: {
+        blockSizeMeters: 100,
+        districtSizeMeters: 500,
+        sprawlCompact: 0.9, // Very compact
+      },
+    };
+
+    const sprawlingResult = generateDistrictGeometry({ x: 300, y: 300 }, "residential", sprawlingConfig);
+    const compactResult = generateDistrictGeometry({ x: 300, y: 300 }, "residential", compactConfig);
+
+    const sprawlingBounds = getPolygonBounds(sprawlingResult.district.polygon.points);
+    const compactBounds = getPolygonBounds(compactResult.district.polygon.points);
+
+    const sprawlingWidth = sprawlingBounds.maxX - sprawlingBounds.minX;
+    const compactWidth = compactBounds.maxX - compactBounds.minX;
+
+    // Sprawling should be larger than compact
+    expect(sprawlingWidth).toBeGreaterThan(compactWidth);
   });
 });
 

@@ -40,12 +40,13 @@ from city_api.schemas.user import (
     UserLogin,
     UserResponse,
 )
-from city_api.schemas.world import World, WorldCreate, WorldSettings
+from city_api.schemas.world import World, WorldCreate, WorldSettings, WorldUpdate
 
 __all__ = [
     # World
     "World",
     "WorldCreate",
+    "WorldUpdate",
     "WorldSettings",
     # Tile
     "Tile",
