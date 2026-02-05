@@ -7,33 +7,40 @@ import type { TransitNetwork } from "../../api/types";
 // So 1 world unit = 50/768 miles ≈ 0.0651 miles
 
 const mockTransitNetwork: TransitNetwork = {
+  world_id: "world1",
   stations: [
-    { id: "s1", city_id: "city1", name: "Station A", position_x: 0, position_y: 0, station_type: "subway" },
-    { id: "s2", city_id: "city1", name: "Station B", position_x: 100, position_y: 0, station_type: "subway" },
-    { id: "s3", city_id: "city1", name: "Station C", position_x: 200, position_y: 0, station_type: "subway" },
-    { id: "s4", city_id: "city1", name: "Rail Station 1", position_x: 0, position_y: 100, station_type: "rail" },
-    { id: "s5", city_id: "city1", name: "Rail Station 2", position_x: 300, position_y: 100, station_type: "rail" },
+    { id: "s1", world_id: "world1", district_id: "d1", name: "Station A", position_x: 0, position_y: 0, station_type: "subway", is_terminus: false, created_at: "2024-01-01T00:00:00Z", updated_at: "2024-01-01T00:00:00Z" },
+    { id: "s2", world_id: "world1", district_id: "d1", name: "Station B", position_x: 100, position_y: 0, station_type: "subway", is_terminus: false, created_at: "2024-01-01T00:00:00Z", updated_at: "2024-01-01T00:00:00Z" },
+    { id: "s3", world_id: "world1", district_id: "d1", name: "Station C", position_x: 200, position_y: 0, station_type: "subway", is_terminus: false, created_at: "2024-01-01T00:00:00Z", updated_at: "2024-01-01T00:00:00Z" },
+    { id: "s4", world_id: "world1", district_id: "d2", name: "Rail Station 1", position_x: 0, position_y: 100, station_type: "rail", is_terminus: false, created_at: "2024-01-01T00:00:00Z", updated_at: "2024-01-01T00:00:00Z" },
+    { id: "s5", world_id: "world1", district_id: "d2", name: "Rail Station 2", position_x: 300, position_y: 100, station_type: "rail", is_terminus: false, created_at: "2024-01-01T00:00:00Z", updated_at: "2024-01-01T00:00:00Z" },
   ],
   lines: [
     {
       id: "line1",
-      city_id: "city1",
+      world_id: "world1",
       name: "Red Line",
       color: "#DC2626",
       line_type: "subway",
+      is_auto_generated: false,
+      created_at: "2024-01-01T00:00:00Z",
+      updated_at: "2024-01-01T00:00:00Z",
       segments: [
-        { id: "seg1", line_id: "line1", from_station_id: "s1", to_station_id: "s2", sequence_order: 0, geometry: [] },
-        { id: "seg2", line_id: "line1", from_station_id: "s2", to_station_id: "s3", sequence_order: 1, geometry: [] },
+        { id: "seg1", line_id: "line1", from_station_id: "s1", to_station_id: "s2", order_in_line: 0, geometry: [], is_underground: true, created_at: "2024-01-01T00:00:00Z", updated_at: "2024-01-01T00:00:00Z" },
+        { id: "seg2", line_id: "line1", from_station_id: "s2", to_station_id: "s3", order_in_line: 1, geometry: [], is_underground: true, created_at: "2024-01-01T00:00:00Z", updated_at: "2024-01-01T00:00:00Z" },
       ],
     },
     {
       id: "line2",
-      city_id: "city1",
+      world_id: "world1",
       name: "Express Rail",
       color: "#16A34A",
       line_type: "rail",
+      is_auto_generated: false,
+      created_at: "2024-01-01T00:00:00Z",
+      updated_at: "2024-01-01T00:00:00Z",
       segments: [
-        { id: "seg3", line_id: "line2", from_station_id: "s4", to_station_id: "s5", sequence_order: 0, geometry: [] },
+        { id: "seg3", line_id: "line2", from_station_id: "s4", to_station_id: "s5", order_in_line: 0, geometry: [], is_underground: false, created_at: "2024-01-01T00:00:00Z", updated_at: "2024-01-01T00:00:00Z" },
       ],
     },
   ],
@@ -85,24 +92,31 @@ describe("useTransitLinesData", () => {
 
   it("calculates path length through geometry points", () => {
     const networkWithGeometry: TransitNetwork = {
+      world_id: "world1",
       stations: [
-        { id: "s1", city_id: "city1", name: "A", position_x: 0, position_y: 0, station_type: "subway" },
-        { id: "s2", city_id: "city1", name: "B", position_x: 100, position_y: 0, station_type: "subway" },
+        { id: "s1", world_id: "world1", district_id: "d1", name: "A", position_x: 0, position_y: 0, station_type: "subway", is_terminus: false, created_at: "2024-01-01T00:00:00Z", updated_at: "2024-01-01T00:00:00Z" },
+        { id: "s2", world_id: "world1", district_id: "d1", name: "B", position_x: 100, position_y: 0, station_type: "subway", is_terminus: false, created_at: "2024-01-01T00:00:00Z", updated_at: "2024-01-01T00:00:00Z" },
       ],
       lines: [
         {
           id: "curved",
-          city_id: "city1",
+          world_id: "world1",
           name: "Curved Line",
           color: "#000",
           line_type: "subway",
+          is_auto_generated: false,
+          created_at: "2024-01-01T00:00:00Z",
+          updated_at: "2024-01-01T00:00:00Z",
           segments: [
             {
               id: "seg",
               line_id: "curved",
               from_station_id: "s1",
               to_station_id: "s2",
-              sequence_order: 0,
+              order_in_line: 0,
+              is_underground: true,
+              created_at: "2024-01-01T00:00:00Z",
+              updated_at: "2024-01-01T00:00:00Z",
               // Path goes through (50, 50) making it longer than straight line
               geometry: [{ x: 50, y: 50 }],
             },
@@ -124,17 +138,21 @@ describe("useTransitLinesData", () => {
 
   it("uses default color when line has no color", () => {
     const networkNoColor: TransitNetwork = {
+      world_id: "world1",
       stations: [
-        { id: "s1", city_id: "city1", name: "A", position_x: 0, position_y: 0, station_type: "subway" },
-        { id: "s2", city_id: "city1", name: "B", position_x: 100, position_y: 0, station_type: "subway" },
+        { id: "s1", world_id: "world1", district_id: "d1", name: "A", position_x: 0, position_y: 0, station_type: "subway", is_terminus: false, created_at: "2024-01-01T00:00:00Z", updated_at: "2024-01-01T00:00:00Z" },
+        { id: "s2", world_id: "world1", district_id: "d1", name: "B", position_x: 100, position_y: 0, station_type: "subway", is_terminus: false, created_at: "2024-01-01T00:00:00Z", updated_at: "2024-01-01T00:00:00Z" },
       ],
       lines: [
         {
           id: "nocolor",
-          city_id: "city1",
+          world_id: "world1",
           name: "No Color Line",
           color: "", // Empty color
           line_type: "subway",
+          is_auto_generated: false,
+          created_at: "2024-01-01T00:00:00Z",
+          updated_at: "2024-01-01T00:00:00Z",
           segments: [],
         },
       ],
@@ -155,20 +173,22 @@ describe("hasTransitData", () => {
   });
 
   it("returns false for empty network", () => {
-    expect(hasTransitData({ stations: [], lines: [] })).toBe(false);
+    expect(hasTransitData({ world_id: "world1", stations: [], lines: [] })).toBe(false);
   });
 
   it("returns true when network has stations", () => {
     expect(hasTransitData({
-      stations: [{ id: "s1", city_id: "city1", name: "A", position_x: 0, position_y: 0, station_type: "subway" }],
+      world_id: "world1",
+      stations: [{ id: "s1", world_id: "world1", district_id: "d1", name: "A", position_x: 0, position_y: 0, station_type: "subway", is_terminus: false, created_at: "2024-01-01T00:00:00Z", updated_at: "2024-01-01T00:00:00Z" }],
       lines: [],
     })).toBe(true);
   });
 
   it("returns true when network has lines", () => {
     expect(hasTransitData({
+      world_id: "world1",
       stations: [],
-      lines: [{ id: "l1", city_id: "city1", name: "Line", color: "#000", line_type: "subway", segments: [] }],
+      lines: [{ id: "l1", world_id: "world1", name: "Line", color: "#000", line_type: "subway", is_auto_generated: false, created_at: "2024-01-01T00:00:00Z", updated_at: "2024-01-01T00:00:00Z", segments: [] }],
     })).toBe(true);
   });
 });
