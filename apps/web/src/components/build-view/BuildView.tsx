@@ -8,6 +8,7 @@ import { InspectorPanel, type SelectedFeature } from "./InspectorPanel";
 import { useSelectionContextOptional } from "./SelectionContext";
 import { useZoomOptional } from "../shell/ZoomContext";
 import { useDrawingOptional } from "../canvas/DrawingContext";
+import { usePopulationStats } from "../canvas";
 
 interface BuildViewProps {
   children: ReactNode;
@@ -32,8 +33,8 @@ const defaultNeeds: CityNeeds = {
 
 export function BuildView({
   children,
-  population = 125000,
-  growthPercent = 2.3,
+  population: populationProp,
+  growthPercent: growthPercentProp,
   cityNeeds = defaultNeeds,
   selectedFeature: selectedFeatureProp,
   onToolChange,
@@ -82,6 +83,11 @@ export function BuildView({
       setActiveTool("pan");
     }
   }, [activeTool, drawingContext?.state.isDrawing, drawingContext?.state.mode, setActiveTool]);
+
+  // Calculate population from placed districts, fallback to props
+  const populationStats = usePopulationStats();
+  const population = populationStats?.totalPopulation ?? populationProp ?? 0;
+  const growthPercent = populationStats?.growthPercent ?? growthPercentProp ?? 0;
 
   const handleToolChange = useCallback(
     (tool: Tool) => {
