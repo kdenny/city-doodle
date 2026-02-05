@@ -14,6 +14,7 @@ if TYPE_CHECKING:
     from city_api.models.road_network import RoadEdge, RoadNode
     from city_api.models.seed import PlacedSeed
     from city_api.models.tile import Tile
+    from city_api.models.transit import TransitLine, TransitStation
 
 
 class World(Base):
@@ -44,4 +45,10 @@ class World(Base):
     )
     road_edges: Mapped[list["RoadEdge"]] = relationship(
         "RoadEdge", back_populates="world", cascade="all, delete-orphan"
+    )
+    transit_stations: Mapped[list["TransitStation"]] = relationship(
+        "TransitStation", back_populates="world", cascade="all, delete-orphan"
+    )
+    transit_lines: Mapped[list["TransitLine"]] = relationship(
+        "TransitLine", back_populates="world", cascade="all, delete-orphan"
     )
