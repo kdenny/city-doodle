@@ -5,8 +5,10 @@ export { LabelLayer, generateMockLabels } from "./LabelLayer";
 export { SeedsLayer } from "./SeedsLayer";
 export { DrawingLayer } from "./DrawingLayer";
 export { RailStationLayer } from "./RailStationLayer";
+export { SubwayStationLayer, toSubwayStationData } from "./SubwayStationLayer";
 export type { PlacedSeedData, PreviewSeedData } from "./SeedsLayer";
 export type { RailStationData, TrackSegmentData, RailStationPreviewData } from "./RailStationLayer";
+export type { SubwayStationData, SubwayStationPreviewData, SubwayTunnelData } from "./SubwayStationLayer";
 export { generateMockTerrain } from "./mockTerrain";
 export {
   generateDistrictGeometry,

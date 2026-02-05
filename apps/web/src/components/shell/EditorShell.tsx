@@ -138,6 +138,15 @@ function PlacementWithSeeds({ children }: { children: ReactNode }) {
           return;
         }
         // Don't add a seed marker for rail stations - the transit layer renders them
+      } else if (seed.id === "subway" && transitContext) {
+        // For subway station seeds, use the transit context to place them
+        // This handles validation (must be in district) and auto-connection
+        const station = await transitContext.placeSubwayStation(position);
+        if (!station) {
+          console.warn("Failed to place subway station - must be inside a district");
+          return;
+        }
+        // Don't add a seed marker for subway stations - the subway station layer renders them
       } else {
         // For other POI and transit seeds, add them as seed markers
         addSeed(seed, position);
