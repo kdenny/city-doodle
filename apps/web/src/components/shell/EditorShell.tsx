@@ -110,12 +110,13 @@ function PlacementWithSeeds({ children }: { children: ReactNode }) {
     (
       seed: SeedType,
       position: { x: number; y: number },
-      personality?: DistrictPersonality
+      personality?: DistrictPersonality,
+      generationSeed?: number
     ) => {
       if (seed.category === "district") {
         // For district seeds, generate actual district geometry
-        // Pass personality settings to be stored on the district
-        const result = addDistrict(position, seed.id, { personality });
+        // Pass personality settings and generation seed to be stored on the district
+        const result = addDistrict(position, seed.id, { personality, seed: generationSeed });
         if (!result.generated) {
           // District overlapped, in water, or failed
           console.warn("Failed to place district:", result.error);

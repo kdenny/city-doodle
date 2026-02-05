@@ -6,6 +6,7 @@ import { useCallback } from "react";
 import { SEED_CATEGORIES, getSeedsByCategory, type SeedType } from "./types";
 import { usePlacement } from "./PlacementContext";
 import { PersonalitySliders } from "../build-view/PersonalitySliders";
+import { SeedControl } from "../build-view/SeedControl";
 import { DEFAULT_DISTRICT_PERSONALITY } from "../canvas/layers/types";
 
 interface SeedButtonProps {
@@ -45,6 +46,8 @@ export function PlacementPalette() {
     cancelPlacing,
     placementPersonality,
     setPlacementPersonality,
+    placementSeed,
+    setPlacementSeed,
   } = usePlacement();
 
   const handleSeedClick = useCallback(
@@ -90,17 +93,27 @@ export function PlacementPalette() {
         </div>
       )}
 
-      {/* Show personality sliders when a district seed is selected */}
+      {/* Show personality sliders and seed control when a district seed is selected */}
       {isDistrictSeed && (
-        <div className="mb-3 p-2 bg-gray-50 rounded-lg">
-          <h4 className="text-xs font-medium text-gray-600 mb-2">
-            District Personality
-          </h4>
-          <PersonalitySliders
-            values={placementPersonality ?? DEFAULT_DISTRICT_PERSONALITY}
-            onChange={setPlacementPersonality}
-            compact
-          />
+        <div className="mb-3 p-2 bg-gray-50 rounded-lg space-y-3">
+          <div>
+            <h4 className="text-xs font-medium text-gray-600 mb-2">
+              District Personality
+            </h4>
+            <PersonalitySliders
+              values={placementPersonality ?? DEFAULT_DISTRICT_PERSONALITY}
+              onChange={setPlacementPersonality}
+              compact
+            />
+          </div>
+          <div className="pt-2 border-t border-gray-200">
+            <SeedControl
+              seed={placementSeed}
+              onSeedChange={setPlacementSeed}
+              label="Generation Seed"
+              compact
+            />
+          </div>
         </div>
       )}
 

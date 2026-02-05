@@ -71,9 +71,15 @@ export interface DistrictGenerationConfig {
   streetClass?: RoadClass;
   /** Scale settings for configurable block/district sizes */
   scaleSettings?: ScaleSettings;
+  /**
+   * Explicit seed for random generation.
+   * When provided, overrides the position-based seed for deterministic results.
+   * Same seed + settings = same district geometry.
+   */
+  seed?: number;
 }
 
-const DEFAULT_CONFIG: Required<Omit<DistrictGenerationConfig, "scaleSettings">> & {
+const DEFAULT_CONFIG: Required<Omit<DistrictGenerationConfig, "scaleSettings" | "seed">> & {
   scaleSettings: ScaleSettings;
 } = {
   size: 120,
@@ -91,7 +97,7 @@ const DEFAULT_CONFIG: Required<Omit<DistrictGenerationConfig, "scaleSettings">> 
  */
 export function getEffectiveDistrictConfig(
   config: DistrictGenerationConfig = {}
-): Required<Omit<DistrictGenerationConfig, "scaleSettings">> & {
+): Required<Omit<DistrictGenerationConfig, "scaleSettings" | "seed">> & {
   scaleSettings: ScaleSettings;
 } {
   const scaleSettings = config.scaleSettings ?? DEFAULT_SCALE_SETTINGS;
@@ -456,8 +462,8 @@ export function generateDistrictGeometry(
   // Use effective config which applies scale settings
   const cfg = getEffectiveDistrictConfig(config);
 
-  // Use position to seed the RNG for deterministic results
-  const seed = Math.floor(position.x * 1000 + position.y * 7919);
+  // Use explicit seed if provided, otherwise derive from position for deterministic results
+  const seed = config.seed ?? Math.floor(position.x * 1000 + position.y * 7919);
   const rng = new SeededRandom(seed);
 
   // Vary the size slightly

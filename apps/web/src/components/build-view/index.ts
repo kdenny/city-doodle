@@ -38,3 +38,9 @@ export {
   eraYearToSliderValue,
 } from "./EraSelector";
 export type { Era } from "./EraSelector";
+export {
+  SeedControl,
+  generateRandomSeed,
+  seedToHash,
+  hashToSeed,
+} from "./SeedControl";
