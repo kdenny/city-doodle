@@ -6,6 +6,7 @@ import { createContext, useContext, useState, useCallback, ReactNode } from "rea
 import type { SeedType } from "./types";
 import type { DistrictPersonality } from "../canvas/layers/types";
 import { DEFAULT_DISTRICT_PERSONALITY } from "../canvas/layers/types";
+import { generateRandomSeed } from "../build-view/SeedControl";
 
 interface PlacementState {
   selectedSeed: SeedType | null;
@@ -13,6 +14,8 @@ interface PlacementState {
   previewPosition: { x: number; y: number } | null;
   /** Personality settings to use when placing a district */
   placementPersonality: DistrictPersonality;
+  /** Seed for deterministic procedural generation */
+  placementSeed: number;
 }
 
 interface PlacementContextValue extends PlacementState {
@@ -23,6 +26,10 @@ interface PlacementContextValue extends PlacementState {
   confirmPlacement: (position: { x: number; y: number }) => void;
   /** Update the personality settings for district placement */
   setPlacementPersonality: (personality: DistrictPersonality) => void;
+  /** Update the seed for deterministic procedural generation */
+  setPlacementSeed: (seed: number) => void;
+  /** Generate a new random seed for placement */
+  shufflePlacementSeed: () => void;
 }
 
 const PlacementContext = createContext<PlacementContextValue | null>(null);
@@ -32,7 +39,8 @@ interface PlacementProviderProps {
   onPlaceSeed?: (
     seed: SeedType,
     position: { x: number; y: number },
-    personality?: DistrictPersonality
+    personality?: DistrictPersonality,
+    generationSeed?: number
   ) => void;
 }
 
@@ -42,6 +50,7 @@ export function PlacementProvider({ children, onPlaceSeed }: PlacementProviderPr
     isPlacing: false,
     previewPosition: null,
     placementPersonality: DEFAULT_DISTRICT_PERSONALITY,
+    placementSeed: generateRandomSeed(),
   });
 
   const selectSeed = useCallback((seed: SeedType | null) => {
@@ -50,8 +59,9 @@ export function PlacementProvider({ children, onPlaceSeed }: PlacementProviderPr
       selectedSeed: seed,
       isPlacing: seed !== null,
       previewPosition: null,
-      // Reset personality to defaults when selecting a new seed
+      // Reset personality to defaults and generate new seed when selecting a new seed type
       placementPersonality: DEFAULT_DISTRICT_PERSONALITY,
+      placementSeed: generateRandomSeed(),
     }));
   }, []);
 
@@ -68,6 +78,7 @@ export function PlacementProvider({ children, onPlaceSeed }: PlacementProviderPr
       isPlacing: false,
       previewPosition: null,
       placementPersonality: DEFAULT_DISTRICT_PERSONALITY,
+      placementSeed: generateRandomSeed(),
     });
   }, []);
 
@@ -75,6 +86,20 @@ export function PlacementProvider({ children, onPlaceSeed }: PlacementProviderPr
     setState((prev) => ({
       ...prev,
       placementPersonality: personality,
+    }));
+  }, []);
+
+  const setPlacementSeed = useCallback((seed: number) => {
+    setState((prev) => ({
+      ...prev,
+      placementSeed: seed,
+    }));
+  }, []);
+
+  const shufflePlacementSeed = useCallback(() => {
+    setState((prev) => ({
+      ...prev,
+      placementSeed: generateRandomSeed(),
     }));
   }, []);
 
@@ -88,20 +113,22 @@ export function PlacementProvider({ children, onPlaceSeed }: PlacementProviderPr
   const confirmPlacement = useCallback(
     (position: { x: number; y: number }) => {
       if (state.selectedSeed && onPlaceSeed) {
-        // Pass personality for district seeds
+        // Pass personality and seed for district seeds
         if (state.selectedSeed.category === "district") {
-          onPlaceSeed(state.selectedSeed, position, state.placementPersonality);
+          onPlaceSeed(state.selectedSeed, position, state.placementPersonality, state.placementSeed);
         } else {
           onPlaceSeed(state.selectedSeed, position);
         }
       }
       // Stay in placement mode with same seed selected for quick consecutive placements
+      // Generate a new seed for the next placement so they're not all identical
       setState((prev) => ({
         ...prev,
         previewPosition: null,
+        placementSeed: generateRandomSeed(),
       }));
     },
-    [state.selectedSeed, state.placementPersonality, onPlaceSeed]
+    [state.selectedSeed, state.placementPersonality, state.placementSeed, onPlaceSeed]
   );
 
   const value: PlacementContextValue = {
@@ -112,6 +139,8 @@ export function PlacementProvider({ children, onPlaceSeed }: PlacementProviderPr
     setPreviewPosition,
     confirmPlacement,
     setPlacementPersonality,
+    setPlacementSeed,
+    shufflePlacementSeed,
   };
 
   return (

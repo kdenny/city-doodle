@@ -36,6 +36,12 @@ import { useTerrainOptional } from "./TerrainContext";
 interface AddDistrictConfig extends DistrictGenerationConfig {
   /** Personality settings to apply to the district */
   personality?: DistrictPersonality;
+  /**
+   * Explicit seed for random generation.
+   * When provided, ensures deterministic results.
+   * Same seed + settings = same district geometry.
+   */
+  seed?: number;
 }
 import {
   useWorldDistricts,
@@ -282,6 +288,8 @@ export function FeaturesProvider({
           districtSizeMeters: config?.scaleSettings?.districtSizeMeters ?? 500,
           sprawlCompact: personality.sprawl_compact,
         },
+        // Pass through the explicit seed if provided
+        seed: config?.seed,
       };
 
       // Generate district geometry

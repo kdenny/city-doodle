@@ -46,6 +46,68 @@ describe("generateDistrictGeometry", () => {
     }
   });
 
+  it("generates deterministic results with explicit seed", () => {
+    const position = { x: 100, y: 100 };
+    const explicitSeed = 42;
+
+    const result1 = generateDistrictGeometry(position, "residential", { seed: explicitSeed });
+    const result2 = generateDistrictGeometry(position, "residential", { seed: explicitSeed });
+
+    // Same polygon points
+    const points1 = result1.district.polygon.points;
+    const points2 = result2.district.polygon.points;
+    expect(points1.length).toBe(points2.length);
+    for (let i = 0; i < points1.length; i++) {
+      expect(points1[i].x).toBeCloseTo(points2[i].x, 5);
+      expect(points1[i].y).toBeCloseTo(points2[i].y, 5);
+    }
+
+    // Same number of roads
+    expect(result1.roads.length).toBe(result2.roads.length);
+  });
+
+  it("explicit seed overrides position-based seed", () => {
+    const position1 = { x: 100, y: 100 };
+    const position2 = { x: 500, y: 500 };
+    const explicitSeed = 42;
+
+    // Same explicit seed at different positions should produce similar geometry
+    // (only position offset differs)
+    const result1 = generateDistrictGeometry(position1, "residential", { seed: explicitSeed });
+    const result2 = generateDistrictGeometry(position2, "residential", { seed: explicitSeed });
+
+    // Same number of polygon points (shape is the same)
+    expect(result1.district.polygon.points.length).toBe(result2.district.polygon.points.length);
+
+    // Same number of roads
+    expect(result1.roads.length).toBe(result2.roads.length);
+  });
+
+  it("different explicit seeds produce different results", () => {
+    const position = { x: 100, y: 100 };
+
+    const result1 = generateDistrictGeometry(position, "residential", { seed: 42 });
+    const result2 = generateDistrictGeometry(position, "residential", { seed: 999 });
+
+    // Different seeds should produce different geometry
+    // We check that at least some points differ
+    const points1 = result1.district.polygon.points;
+    const points2 = result2.district.polygon.points;
+
+    let hasDifference = false;
+    const minLen = Math.min(points1.length, points2.length);
+    for (let i = 0; i < minLen; i++) {
+      if (
+        Math.abs(points1[i].x - points2[i].x) > 1 ||
+        Math.abs(points1[i].y - points2[i].y) > 1
+      ) {
+        hasDifference = true;
+        break;
+      }
+    }
+    expect(hasDifference).toBe(true);
+  });
+
   it("generates different results for different positions", () => {
     const result1 = generateDistrictGeometry({ x: 100, y: 100 }, "residential");
     const result2 = generateDistrictGeometry({ x: 500, y: 500 }, "residential");
