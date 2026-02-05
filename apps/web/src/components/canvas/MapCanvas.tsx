@@ -20,6 +20,7 @@ import {
   DEFAULT_LAYER_VISIBILITY,
   type LayerVisibility,
   type PlacedSeedData,
+  type HitTestResult,
 } from "./layers";
 import { LayerControls } from "./LayerControls";
 import {
@@ -31,6 +32,9 @@ import {
 import { MapCanvasContextInternal } from "./MapCanvasContext";
 import { useZoomOptional } from "../shell/ZoomContext";
 import { usePlacementOptional, usePlacedSeedsOptional } from "../palette";
+import { useSelectionContextOptional } from "../build-view/SelectionContext";
+import type { SelectedFeature } from "../build-view/SelectionContext";
+import type { District, Road, POI } from "./layers";
 
 // Tile size in world coordinates
 const TILE_SIZE = 256;
@@ -47,6 +51,8 @@ interface MapCanvasProps {
   onZoomChange?: (zoom: number) => void;
   /** Whether to show mock features (set false for new empty worlds) */
   showMockFeatures?: boolean;
+  /** Callback when a feature is clicked for selection */
+  onFeatureSelect?: (feature: SelectedFeature) => void;
 }
 
 /**
@@ -62,7 +68,7 @@ export interface MapCanvasHandle {
 }
 
 export const MapCanvas = forwardRef<MapCanvasHandle, MapCanvasProps>(
-  function MapCanvas({ className, seed = 12345, zoom: zoomProp, onZoomChange: onZoomChangeProp, showMockFeatures = true }, ref) {
+  function MapCanvas({ className, seed = 12345, zoom: zoomProp, onZoomChange: onZoomChangeProp, showMockFeatures = true, onFeatureSelect: onFeatureSelectProp }, ref) {
   const containerRef = useRef<HTMLDivElement>(null);
   const appRef = useRef<Application | null>(null);
   const viewportRef = useRef<Viewport | null>(null);
@@ -89,6 +95,10 @@ export const MapCanvas = forwardRef<MapCanvasHandle, MapCanvasProps>(
 
   // Get placed seeds context for rendering placed seeds
   const placedSeedsContext = usePlacedSeedsOptional();
+
+  // Get selection context for handling feature selection
+  const selectionContext = useSelectionContextOptional();
+  const onFeatureSelect = onFeatureSelectProp ?? selectionContext?.selectFeature;
 
   // Create the export handle object
   const exportHandle = {
@@ -447,12 +457,14 @@ export const MapCanvas = forwardRef<MapCanvasHandle, MapCanvasProps>(
     placementContext?.selectedSeed,
   ]);
 
-  // Handle clicks for seed placement
+  // Handle clicks for seed placement and feature selection
   useEffect(() => {
-    if (!isReady || !viewportRef.current || !placementContext) return;
+    if (!isReady || !viewportRef.current) return;
 
     const viewport = viewportRef.current;
-    const { isPlacing, confirmPlacement, setPreviewPosition } = placementContext;
+    const isPlacing = placementContext?.isPlacing ?? false;
+    const confirmPlacement = placementContext?.confirmPlacement;
+    const setPreviewPosition = placementContext?.setPreviewPosition;
 
     // Track if we're dragging to avoid triggering click after drag
     let isDragging = false;
@@ -472,7 +484,7 @@ export const MapCanvas = forwardRef<MapCanvasHandle, MapCanvasProps>(
       }
 
       // Update preview position if placing
-      if (isPlacing) {
+      if (isPlacing && setPreviewPosition) {
         const worldPos = viewport.toWorld(event.global.x, event.global.y);
         setPreviewPosition({ x: worldPos.x, y: worldPos.y });
       }
@@ -482,10 +494,21 @@ export const MapCanvas = forwardRef<MapCanvasHandle, MapCanvasProps>(
       // Don't trigger placement if we were dragging
       if (isDragging) return;
 
-      if (isPlacing) {
-        // Convert screen position to world position
-        const worldPos = viewport.toWorld(event.global.x, event.global.y);
+      // Convert screen position to world position
+      const worldPos = viewport.toWorld(event.global.x, event.global.y);
+
+      if (isPlacing && confirmPlacement) {
         confirmPlacement({ x: worldPos.x, y: worldPos.y });
+      } else if (onFeatureSelect && featuresLayerRef.current) {
+        // Perform hit test and select feature
+        const hitResult = featuresLayerRef.current.hitTest(worldPos.x, worldPos.y);
+        if (hitResult) {
+          const selectedFeature = hitTestResultToSelectedFeature(hitResult);
+          onFeatureSelect(selectedFeature);
+        } else {
+          // Clicked on empty space - clear selection
+          onFeatureSelect(null);
+        }
       }
     };
 
@@ -498,7 +521,7 @@ export const MapCanvas = forwardRef<MapCanvasHandle, MapCanvasProps>(
       viewport.off("pointermove", handlePointerMove);
       viewport.off("pointerup", handleClick);
     };
-  }, [isReady, placementContext?.isPlacing, placementContext?.confirmPlacement, placementContext?.setPreviewPosition]);
+  }, [isReady, placementContext?.isPlacing, placementContext?.confirmPlacement, placementContext?.setPreviewPosition, onFeatureSelect]);
 
   return (
     <div
@@ -520,3 +543,39 @@ export const MapCanvas = forwardRef<MapCanvasHandle, MapCanvasProps>(
   );
   }
 );
+
+/**
+ * Convert a hit test result to a SelectedFeature for the inspector panel.
+ */
+function hitTestResultToSelectedFeature(hitResult: HitTestResult): SelectedFeature {
+  switch (hitResult.type) {
+    case "district": {
+      const district = hitResult.feature as District;
+      return {
+        type: "district",
+        id: district.id,
+        name: district.name,
+        districtType: district.type,
+        isHistoric: district.isHistoric ?? false,
+      };
+    }
+    case "road": {
+      const road = hitResult.feature as Road;
+      return {
+        type: "road",
+        id: road.id,
+        name: road.name,
+        roadClass: road.roadClass,
+      };
+    }
+    case "poi": {
+      const poi = hitResult.feature as POI;
+      return {
+        type: "poi",
+        id: poi.id,
+        name: poi.name,
+        poiType: poi.type,
+      };
+    }
+  }
+}

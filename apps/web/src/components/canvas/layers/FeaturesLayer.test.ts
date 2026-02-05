@@ -140,6 +140,376 @@ describe("FeaturesLayer", () => {
   it("cleans up on destroy", () => {
     expect(() => layer.destroy()).not.toThrow();
   });
+
+  describe("hitTest", () => {
+    it("returns null when no data is set", () => {
+      const result = layer.hitTest(50, 50);
+      expect(result).toBeNull();
+    });
+
+    it("returns null when clicking on empty space", () => {
+      const data: FeaturesData = {
+        districts: [],
+        roads: [],
+        pois: [],
+      };
+      layer.setData(data);
+
+      const result = layer.hitTest(50, 50);
+      expect(result).toBeNull();
+    });
+
+    it("detects POI clicks", () => {
+      const data: FeaturesData = {
+        districts: [],
+        roads: [],
+        pois: [
+          {
+            id: "poi-1",
+            name: "Test POI",
+            type: "park",
+            position: { x: 50, y: 50 },
+          },
+        ],
+      };
+      layer.setData(data);
+
+      const result = layer.hitTest(50, 50);
+      expect(result).not.toBeNull();
+      expect(result?.type).toBe("poi");
+      expect(result?.feature.id).toBe("poi-1");
+    });
+
+    it("detects POI clicks within hit radius", () => {
+      const data: FeaturesData = {
+        districts: [],
+        roads: [],
+        pois: [
+          {
+            id: "poi-1",
+            name: "Test POI",
+            type: "park",
+            position: { x: 50, y: 50 },
+          },
+        ],
+      };
+      layer.setData(data);
+
+      // Click slightly off-center but within radius
+      const result = layer.hitTest(55, 52);
+      expect(result).not.toBeNull();
+      expect(result?.type).toBe("poi");
+    });
+
+    it("returns null when POI click is too far away", () => {
+      const data: FeaturesData = {
+        districts: [],
+        roads: [],
+        pois: [
+          {
+            id: "poi-1",
+            name: "Test POI",
+            type: "park",
+            position: { x: 50, y: 50 },
+          },
+        ],
+      };
+      layer.setData(data);
+
+      // Click far away from POI
+      const result = layer.hitTest(200, 200);
+      expect(result).toBeNull();
+    });
+
+    it("detects road clicks", () => {
+      const data: FeaturesData = {
+        districts: [],
+        roads: [
+          {
+            id: "road-1",
+            name: "Test Road",
+            roadClass: "arterial",
+            line: {
+              points: [
+                { x: 0, y: 50 },
+                { x: 100, y: 50 },
+              ],
+            },
+          },
+        ],
+        pois: [],
+      };
+      layer.setData(data);
+
+      const result = layer.hitTest(50, 50);
+      expect(result).not.toBeNull();
+      expect(result?.type).toBe("road");
+      expect(result?.feature.id).toBe("road-1");
+    });
+
+    it("detects road clicks near the line", () => {
+      const data: FeaturesData = {
+        districts: [],
+        roads: [
+          {
+            id: "road-1",
+            roadClass: "arterial",
+            line: {
+              points: [
+                { x: 0, y: 50 },
+                { x: 100, y: 50 },
+              ],
+            },
+          },
+        ],
+        pois: [],
+      };
+      layer.setData(data);
+
+      // Click slightly above the road (within tolerance)
+      const result = layer.hitTest(50, 55);
+      expect(result).not.toBeNull();
+      expect(result?.type).toBe("road");
+    });
+
+    it("detects district clicks", () => {
+      const data: FeaturesData = {
+        districts: [
+          {
+            id: "district-1",
+            type: "residential",
+            name: "Test District",
+            polygon: {
+              points: [
+                { x: 0, y: 0 },
+                { x: 100, y: 0 },
+                { x: 100, y: 100 },
+                { x: 0, y: 100 },
+              ],
+            },
+          },
+        ],
+        roads: [],
+        pois: [],
+      };
+      layer.setData(data);
+
+      const result = layer.hitTest(50, 50);
+      expect(result).not.toBeNull();
+      expect(result?.type).toBe("district");
+      expect(result?.feature.id).toBe("district-1");
+    });
+
+    it("returns null when clicking outside district polygon", () => {
+      const data: FeaturesData = {
+        districts: [
+          {
+            id: "district-1",
+            type: "residential",
+            name: "Test District",
+            polygon: {
+              points: [
+                { x: 0, y: 0 },
+                { x: 100, y: 0 },
+                { x: 100, y: 100 },
+                { x: 0, y: 100 },
+              ],
+            },
+          },
+        ],
+        roads: [],
+        pois: [],
+      };
+      layer.setData(data);
+
+      const result = layer.hitTest(150, 150);
+      expect(result).toBeNull();
+    });
+
+    it("prioritizes POI over road", () => {
+      const data: FeaturesData = {
+        districts: [],
+        roads: [
+          {
+            id: "road-1",
+            roadClass: "arterial",
+            line: {
+              points: [
+                { x: 0, y: 50 },
+                { x: 100, y: 50 },
+              ],
+            },
+          },
+        ],
+        pois: [
+          {
+            id: "poi-1",
+            name: "Test POI",
+            type: "transit",
+            position: { x: 50, y: 50 },
+          },
+        ],
+      };
+      layer.setData(data);
+
+      const result = layer.hitTest(50, 50);
+      expect(result?.type).toBe("poi");
+    });
+
+    it("prioritizes road over district", () => {
+      const data: FeaturesData = {
+        districts: [
+          {
+            id: "district-1",
+            type: "residential",
+            name: "Test District",
+            polygon: {
+              points: [
+                { x: 0, y: 0 },
+                { x: 100, y: 0 },
+                { x: 100, y: 100 },
+                { x: 0, y: 100 },
+              ],
+            },
+          },
+        ],
+        roads: [
+          {
+            id: "road-1",
+            roadClass: "arterial",
+            line: {
+              points: [
+                { x: 0, y: 50 },
+                { x: 100, y: 50 },
+              ],
+            },
+          },
+        ],
+        pois: [],
+      };
+      layer.setData(data);
+
+      const result = layer.hitTest(50, 50);
+      expect(result?.type).toBe("road");
+    });
+
+    it("respects visibility - does not hit hidden POIs", () => {
+      const data: FeaturesData = {
+        districts: [],
+        roads: [],
+        pois: [
+          {
+            id: "poi-1",
+            name: "Test POI",
+            type: "park",
+            position: { x: 50, y: 50 },
+          },
+        ],
+      };
+      layer.setData(data);
+      layer.setVisibility({
+        water: true,
+        coastlines: true,
+        rivers: true,
+        contours: false,
+        districts: true,
+        roads: true,
+        pois: false, // POIs hidden
+        grid: true,
+        labels: true,
+      });
+
+      const result = layer.hitTest(50, 50);
+      expect(result).toBeNull();
+    });
+
+    it("respects visibility - does not hit hidden roads", () => {
+      const data: FeaturesData = {
+        districts: [],
+        roads: [
+          {
+            id: "road-1",
+            roadClass: "arterial",
+            line: {
+              points: [
+                { x: 0, y: 50 },
+                { x: 100, y: 50 },
+              ],
+            },
+          },
+        ],
+        pois: [],
+      };
+      layer.setData(data);
+      layer.setVisibility({
+        water: true,
+        coastlines: true,
+        rivers: true,
+        contours: false,
+        districts: true,
+        roads: false, // Roads hidden
+        pois: true,
+        grid: true,
+        labels: true,
+      });
+
+      const result = layer.hitTest(50, 50);
+      expect(result).toBeNull();
+    });
+
+    it("respects visibility - does not hit hidden districts", () => {
+      const data: FeaturesData = {
+        districts: [
+          {
+            id: "district-1",
+            type: "residential",
+            name: "Test District",
+            polygon: {
+              points: [
+                { x: 0, y: 0 },
+                { x: 100, y: 0 },
+                { x: 100, y: 100 },
+                { x: 0, y: 100 },
+              ],
+            },
+          },
+        ],
+        roads: [],
+        pois: [],
+      };
+      layer.setData(data);
+      layer.setVisibility({
+        water: true,
+        coastlines: true,
+        rivers: true,
+        contours: false,
+        districts: false, // Districts hidden
+        roads: true,
+        pois: true,
+        grid: true,
+        labels: true,
+      });
+
+      const result = layer.hitTest(50, 50);
+      expect(result).toBeNull();
+    });
+  });
+
+  describe("getData", () => {
+    it("returns null when no data set", () => {
+      expect(layer.getData()).toBeNull();
+    });
+
+    it("returns the data that was set", () => {
+      const data: FeaturesData = {
+        districts: [],
+        roads: [],
+        pois: [],
+      };
+      layer.setData(data);
+      expect(layer.getData()).toBe(data);
+    });
+  });
 });
 
 describe("generateMockFeatures", () => {
