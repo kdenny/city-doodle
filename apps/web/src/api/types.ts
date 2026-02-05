@@ -338,6 +338,145 @@ export interface PlacedSeed {
 }
 
 // ============================================================================
+// Transit Types
+// ============================================================================
+
+export type StationType = "subway" | "rail";
+
+export type LineType = "subway" | "rail";
+
+export interface TransitPoint {
+  x: number;
+  y: number;
+}
+
+export interface TransitStationCreate {
+  world_id: UUID;
+  district_id: UUID;
+  station_type: StationType;
+  name: string;
+  position_x: number;
+  position_y: number;
+  is_terminus?: boolean;
+}
+
+export interface TransitStationUpdate {
+  district_id?: UUID;
+  station_type?: StationType;
+  name?: string;
+  position_x?: number;
+  position_y?: number;
+  is_terminus?: boolean;
+}
+
+export interface TransitStation {
+  id: UUID;
+  world_id: UUID;
+  district_id: UUID;
+  station_type: StationType;
+  name: string;
+  position_x: number;
+  position_y: number;
+  is_terminus: boolean;
+  created_at: DateTime;
+  updated_at: DateTime;
+}
+
+export interface TransitStationBulkCreate {
+  stations: TransitStationCreate[];
+}
+
+export interface TransitLineCreate {
+  world_id: UUID;
+  line_type: LineType;
+  name: string;
+  color?: string;
+  is_auto_generated?: boolean;
+}
+
+export interface TransitLineUpdate {
+  line_type?: LineType;
+  name?: string;
+  color?: string;
+  is_auto_generated?: boolean;
+}
+
+export interface TransitLine {
+  id: UUID;
+  world_id: UUID;
+  line_type: LineType;
+  name: string;
+  color: string;
+  is_auto_generated: boolean;
+  created_at: DateTime;
+  updated_at: DateTime;
+}
+
+export interface TransitLineBulkCreate {
+  lines: TransitLineCreate[];
+}
+
+export interface TransitLineSegmentCreate {
+  line_id: UUID;
+  from_station_id: UUID;
+  to_station_id: UUID;
+  geometry?: TransitPoint[];
+  is_underground?: boolean;
+  order_in_line: number;
+}
+
+export interface TransitLineSegmentUpdate {
+  from_station_id?: UUID;
+  to_station_id?: UUID;
+  geometry?: TransitPoint[];
+  is_underground?: boolean;
+  order_in_line?: number;
+}
+
+export interface TransitLineSegment {
+  id: UUID;
+  line_id: UUID;
+  from_station_id: UUID;
+  to_station_id: UUID;
+  geometry: TransitPoint[];
+  is_underground: boolean;
+  order_in_line: number;
+  created_at: DateTime;
+  updated_at: DateTime;
+}
+
+export interface TransitLineSegmentBulkCreate {
+  segments: TransitLineSegmentCreate[];
+}
+
+export interface TransitLineWithSegments {
+  id: UUID;
+  world_id: UUID;
+  line_type: LineType;
+  name: string;
+  color: string;
+  is_auto_generated: boolean;
+  segments: TransitLineSegment[];
+  created_at: DateTime;
+  updated_at: DateTime;
+}
+
+export interface TransitNetwork {
+  world_id: UUID;
+  stations: TransitStation[];
+  lines: TransitLineWithSegments[];
+}
+
+export interface TransitNetworkStats {
+  world_id: UUID;
+  total_stations: number;
+  total_lines: number;
+  total_segments: number;
+  stations_by_type: Record<string, number>;
+  lines_by_type: Record<string, number>;
+}
+
+// ============================================================================
 // API Error Types
 // ============================================================================
 

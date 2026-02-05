@@ -15,6 +15,7 @@ import {
   LabelLayer,
   SeedsLayer,
   DrawingLayer,
+  RailStationLayer,
   generateMockTerrain,
   generateMockFeatures,
   generateMockLabels,
@@ -36,6 +37,7 @@ import {
 import { MapCanvasContextInternal } from "./MapCanvasContext";
 import { useFeaturesOptional } from "./FeaturesContext";
 import { useTerrainOptional } from "./TerrainContext";
+import { useTransitOptional } from "./TransitContext";
 import { useZoomOptional } from "../shell/ZoomContext";
 import { usePlacementOptional, usePlacedSeedsOptional } from "../palette";
 import { useSelectionContextOptional } from "../build-view/SelectionContext";
@@ -83,6 +85,7 @@ export const MapCanvas = forwardRef<MapCanvasHandle, MapCanvasProps>(
   const labelLayerRef = useRef<LabelLayer | null>(null);
   const seedsLayerRef = useRef<SeedsLayer | null>(null);
   const drawingLayerRef = useRef<DrawingLayer | null>(null);
+  const railStationLayerRef = useRef<RailStationLayer | null>(null);
   const gridContainerRef = useRef<Container | null>(null);
   const [isReady, setIsReady] = useState(false);
   const [layerVisibility, setLayerVisibility] = useState<LayerVisibility>(
@@ -112,6 +115,9 @@ export const MapCanvas = forwardRef<MapCanvasHandle, MapCanvasProps>(
 
   // Get terrain context for sharing terrain data (water features) for collision detection
   const terrainContext = useTerrainOptional();
+
+  // Get transit context for rail station placement and rendering
+  const transitContext = useTransitOptional();
 
   // Ref to setTerrainData for use in init effect (avoids stale closure)
   const setTerrainDataRef = useRef(terrainContext?.setTerrainData);
@@ -273,11 +279,15 @@ export const MapCanvas = forwardRef<MapCanvasHandle, MapCanvasProps>(
       }
       labelLayer.setVisibility(layerVisibility);
 
-      // Create and add seeds layer (above labels, below drawing)
+      // Create and add seeds layer (above labels, below rail stations)
       const seedsLayer = new SeedsLayer();
       viewport.addChild(seedsLayer.getContainer());
 
-      // Create and add drawing layer (above seeds, below grid)
+      // Create and add rail station layer (above seeds, below drawing)
+      const railStationLayer = new RailStationLayer();
+      viewport.addChild(railStationLayer.getContainer());
+
+      // Create and add drawing layer (above rail stations, below grid)
       const drawingLayer = new DrawingLayer();
       viewport.addChild(drawingLayer.getContainer());
 
@@ -334,6 +344,7 @@ export const MapCanvas = forwardRef<MapCanvasHandle, MapCanvasProps>(
         featuresLayer.destroy();
         labelLayer.destroy();
         seedsLayer.destroy();
+        railStationLayer.destroy();
         drawingLayer.destroy();
         app.destroy(true, { children: true });
         return;
@@ -346,6 +357,7 @@ export const MapCanvas = forwardRef<MapCanvasHandle, MapCanvasProps>(
       featuresLayerRef.current = featuresLayer;
       labelLayerRef.current = labelLayer;
       seedsLayerRef.current = seedsLayer;
+      railStationLayerRef.current = railStationLayer;
       drawingLayerRef.current = drawingLayer;
       gridContainerRef.current = gridContainer;
       setIsReady(true);
@@ -384,6 +396,10 @@ export const MapCanvas = forwardRef<MapCanvasHandle, MapCanvasProps>(
       if (seedsLayerRef.current) {
         seedsLayerRef.current.destroy();
         seedsLayerRef.current = null;
+      }
+      if (railStationLayerRef.current) {
+        railStationLayerRef.current.destroy();
+        railStationLayerRef.current = null;
       }
       if (drawingLayerRef.current) {
         drawingLayerRef.current.destroy();
@@ -557,6 +573,43 @@ export const MapCanvas = forwardRef<MapCanvasHandle, MapCanvasProps>(
     drawingContext?.state.vertices,
     drawingContext?.state.previewPoint,
     drawingContext?.state.isDrawing,
+  ]);
+
+  // Update rail station layer when transit context changes
+  useEffect(() => {
+    if (!isReady || !railStationLayerRef.current || !transitContext) return;
+
+    railStationLayerRef.current.setStations(transitContext.railStations);
+    railStationLayerRef.current.setTracks(transitContext.trackSegments);
+  }, [isReady, transitContext?.railStations, transitContext?.trackSegments]);
+
+  // Update rail station preview when placing a rail_station seed
+  useEffect(() => {
+    if (!isReady || !railStationLayerRef.current) return;
+
+    // Only show rail station preview if placing a rail_station seed
+    if (
+      placementContext?.isPlacing &&
+      placementContext.previewPosition &&
+      placementContext.selectedSeed?.id === "rail_station" &&
+      transitContext
+    ) {
+      const validation = transitContext.validateRailStationPlacement(
+        placementContext.previewPosition
+      );
+      railStationLayerRef.current.setPreview({
+        position: placementContext.previewPosition,
+        isValid: validation.isValid,
+      });
+    } else {
+      railStationLayerRef.current.setPreview(null);
+    }
+  }, [
+    isReady,
+    placementContext?.isPlacing,
+    placementContext?.previewPosition,
+    placementContext?.selectedSeed?.id,
+    transitContext,
   ]);
 
   // Handle clicks for seed placement, feature selection, and polygon drawing
