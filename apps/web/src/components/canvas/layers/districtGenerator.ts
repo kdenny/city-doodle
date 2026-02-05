@@ -3,11 +3,38 @@
  *
  * When a district seed is placed, this generates:
  * - A polygon around the placement point (rounded rectangle or organic shape)
- * - A street grid within the district bounds (local roads in a grid pattern)
+ * - A street grid within the district bounds with proper hierarchy
+ *
+ * Street Grid Algorithm (CITY-142):
+ * - Block sizes vary by district type and density
+ * - Grid orientation is semi-random based on district centroid
+ * - Perimeter streets are COLLECTOR class
+ * - Internal streets are LOCAL class, with every 3-4 blocks upgraded to COLLECTOR
  */
 
 import type { District, Road, Point, DistrictType, RoadClass } from "./types";
 import { generateDistrictName } from "../../../utils/nameGenerator";
+
+/**
+ * Base block sizes by district type (in meters).
+ * These represent typical real-world block dimensions.
+ */
+export const BASE_BLOCK_SIZES: Record<string, number> = {
+  downtown: 60,        // Dense urban core, small walkable blocks
+  residential_high: 80,
+  mixed_use: 90,
+  commercial: 100,
+  residential_med: 120,
+  residential: 120,    // Default residential maps to medium density
+  residential_low: 150,
+  industrial: 200,     // Large blocks for warehouses/factories
+  // Special types that don't get street grids
+  park: 0,
+  airport: 0,
+  hospital: 100,
+  university: 100,
+  k12: 100,
+};
 
 /**
  * Scale settings for district and block sizes.
@@ -39,8 +66,30 @@ function metersToWorldUnits(meters: number): number {
 }
 
 /**
+ * Convert sprawl_compact (0-1) to density (0-10) and calculate block size multiplier.
+ *
+ * Formula from ticket: actual_size = base_size * (1.5 - density/10)
+ * - sprawl_compact 0 → density 0 → multiplier 1.5 (sparse, large blocks)
+ * - sprawl_compact 1 → density 10 → multiplier 0.5 (dense, small blocks)
+ */
+function calculateDensityMultiplier(sprawlCompact: number): number {
+  // Map sprawl_compact (0-1) to density (0-10)
+  const density = sprawlCompact * 10;
+  // Apply ticket formula: multiplier = 1.5 - density/10
+  return 1.5 - density / 10;
+}
+
+/**
+ * Get the base block size for a district type.
+ */
+function getBaseBlockSize(districtType: DistrictType): number {
+  return BASE_BLOCK_SIZES[districtType] ?? BASE_BLOCK_SIZES.residential;
+}
+
+/**
  * Apply sprawl/compact multiplier to a size value.
  * sprawlCompact = 0 means sprawling (larger), sprawlCompact = 1 means compact (smaller)
+ * @deprecated Use calculateDensityMultiplier for block sizes
  */
 function applySprawlCompactMultiplier(
   baseValue: number,
@@ -362,79 +411,283 @@ function pointInPolygon(x: number, y: number, polygon: Point[]): boolean {
 }
 
 /**
- * Generate a street grid within a polygon.
- * Creates horizontal and vertical streets clipped to the polygon bounds.
+ * Calculate grid rotation angle based on district centroid.
+ * Returns an angle between -15 and +15 degrees from north (in radians).
+ *
+ * The angle is deterministic based on the centroid position.
+ * The centroid is used to seed the RNG for consistent results.
+ */
+function calculateGridRotation(centroid: Point, rng: SeededRandom): number {
+  // Use centroid to influence the angle calculation for variation
+  // The RNG is already seeded by position, but we use centroid for extra determinism
+  const centroidInfluence = (centroid.x + centroid.y) % 10 / 10; // 0-1 value
+  const maxAngleDegrees = 15;
+  const baseAngle = rng.range(-maxAngleDegrees, maxAngleDegrees);
+  // Blend RNG angle with centroid-influenced offset for more natural variation
+  const angleDegrees = baseAngle * (0.8 + centroidInfluence * 0.2);
+  return (angleDegrees * Math.PI) / 180;
+}
+
+/**
+ * Calculate the centroid of a polygon.
+ */
+function getPolygonCentroid(polygon: Point[]): Point {
+  if (polygon.length === 0) return { x: 0, y: 0 };
+
+  let sumX = 0;
+  let sumY = 0;
+  for (const point of polygon) {
+    sumX += point.x;
+    sumY += point.y;
+  }
+  return {
+    x: sumX / polygon.length,
+    y: sumY / polygon.length,
+  };
+}
+
+/**
+ * Rotate a point around a center by a given angle.
+ */
+function rotatePoint(point: Point, center: Point, angle: number): Point {
+  const cos = Math.cos(angle);
+  const sin = Math.sin(angle);
+  const dx = point.x - center.x;
+  const dy = point.y - center.y;
+  return {
+    x: center.x + dx * cos - dy * sin,
+    y: center.y + dx * sin + dy * cos,
+  };
+}
+
+/**
+ * Check if a road segment is on the perimeter (touches the district boundary).
+ * Perimeter roads are those where both endpoints are on the polygon edge.
+ */
+function isPerimeterRoad(
+  start: Point,
+  end: Point,
+  polygon: Point[],
+  tolerance: number = 2
+): boolean {
+  // Check if both endpoints are close to the polygon boundary
+  const startOnBoundary = isPointNearPolygonEdge(start, polygon, tolerance);
+  const endOnBoundary = isPointNearPolygonEdge(end, polygon, tolerance);
+  return startOnBoundary && endOnBoundary;
+}
+
+/**
+ * Check if a point is near any edge of the polygon.
+ */
+function isPointNearPolygonEdge(
+  point: Point,
+  polygon: Point[],
+  tolerance: number
+): boolean {
+  for (let i = 0; i < polygon.length; i++) {
+    const p1 = polygon[i];
+    const p2 = polygon[(i + 1) % polygon.length];
+    const dist = pointToLineDistance(point, p1, p2);
+    if (dist < tolerance) return true;
+  }
+  return false;
+}
+
+/**
+ * Calculate the distance from a point to a line segment.
+ */
+function pointToLineDistance(point: Point, lineStart: Point, lineEnd: Point): number {
+  const dx = lineEnd.x - lineStart.x;
+  const dy = lineEnd.y - lineStart.y;
+  const lenSq = dx * dx + dy * dy;
+
+  if (lenSq === 0) {
+    // Line segment is a point
+    return Math.sqrt((point.x - lineStart.x) ** 2 + (point.y - lineStart.y) ** 2);
+  }
+
+  // Project point onto line, clamped to segment
+  let t = ((point.x - lineStart.x) * dx + (point.y - lineStart.y) * dy) / lenSq;
+  t = Math.max(0, Math.min(1, t));
+
+  const projX = lineStart.x + t * dx;
+  const projY = lineStart.y + t * dy;
+
+  return Math.sqrt((point.x - projX) ** 2 + (point.y - projY) ** 2);
+}
+
+/**
+ * Generate a street grid within a polygon with proper street hierarchy.
+ *
+ * Street Hierarchy (CITY-142):
+ * - Perimeter streets (touching boundary) = COLLECTOR class
+ * - Every 3-4 blocks, internal street upgraded to COLLECTOR
+ * - All other internal streets = LOCAL class
+ *
+ * Grid is rotated by a semi-random angle based on district position.
  */
 function generateStreetGrid(
   polygon: Point[],
   spacing: number,
-  roadClass: RoadClass,
+  _roadClass: RoadClass, // Ignored - we determine class based on hierarchy
   districtId: string,
-  rng: SeededRandom
+  rng: SeededRandom,
+  districtType: DistrictType = "residential"
 ): Road[] {
   const bounds = getPolygonBounds(polygon);
+  const centroid = getPolygonCentroid(polygon);
   const roads: Road[] = [];
 
-  // Add some padding and slight offset for variety
+  // Calculate grid rotation angle (-15 to +15 degrees)
+  const rotationAngle = calculateGridRotation(centroid, rng);
+
+  // Collector interval: upgrade to collector every 3-4 blocks
+  const collectorInterval = rng.intRange(3, 5);
+
+  // Calculate organic jitter based on district type
+  const organicJitter = districtType === "downtown" ? 0.5 : 2;
+
+  // Expand bounds to account for rotation
+  const diagonal = Math.sqrt(
+    (bounds.maxX - bounds.minX) ** 2 + (bounds.maxY - bounds.minY) ** 2
+  );
+  const expandedBounds = {
+    minX: centroid.x - diagonal / 2 - spacing,
+    maxX: centroid.x + diagonal / 2 + spacing,
+    minY: centroid.y - diagonal / 2 - spacing,
+    maxY: centroid.y + diagonal / 2 + spacing,
+  };
+
+  // Add some offset for variety
   const offsetX = rng.range(-spacing / 4, spacing / 4);
   const offsetY = rng.range(-spacing / 4, spacing / 4);
 
-  // Generate horizontal streets
   let streetIndex = 0;
-  for (let y = bounds.minY + spacing / 2 + offsetY; y < bounds.maxY - spacing / 4; y += spacing) {
-    // Find intersections with polygon
+  let hStreetCount = 0;
+  let vStreetCount = 0;
+
+  // Generate horizontal streets (in rotated space)
+  for (
+    let y = expandedBounds.minY + spacing / 2 + offsetY;
+    y < expandedBounds.maxY;
+    y += spacing
+  ) {
+    // Create a line across the expanded bounds, then rotate it
+    const lineStart: Point = { x: expandedBounds.minX, y };
+    const lineEnd: Point = { x: expandedBounds.maxX, y };
+
+    // Rotate the line around the centroid
+    const rotatedStart = rotatePoint(lineStart, centroid, rotationAngle);
+    const rotatedEnd = rotatePoint(lineEnd, centroid, rotationAngle);
+
+    // Find intersections with the actual polygon
     const intersections = lineIntersectsPolygon(
-      bounds.minX - 10, y,
-      bounds.maxX + 10, y,
+      rotatedStart.x,
+      rotatedStart.y,
+      rotatedEnd.x,
+      rotatedEnd.y,
       polygon
     );
 
     // Create road segments from pairs of intersections
     for (let i = 0; i < intersections.length - 1; i += 2) {
       if (intersections[i + 1]) {
-        // Add slight variation to make it look more organic
-        const jitter = rng.range(-2, 2);
+        const jitter = rng.range(-organicJitter, organicJitter);
+
+        // Apply jitter perpendicular to the road direction
+        const dx = intersections[i + 1].x - intersections[i].x;
+        const dy = intersections[i + 1].y - intersections[i].y;
+        const len = Math.sqrt(dx * dx + dy * dy);
+        const perpX = len > 0 ? -dy / len : 0;
+        const perpY = len > 0 ? dx / len : 0;
+
+        const startPoint: Point = {
+          x: intersections[i].x + perpX * jitter,
+          y: intersections[i].y + perpY * jitter,
+        };
+        const endPoint: Point = {
+          x: intersections[i + 1].x + perpX * jitter,
+          y: intersections[i + 1].y + perpY * jitter,
+        };
+
+        // Determine road class based on hierarchy
+        let roadClass: RoadClass = "local";
+        if (isPerimeterRoad(startPoint, endPoint, polygon)) {
+          roadClass = "collector";
+        } else if (hStreetCount % collectorInterval === 0) {
+          roadClass = "collector";
+        }
+
         roads.push({
           id: generateId(`${districtId}-street-h-${streetIndex}`),
           roadClass,
-          line: {
-            points: [
-              { x: intersections[i].x, y: intersections[i].y + jitter },
-              { x: intersections[i + 1].x, y: intersections[i + 1].y + jitter },
-            ],
-          },
+          line: { points: [startPoint, endPoint] },
         });
         streetIndex++;
       }
     }
+    hStreetCount++;
   }
 
-  // Generate vertical streets
-  for (let x = bounds.minX + spacing / 2 + offsetX; x < bounds.maxX - spacing / 4; x += spacing) {
+  // Generate vertical streets (in rotated space)
+  for (
+    let x = expandedBounds.minX + spacing / 2 + offsetX;
+    x < expandedBounds.maxX;
+    x += spacing
+  ) {
+    const lineStart: Point = { x, y: expandedBounds.minY };
+    const lineEnd: Point = { x, y: expandedBounds.maxY };
+
+    // Rotate the line around the centroid
+    const rotatedStart = rotatePoint(lineStart, centroid, rotationAngle);
+    const rotatedEnd = rotatePoint(lineEnd, centroid, rotationAngle);
+
     // Find intersections with polygon
     const intersections = lineIntersectsPolygon(
-      x, bounds.minY - 10,
-      x, bounds.maxY + 10,
+      rotatedStart.x,
+      rotatedStart.y,
+      rotatedEnd.x,
+      rotatedEnd.y,
       polygon
     );
 
     // Create road segments from pairs of intersections
     for (let i = 0; i < intersections.length - 1; i += 2) {
       if (intersections[i + 1]) {
-        const jitter = rng.range(-2, 2);
+        const jitter = rng.range(-organicJitter, organicJitter);
+
+        const dx = intersections[i + 1].x - intersections[i].x;
+        const dy = intersections[i + 1].y - intersections[i].y;
+        const len = Math.sqrt(dx * dx + dy * dy);
+        const perpX = len > 0 ? -dy / len : 0;
+        const perpY = len > 0 ? dx / len : 0;
+
+        const startPoint: Point = {
+          x: intersections[i].x + perpX * jitter,
+          y: intersections[i].y + perpY * jitter,
+        };
+        const endPoint: Point = {
+          x: intersections[i + 1].x + perpX * jitter,
+          y: intersections[i + 1].y + perpY * jitter,
+        };
+
+        // Determine road class based on hierarchy
+        let roadClass: RoadClass = "local";
+        if (isPerimeterRoad(startPoint, endPoint, polygon)) {
+          roadClass = "collector";
+        } else if (vStreetCount % collectorInterval === 0) {
+          roadClass = "collector";
+        }
+
         roads.push({
           id: generateId(`${districtId}-street-v-${streetIndex}`),
           roadClass,
-          line: {
-            points: [
-              { x: intersections[i].x + jitter, y: intersections[i].y },
-              { x: intersections[i + 1].x + jitter, y: intersections[i + 1].y },
-            ],
-          },
+          line: { points: [startPoint, endPoint] },
         });
         streetIndex++;
       }
     }
+    vStreetCount++;
   }
 
   return roads;
@@ -515,13 +768,19 @@ export function generateDistrictGeometry(
   // Parks and airports don't have street grids
   let roads: Road[] = [];
   if (districtType !== "park" && districtType !== "airport") {
-    const streetSpacing = districtType === "downtown" ? cfg.streetSpacing * 0.7 : cfg.streetSpacing;
+    // Calculate type-specific block size with density multiplier
+    const baseBlockSize = getBaseBlockSize(districtType);
+    const sprawlCompact = cfg.scaleSettings.sprawlCompact ?? 0.5;
+    const densityMultiplier = calculateDensityMultiplier(sprawlCompact);
+    const effectiveBlockSize = metersToWorldUnits(baseBlockSize * densityMultiplier);
+
     roads = generateStreetGrid(
       polygonPoints,
-      streetSpacing,
-      cfg.streetClass,
+      effectiveBlockSize,
+      cfg.streetClass, // This is now ignored - hierarchy determines class
       districtId,
-      rng
+      rng,
+      districtType
     );
   }
 
@@ -566,4 +825,51 @@ export function wouldOverlap(
   }
 
   return false;
+}
+
+/**
+ * Regenerate the street grid for a district with a new polygon.
+ * Used after water clipping to ensure streets fit the clipped boundary.
+ *
+ * @param clippedPolygon - The clipped district polygon
+ * @param districtId - The district ID for road naming
+ * @param districtType - The district type for block sizing
+ * @param position - Original district position (for deterministic RNG)
+ * @param sprawlCompact - Sprawl-compact slider value (0-1)
+ * @returns Array of roads for the clipped polygon
+ */
+export function regenerateStreetGridForClippedDistrict(
+  clippedPolygon: Point[],
+  districtId: string,
+  districtType: DistrictType,
+  position: { x: number; y: number },
+  sprawlCompact: number = 0.5
+): Road[] {
+  // Don't generate streets for parks or airports
+  if (districtType === "park" || districtType === "airport") {
+    return [];
+  }
+
+  // Need at least 3 points for a valid polygon
+  if (clippedPolygon.length < 3) {
+    return [];
+  }
+
+  // Use position to seed the RNG for deterministic results
+  const seed = Math.floor(position.x * 1000 + position.y * 7919);
+  const rng = new SeededRandom(seed);
+
+  // Calculate type-specific block size with density multiplier
+  const baseBlockSize = getBaseBlockSize(districtType);
+  const densityMultiplier = calculateDensityMultiplier(sprawlCompact);
+  const effectiveBlockSize = metersToWorldUnits(baseBlockSize * densityMultiplier);
+
+  return generateStreetGrid(
+    clippedPolygon,
+    effectiveBlockSize,
+    "local", // Ignored - hierarchy determines class
+    districtId,
+    rng,
+    districtType
+  );
 }

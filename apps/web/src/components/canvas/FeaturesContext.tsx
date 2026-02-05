@@ -21,6 +21,7 @@ import { DEFAULT_DISTRICT_PERSONALITY } from "./layers/types";
 import {
   generateDistrictGeometry,
   wouldOverlap,
+  regenerateStreetGridForClippedDistrict,
   type DistrictGenerationConfig,
   type GeneratedDistrict,
 } from "./layers/districtGenerator";
@@ -333,8 +334,14 @@ export function FeaturesProvider({
       // Apply clipped polygon if water overlap occurred
       if (clipResult.overlapsWater) {
         generated.district.polygon.points = clipResult.clippedPolygon;
-        // Regenerate roads for the clipped polygon
-        // For now, we keep the existing roads - a future enhancement could regenerate them
+        // Regenerate the street grid for the clipped polygon (CITY-142)
+        generated.roads = regenerateStreetGridForClippedDistrict(
+          clipResult.clippedPolygon,
+          generated.district.id,
+          generated.district.type,
+          position,
+          personality.sprawl_compact
+        );
       }
 
       const tempId = generated.district.id;
