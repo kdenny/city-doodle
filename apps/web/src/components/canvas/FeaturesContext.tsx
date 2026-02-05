@@ -16,13 +16,22 @@ import {
   useRef,
   ReactNode,
 } from "react";
-import type { District, Road, POI, FeaturesData, Point } from "./layers";
+import type { District, Road, POI, FeaturesData, Point, DistrictPersonality } from "./layers";
+import { DEFAULT_DISTRICT_PERSONALITY } from "./layers/types";
 import {
   generateDistrictGeometry,
   wouldOverlap,
   type DistrictGenerationConfig,
   type GeneratedDistrict,
 } from "./layers/districtGenerator";
+
+/**
+ * Extended config that includes personality settings for the district.
+ */
+interface AddDistrictConfig extends DistrictGenerationConfig {
+  /** Personality settings to apply to the district */
+  personality?: DistrictPersonality;
+}
 import {
   useWorldDistricts,
   useCreateDistrict,
@@ -40,7 +49,7 @@ interface FeaturesContextValue {
   addDistrict: (
     position: { x: number; y: number },
     seedId: string,
-    config?: DistrictGenerationConfig
+    config?: AddDistrictConfig
   ) => GeneratedDistrict | null;
   /** Add a district with explicit geometry */
   addDistrictWithGeometry: (district: District, roads?: Road[]) => void;
@@ -226,10 +235,28 @@ export function FeaturesProvider({
     (
       position: { x: number; y: number },
       seedId: string,
-      config?: DistrictGenerationConfig
+      config?: AddDistrictConfig
     ): GeneratedDistrict | null => {
+      // Extract personality from config, use defaults if not provided
+      const personality = config?.personality ?? DEFAULT_DISTRICT_PERSONALITY;
+
+      // Use personality settings to configure district generation
+      // sprawl_compact affects block size, grid_organic affects street patterns
+      const generationConfig: DistrictGenerationConfig = {
+        ...config,
+        organicFactor: personality.grid_organic,
+        scaleSettings: {
+          blockSizeMeters: config?.scaleSettings?.blockSizeMeters ?? 100,
+          districtSizeMeters: config?.scaleSettings?.districtSizeMeters ?? 500,
+          sprawlCompact: personality.sprawl_compact,
+        },
+      };
+
       // Generate district geometry
-      const generated = generateDistrictGeometry(position, seedId, config);
+      const generated = generateDistrictGeometry(position, seedId, generationConfig);
+
+      // Add personality to the generated district
+      generated.district.personality = personality;
 
       // Check for overlap with existing districts
       if (wouldOverlap(generated.district.polygon.points, features.districts)) {

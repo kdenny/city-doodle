@@ -1,12 +1,29 @@
 import { describe, it, expect, vi } from "vitest";
 import { render, act } from "@testing-library/react";
+import { QueryClient, QueryClientProvider } from "@tanstack/react-query";
 import { FeaturesProvider, useFeatures, useFeaturesOptional } from "./FeaturesContext";
 import type { District, Road, POI } from "./layers";
+import type { ReactNode } from "react";
+
+// Create a wrapper with QueryClientProvider for tests
+function createTestWrapper() {
+  const queryClient = new QueryClient({
+    defaultOptions: {
+      queries: {
+        retry: false,
+      },
+    },
+  });
+  return ({ children }: { children: ReactNode }) => (
+    <QueryClientProvider client={queryClient}>{children}</QueryClientProvider>
+  );
+}
 
 describe("FeaturesContext", () => {
   describe("FeaturesProvider", () => {
     it("provides default empty features", () => {
       let features: ReturnType<typeof useFeatures>["features"] | null = null;
+      const Wrapper = createTestWrapper();
 
       function TestComponent() {
         const ctx = useFeatures();
@@ -15,9 +32,11 @@ describe("FeaturesContext", () => {
       }
 
       render(
-        <FeaturesProvider>
-          <TestComponent />
-        </FeaturesProvider>
+        <Wrapper>
+          <FeaturesProvider>
+            <TestComponent />
+          </FeaturesProvider>
+        </Wrapper>
       );
 
       expect(features).toEqual({
@@ -42,6 +61,7 @@ describe("FeaturesContext", () => {
       };
 
       let capturedFeatures: ReturnType<typeof useFeatures>["features"] | null = null;
+      const Wrapper = createTestWrapper();
 
       function TestComponent() {
         const ctx = useFeatures();
@@ -50,9 +70,11 @@ describe("FeaturesContext", () => {
       }
 
       render(
-        <FeaturesProvider initialFeatures={initialFeatures}>
-          <TestComponent />
-        </FeaturesProvider>
+        <Wrapper>
+          <FeaturesProvider initialFeatures={initialFeatures}>
+            <TestComponent />
+          </FeaturesProvider>
+        </Wrapper>
       );
 
       expect(capturedFeatures!.districts.length).toBe(1);
@@ -62,6 +84,7 @@ describe("FeaturesContext", () => {
     it("calls onFeaturesChange when features change", () => {
       const onFeaturesChange = vi.fn();
       let addDistrict: ReturnType<typeof useFeatures>["addDistrict"];
+      const Wrapper = createTestWrapper();
 
       function TestComponent() {
         const ctx = useFeatures();
@@ -70,9 +93,11 @@ describe("FeaturesContext", () => {
       }
 
       render(
-        <FeaturesProvider onFeaturesChange={onFeaturesChange}>
-          <TestComponent />
-        </FeaturesProvider>
+        <Wrapper>
+          <FeaturesProvider onFeaturesChange={onFeaturesChange}>
+            <TestComponent />
+          </FeaturesProvider>
+        </Wrapper>
       );
 
       act(() => {
@@ -112,6 +137,7 @@ describe("FeaturesContext", () => {
 
     it("returns context when used inside provider", () => {
       let capturedContext: ReturnType<typeof useFeaturesOptional> | undefined;
+      const Wrapper = createTestWrapper();
 
       function TestComponent() {
         capturedContext = useFeaturesOptional();
@@ -119,9 +145,11 @@ describe("FeaturesContext", () => {
       }
 
       render(
-        <FeaturesProvider>
-          <TestComponent />
-        </FeaturesProvider>
+        <Wrapper>
+          <FeaturesProvider>
+            <TestComponent />
+          </FeaturesProvider>
+        </Wrapper>
       );
 
       expect(capturedContext).not.toBeNull();
@@ -134,6 +162,7 @@ describe("FeaturesContext", () => {
     it("generates and adds a district with roads", () => {
       let features: ReturnType<typeof useFeatures>["features"];
       let addDistrict: ReturnType<typeof useFeatures>["addDistrict"];
+      const Wrapper = createTestWrapper();
 
       function TestComponent() {
         const ctx = useFeatures();
@@ -143,9 +172,11 @@ describe("FeaturesContext", () => {
       }
 
       render(
-        <FeaturesProvider>
-          <TestComponent />
-        </FeaturesProvider>
+        <Wrapper>
+          <FeaturesProvider>
+            <TestComponent />
+          </FeaturesProvider>
+        </Wrapper>
       );
 
       act(() => {
@@ -162,6 +193,7 @@ describe("FeaturesContext", () => {
     it("returns null when district would overlap", () => {
       let addDistrict: ReturnType<typeof useFeatures>["addDistrict"];
       let features: ReturnType<typeof useFeatures>["features"];
+      const Wrapper = createTestWrapper();
 
       function TestComponent() {
         const ctx = useFeatures();
@@ -171,9 +203,11 @@ describe("FeaturesContext", () => {
       }
 
       render(
-        <FeaturesProvider>
-          <TestComponent />
-        </FeaturesProvider>
+        <Wrapper>
+          <FeaturesProvider>
+            <TestComponent />
+          </FeaturesProvider>
+        </Wrapper>
       );
 
       // Add first district
@@ -196,6 +230,7 @@ describe("FeaturesContext", () => {
     it("adds a district with explicit geometry", () => {
       let features: ReturnType<typeof useFeatures>["features"];
       let addDistrictWithGeometry: ReturnType<typeof useFeatures>["addDistrictWithGeometry"];
+      const Wrapper = createTestWrapper();
 
       const testDistrict: District = {
         id: "custom-district",
@@ -232,9 +267,11 @@ describe("FeaturesContext", () => {
       }
 
       render(
-        <FeaturesProvider>
-          <TestComponent />
-        </FeaturesProvider>
+        <Wrapper>
+          <FeaturesProvider>
+            <TestComponent />
+          </FeaturesProvider>
+        </Wrapper>
       );
 
       act(() => {
@@ -252,6 +289,7 @@ describe("FeaturesContext", () => {
     it("adds a POI", () => {
       let features: ReturnType<typeof useFeatures>["features"];
       let addPOI: ReturnType<typeof useFeatures>["addPOI"];
+      const Wrapper = createTestWrapper();
 
       const testPOI: POI = {
         id: "poi-1",
@@ -268,9 +306,11 @@ describe("FeaturesContext", () => {
       }
 
       render(
-        <FeaturesProvider>
-          <TestComponent />
-        </FeaturesProvider>
+        <Wrapper>
+          <FeaturesProvider>
+            <TestComponent />
+          </FeaturesProvider>
+        </Wrapper>
       );
 
       act(() => {
@@ -287,6 +327,7 @@ describe("FeaturesContext", () => {
     it("adds multiple roads", () => {
       let features: ReturnType<typeof useFeatures>["features"];
       let addRoads: ReturnType<typeof useFeatures>["addRoads"];
+      const Wrapper = createTestWrapper();
 
       const testRoads: Road[] = [
         {
@@ -309,9 +350,11 @@ describe("FeaturesContext", () => {
       }
 
       render(
-        <FeaturesProvider>
-          <TestComponent />
-        </FeaturesProvider>
+        <Wrapper>
+          <FeaturesProvider>
+            <TestComponent />
+          </FeaturesProvider>
+        </Wrapper>
       );
 
       act(() => {
@@ -327,6 +370,7 @@ describe("FeaturesContext", () => {
       let features: ReturnType<typeof useFeatures>["features"];
       let addDistrict: ReturnType<typeof useFeatures>["addDistrict"];
       let removeDistrict: ReturnType<typeof useFeatures>["removeDistrict"];
+      const Wrapper = createTestWrapper();
 
       function TestComponent() {
         const ctx = useFeatures();
@@ -337,9 +381,11 @@ describe("FeaturesContext", () => {
       }
 
       render(
-        <FeaturesProvider>
-          <TestComponent />
-        </FeaturesProvider>
+        <Wrapper>
+          <FeaturesProvider>
+            <TestComponent />
+          </FeaturesProvider>
+        </Wrapper>
       );
 
       let districtId: string;
@@ -363,6 +409,7 @@ describe("FeaturesContext", () => {
       let features: ReturnType<typeof useFeatures>["features"];
       let addPOI: ReturnType<typeof useFeatures>["addPOI"];
       let removePOI: ReturnType<typeof useFeatures>["removePOI"];
+      const Wrapper = createTestWrapper();
 
       function TestComponent() {
         const ctx = useFeatures();
@@ -373,9 +420,11 @@ describe("FeaturesContext", () => {
       }
 
       render(
-        <FeaturesProvider>
-          <TestComponent />
-        </FeaturesProvider>
+        <Wrapper>
+          <FeaturesProvider>
+            <TestComponent />
+          </FeaturesProvider>
+        </Wrapper>
       );
 
       act(() => {
@@ -402,6 +451,7 @@ describe("FeaturesContext", () => {
       let features: ReturnType<typeof useFeatures>["features"];
       let addDistrict: ReturnType<typeof useFeatures>["addDistrict"];
       let updateDistrict: ReturnType<typeof useFeatures>["updateDistrict"];
+      const Wrapper = createTestWrapper();
 
       function TestComponent() {
         const ctx = useFeatures();
@@ -412,9 +462,11 @@ describe("FeaturesContext", () => {
       }
 
       render(
-        <FeaturesProvider>
-          <TestComponent />
-        </FeaturesProvider>
+        <Wrapper>
+          <FeaturesProvider>
+            <TestComponent />
+          </FeaturesProvider>
+        </Wrapper>
       );
 
       let districtId: string;
@@ -439,6 +491,7 @@ describe("FeaturesContext", () => {
       let addDistrict: ReturnType<typeof useFeatures>["addDistrict"];
       let addPOI: ReturnType<typeof useFeatures>["addPOI"];
       let clearFeatures: ReturnType<typeof useFeatures>["clearFeatures"];
+      const Wrapper = createTestWrapper();
 
       function TestComponent() {
         const ctx = useFeatures();
@@ -450,9 +503,11 @@ describe("FeaturesContext", () => {
       }
 
       render(
-        <FeaturesProvider>
-          <TestComponent />
-        </FeaturesProvider>
+        <Wrapper>
+          <FeaturesProvider>
+            <TestComponent />
+          </FeaturesProvider>
+        </Wrapper>
       );
 
       act(() => {
@@ -482,6 +537,7 @@ describe("FeaturesContext", () => {
     it("replaces all features", () => {
       let features: ReturnType<typeof useFeatures>["features"];
       let setFeatures: ReturnType<typeof useFeatures>["setFeatures"];
+      const Wrapper = createTestWrapper();
 
       function TestComponent() {
         const ctx = useFeatures();
@@ -491,9 +547,11 @@ describe("FeaturesContext", () => {
       }
 
       render(
-        <FeaturesProvider>
-          <TestComponent />
-        </FeaturesProvider>
+        <Wrapper>
+          <FeaturesProvider>
+            <TestComponent />
+          </FeaturesProvider>
+        </Wrapper>
       );
 
       const newFeatures = {

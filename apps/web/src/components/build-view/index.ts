@@ -22,3 +22,7 @@ export {
   useSelectionContext,
   useSelectionContextOptional,
 } from "./SelectionContext";
+export {
+  PersonalitySliders,
+  CollapsiblePersonalitySliders,
+} from "./PersonalitySliders";

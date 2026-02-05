@@ -11,6 +11,7 @@ import {
   usePlacedSeeds,
   type SeedType,
 } from "../palette";
+import type { DistrictPersonality } from "../canvas/layers/types";
 import { MapCanvasProvider, FeaturesProvider, useFeatures } from "../canvas";
 import { ExportView } from "../export-view";
 import { TimelapseView } from "../timelapse-view";
@@ -102,10 +103,15 @@ function PlacementWithSeeds({ children }: { children: ReactNode }) {
   const { addDistrict } = useFeatures();
 
   const handlePlaceSeed = useCallback(
-    (seed: SeedType, position: { x: number; y: number }) => {
+    (
+      seed: SeedType,
+      position: { x: number; y: number },
+      personality?: DistrictPersonality
+    ) => {
       if (seed.category === "district") {
         // For district seeds, generate actual district geometry
-        const result = addDistrict(position, seed.id);
+        // Pass personality settings to be stored on the district
+        const result = addDistrict(position, seed.id, { personality });
         if (!result) {
           // District overlapped or failed, don't add marker
           console.warn("Failed to place district - may overlap with existing");

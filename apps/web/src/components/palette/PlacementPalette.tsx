@@ -5,6 +5,8 @@
 import { useCallback } from "react";
 import { SEED_CATEGORIES, getSeedsByCategory, type SeedType } from "./types";
 import { usePlacement } from "./PlacementContext";
+import { PersonalitySliders } from "../build-view/PersonalitySliders";
+import { DEFAULT_DISTRICT_PERSONALITY } from "../canvas/layers/types";
 
 interface SeedButtonProps {
   seed: SeedType;
@@ -36,7 +38,14 @@ function SeedButton({ seed, isSelected, onClick }: SeedButtonProps) {
 }
 
 export function PlacementPalette() {
-  const { selectedSeed, selectSeed, isPlacing, cancelPlacing } = usePlacement();
+  const {
+    selectedSeed,
+    selectSeed,
+    isPlacing,
+    cancelPlacing,
+    placementPersonality,
+    setPlacementPersonality,
+  } = usePlacement();
 
   const handleSeedClick = useCallback(
     (seed: SeedType) => {
@@ -49,6 +58,9 @@ export function PlacementPalette() {
     },
     [selectedSeed, selectSeed]
   );
+
+  // Check if the selected seed is a district type
+  const isDistrictSeed = selectedSeed?.category === "district";
 
   return (
     <div className="bg-white/95 backdrop-blur-sm rounded-lg shadow-lg p-3 w-64">
@@ -75,6 +87,20 @@ export function PlacementPalette() {
               <div className="text-xs text-blue-600">Click on map to place</div>
             </div>
           </div>
+        </div>
+      )}
+
+      {/* Show personality sliders when a district seed is selected */}
+      {isDistrictSeed && (
+        <div className="mb-3 p-2 bg-gray-50 rounded-lg">
+          <h4 className="text-xs font-medium text-gray-600 mb-2">
+            District Personality
+          </h4>
+          <PersonalitySliders
+            values={placementPersonality ?? DEFAULT_DISTRICT_PERSONALITY}
+            onChange={setPlacementPersonality}
+            compact
+          />
         </div>
       )}
 
