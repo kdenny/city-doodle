@@ -57,6 +57,10 @@ const TIE_WIDTH = 8;
 const TIE_HEIGHT = 2;
 const TRACK_UNDERGROUND_ALPHA = 0.3;
 
+// Highlight styling (CITY-195)
+const HIGHLIGHT_ALPHA = 1.0;
+const DIM_ALPHA = 0.25;
+
 export class RailStationLayer {
   private container: Container;
   private tracksContainer: Container;
@@ -67,6 +71,8 @@ export class RailStationLayer {
   private previewGraphics: Graphics | null = null;
   private previewText: Text | null = null;
   private currentStations: RailStationData[] = [];
+  private highlightedStationIds: Set<string> = new Set();
+  private highlightedSegmentIds: Set<string> = new Set();
 
   constructor() {
     this.container = new Container();
@@ -149,6 +155,9 @@ export class RailStationLayer {
         this.trackGraphics.delete(id);
       }
     }
+
+    // Apply current highlight state
+    this.applyHighlight();
   }
 
   /**
@@ -468,6 +477,52 @@ export class RailStationLayer {
       }
     }
     return null;
+  }
+
+  /**
+   * Set the highlighted stations and segments (CITY-195).
+   * Pass empty arrays to clear highlighting.
+   */
+  setHighlight(stationIds: string[], segmentIds: string[]): void {
+    this.highlightedStationIds = new Set(stationIds);
+    this.highlightedSegmentIds = new Set(segmentIds);
+    this.applyHighlight();
+  }
+
+  /**
+   * Apply highlight styling to stations and tracks.
+   * Highlighted elements get full opacity; others are dimmed.
+   */
+  private applyHighlight(): void {
+    const hasHighlight = this.highlightedStationIds.size > 0 || this.highlightedSegmentIds.size > 0;
+
+    // Apply to stations
+    for (const [id, graphics] of this.stationGraphics.entries()) {
+      // Skip if graphics was destroyed
+      if (!graphics.scale) continue;
+
+      if (hasHighlight) {
+        const isHighlighted = this.highlightedStationIds.has(id);
+        graphics.alpha = isHighlighted ? HIGHLIGHT_ALPHA : DIM_ALPHA;
+        // Scale up highlighted stations slightly
+        graphics.scale.set(isHighlighted ? 1.2 : 1.0);
+      } else {
+        // No highlight - show all normally
+        graphics.alpha = 1.0;
+        graphics.scale.set(1.0);
+      }
+    }
+
+    // Apply to tracks
+    for (const [id, graphics] of this.trackGraphics.entries()) {
+      if (hasHighlight) {
+        const isHighlighted = this.highlightedSegmentIds.has(id);
+        graphics.alpha = isHighlighted ? HIGHLIGHT_ALPHA : DIM_ALPHA;
+      } else {
+        // No highlight - show all normally
+        graphics.alpha = 1.0;
+      }
+    }
   }
 
   destroy(): void {

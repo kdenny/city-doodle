@@ -127,6 +127,14 @@ interface TransitContextValue {
   subwayTunnels: SubwayTunnelData[];
   /** Raw transit network data for panels/stats (includes lines with segments) */
   transitNetwork: TransitNetwork | null;
+  /** Currently highlighted line ID (for visual emphasis on map) */
+  highlightedLineId: string | null;
+  /** Set the highlighted line ID */
+  setHighlightedLineId: (lineId: string | null) => void;
+  /** Get station IDs that belong to a specific line */
+  getStationIdsForLine: (lineId: string) => string[];
+  /** Get segment IDs that belong to a specific line */
+  getSegmentIdsForLine: (lineId: string) => string[];
   /** Validate if a position is valid for rail station placement */
   validateRailStationPlacement: (position: Point) => StationValidation;
   /** Validate if a position is valid for subway station placement */
@@ -175,6 +183,9 @@ export function TransitProvider({ children, worldId }: TransitProviderProps) {
   // Local state for UI rendering - Rail
   const [railStations, setRailStations] = useState<RailStationData[]>([]);
   const [trackSegments, setTrackSegments] = useState<TrackSegmentData[]>([]);
+
+  // Highlighted line state (for visual emphasis when line is selected in panel)
+  const [highlightedLineId, setHighlightedLineId] = useState<string | null>(null);
 
   // Local state for UI rendering - Subway
   const [subwayStations, setSubwayStations] = useState<SubwayStationData[]>([]);
@@ -738,6 +749,38 @@ export function TransitProvider({ children, worldId }: TransitProviderProps) {
     [worldId, transitNetwork, createSegment, toast]
   );
 
+  /**
+   * Get all station IDs that belong to a specific line.
+   */
+  const getStationIdsForLine = useCallback(
+    (lineId: string): string[] => {
+      if (!transitNetwork) return [];
+      const line = transitNetwork.lines.find((l) => l.id === lineId);
+      if (!line) return [];
+
+      const stationIds = new Set<string>();
+      for (const segment of line.segments) {
+        stationIds.add(segment.from_station_id);
+        stationIds.add(segment.to_station_id);
+      }
+      return Array.from(stationIds);
+    },
+    [transitNetwork]
+  );
+
+  /**
+   * Get all segment IDs that belong to a specific line.
+   */
+  const getSegmentIdsForLine = useCallback(
+    (lineId: string): string[] => {
+      if (!transitNetwork) return [];
+      const line = transitNetwork.lines.find((l) => l.id === lineId);
+      if (!line) return [];
+      return line.segments.map((s) => s.id);
+    },
+    [transitNetwork]
+  );
+
   const lineCount = transitNetwork?.lines.length || 0;
   const isLoading = isLoadingNetwork || createStation.isPending || createLine.isPending;
   const error = networkError || createStation.error || null;
@@ -759,6 +802,11 @@ export function TransitProvider({ children, worldId }: TransitProviderProps) {
     getNearbySubwayStations,
     // Raw network data for panels
     transitNetwork: transitNetwork ?? null,
+    // Highlighting (CITY-195)
+    highlightedLineId,
+    setHighlightedLineId,
+    getStationIdsForLine,
+    getSegmentIdsForLine,
     // Manual line drawing
     createLine: createLineManual,
     createLineSegment,

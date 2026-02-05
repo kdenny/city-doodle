@@ -794,6 +794,37 @@ export const MapCanvas = forwardRef<MapCanvasHandle, MapCanvasProps>(
     transitContext,
   ]);
 
+  // Update transit layer highlighting when highlightedLineId changes (CITY-195)
+  useEffect(() => {
+    if (!isReady || !transitContext) return;
+
+    const { highlightedLineId, getStationIdsForLine, getSegmentIdsForLine } = transitContext;
+
+    if (highlightedLineId) {
+      // Get stations and segments for the highlighted line
+      const stationIds = getStationIdsForLine(highlightedLineId);
+      const segmentIds = getSegmentIdsForLine(highlightedLineId);
+
+      // Apply highlight to rail stations
+      if (railStationLayerRef.current) {
+        railStationLayerRef.current.setHighlight(stationIds, segmentIds);
+      }
+
+      // Apply highlight to subway stations
+      if (subwayStationLayerRef.current) {
+        subwayStationLayerRef.current.setHighlight(stationIds, segmentIds);
+      }
+    } else {
+      // Clear highlight
+      if (railStationLayerRef.current) {
+        railStationLayerRef.current.setHighlight([], []);
+      }
+      if (subwayStationLayerRef.current) {
+        subwayStationLayerRef.current.setHighlight([], []);
+      }
+    }
+  }, [isReady, transitContext?.highlightedLineId, transitContext?.getStationIdsForLine, transitContext?.getSegmentIdsForLine]);
+
   // Update transit line drawing layer when drawing state changes
   useEffect(() => {
     if (!isReady || !transitLineDrawingLayerRef.current || !transitContext) return;
