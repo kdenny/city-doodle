@@ -14,6 +14,7 @@ const defaultVisibility: LayerVisibility = {
   pois: true,
   grid: true,
   labels: true,
+  subwayTunnels: false,
 };
 
 describe("LayerControls", () => {

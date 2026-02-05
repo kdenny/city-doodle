@@ -29,6 +29,7 @@ const allVisibleLayers: LayerVisibility = {
   pois: true,
   grid: true,
   labels: true,
+  subwayTunnels: false,
 };
 
 const allHiddenLayers: LayerVisibility = {
@@ -42,6 +43,7 @@ const allHiddenLayers: LayerVisibility = {
   pois: false,
   grid: false,
   labels: false,
+  subwayTunnels: false,
 };
 
 describe("LayerControls integration", () => {

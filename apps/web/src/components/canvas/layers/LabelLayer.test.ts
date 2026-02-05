@@ -46,6 +46,7 @@ describe("LabelLayer", () => {
       pois: true,
       grid: true,
       labels: false,
+      subwayTunnels: false,
     };
 
     layer.setVisibility(visibility);

@@ -20,6 +20,7 @@ const LAYER_LABELS: Record<keyof LayerVisibility, string> = {
   pois: "POIs",
   grid: "Grid",
   labels: "Labels",
+  subwayTunnels: "Subway Lines",
 };
 
 export function LayerControls({ visibility, onChange }: LayerControlsProps) {
