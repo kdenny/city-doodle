@@ -24,6 +24,12 @@ export {
   useTerrainOptional,
 } from "./TerrainContext";
 export {
+  TransitProvider,
+  useTransit,
+  useTransitOptional,
+} from "./TransitContext";
+export type { RailStationValidation } from "./TransitContext";
+export {
   usePopulationStats,
   calculatePopulation,
 } from "./usePopulationStats";

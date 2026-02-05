@@ -88,18 +88,18 @@ export const SEED_TYPES: SeedType[] = [
   },
   // Transit
   {
-    id: "train_station",
-    label: "Train Station",
-    category: "transit",
-    icon: "🚆",
-    description: "Commuter rail stop",
-  },
-  {
     id: "subway",
     label: "Subway Station",
     category: "transit",
     icon: "🚇",
-    description: "Metro/subway stop",
+    description: "Underground metro stop",
+  },
+  {
+    id: "rail_station",
+    label: "Rail Station",
+    category: "transit",
+    icon: "🚂",
+    description: "Commuter rail station with visible tracks (must be placed in district)",
   },
 ];
 

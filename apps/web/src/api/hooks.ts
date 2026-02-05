@@ -30,6 +30,21 @@ import {
   TileLock,
   TileLockCreate,
   TileUpdate,
+  TransitLine,
+  TransitLineBulkCreate,
+  TransitLineCreate,
+  TransitLineSegment,
+  TransitLineSegmentBulkCreate,
+  TransitLineSegmentCreate,
+  TransitLineSegmentUpdate,
+  TransitLineUpdate,
+  TransitLineWithSegments,
+  TransitNetwork,
+  TransitNetworkStats,
+  TransitStation,
+  TransitStationBulkCreate,
+  TransitStationCreate,
+  TransitStationUpdate,
   UserCreate,
   UserLogin,
   UserResponse,
@@ -70,6 +85,22 @@ export const queryKeys = {
   // Neighborhoods
   worldNeighborhoods: (worldId: string) => ["worlds", worldId, "neighborhoods"] as const,
   neighborhood: (id: string) => ["neighborhoods", id] as const,
+
+  // Transit
+  worldTransitNetwork: (worldId: string) => ["worlds", worldId, "transit"] as const,
+  worldTransitStats: (worldId: string) => ["worlds", worldId, "transit", "stats"] as const,
+  worldTransitStations: (worldId: string, stationType?: string) =>
+    stationType
+      ? (["worlds", worldId, "transit", "stations", { stationType }] as const)
+      : (["worlds", worldId, "transit", "stations"] as const),
+  transitStation: (id: string) => ["transit", "stations", id] as const,
+  worldTransitLines: (worldId: string, lineType?: string) =>
+    lineType
+      ? (["worlds", worldId, "transit", "lines", { lineType }] as const)
+      : (["worlds", worldId, "transit", "lines"] as const),
+  transitLine: (id: string) => ["transit", "lines", id] as const,
+  transitLineSegments: (lineId: string) => ["transit", "lines", lineId, "segments"] as const,
+  transitSegment: (id: string) => ["transit", "segments", id] as const,
 };
 
 // ============================================================================
@@ -656,6 +687,407 @@ export function useDeleteAllNeighborhoods(
       queryClient.invalidateQueries({
         queryKey: queryKeys.worldNeighborhoods(worldId),
       });
+    },
+    ...options,
+  });
+}
+
+// ============================================================================
+// Transit Hooks
+// ============================================================================
+
+export function useTransitNetwork(
+  worldId: string,
+  options?: Omit<UseQueryOptions<TransitNetwork>, "queryKey" | "queryFn">
+) {
+  return useQuery({
+    queryKey: queryKeys.worldTransitNetwork(worldId),
+    queryFn: () => api.transit.getNetwork(worldId),
+    enabled: !!worldId,
+    ...options,
+  });
+}
+
+export function useTransitNetworkStats(
+  worldId: string,
+  options?: Omit<UseQueryOptions<TransitNetworkStats>, "queryKey" | "queryFn">
+) {
+  return useQuery({
+    queryKey: queryKeys.worldTransitStats(worldId),
+    queryFn: () => api.transit.getStats(worldId),
+    enabled: !!worldId,
+    ...options,
+  });
+}
+
+export function useClearTransitNetwork(
+  options?: UseMutationOptions<void, Error, string>
+) {
+  const queryClient = useQueryClient();
+  return useMutation({
+    mutationFn: (worldId: string) => api.transit.clearNetwork(worldId),
+    onSuccess: (_, worldId) => {
+      queryClient.invalidateQueries({
+        queryKey: queryKeys.worldTransitNetwork(worldId),
+      });
+      queryClient.invalidateQueries({
+        queryKey: queryKeys.worldTransitStats(worldId),
+      });
+    },
+    ...options,
+  });
+}
+
+// Transit Station Hooks
+
+export function useTransitStations(
+  worldId: string,
+  stationType?: string,
+  options?: Omit<UseQueryOptions<TransitStation[]>, "queryKey" | "queryFn">
+) {
+  return useQuery({
+    queryKey: queryKeys.worldTransitStations(worldId, stationType),
+    queryFn: () => api.transit.stations.list(worldId, stationType),
+    enabled: !!worldId,
+    ...options,
+  });
+}
+
+export function useTransitStation(
+  stationId: string,
+  options?: Omit<UseQueryOptions<TransitStation>, "queryKey" | "queryFn">
+) {
+  return useQuery({
+    queryKey: queryKeys.transitStation(stationId),
+    queryFn: () => api.transit.stations.get(stationId),
+    enabled: !!stationId,
+    ...options,
+  });
+}
+
+export function useCreateTransitStation(
+  options?: UseMutationOptions<TransitStation, Error, { worldId: string; data: Omit<TransitStationCreate, "world_id"> }>
+) {
+  const queryClient = useQueryClient();
+  return useMutation({
+    mutationFn: ({ worldId, data }) => api.transit.stations.create(worldId, data),
+    onSuccess: (_, { worldId }) => {
+      queryClient.invalidateQueries({
+        queryKey: queryKeys.worldTransitStations(worldId),
+      });
+      queryClient.invalidateQueries({
+        queryKey: queryKeys.worldTransitNetwork(worldId),
+      });
+      queryClient.invalidateQueries({
+        queryKey: queryKeys.worldTransitStats(worldId),
+      });
+    },
+    ...options,
+  });
+}
+
+export function useCreateTransitStationsBulk(
+  options?: UseMutationOptions<TransitStation[], Error, { worldId: string; data: TransitStationBulkCreate }>
+) {
+  const queryClient = useQueryClient();
+  return useMutation({
+    mutationFn: ({ worldId, data }) => api.transit.stations.createBulk(worldId, data),
+    onSuccess: (_, { worldId }) => {
+      queryClient.invalidateQueries({
+        queryKey: queryKeys.worldTransitStations(worldId),
+      });
+      queryClient.invalidateQueries({
+        queryKey: queryKeys.worldTransitNetwork(worldId),
+      });
+      queryClient.invalidateQueries({
+        queryKey: queryKeys.worldTransitStats(worldId),
+      });
+    },
+    ...options,
+  });
+}
+
+export function useUpdateTransitStation(
+  options?: UseMutationOptions<TransitStation, Error, { stationId: string; data: TransitStationUpdate; worldId?: string }>
+) {
+  const queryClient = useQueryClient();
+  return useMutation({
+    mutationFn: ({ stationId, data }) => api.transit.stations.update(stationId, data),
+    onSuccess: (station, { worldId }) => {
+      queryClient.setQueryData(queryKeys.transitStation(station.id), station);
+      if (worldId) {
+        queryClient.invalidateQueries({
+          queryKey: queryKeys.worldTransitStations(worldId),
+        });
+        queryClient.invalidateQueries({
+          queryKey: queryKeys.worldTransitNetwork(worldId),
+        });
+      }
+    },
+    ...options,
+  });
+}
+
+export function useDeleteTransitStation(
+  options?: UseMutationOptions<void, Error, { stationId: string; worldId: string }>
+) {
+  const queryClient = useQueryClient();
+  return useMutation({
+    mutationFn: ({ stationId }) => api.transit.stations.delete(stationId),
+    onSuccess: (_, { stationId, worldId }) => {
+      queryClient.removeQueries({ queryKey: queryKeys.transitStation(stationId) });
+      queryClient.invalidateQueries({
+        queryKey: queryKeys.worldTransitStations(worldId),
+      });
+      queryClient.invalidateQueries({
+        queryKey: queryKeys.worldTransitNetwork(worldId),
+      });
+      queryClient.invalidateQueries({
+        queryKey: queryKeys.worldTransitStats(worldId),
+      });
+    },
+    ...options,
+  });
+}
+
+// Transit Line Hooks
+
+export function useTransitLines(
+  worldId: string,
+  lineType?: string,
+  options?: Omit<UseQueryOptions<TransitLine[]>, "queryKey" | "queryFn">
+) {
+  return useQuery({
+    queryKey: queryKeys.worldTransitLines(worldId, lineType),
+    queryFn: () => api.transit.lines.list(worldId, lineType),
+    enabled: !!worldId,
+    ...options,
+  });
+}
+
+export function useTransitLine(
+  lineId: string,
+  options?: Omit<UseQueryOptions<TransitLineWithSegments>, "queryKey" | "queryFn">
+) {
+  return useQuery({
+    queryKey: queryKeys.transitLine(lineId),
+    queryFn: () => api.transit.lines.get(lineId),
+    enabled: !!lineId,
+    ...options,
+  });
+}
+
+export function useCreateTransitLine(
+  options?: UseMutationOptions<TransitLine, Error, { worldId: string; data: Omit<TransitLineCreate, "world_id"> }>
+) {
+  const queryClient = useQueryClient();
+  return useMutation({
+    mutationFn: ({ worldId, data }) => api.transit.lines.create(worldId, data),
+    onSuccess: (_, { worldId }) => {
+      queryClient.invalidateQueries({
+        queryKey: queryKeys.worldTransitLines(worldId),
+      });
+      queryClient.invalidateQueries({
+        queryKey: queryKeys.worldTransitNetwork(worldId),
+      });
+      queryClient.invalidateQueries({
+        queryKey: queryKeys.worldTransitStats(worldId),
+      });
+    },
+    ...options,
+  });
+}
+
+export function useCreateTransitLinesBulk(
+  options?: UseMutationOptions<TransitLine[], Error, { worldId: string; data: TransitLineBulkCreate }>
+) {
+  const queryClient = useQueryClient();
+  return useMutation({
+    mutationFn: ({ worldId, data }) => api.transit.lines.createBulk(worldId, data),
+    onSuccess: (_, { worldId }) => {
+      queryClient.invalidateQueries({
+        queryKey: queryKeys.worldTransitLines(worldId),
+      });
+      queryClient.invalidateQueries({
+        queryKey: queryKeys.worldTransitNetwork(worldId),
+      });
+      queryClient.invalidateQueries({
+        queryKey: queryKeys.worldTransitStats(worldId),
+      });
+    },
+    ...options,
+  });
+}
+
+export function useUpdateTransitLine(
+  options?: UseMutationOptions<TransitLine, Error, { lineId: string; data: TransitLineUpdate; worldId?: string }>
+) {
+  const queryClient = useQueryClient();
+  return useMutation({
+    mutationFn: ({ lineId, data }) => api.transit.lines.update(lineId, data),
+    onSuccess: (line, { worldId }) => {
+      queryClient.setQueryData(queryKeys.transitLine(line.id), line);
+      if (worldId) {
+        queryClient.invalidateQueries({
+          queryKey: queryKeys.worldTransitLines(worldId),
+        });
+        queryClient.invalidateQueries({
+          queryKey: queryKeys.worldTransitNetwork(worldId),
+        });
+      }
+    },
+    ...options,
+  });
+}
+
+export function useDeleteTransitLine(
+  options?: UseMutationOptions<void, Error, { lineId: string; worldId: string }>
+) {
+  const queryClient = useQueryClient();
+  return useMutation({
+    mutationFn: ({ lineId }) => api.transit.lines.delete(lineId),
+    onSuccess: (_, { lineId, worldId }) => {
+      queryClient.removeQueries({ queryKey: queryKeys.transitLine(lineId) });
+      queryClient.invalidateQueries({
+        queryKey: queryKeys.worldTransitLines(worldId),
+      });
+      queryClient.invalidateQueries({
+        queryKey: queryKeys.worldTransitNetwork(worldId),
+      });
+      queryClient.invalidateQueries({
+        queryKey: queryKeys.worldTransitStats(worldId),
+      });
+    },
+    ...options,
+  });
+}
+
+// Transit Line Segment Hooks
+
+export function useTransitLineSegments(
+  lineId: string,
+  options?: Omit<UseQueryOptions<TransitLineSegment[]>, "queryKey" | "queryFn">
+) {
+  return useQuery({
+    queryKey: queryKeys.transitLineSegments(lineId),
+    queryFn: () => api.transit.segments.list(lineId),
+    enabled: !!lineId,
+    ...options,
+  });
+}
+
+export function useTransitSegment(
+  segmentId: string,
+  options?: Omit<UseQueryOptions<TransitLineSegment>, "queryKey" | "queryFn">
+) {
+  return useQuery({
+    queryKey: queryKeys.transitSegment(segmentId),
+    queryFn: () => api.transit.segments.get(segmentId),
+    enabled: !!segmentId,
+    ...options,
+  });
+}
+
+export function useCreateTransitLineSegment(
+  options?: UseMutationOptions<TransitLineSegment, Error, { lineId: string; data: Omit<TransitLineSegmentCreate, "line_id">; worldId?: string }>
+) {
+  const queryClient = useQueryClient();
+  return useMutation({
+    mutationFn: ({ lineId, data }) => api.transit.segments.create(lineId, data),
+    onSuccess: (_, { lineId, worldId }) => {
+      queryClient.invalidateQueries({
+        queryKey: queryKeys.transitLineSegments(lineId),
+      });
+      queryClient.invalidateQueries({
+        queryKey: queryKeys.transitLine(lineId),
+      });
+      if (worldId) {
+        queryClient.invalidateQueries({
+          queryKey: queryKeys.worldTransitNetwork(worldId),
+        });
+        queryClient.invalidateQueries({
+          queryKey: queryKeys.worldTransitStats(worldId),
+        });
+      }
+    },
+    ...options,
+  });
+}
+
+export function useCreateTransitLineSegmentsBulk(
+  options?: UseMutationOptions<TransitLineSegment[], Error, { lineId: string; data: TransitLineSegmentBulkCreate; worldId?: string }>
+) {
+  const queryClient = useQueryClient();
+  return useMutation({
+    mutationFn: ({ lineId, data }) => api.transit.segments.createBulk(lineId, data),
+    onSuccess: (_, { lineId, worldId }) => {
+      queryClient.invalidateQueries({
+        queryKey: queryKeys.transitLineSegments(lineId),
+      });
+      queryClient.invalidateQueries({
+        queryKey: queryKeys.transitLine(lineId),
+      });
+      if (worldId) {
+        queryClient.invalidateQueries({
+          queryKey: queryKeys.worldTransitNetwork(worldId),
+        });
+        queryClient.invalidateQueries({
+          queryKey: queryKeys.worldTransitStats(worldId),
+        });
+      }
+    },
+    ...options,
+  });
+}
+
+export function useUpdateTransitLineSegment(
+  options?: UseMutationOptions<TransitLineSegment, Error, { segmentId: string; data: TransitLineSegmentUpdate; lineId?: string; worldId?: string }>
+) {
+  const queryClient = useQueryClient();
+  return useMutation({
+    mutationFn: ({ segmentId, data }) => api.transit.segments.update(segmentId, data),
+    onSuccess: (segment, { lineId, worldId }) => {
+      queryClient.setQueryData(queryKeys.transitSegment(segment.id), segment);
+      if (lineId) {
+        queryClient.invalidateQueries({
+          queryKey: queryKeys.transitLineSegments(lineId),
+        });
+        queryClient.invalidateQueries({
+          queryKey: queryKeys.transitLine(lineId),
+        });
+      }
+      if (worldId) {
+        queryClient.invalidateQueries({
+          queryKey: queryKeys.worldTransitNetwork(worldId),
+        });
+      }
+    },
+    ...options,
+  });
+}
+
+export function useDeleteTransitLineSegment(
+  options?: UseMutationOptions<void, Error, { segmentId: string; lineId: string; worldId?: string }>
+) {
+  const queryClient = useQueryClient();
+  return useMutation({
+    mutationFn: ({ segmentId }) => api.transit.segments.delete(segmentId),
+    onSuccess: (_, { segmentId, lineId, worldId }) => {
+      queryClient.removeQueries({ queryKey: queryKeys.transitSegment(segmentId) });
+      queryClient.invalidateQueries({
+        queryKey: queryKeys.transitLineSegments(lineId),
+      });
+      queryClient.invalidateQueries({
+        queryKey: queryKeys.transitLine(lineId),
+      });
+      if (worldId) {
+        queryClient.invalidateQueries({
+          queryKey: queryKeys.worldTransitNetwork(worldId),
+        });
+        queryClient.invalidateQueries({
+          queryKey: queryKeys.worldTransitStats(worldId),
+        });
+      }
     },
     ...options,
   });

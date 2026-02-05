@@ -24,6 +24,21 @@ import {
   TileLock,
   TileLockCreate,
   TileUpdate,
+  TransitLine,
+  TransitLineBulkCreate,
+  TransitLineCreate,
+  TransitLineSegment,
+  TransitLineSegmentBulkCreate,
+  TransitLineSegmentCreate,
+  TransitLineSegmentUpdate,
+  TransitLineUpdate,
+  TransitLineWithSegments,
+  TransitNetwork,
+  TransitNetworkStats,
+  TransitStation,
+  TransitStationBulkCreate,
+  TransitStationCreate,
+  TransitStationUpdate,
   UserCreate,
   UserLogin,
   UserResponse,
@@ -408,6 +423,136 @@ export const neighborhoods = {
 };
 
 // ============================================================================
+// Transit Endpoints
+// ============================================================================
+
+export const transit = {
+  /** Get the complete transit network for a world */
+  async getNetwork(worldId: string): Promise<TransitNetwork> {
+    return request<TransitNetwork>("GET", `/worlds/${worldId}/transit`);
+  },
+
+  /** Get statistics about the transit network */
+  async getStats(worldId: string): Promise<TransitNetworkStats> {
+    return request<TransitNetworkStats>("GET", `/worlds/${worldId}/transit/stats`);
+  },
+
+  /** Clear all transit stations and lines in a world */
+  async clearNetwork(worldId: string): Promise<void> {
+    return request<void>("DELETE", `/worlds/${worldId}/transit`);
+  },
+
+  // Station endpoints
+  stations: {
+    /** List all transit stations in a world */
+    async list(worldId: string, stationType?: string): Promise<TransitStation[]> {
+      return request<TransitStation[]>("GET", `/worlds/${worldId}/transit/stations`, {
+        params: { station_type: stationType },
+      });
+    },
+
+    /** Create a new transit station */
+    async create(worldId: string, data: Omit<TransitStationCreate, "world_id">): Promise<TransitStation> {
+      return request<TransitStation>("POST", `/worlds/${worldId}/transit/stations`, {
+        body: { ...data, world_id: worldId },
+      });
+    },
+
+    /** Create multiple transit stations in a single request */
+    async createBulk(worldId: string, data: TransitStationBulkCreate): Promise<TransitStation[]> {
+      return request<TransitStation[]>("POST", `/worlds/${worldId}/transit/stations/bulk`, { body: data });
+    },
+
+    /** Get a transit station by ID */
+    async get(stationId: string): Promise<TransitStation> {
+      return request<TransitStation>("GET", `/transit/stations/${stationId}`);
+    },
+
+    /** Update a transit station */
+    async update(stationId: string, data: TransitStationUpdate): Promise<TransitStation> {
+      return request<TransitStation>("PATCH", `/transit/stations/${stationId}`, { body: data });
+    },
+
+    /** Delete a transit station */
+    async delete(stationId: string): Promise<void> {
+      return request<void>("DELETE", `/transit/stations/${stationId}`);
+    },
+  },
+
+  // Line endpoints
+  lines: {
+    /** List all transit lines in a world */
+    async list(worldId: string, lineType?: string): Promise<TransitLine[]> {
+      return request<TransitLine[]>("GET", `/worlds/${worldId}/transit/lines`, {
+        params: { line_type: lineType },
+      });
+    },
+
+    /** Create a new transit line */
+    async create(worldId: string, data: Omit<TransitLineCreate, "world_id">): Promise<TransitLine> {
+      return request<TransitLine>("POST", `/worlds/${worldId}/transit/lines`, {
+        body: { ...data, world_id: worldId },
+      });
+    },
+
+    /** Create multiple transit lines in a single request */
+    async createBulk(worldId: string, data: TransitLineBulkCreate): Promise<TransitLine[]> {
+      return request<TransitLine[]>("POST", `/worlds/${worldId}/transit/lines/bulk`, { body: data });
+    },
+
+    /** Get a transit line by ID with all its segments */
+    async get(lineId: string): Promise<TransitLineWithSegments> {
+      return request<TransitLineWithSegments>("GET", `/transit/lines/${lineId}`);
+    },
+
+    /** Update a transit line */
+    async update(lineId: string, data: TransitLineUpdate): Promise<TransitLine> {
+      return request<TransitLine>("PATCH", `/transit/lines/${lineId}`, { body: data });
+    },
+
+    /** Delete a transit line */
+    async delete(lineId: string): Promise<void> {
+      return request<void>("DELETE", `/transit/lines/${lineId}`);
+    },
+  },
+
+  // Segment endpoints
+  segments: {
+    /** List all segments of a transit line */
+    async list(lineId: string): Promise<TransitLineSegment[]> {
+      return request<TransitLineSegment[]>("GET", `/transit/lines/${lineId}/segments`);
+    },
+
+    /** Create a new line segment */
+    async create(lineId: string, data: Omit<TransitLineSegmentCreate, "line_id">): Promise<TransitLineSegment> {
+      return request<TransitLineSegment>("POST", `/transit/lines/${lineId}/segments`, {
+        body: { ...data, line_id: lineId },
+      });
+    },
+
+    /** Create multiple line segments in a single request */
+    async createBulk(lineId: string, data: TransitLineSegmentBulkCreate): Promise<TransitLineSegment[]> {
+      return request<TransitLineSegment[]>("POST", `/transit/lines/${lineId}/segments/bulk`, { body: data });
+    },
+
+    /** Get a line segment by ID */
+    async get(segmentId: string): Promise<TransitLineSegment> {
+      return request<TransitLineSegment>("GET", `/transit/segments/${segmentId}`);
+    },
+
+    /** Update a line segment */
+    async update(segmentId: string, data: TransitLineSegmentUpdate): Promise<TransitLineSegment> {
+      return request<TransitLineSegment>("PATCH", `/transit/segments/${segmentId}`, { body: data });
+    },
+
+    /** Delete a line segment */
+    async delete(segmentId: string): Promise<void> {
+      return request<void>("DELETE", `/transit/segments/${segmentId}`);
+    },
+  },
+};
+
+// ============================================================================
 // Default Export
 // ============================================================================
 
@@ -419,6 +564,7 @@ export const api = {
   seeds,
   districts,
   neighborhoods,
+  transit,
 };
 
 export default api;

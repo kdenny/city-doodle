@@ -12,7 +12,7 @@ import {
   type SeedType,
 } from "../palette";
 import type { DistrictPersonality, Point } from "../canvas/layers/types";
-import { MapCanvasProvider, FeaturesProvider, useFeatures, TerrainProvider } from "../canvas";
+import { MapCanvasProvider, FeaturesProvider, useFeatures, TerrainProvider, TransitProvider, useTransitOptional } from "../canvas";
 import { DrawingProvider, type DrawingMode } from "../canvas/DrawingContext";
 import { generateNeighborhoodName } from "../../utils/nameGenerator";
 import { ExportView } from "../export-view";
@@ -107,9 +107,10 @@ function EditorShellContent({
 function PlacementWithSeeds({ children }: { children: ReactNode }) {
   const { addSeed } = usePlacedSeeds();
   const { addDistrict } = useFeatures();
+  const transitContext = useTransitOptional();
 
   const handlePlaceSeed = useCallback(
-    (
+    async (
       seed: SeedType,
       position: { x: number; y: number },
       personality?: DistrictPersonality,
@@ -128,12 +129,21 @@ function PlacementWithSeeds({ children }: { children: ReactNode }) {
           console.info("District was clipped to avoid water overlap");
         }
         // Don't add a seed marker for districts - the geometry is enough
+      } else if (seed.id === "rail_station" && transitContext) {
+        // For rail station seeds, use the transit context to place them
+        // This handles validation (must be in district) and auto-connection
+        const station = await transitContext.placeRailStation(position);
+        if (!station) {
+          console.warn("Failed to place rail station - must be inside a district");
+          return;
+        }
+        // Don't add a seed marker for rail stations - the transit layer renders them
       } else {
-        // For POI and transit seeds, add them as seed markers
+        // For other POI and transit seeds, add them as seed markers
         addSeed(seed, position);
       }
     },
-    [addSeed, addDistrict]
+    [addSeed, addDistrict, transitContext]
   );
 
   return (
@@ -245,19 +255,21 @@ export function EditorShell({
       <ZoomProvider initialZoom={initialZoom} onZoomChange={onZoomChange}>
         <TerrainProvider>
           <FeaturesProvider worldId={worldId}>
-            <PlacedSeedsProvider worldId={worldId}>
-              <PlacementWithSeeds>
-                <SelectionWithFeatures>
-                  <DrawingWithFeatures>
-                    <MapCanvasProvider>
-                      <EditorShellContent onHelp={handleHelp}>
-                        {children}
-                      </EditorShellContent>
-                    </MapCanvasProvider>
-                  </DrawingWithFeatures>
-                </SelectionWithFeatures>
-              </PlacementWithSeeds>
-            </PlacedSeedsProvider>
+            <TransitProvider worldId={worldId}>
+              <PlacedSeedsProvider worldId={worldId}>
+                <PlacementWithSeeds>
+                  <SelectionWithFeatures>
+                    <DrawingWithFeatures>
+                      <MapCanvasProvider>
+                        <EditorShellContent onHelp={handleHelp}>
+                          {children}
+                        </EditorShellContent>
+                      </MapCanvasProvider>
+                    </DrawingWithFeatures>
+                  </SelectionWithFeatures>
+                </PlacementWithSeeds>
+              </PlacedSeedsProvider>
+            </TransitProvider>
           </FeaturesProvider>
         </TerrainProvider>
       </ZoomProvider>

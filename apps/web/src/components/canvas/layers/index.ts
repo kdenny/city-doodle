@@ -4,7 +4,9 @@ export type { HitTestResult } from "./FeaturesLayer";
 export { LabelLayer, generateMockLabels } from "./LabelLayer";
 export { SeedsLayer } from "./SeedsLayer";
 export { DrawingLayer } from "./DrawingLayer";
+export { RailStationLayer } from "./RailStationLayer";
 export type { PlacedSeedData, PreviewSeedData } from "./SeedsLayer";
+export type { RailStationData, TrackSegmentData, RailStationPreviewData } from "./RailStationLayer";
 export { generateMockTerrain } from "./mockTerrain";
 export {
   generateDistrictGeometry,
