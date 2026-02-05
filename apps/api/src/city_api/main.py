@@ -6,6 +6,8 @@ import traceback
 from fastapi import FastAPI, Request
 from fastapi.middleware.cors import CORSMiddleware
 from fastapi.responses import JSONResponse
+from pydantic import ValidationError
+from sqlalchemy.exc import DataError, IntegrityError, OperationalError
 
 from city_api.config import settings
 from city_api.routers import auth_router
@@ -69,6 +71,90 @@ async def root():
 async def health():
     """Health check endpoint."""
     return {"status": "healthy"}
+
+
+@app.exception_handler(IntegrityError)
+async def integrity_error_handler(request: Request, exc: IntegrityError):
+    """Handle database integrity errors (unique constraint, foreign key violations).
+
+    Returns 409 Conflict for constraint violations.
+    """
+    logger.warning(
+        f"Database integrity error on {request.method} {request.url}: {exc.orig}"
+    )
+    # Extract useful error message from the exception
+    error_msg = str(exc.orig) if exc.orig else str(exc)
+
+    # Check for specific constraint types
+    if "foreign key" in error_msg.lower():
+        detail = "Referenced resource does not exist"
+    elif "unique" in error_msg.lower() or "duplicate" in error_msg.lower():
+        detail = "Resource already exists"
+    else:
+        detail = "Database constraint violation"
+
+    return JSONResponse(
+        status_code=409,
+        content={"detail": detail, "error_type": "IntegrityError"},
+    )
+
+
+@app.exception_handler(OperationalError)
+async def operational_error_handler(request: Request, exc: OperationalError):
+    """Handle database operational errors (connection issues, timeouts).
+
+    Returns 503 Service Unavailable for database connectivity issues.
+    """
+    logger.error(
+        f"Database operational error on {request.method} {request.url}: {exc}\n"
+        f"{traceback.format_exc()}"
+    )
+    return JSONResponse(
+        status_code=503,
+        content={
+            "detail": "Database temporarily unavailable",
+            "error_type": "OperationalError",
+        },
+    )
+
+
+@app.exception_handler(DataError)
+async def data_error_handler(request: Request, exc: DataError):
+    """Handle database data errors (invalid data types, out of range values).
+
+    Returns 400 Bad Request for invalid data.
+    """
+    logger.warning(
+        f"Database data error on {request.method} {request.url}: {exc.orig}"
+    )
+    return JSONResponse(
+        status_code=400,
+        content={
+            "detail": "Invalid data format for database field",
+            "error_type": "DataError",
+        },
+    )
+
+
+@app.exception_handler(ValidationError)
+async def validation_error_handler(request: Request, exc: ValidationError):
+    """Handle Pydantic validation errors that occur in business logic.
+
+    Note: FastAPI automatically handles request validation errors via RequestValidationError.
+    This catches validation errors that occur during response serialization or
+    in repository/service layer code.
+    """
+    logger.warning(
+        f"Validation error on {request.method} {request.url}: {exc}"
+    )
+    return JSONResponse(
+        status_code=422,
+        content={
+            "detail": "Data validation failed",
+            "errors": exc.errors(),
+            "error_type": "ValidationError",
+        },
+    )
 
 
 @app.exception_handler(Exception)
