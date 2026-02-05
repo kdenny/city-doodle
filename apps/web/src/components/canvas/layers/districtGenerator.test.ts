@@ -115,7 +115,6 @@ describe("generateDistrictGeometry", () => {
     // With CITY-142 street hierarchy:
     // - Perimeter streets and every 3-4 blocks are COLLECTOR class
     // - All other internal streets are LOCAL class
-    const localRoads = result.roads.filter(r => r.roadClass === "local");
     const collectorRoads = result.roads.filter(r => r.roadClass === "collector");
 
     // All roads should be either local or collector (no highways/arterials in internal grid)
@@ -123,10 +122,9 @@ describe("generateDistrictGeometry", () => {
       expect(["local", "collector"]).toContain(road.roadClass);
     }
 
-    // With enough streets, we should have both types
-    // (collector for perimeter + every 3-4 blocks, local for the rest)
+    // With enough streets, we should have collector roads
+    // (collector for perimeter + every 3-4 blocks)
     expect(result.roads.length).toBeGreaterThan(0);
-    // At minimum, there should be collector roads (perimeter is always collector)
     expect(collectorRoads.length).toBeGreaterThan(0);
   });
 
