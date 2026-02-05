@@ -1,6 +1,10 @@
 # Vibe-specific
+.vibe/config.json
 .vibe/local_state.json
 .vibe/.venv/
+
+# Claude Code local settings (may contain permissions)
+.claude/settings.local.json
 
 # Environment files
 .env

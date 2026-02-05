@@ -25,7 +25,7 @@ DEFAULT_CONFIG: dict[str, Any] = {
         "type": ["Bug", "Feature", "Chore", "Refactor"],
         "risk": ["Low Risk", "Medium Risk", "High Risk"],
         "area": ["Frontend", "Backend", "Infra", "Docs"],
-        "special": ["HUMAN ‼️", "Milestone", "Blocked"],
+        "special": ["HUMAN", "Milestone", "Blocked"],
     },
     "security": {
         "secret_scanner": "gitleaks",
@@ -33,6 +33,16 @@ DEFAULT_CONFIG: dict[str, Any] = {
         "dependency_scanning": True,
     },
     "secrets": {"providers": [], "allowlist_path": ".vibe/secrets.allowlist.json"},
+    "figma": {
+        "enabled": False,
+        "api_token_env": "FIGMA_API_TOKEN",
+    },
+    "frontend": {
+        "framework": None,
+        "ui_library": None,
+        "components_path": "src/components",
+        "design_tokens_path": None,
+    },
 }
 
 

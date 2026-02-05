@@ -9,45 +9,64 @@ Use this recipe when you need to:
 
 ## The HUMAN Label
 
-The `HUMAN ‼️` label marks tickets or tasks that require human decision-making, expertise, or action that an AI agent cannot or should not perform.
+The `HUMAN` label means **"I cannot proceed without human action."** Use it sparingly.
 
 ## When to Apply HUMAN
 
-### Security Decisions
-- Production secrets rotation
-- Access control changes
-- Security incident response
-- Audit log review
+**Ask yourself:** "Can I do this programmatically?" If yes, do it. If no, create a HUMAN ticket.
 
-### Financial/Legal
-- Payment integration testing with real money
+### DO Create HUMAN Tickets For
+
+**Obtaining actual secret values:**
+- API keys that need to be retrieved from a service
+- Database passwords the human must generate or copy
+- OAuth credentials from third-party dashboards
+
+**External account actions:**
+- Creating accounts on third-party services (Stripe, AWS, etc.)
+- Enabling billing or paid features
+- Accepting terms of service on behalf of the organization
+
+**Subjective decisions:**
+- UI/UX design choices without clear requirements
+- Brand voice and copy approval
+- Feature prioritization decisions
+- Trade-offs where the human's preference matters
+
+**Legal/compliance:**
 - Terms of service changes
-- Licensing decisions
-- Contract-related code changes
+- Privacy policy updates
+- Contract-related decisions
 
-### External Communications
-- User-facing error messages (tone/branding)
-- Email templates to customers
-- Public documentation changes
-- API deprecation notices
+**External communications:**
+- Emails to customers
+- Public announcements
+- Support responses
 
-### Architecture Decisions
-- Major framework migrations
-- Database technology changes
-- Infrastructure provider switches
-- Breaking API changes
+### DO NOT Create HUMAN Tickets For
 
-### Subjective Judgment
-- UI/UX design decisions
-- Brand voice and copy
-- Feature prioritization
-- Trade-off decisions without clear criteria
+**Writing code or config (even security-related):**
+- RLS policies, auth middleware, encryption → write the code
+- Dockerfiles, CI/CD workflows → write the config
+- Database migrations → write and run them
 
-### Access-Required Tasks
-- Tasks requiring credentials the agent doesn't have
-- Physical access requirements
-- Third-party account management
-- Manual verification steps
+**Running CLI commands:**
+- `fly secrets set KEY=value` → run it
+- `gh secret set NAME` → run it
+- `npm install` → run it
+
+**Setting up infrastructure:**
+- Creating files, directories, configs
+- Writing terraform/pulumi/CDK
+- Configuring deployment pipelines
+
+**Documentation:**
+- README updates, API docs, code comments
+
+**Architecture decisions (when requirements are clear):**
+- "Use PostgreSQL for the database" → implement it
+- "Add authentication with JWT" → implement it
+- Don't create HUMAN tickets for implementation details
 
 ## How to Use HUMAN
 
@@ -136,17 +155,18 @@ is:open
 
 ## Anti-Patterns
 
-### Overuse
-Don't mark everything as HUMAN. Agents should:
-- Make routine code decisions
-- Choose between equivalent options
-- Handle standard patterns
+### Overuse (Most Common Problem)
+Don't create HUMAN tickets for things you can do programmatically:
+- "Configure secrets in Fly.io" → Just run `fly secrets set`
+- "Write authentication middleware" → Just write the code
+- "Set up CI/CD pipeline" → Just create the workflow files
+- "Create database schema" → Just write the migration
 
 ### Underuse
-Do mark tasks HUMAN when:
-- You're uncertain about security implications
-- The decision is irreversible
-- Business logic requires human judgment
+Do mark tasks HUMAN when you literally cannot proceed:
+- You need a credential value that doesn't exist yet
+- Someone needs to create an external account
+- A subjective decision blocks implementation
 
 ## Extension Points
 

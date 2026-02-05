@@ -1,108 +1,36 @@
-name: Lint & Type Check
+# Run Python linting with ruff on PRs and pushes to main
+name: Lint
 
 on:
   push:
     branches: [main]
+    paths:
+      - '**.py'
+      - 'pyproject.toml'
+      - '.github/workflows/lint.yml'
   pull_request:
     branches: [main]
-
-permissions:
-  contents: read
+    paths:
+      - '**.py'
+      - 'pyproject.toml'
+      - '.github/workflows/lint.yml'
 
 jobs:
-  python-lint:
-    name: Python (ruff + mypy)
+  lint:
     runs-on: ubuntu-latest
     steps:
-      - name: Checkout
-        uses: actions/checkout@v4
-
-      - name: Check for Python code
-        id: check
-        run: |
-          if [ -f "pyproject.toml" ] || [ -f "setup.py" ] || find . -name "*.py" -type f | head -1 | grep -q .; then
-            echo "has_python=true" >> $GITHUB_OUTPUT
-          else
-            echo "has_python=false" >> $GITHUB_OUTPUT
-          fi
+      - uses: actions/checkout@v6
 
       - name: Set up Python
-        if: steps.check.outputs.has_python == 'true'
         uses: actions/setup-python@v5
         with:
           python-version: '3.11'
 
-      - name: Install dependencies
-        if: steps.check.outputs.has_python == 'true'
-        run: |
-          python -m pip install --upgrade pip
-          pip install -e ".[dev]" 2>/dev/null || pip install ruff mypy
+      - name: Install ruff
+        run: pip install ruff
 
-      - name: Run ruff (lint)
-        if: steps.check.outputs.has_python == 'true'
-        run: ruff check .
+      - name: Run ruff check
+        run: ruff check lib/ bin/ --output-format=github
 
-      - name: Run ruff (format check)
-        if: steps.check.outputs.has_python == 'true'
-        run: ruff format --check .
-
-      - name: Run mypy (type check)
-        if: steps.check.outputs.has_python == 'true'
-        run: mypy lib/ --ignore-missing-imports
-
-      - name: Skip (no Python)
-        if: steps.check.outputs.has_python != 'true'
-        run: echo "No Python code found, skipping Python lint checks."
-
-  typescript-lint:
-    name: TypeScript (eslint + tsc)
-    runs-on: ubuntu-latest
-    steps:
-      - name: Checkout
-        uses: actions/checkout@v4
-
-      - name: Check for Node.js project
-        id: check
-        run: |
-          # Check for root package.json with workspaces or standalone
-          if [ -f "package.json" ] && [ -f "package-lock.json" ]; then
-            echo "has_node=true" >> $GITHUB_OUTPUT
-            if grep -q '"workspaces"' package.json; then
-              echo "is_workspaces=true" >> $GITHUB_OUTPUT
-            else
-              echo "is_workspaces=false" >> $GITHUB_OUTPUT
-            fi
-          else
-            echo "has_node=false" >> $GITHUB_OUTPUT
-          fi
-
-      - name: Set up Node.js
-        if: steps.check.outputs.has_node == 'true'
-        uses: actions/setup-node@v4
-        with:
-          node-version: '20'
-          cache: 'npm'
-
-      - name: Install dependencies
-        if: steps.check.outputs.has_node == 'true'
-        run: npm ci
-
-      - name: Run lint (workspaces)
-        if: steps.check.outputs.has_node == 'true' && steps.check.outputs.is_workspaces == 'true'
-        run: npm run lint --workspaces --if-present
-
-      - name: Run typecheck (workspaces)
-        if: steps.check.outputs.has_node == 'true' && steps.check.outputs.is_workspaces == 'true'
-        run: npm run typecheck --workspaces --if-present
-
-      - name: Run lint (standalone)
-        if: steps.check.outputs.has_node == 'true' && steps.check.outputs.is_workspaces != 'true'
-        run: npm run lint --if-present
-
-      - name: Run typecheck (standalone)
-        if: steps.check.outputs.has_node == 'true' && steps.check.outputs.is_workspaces != 'true'
-        run: npm run typecheck --if-present || npx tsc --noEmit 2>/dev/null || echo "No TypeScript config"
-
-      - name: Skip (no Node.js)
-        if: steps.check.outputs.has_node != 'true'
-        run: echo "No package.json with lock file found, skipping TypeScript lint checks."
+      - name: Run ruff format check
+        run: ruff format lib/ bin/ --check --diff

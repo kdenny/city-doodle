@@ -1,12 +1,20 @@
 """Main CLI entry point for vibe commands."""
 
+import os
 import sys
 from pathlib import Path
 
 import click
 
+from lib.vibe.cli.figma import figma
 from lib.vibe.doctor import print_results, run_doctor
 from lib.vibe.wizards.setup import run_individual_wizard, run_setup
+
+# Auto-load .env files at startup (unless disabled)
+if os.environ.get("VIBE_NO_DOTENV") != "1":
+    from lib.vibe.env import auto_load_env
+
+    auto_load_env(verbose=os.environ.get("VIBE_VERBOSE") == "1")
 
 
 @click.group()
@@ -19,10 +27,18 @@ def main() -> None:
 @main.command()
 @click.option("--force", "-f", is_flag=True, help="Force reconfiguration")
 @click.option("--wizard", "-w", help="Run a specific wizard (github, tracker, branch, env)")
-def setup(force: bool, wizard: str | None) -> None:
-    """Run the setup wizard to configure your project."""
+@click.option("--quick", "-q", is_flag=True, help="Quick setup with sensible defaults, no prompts")
+def setup(force: bool, wizard: str | None, quick: bool) -> None:
+    """Run the setup wizard to configure your project.
+
+    Use --quick for a fast setup (< 1 minute) with sensible defaults and no
+    prompts. Perfect for trying out the boilerplate or when you want to
+    configure integrations later.
+    """
     if wizard:
         success = run_individual_wizard(wizard)
+    elif quick:
+        success = run_setup(force=force, quick=True)
     else:
         success = run_setup(force=force)
 
@@ -31,9 +47,14 @@ def setup(force: bool, wizard: str | None) -> None:
 
 @main.command()
 @click.option("--verbose", "-v", is_flag=True, help="Show verbose output")
-def doctor(verbose: bool) -> None:
-    """Check project health and configuration."""
-    results = run_doctor(verbose=verbose)
+@click.option("--live", "-l", is_flag=True, help="Run live integration checks (API calls)")
+def doctor(verbose: bool, live: bool) -> None:
+    """Check project health and configuration.
+
+    Use --live to perform actual API calls and verify that integrations
+    are working (e.g., test Linear API key, check Vercel auth).
+    """
+    results = run_doctor(verbose=verbose, live_checks=live)
     sys.exit(print_results(results))
 
 
@@ -132,6 +153,10 @@ def pr(title: str | None, body: str | None, web: bool) -> None:
         sys.exit(1)
 
 
+# NOTE: These URLs point to the vibe-code-boilerplate repository itself, NOT the user's
+# project. They're used for reporting bugs/issues with the boilerplate (broken recipes,
+# CLAUDE.md errors, etc.). Users who fork the boilerplate keep these URLs so they can
+# report upstream issues. Project-specific issues should use the project's own GitHub repo.
 BOILERPLATE_ISSUES_URL = "https://github.com/kdenny/vibe-code-boilerplate/issues"
 BOILERPLATE_NEW_ISSUE_URL = "https://github.com/kdenny/vibe-code-boilerplate/issues/new"
 
@@ -220,6 +245,425 @@ def secrets_sync(env_file: str, provider: str, environment: str) -> None:
     """Sync secrets from a local env file to a provider."""
     click.echo(f"Syncing {env_file} to {provider}/{environment}...")
     click.echo("Secret syncing not yet fully implemented.")
+
+
+@main.command("init-actions")
+@click.option("--linear", is_flag=True, help="Include Linear integration workflows")
+@click.option("--linear-api-key", envvar="LINEAR_API_KEY", help="LINEAR_API_KEY to set as secret")
+@click.option("--dry-run", is_flag=True, help="Preview changes without applying")
+@click.option("--all", "include_all", is_flag=True, help="Include all available workflows")
+def init_actions(
+    linear: bool, linear_api_key: str | None, dry_run: bool, include_all: bool
+) -> None:
+    """Initialize GitHub Actions workflows, secrets, and labels.
+
+    Sets up:
+    - Core workflows (PR policy, security, lint, tests)
+    - Required labels (risk levels, types)
+    - Optionally: Linear integration workflows and secrets
+
+    Examples:
+
+        bin/vibe init-actions                    # Core workflows only
+        bin/vibe init-actions --linear           # Include Linear workflows
+        bin/vibe init-actions --dry-run          # Preview what would be done
+    """
+    from lib.vibe.github_actions import init_github_actions
+
+    if dry_run:
+        click.echo("Dry run - showing what would be done:\n")
+
+    result = init_github_actions(
+        include_linear=linear or include_all,
+        linear_api_key=linear_api_key,
+        dry_run=dry_run,
+    )
+
+    if result.workflows_copied:
+        click.echo(f"Workflows {'would be ' if dry_run else ''}copied:")
+        for wf in result.workflows_copied:
+            click.echo(f"  - {wf}")
+    else:
+        click.echo("No new workflows to copy (already exist or none selected)")
+
+    if result.labels_created:
+        click.echo(f"\nLabels {'would be ' if dry_run else ''}created/updated:")
+        for label in result.labels_created:
+            click.echo(f"  - {label}")
+
+    if result.secrets_set:
+        click.echo(f"\nSecrets {'would be ' if dry_run else ''}set:")
+        for secret in result.secrets_set:
+            click.echo(f"  - {secret}")
+
+    if result.errors:
+        click.echo("\nErrors:")
+        for error in result.errors:
+            click.echo(f"  - {error}")
+
+    if not dry_run:
+        click.echo("\nGitHub Actions initialized!")
+        click.echo("Run 'git add .github && git commit' to commit the workflows.")
+
+    sys.exit(0 if result.success else 1)
+
+
+@main.command("cors-check")
+@click.argument("url")
+@click.option("--origin", "-o", default="http://localhost:3000", help="Origin to test from")
+@click.option("--method", "-m", default="GET", help="HTTP method to test")
+@click.option("--header", "-H", multiple=True, help="Headers to include in preflight")
+@click.option("--json", "json_output", is_flag=True, help="Output as JSON")
+def cors_check(
+    url: str, origin: str, method: str, header: tuple[str, ...], json_output: bool
+) -> None:
+    """Check CORS configuration for a URL.
+
+    Diagnoses CORS issues by sending preflight and actual requests,
+    then analyzing the response headers.
+
+    Examples:
+
+        bin/vibe cors-check https://api.example.com/users
+
+        bin/vibe cors-check https://api.example.com/users -o http://myapp.com
+
+        bin/vibe cors-check https://api.example.com/users -m POST -H Authorization
+    """
+    from lib.vibe.cors import check_cors, format_cors_result
+
+    result = check_cors(
+        url=url,
+        origin=origin,
+        method=method,
+        headers=list(header) if header else None,
+    )
+
+    click.echo(format_cors_result(result, json_output=json_output))
+    sys.exit(0 if result.success else 1)
+
+
+@main.command()
+@click.option("--dry-run", is_flag=True, help="Show what would be done without making changes")
+@click.option("--auto", is_flag=True, help="Apply all auto-applicable actions without prompting")
+@click.option("--analyze-only", is_flag=True, help="Only show analysis, don't apply any changes")
+@click.option(
+    "--interactive", "-i", is_flag=True, help="Interactive multi-select mode for choosing actions"
+)
+@click.option(
+    "--json", "json_output", is_flag=True, help="Output results as JSON (for agent/script use)"
+)
+@click.option(
+    "--boilerplate-path",
+    "-b",
+    type=click.Path(exists=True, path_type=Path),
+    help="Path to boilerplate source (for copying workflows)",
+)
+def retrofit(
+    dry_run: bool,
+    auto: bool,
+    analyze_only: bool,
+    interactive: bool,
+    json_output: bool,
+    boilerplate_path: Path | None,
+) -> None:
+    """Apply boilerplate to an existing project (guided adoption)."""
+    import json
+
+    from lib.vibe.retrofit.analyzer import ActionType, RetrofitAnalyzer
+    from lib.vibe.retrofit.applier import RetrofitApplier
+    from lib.vibe.retrofit.detector import ProjectDetector
+    from lib.vibe.tools import require_interactive
+    from lib.vibe.ui.components import MultiSelect
+
+    # Check for interactive terminal if we'll need user input
+    if not auto and not analyze_only and not json_output:
+        ok, error = require_interactive("Retrofit")
+        if not ok:
+            click.echo(f"\n{error}")
+            click.echo("\nTip: Use --auto to apply changes without prompting,")
+            click.echo("     or --analyze-only to see what would be detected,")
+            click.echo("     or --json for machine-readable output.")
+            sys.exit(1)
+
+    if not json_output:
+        click.echo("=" * 60)
+        click.echo("  Retrofit: Apply Boilerplate to Existing Project")
+        click.echo("=" * 60)
+        click.echo()
+
+    # Step 1: Detect existing configuration
+    if not json_output:
+        click.echo("Analyzing project...")
+    detector = ProjectDetector()
+    profile = detector.detect_all()
+
+    # Step 2: Generate retrofit plan
+    analyzer = RetrofitAnalyzer(profile)
+    plan = analyzer.analyze()
+
+    # JSON output mode - return structured data for agents
+    if json_output:
+        output = {
+            "profile": {
+                "main_branch": profile.main_branch.value if profile.main_branch.detected else None,
+                "branch_pattern": profile.branch_pattern.value
+                if profile.branch_pattern.detected
+                else None,
+                "frontend_framework": profile.frontend_framework.value
+                if profile.frontend_framework.detected
+                else None,
+                "backend_framework": profile.backend_framework.value
+                if profile.backend_framework.detected
+                else None,
+                "test_framework": profile.test_framework.value
+                if profile.test_framework.detected
+                else None,
+                "has_vibe_config": profile.has_vibe_config.detected,
+            },
+            "actions": [
+                {
+                    "name": a.name,
+                    "description": a.description,
+                    "type": a.action_type.value,
+                    "auto_applicable": a.auto_applicable,
+                    "priority": a.priority.value,
+                }
+                for a in plan.actions
+            ],
+            "conflicts": [
+                {
+                    "description": c.description,
+                    "current": c.current_value,
+                    "suggested": c.suggested_value,
+                    "details": c.details,
+                }
+                for c in plan.conflicts
+            ],
+            "summary": {
+                "total_actions": len(plan.actions),
+                "auto_applicable": len(plan.auto_applicable_actions),
+                "has_conflicts": len(plan.conflicts) > 0,
+            },
+        }
+        click.echo(json.dumps(output, indent=2))
+        return
+
+    # Step 3: Show analysis summary
+    click.echo()
+    click.echo(analyzer.generate_summary(plan))
+
+    if analyze_only:
+        click.echo(
+            "Analysis complete. Use --dry-run to preview changes or remove --analyze-only to apply."
+        )
+        return
+
+    # Check for conflicts
+    if plan.conflicts:
+        click.echo("!" * 60)
+        click.echo("  CONFLICTS DETECTED - Manual resolution required")
+        click.echo("!" * 60)
+        click.echo()
+        for conflict in plan.conflicts:
+            click.echo(f"  • {conflict.description}")
+            click.echo(f"    Current: {conflict.current_value}")
+            click.echo(f"    Suggested: {conflict.suggested_value}")
+            click.echo(f"    {conflict.details}")
+            click.echo()
+
+    # Step 4: Apply changes
+    if dry_run:
+        click.echo("Dry run - showing what would be applied:")
+        click.echo("-" * 40)
+
+    applier = RetrofitApplier(
+        project_path=Path.cwd(),
+        boilerplate_path=boilerplate_path,
+        dry_run=dry_run,
+    )
+
+    if auto:
+        # Apply all auto-applicable actions without prompting
+        click.echo("\nApplying auto-applicable actions...")
+        results = applier.apply_plan(plan, auto_only=True, interactive=False)
+    elif interactive:
+        # Interactive multi-select mode
+        applicable_actions = [
+            a for a in plan.actions if a.action_type in (ActionType.ADOPT, ActionType.CONFIGURE)
+        ]
+
+        if not applicable_actions:
+            click.echo("\nNo applicable actions found.")
+            click.echo("Run 'bin/vibe setup' for manual configuration options.")
+            return
+
+        click.echo()
+        multi_select = MultiSelect(
+            title="Select actions to apply:",
+            options=[(a.name, a.description, a.auto_applicable) for a in applicable_actions],
+        )
+        selected_indices = multi_select.show()
+
+        if not selected_indices:
+            click.echo("No actions selected. Retrofit cancelled.")
+            return
+
+        # Filter to only selected actions
+        selected_actions = [applicable_actions[i - 1] for i in selected_indices]
+
+        # Apply selected actions
+        results = []
+        for action in selected_actions:
+            result = applier.apply_action(action)
+            results.append(result)
+            status = "PASS" if result.success else "FAIL"
+            click.echo(f"  {status} {result.message}")
+    else:
+        # Default interactive mode (confirm all auto-applicable)
+        if not plan.auto_applicable_actions:
+            click.echo("\nNo auto-applicable actions found.")
+            click.echo("Run 'bin/vibe setup' for manual configuration options.")
+            return
+
+        click.echo("\nThe following actions can be applied automatically:")
+        for action in plan.auto_applicable_actions:
+            click.echo(f"  • {action.description}")
+
+        click.echo()
+        if not click.confirm("Apply these changes?", default=True):
+            click.echo("Retrofit cancelled.")
+            return
+
+        results = applier.apply_plan(plan, auto_only=True, interactive=True)
+
+    # Step 5: Summary
+    click.echo()
+    click.echo("=" * 60)
+    click.echo("  Retrofit Summary")
+    click.echo("=" * 60)
+
+    successful = [r for r in results if r.success]
+    failed = [r for r in results if not r.success]
+
+    if successful:
+        click.echo(f"\n✓ Applied {len(successful)} action(s):")
+        for result in successful:
+            click.echo(f"  • {result.message}")
+
+    if failed:
+        click.echo(f"\n✗ Failed {len(failed)} action(s):")
+        for result in failed:
+            click.echo(f"  • {result.action_name}: {result.message}")
+
+    # Next steps
+    click.echo("\nNext steps:")
+    click.echo("  1. Run 'bin/vibe doctor' to verify configuration")
+    click.echo("  2. Run 'bin/vibe setup -w tracker' to configure ticket tracking")
+    click.echo("  3. Review .vibe/config.json and adjust settings as needed")
+    click.echo("  4. Update CLAUDE.md with your project's context")
+
+
+@main.command("generate-agent-instructions")
+@click.option("--dry-run", is_flag=True, help="Show what would be generated without writing files")
+@click.option(
+    "--format",
+    "-f",
+    "formats",
+    multiple=True,
+    type=click.Choice(["claude", "cursor", "copilot", "all"]),
+    default=["all"],
+    help="Which formats to generate (default: all)",
+)
+@click.option(
+    "--source-dir",
+    "-s",
+    type=click.Path(exists=True, path_type=Path),
+    default="agent_instructions",
+    help="Source directory for instruction files",
+)
+@click.option(
+    "--output-dir",
+    "-o",
+    type=click.Path(path_type=Path),
+    default=".",
+    help="Output directory for generated files",
+)
+def generate_agent_instructions(
+    dry_run: bool,
+    formats: tuple[str, ...],
+    source_dir: Path,
+    output_dir: Path,
+) -> None:
+    """Generate assistant-specific instruction files from common spec.
+
+    Reads instruction spec from agent_instructions/ and generates:
+    - CLAUDE.md (Claude Code)
+    - .cursor/rules (Cursor IDE)
+    - .github/copilot-instructions.md (GitHub Copilot)
+
+    This allows maintaining a single source of truth for agent instructions.
+    """
+    from lib.vibe.agents.generator import InstructionGenerator
+    from lib.vibe.agents.spec import AssistantFormat, InstructionSpec
+
+    source_path = Path(source_dir)
+    if not source_path.exists():
+        click.secho(f"Source directory not found: {source_path}", fg="red", err=True)
+        click.echo("Create agent_instructions/ with CORE.md, COMMANDS.md, WORKFLOW.md")
+        sys.exit(1)
+
+    # Determine which formats to generate
+    format_map = {
+        "claude": AssistantFormat.CLAUDE,
+        "cursor": AssistantFormat.CURSOR,
+        "copilot": AssistantFormat.COPILOT,
+    }
+
+    if "all" in formats:
+        selected_formats = list(format_map.values())
+    else:
+        selected_formats = [format_map[f] for f in formats if f in format_map]
+
+    # Load spec from source files
+    click.echo(f"Loading instruction spec from {source_path}/...")
+    spec = InstructionSpec.from_files(source_path)
+
+    click.echo(f"  - Loaded {len(spec.core_rules)} core rules")
+    click.echo(f"  - Loaded {len(spec.commands)} commands")
+    click.echo(f"  - Loaded {len(spec.workflows)} workflows")
+
+    # Generate files
+    generator = InstructionGenerator(spec)
+    output_path = Path(output_dir)
+
+    if dry_run:
+        click.echo()
+        click.secho("Dry run - would generate:", fg="yellow")
+        for fmt in selected_formats:
+            full_path = output_path / fmt.output_path
+            click.echo(f"  {full_path} ({fmt.description})")
+        return
+
+    click.echo()
+    click.secho("Generating instruction files...", fg="cyan")
+
+    results = generator.generate_all(output_path, selected_formats)
+
+    for format_name, file_path in results.items():
+        click.echo(f"  {click.style('✓', fg='green')} {file_path}")
+
+    click.echo()
+    click.secho("Done! Generated files are ready.", fg="green")
+    click.echo()
+    click.echo("Next steps:")
+    click.echo("  1. Review the generated files")
+    click.echo("  2. Customize agent_instructions/ for your project")
+    click.echo("  3. Re-run this command after changes to sync files")
+
+
+# Register figma command group
+main.add_command(figma)
 
 
 if __name__ == "__main__":

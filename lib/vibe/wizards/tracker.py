@@ -5,6 +5,9 @@ from typing import Any
 
 import click
 
+from lib.vibe.tools import require_interactive
+from lib.vibe.ui.components import NumberedMenu
+
 
 def run_tracker_wizard(config: dict[str, Any]) -> bool:
     """
@@ -16,14 +19,23 @@ def run_tracker_wizard(config: dict[str, Any]) -> bool:
     Returns:
         True if configuration was successful
     """
-    click.echo("Select your ticket tracking system:")
-    click.echo()
-    click.echo("  1. Linear - Full integration")
-    click.echo("  2. Shortcut - Coming soon (stub)")
-    click.echo("  3. None - Skip ticket tracking")
-    click.echo()
+    # Check prerequisites
+    ok, error = require_interactive("Tracker")
+    if not ok:
+        click.echo(f"\n{error}")
+        return False
 
-    choice = click.prompt("Select option", type=int, default=1)
+    menu = NumberedMenu(
+        title="Select your ticket tracking system:",
+        options=[
+            ("Linear", "Full integration with status syncing"),
+            ("Shortcut", "Coming soon (stub)"),
+            ("None", "Skip ticket tracking"),
+        ],
+        default=1,
+    )
+
+    choice = menu.show()
 
     if choice == 1:
         return _setup_linear(config)
@@ -75,6 +87,44 @@ def _setup_linear(config: dict[str, Any]) -> bool:
     }
 
     click.echo("\nLinear configured successfully!")
+
+    # Prompt to enable native GitHub integration
+    click.echo()
+    click.echo("+" + "-" * 58 + "+")
+    click.echo("|  Enable Linear's GitHub Integration (Recommended)        |")
+    click.echo("+" + "-" * 58 + "+")
+    click.echo("|                                                          |")
+    click.echo("|  Linear's native integration automatically:              |")
+    click.echo("|  - Links PRs to tickets based on branch names            |")
+    click.echo("|  - Shows PR status in Linear                             |")
+    click.echo("|  - Moves tickets to Done when PRs are merged             |")
+    click.echo("|                                                          |")
+    click.echo("|  Setup: Linear Settings > Integrations > GitHub          |")
+    click.echo("|  Guide: recipes/tickets/linear-github-integration.md     |")
+    click.echo("|                                                          |")
+    click.echo("+" + "-" * 58 + "+")
+    click.echo()
+
+    if click.confirm("Will you use Linear's native GitHub integration?", default=True):
+        config["tracker"]["config"]["github_integration"] = "native"
+        click.echo()
+        click.echo("To enable the integration:")
+        click.echo("  1. Go to: https://linear.app/settings/integrations/github")
+        click.echo("  2. Click 'Connect GitHub'")
+        click.echo("  3. Authorize Linear to access your repos")
+        click.echo("  4. Enable auto-close on merge (recommended)")
+        click.echo()
+        click.echo("See recipes/tickets/linear-github-integration.md for full guide.")
+        click.echo()
+        click.echo("Note: The fallback workflows (pr-opened.yml, pr-merged.yml) are")
+        click.echo("      still available if you need them later.")
+    else:
+        config["tracker"]["config"]["github_integration"] = "fallback"
+        click.echo()
+        click.echo("Using fallback GitHub Actions workflows.")
+        click.echo("Required: Add LINEAR_API_KEY as a repository secret.")
+        click.echo("See: recipes/workflows/pr-opened-linear.md")
+
     return True
 
 

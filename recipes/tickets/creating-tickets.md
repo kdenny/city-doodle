@@ -78,7 +78,7 @@ Every ticket you create must have labels from `.vibe/config.json`. Apply all thr
 
 ### Special (optional)
 
-- **HUMAN ‼️** – Requires human decision/action; stop and hand off.
+- **HUMAN** – Requires human decision/action; stop and hand off.
 - **Milestone** – Part of a larger feature (see Milestones below).
 - **Blocked** – Waiting on an external dependency.
 
