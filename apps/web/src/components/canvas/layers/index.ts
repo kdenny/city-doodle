@@ -6,9 +6,11 @@ export { SeedsLayer } from "./SeedsLayer";
 export { DrawingLayer } from "./DrawingLayer";
 export { RailStationLayer } from "./RailStationLayer";
 export { SubwayStationLayer, toSubwayStationData } from "./SubwayStationLayer";
+export { TransitLineDrawingLayer } from "./TransitLineDrawingLayer";
 export type { PlacedSeedData, PreviewSeedData } from "./SeedsLayer";
 export type { RailStationData, TrackSegmentData, RailStationPreviewData } from "./RailStationLayer";
 export type { SubwayStationData, SubwayStationPreviewData, SubwayTunnelData } from "./SubwayStationLayer";
+export type { TransitLineDrawingState } from "./TransitLineDrawingLayer";
 export { generateMockTerrain } from "./mockTerrain";
 export {
   generateDistrictGeometry,

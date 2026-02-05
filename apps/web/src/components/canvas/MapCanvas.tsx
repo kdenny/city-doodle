@@ -17,6 +17,7 @@ import {
   DrawingLayer,
   RailStationLayer,
   SubwayStationLayer,
+  TransitLineDrawingLayer,
   generateMockTerrain,
   generateMockFeatures,
   generateMockLabels,
@@ -26,8 +27,10 @@ import {
   type HitTestResult,
   type FeaturesData,
   type Neighborhood,
+  type RailStationData,
 } from "./layers";
 import { useDrawingOptional } from "./DrawingContext";
+import { useTransitLineDrawingOptional } from "./TransitLineDrawingContext";
 import { LayerControls } from "./LayerControls";
 import {
   exportCanvasAsPng,
@@ -88,6 +91,7 @@ export const MapCanvas = forwardRef<MapCanvasHandle, MapCanvasProps>(
   const drawingLayerRef = useRef<DrawingLayer | null>(null);
   const railStationLayerRef = useRef<RailStationLayer | null>(null);
   const subwayStationLayerRef = useRef<SubwayStationLayer | null>(null);
+  const transitLineDrawingLayerRef = useRef<TransitLineDrawingLayer | null>(null);
   const gridContainerRef = useRef<Container | null>(null);
   const [isReady, setIsReady] = useState(false);
   const [layerVisibility, setLayerVisibility] = useState<LayerVisibility>(
@@ -120,6 +124,9 @@ export const MapCanvas = forwardRef<MapCanvasHandle, MapCanvasProps>(
 
   // Get transit context for rail station placement and rendering
   const transitContext = useTransitOptional();
+
+  // Get transit line drawing context for manual line drawing mode
+  const transitLineDrawingContext = useTransitLineDrawingOptional();
 
   // Ref to setTerrainData for use in init effect (avoids stale closure)
   const setTerrainDataRef = useRef(terrainContext?.setTerrainData);
@@ -289,11 +296,15 @@ export const MapCanvas = forwardRef<MapCanvasHandle, MapCanvasProps>(
       const railStationLayer = new RailStationLayer();
       viewport.addChild(railStationLayer.getContainer());
 
-      // Create and add subway station layer (above rail stations, below drawing)
+      // Create and add subway station layer (above rail stations, below transit line drawing)
       const subwayStationLayer = new SubwayStationLayer();
       viewport.addChild(subwayStationLayer.getContainer());
 
-      // Create and add drawing layer (above subway stations, below grid)
+      // Create and add transit line drawing layer (above subway stations, below drawing)
+      const transitLineDrawingLayer = new TransitLineDrawingLayer();
+      viewport.addChild(transitLineDrawingLayer.getContainer());
+
+      // Create and add drawing layer (above transit line drawing, below grid)
       const drawingLayer = new DrawingLayer();
       viewport.addChild(drawingLayer.getContainer());
 
@@ -352,6 +363,7 @@ export const MapCanvas = forwardRef<MapCanvasHandle, MapCanvasProps>(
         seedsLayer.destroy();
         railStationLayer.destroy();
         subwayStationLayer.destroy();
+        transitLineDrawingLayer.destroy();
         drawingLayer.destroy();
         app.destroy(true, { children: true });
         return;
@@ -366,6 +378,7 @@ export const MapCanvas = forwardRef<MapCanvasHandle, MapCanvasProps>(
       seedsLayerRef.current = seedsLayer;
       railStationLayerRef.current = railStationLayer;
       subwayStationLayerRef.current = subwayStationLayer;
+      transitLineDrawingLayerRef.current = transitLineDrawingLayer;
       drawingLayerRef.current = drawingLayer;
       gridContainerRef.current = gridContainer;
       setIsReady(true);
@@ -412,6 +425,10 @@ export const MapCanvas = forwardRef<MapCanvasHandle, MapCanvasProps>(
       if (subwayStationLayerRef.current) {
         subwayStationLayerRef.current.destroy();
         subwayStationLayerRef.current = null;
+      }
+      if (transitLineDrawingLayerRef.current) {
+        transitLineDrawingLayerRef.current.destroy();
+        transitLineDrawingLayerRef.current = null;
       }
       if (drawingLayerRef.current) {
         drawingLayerRef.current.destroy();
@@ -661,7 +678,49 @@ export const MapCanvas = forwardRef<MapCanvasHandle, MapCanvasProps>(
     transitContext,
   ]);
 
-  // Handle clicks for seed placement, feature selection, and polygon drawing
+  // Update transit line drawing layer when drawing state changes
+  useEffect(() => {
+    if (!isReady || !transitLineDrawingLayerRef.current || !transitContext) return;
+
+    const isLineDrawing = transitLineDrawingContext?.state.isDrawing ?? false;
+    const firstStation = transitLineDrawingContext?.state.firstStation;
+    const connectedStations = transitLineDrawingContext?.state.connectedStations ?? [];
+    const previewPosition = transitLineDrawingContext?.state.previewPosition;
+    const hoveredStation = transitLineDrawingContext?.state.hoveredStation;
+    const lineColor = transitLineDrawingContext?.state.lineProperties?.color ?? "#B22222";
+
+    // Convert RailStationData to the format expected by the layer
+    const firstStationData = firstStation
+      ? { id: firstStation.id, position: firstStation.position }
+      : null;
+    const connectedStationsData = connectedStations.map((s: RailStationData) => ({
+      id: s.id,
+      position: s.position,
+    }));
+    const hoveredStationData = hoveredStation
+      ? { id: hoveredStation.id, position: hoveredStation.position }
+      : null;
+
+    transitLineDrawingLayerRef.current.setState({
+      isDrawing: isLineDrawing,
+      firstStation: firstStationData,
+      connectedStations: connectedStationsData,
+      previewPosition: previewPosition || null,
+      hoveredStation: hoveredStationData,
+      lineColor,
+    });
+  }, [
+    isReady,
+    transitContext,
+    transitLineDrawingContext?.state.isDrawing,
+    transitLineDrawingContext?.state.firstStation,
+    transitLineDrawingContext?.state.connectedStations,
+    transitLineDrawingContext?.state.previewPosition,
+    transitLineDrawingContext?.state.hoveredStation,
+    transitLineDrawingContext?.state.lineProperties?.color,
+  ]);
+
+  // Handle clicks for seed placement, feature selection, polygon drawing, and transit line drawing
   useEffect(() => {
     if (!isReady || !viewportRef.current) return;
 
@@ -675,6 +734,14 @@ export const MapCanvas = forwardRef<MapCanvasHandle, MapCanvasProps>(
     const completeDrawing = drawingContext?.completeDrawing;
     const cancelDrawing = drawingContext?.cancelDrawing;
     const canComplete = drawingContext?.canComplete;
+
+    // Transit line drawing state
+    const isLineDrawing = transitLineDrawingContext?.state.isDrawing ?? false;
+    const selectStation = transitLineDrawingContext?.selectStation;
+    const setLineDrawingPreviewPosition = transitLineDrawingContext?.setPreviewPosition;
+    const setHoveredStation = transitLineDrawingContext?.setHoveredStation;
+    const completeLineDrawing = transitLineDrawingContext?.completeDrawing;
+    const cancelLineDrawing = transitLineDrawingContext?.cancelDrawing;
 
     // Track if we're dragging to avoid triggering click after drag
     let isDragging = false;
@@ -705,6 +772,25 @@ export const MapCanvas = forwardRef<MapCanvasHandle, MapCanvasProps>(
       if (isDrawing && setDrawingPreviewPoint) {
         setDrawingPreviewPoint({ x: worldPos.x, y: worldPos.y });
       }
+
+      // Update preview for transit line drawing
+      if (isLineDrawing && transitContext) {
+        setLineDrawingPreviewPosition?.({ x: worldPos.x, y: worldPos.y });
+
+        // Find station being hovered (snap distance)
+        const STATION_HOVER_THRESHOLD = 30;
+        let hoveredStation: RailStationData | null = null;
+        for (const station of transitContext.railStations) {
+          const sdx = worldPos.x - station.position.x;
+          const sdy = worldPos.y - station.position.y;
+          const dist = Math.sqrt(sdx * sdx + sdy * sdy);
+          if (dist < STATION_HOVER_THRESHOLD) {
+            hoveredStation = station;
+            break;
+          }
+        }
+        setHoveredStation?.(hoveredStation);
+      }
     };
 
     const handleClick = (event: { global: { x: number; y: number } }) => {
@@ -722,6 +808,28 @@ export const MapCanvas = forwardRef<MapCanvasHandle, MapCanvasProps>(
           return;
         }
         addVertex({ x: worldPos.x, y: worldPos.y });
+        return;
+      }
+
+      // Handle transit line drawing mode
+      if (isLineDrawing && selectStation && transitContext) {
+        // Find the station being clicked (snap to station)
+        const STATION_CLICK_THRESHOLD = 30;
+        let clickedStation: RailStationData | null = null;
+        for (const station of transitContext.railStations) {
+          const sdx = worldPos.x - station.position.x;
+          const sdy = worldPos.y - station.position.y;
+          const dist = Math.sqrt(sdx * sdx + sdy * sdy);
+          if (dist < STATION_CLICK_THRESHOLD) {
+            clickedStation = station;
+            break;
+          }
+        }
+
+        if (clickedStation) {
+          selectStation(clickedStation);
+        }
+        // Clicking off a station does nothing (user must click a station)
         return;
       }
 
@@ -747,14 +855,28 @@ export const MapCanvas = forwardRef<MapCanvasHandle, MapCanvasProps>(
 
     // Keyboard handlers for drawing
     const handleKeyDown = (event: KeyboardEvent) => {
-      if (!isDrawing) return;
+      // Handle polygon drawing mode
+      if (isDrawing) {
+        if (event.key === "Escape") {
+          event.preventDefault();
+          cancelDrawing?.();
+        } else if (event.key === "Enter" && canComplete && canComplete()) {
+          event.preventDefault();
+          completeDrawing?.();
+        }
+        return;
+      }
 
-      if (event.key === "Escape") {
-        event.preventDefault();
-        cancelDrawing?.();
-      } else if (event.key === "Enter" && canComplete && canComplete()) {
-        event.preventDefault();
-        completeDrawing?.();
+      // Handle transit line drawing mode
+      if (isLineDrawing) {
+        if (event.key === "Escape") {
+          event.preventDefault();
+          cancelLineDrawing?.();
+        } else if (event.key === "Enter") {
+          event.preventDefault();
+          completeLineDrawing?.();
+        }
+        return;
       }
     };
 
@@ -780,6 +902,13 @@ export const MapCanvas = forwardRef<MapCanvasHandle, MapCanvasProps>(
     drawingContext?.completeDrawing,
     drawingContext?.cancelDrawing,
     drawingContext?.canComplete,
+    transitLineDrawingContext?.state.isDrawing,
+    transitLineDrawingContext?.selectStation,
+    transitLineDrawingContext?.setPreviewPosition,
+    transitLineDrawingContext?.setHoveredStation,
+    transitLineDrawingContext?.completeDrawing,
+    transitLineDrawingContext?.cancelDrawing,
+    transitContext?.railStations,
     onFeatureSelect,
   ]);
 
