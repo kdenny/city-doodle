@@ -3,7 +3,7 @@
 from datetime import UTC, datetime
 from uuid import UUID
 
-from sqlalchemy import select
+from sqlalchemy import delete, select
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from city_api.models.district import District as DistrictModel
@@ -143,23 +143,20 @@ async def update_district(
 
 async def delete_district(db: AsyncSession, district_id: UUID) -> bool:
     """Delete a district."""
-    result = await db.execute(select(DistrictModel).where(DistrictModel.id == district_id))
-    district = result.scalar_one_or_none()
-    if district is None:
-        return False
-
-    await db.delete(district)
+    result = await db.execute(
+        delete(DistrictModel).where(DistrictModel.id == district_id)
+    )
     await db.commit()
-    return True
+    return result.rowcount > 0
 
 
-async def clear_districts(db: AsyncSession, world_id: UUID) -> None:
-    """Delete all districts in a world."""
-    result = await db.execute(select(DistrictModel).where(DistrictModel.world_id == world_id))
-    districts = result.scalars().all()
-    for district in districts:
-        await db.delete(district)
+async def clear_districts(db: AsyncSession, world_id: UUID) -> int:
+    """Delete all districts in a world. Returns count of deleted districts."""
+    result = await db.execute(
+        delete(DistrictModel).where(DistrictModel.world_id == world_id)
+    )
     await db.commit()
+    return result.rowcount
 
 
 def _to_schema(district: DistrictModel) -> District:

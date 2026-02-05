@@ -4,7 +4,7 @@ import math
 from datetime import UTC, datetime
 from uuid import UUID
 
-from sqlalchemy import select
+from sqlalchemy import delete, select
 from sqlalchemy.ext.asyncio import AsyncSession
 from sqlalchemy.orm import selectinload
 
@@ -138,14 +138,11 @@ async def update_node(
 
 async def delete_node(db: AsyncSession, node_id: UUID) -> bool:
     """Delete a road node. Connected edges are deleted via CASCADE."""
-    result = await db.execute(select(RoadNodeModel).where(RoadNodeModel.id == node_id))
-    node = result.scalar_one_or_none()
-    if node is None:
-        return False
-
-    await db.delete(node)
+    result = await db.execute(
+        delete(RoadNodeModel).where(RoadNodeModel.id == node_id)
+    )
     await db.commit()
-    return True
+    return result.rowcount > 0
 
 
 # ============================================================================
@@ -262,14 +259,11 @@ async def update_edge(
 
 async def delete_edge(db: AsyncSession, edge_id: UUID) -> bool:
     """Delete a road edge."""
-    result = await db.execute(select(RoadEdgeModel).where(RoadEdgeModel.id == edge_id))
-    edge = result.scalar_one_or_none()
-    if edge is None:
-        return False
-
-    await db.delete(edge)
+    result = await db.execute(
+        delete(RoadEdgeModel).where(RoadEdgeModel.id == edge_id)
+    )
     await db.commit()
-    return True
+    return result.rowcount > 0
 
 
 # ============================================================================
@@ -341,14 +335,16 @@ def _calculate_connectivity(nodes: list[RoadNode], edges: list[RoadEdge]) -> flo
     return 1.0 / components if components > 0 else 1.0
 
 
-async def clear_road_network(db: AsyncSession, world_id: UUID) -> None:
-    """Delete all nodes and edges in a world."""
-    # Edges will be deleted via CASCADE when nodes are deleted
-    result = await db.execute(select(RoadNodeModel).where(RoadNodeModel.world_id == world_id))
-    nodes = result.scalars().all()
-    for node in nodes:
-        await db.delete(node)
+async def clear_road_network(db: AsyncSession, world_id: UUID) -> int:
+    """Delete all nodes and edges in a world. Returns count of deleted nodes.
+
+    Edges are deleted via CASCADE when nodes are deleted.
+    """
+    result = await db.execute(
+        delete(RoadNodeModel).where(RoadNodeModel.world_id == world_id)
+    )
     await db.commit()
+    return result.rowcount
 
 
 # ============================================================================
