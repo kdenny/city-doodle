@@ -2,6 +2,21 @@
 
 from city_api.schemas.district import District, DistrictCreate, DistrictType
 from city_api.schemas.job import Job, JobCreate, JobStatus, JobType
+from city_api.schemas.road_network import (
+    NodeType,
+    Point,
+    RoadClass,
+    RoadEdge,
+    RoadEdgeBulkCreate,
+    RoadEdgeCreate,
+    RoadEdgeUpdate,
+    RoadNetwork,
+    RoadNetworkStats,
+    RoadNode,
+    RoadNodeBulkCreate,
+    RoadNodeCreate,
+    RoadNodeUpdate,
+)
 from city_api.schemas.seed import PlacedSeed, PlacedSeedBulkCreate, PlacedSeedCreate, Position
 from city_api.schemas.tile import (
     TerrainData,
@@ -43,6 +58,20 @@ __all__ = [
     "District",
     "DistrictCreate",
     "DistrictType",
+    # Road Network
+    "RoadClass",
+    "NodeType",
+    "Point",
+    "RoadNode",
+    "RoadNodeCreate",
+    "RoadNodeUpdate",
+    "RoadNodeBulkCreate",
+    "RoadEdge",
+    "RoadEdgeCreate",
+    "RoadEdgeUpdate",
+    "RoadEdgeBulkCreate",
+    "RoadNetwork",
+    "RoadNetworkStats",
     # Seed
     "PlacedSeed",
     "PlacedSeedCreate",
