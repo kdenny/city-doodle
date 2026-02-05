@@ -12,6 +12,7 @@ from sqlalchemy.orm import Mapped, mapped_column, relationship
 from city_api.database import Base, JSONVariant
 
 if TYPE_CHECKING:
+    from city_api.models.transit import TransitStation
     from city_api.models.world import World
 
 
@@ -65,6 +66,9 @@ class District(Base):
 
     # Relationships
     world: Mapped["World"] = relationship("World", back_populates="districts")
+    transit_stations: Mapped[list["TransitStation"]] = relationship(
+        "TransitStation", back_populates="district"
+    )
 
     __table_args__ = (
         Index("ix_districts_world_id", "world_id"),
