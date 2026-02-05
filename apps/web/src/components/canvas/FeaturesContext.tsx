@@ -144,20 +144,46 @@ const EMPTY_FEATURES: FeaturesData = {
 
 /**
  * Map frontend district type to API district type.
- * Frontend and API now use the same district type values.
+ * Frontend uses user-friendly types, API uses database-compatible types.
  */
 function toApiDistrictType(frontendType: string): ApiDistrictType {
-  // Types now match directly between frontend and API
-  return frontendType as ApiDistrictType;
+  const mapping: Record<string, ApiDistrictType> = {
+    residential: "residential_med",
+    residential_low: "residential_low",
+    residential_med: "residential_med",
+    residential_high: "residential_high",
+    downtown: "commercial", // Downtown maps to commercial
+    commercial: "commercial",
+    industrial: "industrial",
+    hospital: "civic", // Hospital is a civic building
+    university: "civic", // University is a civic building
+    k12: "civic", // School is a civic building
+    park: "park",
+    airport: "transit", // Airport is transit infrastructure
+    mixed_use: "mixed_use",
+    civic: "civic",
+    transit: "transit",
+  };
+  return mapping[frontendType] || "commercial";
 }
 
 /**
  * Map API district type back to frontend type.
- * Frontend and API now use the same district type values.
+ * API types are less specific, so we use reasonable defaults.
  */
 function fromApiDistrictType(apiType: ApiDistrictType): string {
-  // Types now match directly between frontend and API
-  return apiType;
+  const mapping: Record<ApiDistrictType, string> = {
+    residential_low: "residential",
+    residential_med: "residential",
+    residential_high: "residential",
+    commercial: "commercial",
+    industrial: "industrial",
+    mixed_use: "commercial",
+    park: "park",
+    civic: "commercial", // Civic could be hospital, university, or k12
+    transit: "commercial", // Transit could be airport
+  };
+  return mapping[apiType] || apiType;
 }
 
 /**
