@@ -15,7 +15,6 @@
 
 import type { Point, Road, RoadClass, Polygon, District } from "./types";
 import { ParkSize, PARK_SIZE_CONFIG } from "../../palette/types";
-import { metersToWorldUnits } from "./districtGenerator";
 
 /**
  * Configuration for park generation.
