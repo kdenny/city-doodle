@@ -9,6 +9,10 @@ export {
   generateDistrictGeometry,
   wouldOverlap,
   seedIdToDistrictType,
+  metersToWorldUnits,
+  worldUnitsToMeters,
+  milesToWorldUnits,
+  worldUnitsToMiles,
 } from "./districtGenerator";
 export type {
   DistrictGenerationConfig,

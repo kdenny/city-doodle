@@ -168,7 +168,7 @@ describe("overlapsWater", () => {
 
 describe("meetsMinimumSize", () => {
   it("returns true for large enough district", () => {
-    // 100x100 should be >= 60x60 minimum
+    // 100x100 world units ≈ 10.5km, well above 200m minimum
     const district: Point[] = [
       { x: 0, y: 0 },
       { x: 100, y: 0 },
@@ -179,23 +179,23 @@ describe("meetsMinimumSize", () => {
   });
 
   it("returns false for too small district", () => {
-    // 20x20 should be below minimum
+    // 1x1 world units ≈ 105 meters, below 200m minimum
     const district: Point[] = [
       { x: 0, y: 0 },
-      { x: 20, y: 0 },
-      { x: 20, y: 20 },
-      { x: 0, y: 20 },
+      { x: 1, y: 0 },
+      { x: 1, y: 1 },
+      { x: 0, y: 1 },
     ];
     expect(meetsMinimumSize(district, "residential")).toBe(false);
   });
 
   it("allows small industrial/commercial districts", () => {
-    // Industrial and commercial can be any size
+    // Industrial and commercial can be any size (just needs valid polygon)
     const district: Point[] = [
       { x: 0, y: 0 },
-      { x: 20, y: 0 },
-      { x: 20, y: 20 },
-      { x: 0, y: 20 },
+      { x: 1, y: 0 },
+      { x: 1, y: 1 },
+      { x: 0, y: 1 },
     ];
     expect(meetsMinimumSize(district, "industrial")).toBe(true);
     expect(meetsMinimumSize(district, "commercial")).toBe(true);
