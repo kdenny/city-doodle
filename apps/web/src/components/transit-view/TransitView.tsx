@@ -41,8 +41,17 @@ export function TransitView({
       onLineClick?.(line);
       // Open inspector for editing
       setSelectedLine(line);
+      // Highlight line on map (CITY-195)
+      if (transitContext) {
+        // Toggle: if already highlighted, clear; otherwise highlight
+        if (transitContext.highlightedLineId === line.id) {
+          transitContext.setHighlightedLineId(null);
+        } else {
+          transitContext.setHighlightedLineId(line.id);
+        }
+      }
     },
-    [onLineClick]
+    [onLineClick, transitContext]
   );
 
   const handleCloseInspector = useCallback(() => {
@@ -71,19 +80,25 @@ export function TransitView({
     [transitContext]
   );
 
+  // Clear highlight when clicking on the map background
+  const handleBackgroundClick = useCallback(() => {
+    transitContext?.setHighlightedLineId(null);
+  }, [transitContext]);
+
   return (
-    <div className="relative w-full h-full">
+    <div className="relative w-full h-full" onClick={handleBackgroundClick}>
       {/* Map content (with transit emphasis) */}
       <div className="absolute inset-0 transit-view-overlay">
         {children}
       </div>
 
       {/* Transit lines panel (right) */}
-      <div className="absolute top-4 right-4">
+      <div className="absolute top-4 right-4" onClick={(e) => e.stopPropagation()}>
         <TransitLinesPanel
           lines={lines}
           onLineClick={handleLineClick}
           isLoading={transitContext?.isLoading ?? false}
+          highlightedLineId={transitContext?.highlightedLineId ?? null}
         />
       </div>
 

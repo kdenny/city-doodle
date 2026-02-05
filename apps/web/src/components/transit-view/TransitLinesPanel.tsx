@@ -11,6 +11,8 @@ interface TransitLinesPanelProps {
   lines: TransitLine[];
   onLineClick?: (line: TransitLine) => void;
   isLoading?: boolean;
+  /** ID of the currently highlighted line */
+  highlightedLineId?: string | null;
 }
 
 /**
@@ -20,7 +22,7 @@ function getLineTypeIcon(lineType: "subway" | "rail"): string {
   return lineType === "subway" ? "🚇" : "🚂";
 }
 
-export function TransitLinesPanel({ lines, onLineClick, isLoading }: TransitLinesPanelProps) {
+export function TransitLinesPanel({ lines, onLineClick, isLoading, highlightedLineId }: TransitLinesPanelProps) {
   const totalStations = lines.reduce((sum, line) => sum + line.stations, 0);
   const totalMiles = lines.reduce((sum, line) => sum + line.miles, 0);
 
@@ -59,29 +61,40 @@ export function TransitLinesPanel({ lines, onLineClick, isLoading }: TransitLine
 
       {/* Lines list */}
       <div className="space-y-2 mb-4">
-        {lines.map((line) => (
-          <button
-            key={line.id}
-            onClick={() => onLineClick?.(line)}
-            className="w-full flex items-center gap-3 p-2 rounded hover:bg-gray-50 transition-colors text-left"
-          >
-            <div
-              className="w-4 h-4 rounded-full shrink-0"
-              style={{ backgroundColor: line.color }}
-            />
-            <div className="flex-1 min-w-0">
-              <div className="text-sm font-medium text-gray-900 truncate flex items-center gap-1">
-                <span className="text-xs" title={line.lineType === "subway" ? "Subway" : "Rail"}>
-                  {getLineTypeIcon(line.lineType)}
-                </span>
-                {line.name}
+        {lines.map((line) => {
+          const isHighlighted = highlightedLineId === line.id;
+          return (
+            <button
+              key={line.id}
+              onClick={() => onLineClick?.(line)}
+              className={`w-full flex items-center gap-3 p-2 rounded transition-colors text-left ${
+                isHighlighted
+                  ? "bg-blue-50 ring-2 ring-blue-400"
+                  : "hover:bg-gray-50"
+              }`}
+            >
+              <div
+                className={`w-4 h-4 rounded-full shrink-0 transition-transform ${
+                  isHighlighted ? "scale-125" : ""
+                }`}
+                style={{ backgroundColor: line.color }}
+              />
+              <div className="flex-1 min-w-0">
+                <div className={`text-sm font-medium truncate flex items-center gap-1 ${
+                  isHighlighted ? "text-blue-900" : "text-gray-900"
+                }`}>
+                  <span className="text-xs" title={line.lineType === "subway" ? "Subway" : "Rail"}>
+                    {getLineTypeIcon(line.lineType)}
+                  </span>
+                  {line.name}
+                </div>
+                <div className={`text-xs ${isHighlighted ? "text-blue-600" : "text-gray-500"}`}>
+                  {line.stations} stations · {line.miles.toFixed(1)} mi
+                </div>
               </div>
-              <div className="text-xs text-gray-500">
-                {line.stations} stations · {line.miles.toFixed(1)} mi
-              </div>
-            </div>
-          </button>
-        ))}
+            </button>
+          );
+        })}
       </div>
 
       {/* Totals */}

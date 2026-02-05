@@ -25,6 +25,10 @@ const TUNNEL_DASH_LENGTH = 10;
 const TUNNEL_GAP_LENGTH = 6;
 const TUNNEL_ALPHA = 0.6;
 
+// Highlight styling (CITY-195)
+const HIGHLIGHT_ALPHA = 1.0;
+const DIM_ALPHA = 0.25;
+
 /**
  * Data structure for a subway station to render.
  */
@@ -83,6 +87,8 @@ export class SubwayStationLayer {
   private previewLabel: Text | null = null;
   private tunnelsVisible: boolean = false;
   private currentStations: SubwayStationData[] = [];
+  private highlightedStationIds: Set<string> = new Set();
+  private highlightedSegmentIds: Set<string> = new Set();
 
   constructor() {
     this.container = new Container();
@@ -166,6 +172,9 @@ export class SubwayStationLayer {
         this.tunnelGraphics.delete(id);
       }
     }
+
+    // Apply current highlight state
+    this.applyHighlight();
   }
 
   /**
@@ -427,6 +436,49 @@ export class SubwayStationLayer {
       }
     }
     return null;
+  }
+
+  /**
+   * Set the highlighted stations and segments (CITY-195).
+   * Pass empty arrays to clear highlighting.
+   */
+  setHighlight(stationIds: string[], segmentIds: string[]): void {
+    this.highlightedStationIds = new Set(stationIds);
+    this.highlightedSegmentIds = new Set(segmentIds);
+    this.applyHighlight();
+  }
+
+  /**
+   * Apply highlight styling to stations and tunnels.
+   * Highlighted elements get full opacity; others are dimmed.
+   */
+  private applyHighlight(): void {
+    const hasHighlight = this.highlightedStationIds.size > 0 || this.highlightedSegmentIds.size > 0;
+
+    // Apply to stations
+    for (const [id, graphics] of this.stationGraphics.entries()) {
+      if (hasHighlight) {
+        const isHighlighted = this.highlightedStationIds.has(id);
+        graphics.alpha = isHighlighted ? HIGHLIGHT_ALPHA : DIM_ALPHA;
+        // Scale up highlighted stations slightly
+        graphics.scale.set(isHighlighted ? 1.2 : 1.0);
+      } else {
+        // No highlight - show all normally
+        graphics.alpha = 1.0;
+        graphics.scale.set(1.0);
+      }
+    }
+
+    // Apply to tunnels
+    for (const [id, graphics] of this.tunnelGraphics.entries()) {
+      if (hasHighlight) {
+        const isHighlighted = this.highlightedSegmentIds.has(id);
+        graphics.alpha = isHighlighted ? TUNNEL_ALPHA : DIM_ALPHA * 0.5;
+      } else {
+        // No highlight - show all normally with tunnel alpha
+        graphics.alpha = TUNNEL_ALPHA;
+      }
+    }
   }
 
   /**
