@@ -6,6 +6,14 @@
  */
 
 /**
+ * Generate a random seed value for deterministic name generation.
+ * Returns an integer in the range [0, 999999].
+ */
+function getRandomSeed(): number {
+  return Math.floor(Math.random() * 1000000);
+}
+
+/**
  * Simple seeded random number generator for deterministic names.
  */
 class SeededRandom {
@@ -191,7 +199,7 @@ export interface NameGeneratorOptions {
  * Generate a random city name.
  */
 export function generateCityName(options: NameGeneratorOptions = {}): string {
-  const seed = options.seed ?? Math.floor(Math.random() * 1000000);
+  const seed = options.seed ?? getRandomSeed();
   const rng = new SeededRandom(seed);
 
   // 30% chance of using a standalone name
@@ -210,7 +218,7 @@ export function generateCityName(options: NameGeneratorOptions = {}): string {
  * Generate a neighborhood/district name with optional context awareness.
  */
 export function generateNeighborhoodName(options: NameGeneratorOptions = {}): string {
-  const seed = options.seed ?? Math.floor(Math.random() * 1000000);
+  const seed = options.seed ?? getRandomSeed();
   const rng = new SeededRandom(seed);
   const contexts = options.nearbyContexts ?? [];
 
@@ -242,7 +250,7 @@ export function generateDistrictName(
   districtType: DistrictType,
   options: NameGeneratorOptions = {}
 ): string {
-  const seed = options.seed ?? Math.floor(Math.random() * 1000000);
+  const seed = options.seed ?? getRandomSeed();
   const rng = new SeededRandom(seed);
 
   const prefixes: Record<DistrictType, string[]> = {
@@ -293,7 +301,7 @@ export function generateDistrictName(
  * Generate multiple unique city name suggestions.
  */
 export function generateCityNameSuggestions(count: number = 5, baseSeed?: number): string[] {
-  const seed = baseSeed ?? Math.floor(Math.random() * 1000000);
+  const seed = baseSeed ?? getRandomSeed();
   const names = new Set<string>();
 
   for (let i = 0; names.size < count && i < count * 3; i++) {
@@ -310,7 +318,7 @@ export function generateNeighborhoodNameSuggestions(
   count: number = 5,
   options: NameGeneratorOptions = {}
 ): string[] {
-  const seed = options.seed ?? Math.floor(Math.random() * 1000000);
+  const seed = options.seed ?? getRandomSeed();
   const names = new Set<string>();
 
   for (let i = 0; names.size < count && i < count * 3; i++) {
@@ -435,7 +443,7 @@ const PLAZA_SUFFIXES = [
  * Generate a river or stream name.
  */
 export function generateRiverName(options: NameGeneratorOptions = {}): string {
-  const seed = options.seed ?? Math.floor(Math.random() * 1000000);
+  const seed = options.seed ?? getRandomSeed();
   const rng = new SeededRandom(seed);
 
   const descriptor = rng.pick(RIVER_DESCRIPTORS);
@@ -448,7 +456,7 @@ export function generateRiverName(options: NameGeneratorOptions = {}): string {
  * Generate a lake or pond name.
  */
 export function generateLakeName(options: NameGeneratorOptions = {}): string {
-  const seed = options.seed ?? Math.floor(Math.random() * 1000000);
+  const seed = options.seed ?? getRandomSeed();
   const rng = new SeededRandom(seed);
 
   const descriptor = rng.pick(LAKE_DESCRIPTORS);
@@ -461,7 +469,7 @@ export function generateLakeName(options: NameGeneratorOptions = {}): string {
  * Generate a bridge name.
  */
 export function generateBridgeName(options: NameGeneratorOptions = {}): string {
-  const seed = options.seed ?? Math.floor(Math.random() * 1000000);
+  const seed = options.seed ?? getRandomSeed();
   const rng = new SeededRandom(seed);
 
   const prefix = rng.pick(BRIDGE_PREFIXES);
@@ -474,7 +482,7 @@ export function generateBridgeName(options: NameGeneratorOptions = {}): string {
  * Generate a plaza or square name.
  */
 export function generatePlazaName(options: NameGeneratorOptions = {}): string {
-  const seed = options.seed ?? Math.floor(Math.random() * 1000000);
+  const seed = options.seed ?? getRandomSeed();
   const rng = new SeededRandom(seed);
 
   const prefix = rng.pick(PLAZA_PREFIXES);
@@ -488,7 +496,7 @@ export function generatePlazaName(options: NameGeneratorOptions = {}): string {
  * Uses more varied naming patterns than the district park naming.
  */
 export function generateParkName(options: NameGeneratorOptions = {}): string {
-  const seed = options.seed ?? Math.floor(Math.random() * 1000000);
+  const seed = options.seed ?? getRandomSeed();
   const rng = new SeededRandom(seed);
 
   // Park name patterns:
@@ -525,7 +533,7 @@ export function generateParkName(options: NameGeneratorOptions = {}): string {
  * Generate a shopping/commercial district name.
  */
 export function generateShoppingDistrictName(options: NameGeneratorOptions = {}): string {
-  const seed = options.seed ?? Math.floor(Math.random() * 1000000);
+  const seed = options.seed ?? getRandomSeed();
   const rng = new SeededRandom(seed);
 
   // Shopping district patterns:
