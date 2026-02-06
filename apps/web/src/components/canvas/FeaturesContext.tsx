@@ -24,6 +24,7 @@ import {
   wouldOverlap,
   regenerateStreetGridForClippedDistrict,
   regenerateStreetGridWithAngle,
+  DEFAULT_SCALE_SETTINGS,
   type DistrictGenerationConfig,
   type GeneratedDistrict,
 } from "./layers/districtGenerator";
@@ -369,8 +370,8 @@ export function FeaturesProvider({
         ...config,
         organicFactor: personality.grid_organic,
         scaleSettings: {
-          blockSizeMeters: config?.scaleSettings?.blockSizeMeters ?? 100,
-          districtSizeMeters: config?.scaleSettings?.districtSizeMeters ?? 500,
+          blockSizeMeters: config?.scaleSettings?.blockSizeMeters ?? DEFAULT_SCALE_SETTINGS.blockSizeMeters,
+          districtSizeMeters: config?.scaleSettings?.districtSizeMeters ?? DEFAULT_SCALE_SETTINGS.districtSizeMeters,
           sprawlCompact: personality.sprawl_compact,
         },
         // Pass through the explicit seed if provided
@@ -530,8 +531,8 @@ export function FeaturesProvider({
         ...config,
         organicFactor: personality.grid_organic,
         scaleSettings: {
-          blockSizeMeters: config?.scaleSettings?.blockSizeMeters ?? 100,
-          districtSizeMeters: config?.scaleSettings?.districtSizeMeters ?? 500,
+          blockSizeMeters: config?.scaleSettings?.blockSizeMeters ?? DEFAULT_SCALE_SETTINGS.blockSizeMeters,
+          districtSizeMeters: config?.scaleSettings?.districtSizeMeters ?? DEFAULT_SCALE_SETTINGS.districtSizeMeters,
           sprawlCompact: personality.sprawl_compact,
         },
       };
