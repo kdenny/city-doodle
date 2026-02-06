@@ -19,6 +19,7 @@ import type {
   WaterCrossingType,
   TerrainData,
 } from "./types";
+import { generateId } from "../../../utils/idGenerator";
 
 /**
  * Configuration for bridge detection.
@@ -53,12 +54,6 @@ function distance(p1: Point, p2: Point): number {
   return Math.sqrt(dx * dx + dy * dy);
 }
 
-/**
- * Generate a unique bridge ID.
- */
-function generateBridgeId(): string {
-  return `bridge-${Date.now()}-${Math.random().toString(36).substr(2, 9)}`;
-}
 
 /**
  * Check if a point is inside a polygon using ray casting.
@@ -219,7 +214,7 @@ function detectBridgesForRoad(
               water.type === "ocean" ? "ocean" : "lake";
 
             bridges.push({
-              id: generateBridgeId(),
+              id: generateId("bridge"),
               roadId: road.id,
               waterType,
               waterFeatureId: water.id,
@@ -243,7 +238,7 @@ function detectBridgesForRoad(
 
         if (bridgeLength >= config.minBridgeLength) {
           bridges.push({
-            id: generateBridgeId(),
+            id: generateId("bridge"),
             roadId: road.id,
             waterType: water.type === "ocean" ? "ocean" : "lake",
             waterFeatureId: water.id,
@@ -263,7 +258,7 @@ function detectBridgesForRoad(
         const bridgeLength = distance(crossing.entry, crossing.exit);
         if (bridgeLength >= config.minBridgeLength) {
           bridges.push({
-            id: generateBridgeId(),
+            id: generateId("bridge"),
             roadId: road.id,
             waterType: "river",
             waterFeatureId: river.id,

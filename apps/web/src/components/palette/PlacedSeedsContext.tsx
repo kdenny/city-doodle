@@ -20,6 +20,7 @@ import type { SeedType } from "./types";
 import { SEED_TYPES } from "./types";
 import { useWorldSeeds, useCreateSeed, useDeleteSeed } from "../../api/hooks";
 import type { PlacedSeed as ApiPlacedSeed } from "../../api/types";
+import { generateId } from "../../utils/idGenerator";
 
 /**
  * A seed that has been placed on the canvas.
@@ -59,12 +60,6 @@ interface PlacedSeedsProviderProps {
   onSeedRemoved?: (id: string) => void;
 }
 
-/**
- * Generate a unique ID for a placed seed.
- */
-function generateSeedId(): string {
-  return `seed-${Date.now()}-${Math.random().toString(36).substr(2, 9)}`;
-}
 
 /**
  * Convert an API PlacedSeed to our internal PlacedSeed format.
@@ -125,7 +120,7 @@ export function PlacedSeedsProvider({
       position: { x: number; y: number },
       metadata?: Record<string, unknown>
     ): PlacedSeed => {
-      const tempId = generateSeedId();
+      const tempId = generateId("seed");
       const newSeed: PlacedSeed = {
         id: tempId,
         seed: seedType,

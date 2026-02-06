@@ -17,6 +17,7 @@ import type { TransitLineProperties } from "../canvas";
 import type { RailStationData } from "../canvas/layers";
 import { DrawingProvider, type DrawingMode } from "../canvas/DrawingContext";
 import { generateNeighborhoodName, generateCityName } from "../../utils/nameGenerator";
+import { generateId } from "../../utils/idGenerator";
 import { ExportView } from "../export-view";
 import { TimelapseView } from "../timelapse-view";
 import { DensityView } from "../density-view";
@@ -238,7 +239,7 @@ function DrawingWithFeatures({ children }: { children: ReactNode }) {
       if (mode === "neighborhood") {
         // Create a new neighborhood from the drawn polygon
         const neighborhood = {
-          id: `neighborhood-${Date.now()}-${Math.random().toString(36).substr(2, 9)}`,
+          id: generateId("neighborhood"),
           name: generateNeighborhoodName(),
           polygon: { points },
           accentColor: "#4a90d9", // Default blue color
@@ -253,7 +254,7 @@ function DrawingWithFeatures({ children }: { children: ReactNode }) {
 
         // Create the city limits boundary
         const cityLimits = {
-          id: `city-limits-${Date.now()}-${Math.random().toString(36).substr(2, 9)}`,
+          id: generateId("city-limits"),
           boundary: { points },
           name: generateCityName(),
           established: new Date().getFullYear(),

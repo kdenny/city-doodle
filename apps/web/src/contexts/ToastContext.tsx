@@ -9,6 +9,7 @@ import {
   useCallback,
   type ReactNode,
 } from "react";
+import { generateId } from "../utils/idGenerator";
 
 export type ToastType = "success" | "error" | "warning" | "info";
 
@@ -40,7 +41,7 @@ export function ToastProvider({ children }: ToastProviderProps) {
 
   const addToast = useCallback(
     (message: string, type: ToastType = "info", duration: number = 5000) => {
-      const id = `toast-${Date.now()}-${Math.random().toString(36).slice(2)}`;
+      const id = generateId("toast");
       const toast: Toast = { id, message, type, duration };
 
       setToasts((prev) => [...prev, toast]);
