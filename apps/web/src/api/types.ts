@@ -72,8 +72,8 @@ export const DEFAULT_WORLD_SETTINGS: WorldSettings = {
   sprawl_compact: 0.5,
   historic_modern: 0.5,
   transit_car: 0.5,
-  block_size_meters: 100,
-  district_size_meters: 500,
+  block_size_meters: 150,
+  district_size_meters: 3200,  // ~2 miles, yields ~4 sq mi districts
   beach_enabled: true,
   beach_width_multiplier: 1.0,
 };
@@ -89,33 +89,33 @@ export interface CityScalePreset {
 export const CITY_SCALE_PRESETS: Record<string, CityScalePreset> = {
   manhattan: {
     name: "Manhattan",
-    description: "Dense urban grid with small blocks",
+    description: "Dense urban grid with small blocks (~1 sq mi districts)",
     block_size_meters: 80,
-    district_size_meters: 300,
+    district_size_meters: 1600,  // ~1 mile, ~1 sq mi
   },
   portland: {
     name: "Portland",
-    description: "Small walkable blocks, medium districts",
-    block_size_meters: 60,
-    district_size_meters: 400,
+    description: "Small walkable blocks, medium districts (~2.5 sq mi)",
+    block_size_meters: 100,
+    district_size_meters: 2500,  // ~1.5 miles, ~2.5 sq mi
   },
   houston: {
     name: "Houston",
-    description: "Large sprawling blocks and districts",
+    description: "Large sprawling blocks and districts (~9 sq mi)",
     block_size_meters: 200,
-    district_size_meters: 800,
+    district_size_meters: 4800,  // ~3 miles, ~9 sq mi
   },
   european: {
     name: "European",
-    description: "Irregular small blocks, compact districts",
+    description: "Irregular small blocks, compact districts (~1.5 sq mi)",
     block_size_meters: 70,
-    district_size_meters: 350,
+    district_size_meters: 2000,  // ~1.25 miles, ~1.5 sq mi
   },
   default: {
     name: "Default",
-    description: "Standard American city layout",
-    block_size_meters: 100,
-    district_size_meters: 500,
+    description: "Standard American city layout (~4 sq mi districts)",
+    block_size_meters: 150,
+    district_size_meters: 3200,  // ~2 miles, ~4 sq mi
   },
 };
 

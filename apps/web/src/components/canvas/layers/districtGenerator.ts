@@ -52,20 +52,20 @@ export const BASE_BLOCK_SIZES: Record<string, number> = {
 export interface ScaleSettings {
   /** Size of a city block in meters (50-300) */
   blockSizeMeters: number;
-  /** Size of a district in meters (200-1000) */
+  /** Size of a district in meters (1000-6000) */
   districtSizeMeters: number;
   /** Sprawl-compact slider value (0-1), affects size multiplier */
   sprawlCompact?: number;
 }
 
 /**
- * Default scale settings matching common city layouts.
- * A typical urban block is about 100m x 100m (~330 feet).
- * A district is typically 400-800m across (~0.25-0.5 miles).
+ * Default scale settings for ~4 sq mi districts.
+ * A typical urban block is about 150m x 150m (~500 feet).
+ * A district is about 3200m (~2 miles) for ~4 sq mi area.
  */
 export const DEFAULT_SCALE_SETTINGS: ScaleSettings = {
-  blockSizeMeters: 100,
-  districtSizeMeters: 600,
+  blockSizeMeters: 150,
+  districtSizeMeters: 3200,  // ~2 miles, yields ~4 sq mi
   sprawlCompact: 0.5,
 };
 

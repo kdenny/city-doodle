@@ -34,16 +34,16 @@ class WorldSettings(BaseModel):
         description="0 = transit-oriented, 1 = car-dependent",
     )
     block_size_meters: int = Field(
-        default=100,
+        default=150,
         ge=50,
         le=300,
         description="Size of a city block in meters (50-300)",
     )
     district_size_meters: int = Field(
-        default=500,
-        ge=200,
-        le=1000,
-        description="Size of a district in meters (200-1000)",
+        default=3200,
+        ge=1000,
+        le=6000,
+        description="Size of a district in meters (1000-6000, default ~2 miles for ~4 sq mi districts)",
     )
     beach_enabled: bool = Field(
         default=True,
