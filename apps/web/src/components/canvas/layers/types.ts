@@ -208,6 +208,22 @@ export interface Neighborhood {
   accentColor?: string;
 }
 
+/**
+ * City limits boundary - the official boundary of the city/municipality.
+ * Distinct from districts and neighborhoods.
+ * Only one city limits boundary per world.
+ */
+export interface CityLimits {
+  /** Unique identifier for the city limits */
+  id: string;
+  /** The boundary polygon (can be non-contiguous with multiple polygons for enclaves) */
+  boundary: Polygon;
+  /** City name */
+  name: string;
+  /** Year the city was established (for historical tracking) */
+  established?: number;
+}
+
 export interface FeaturesData {
   districts: District[];
   roads: Road[];
@@ -215,6 +231,8 @@ export interface FeaturesData {
   neighborhoods: Neighborhood[];
   /** Bridges where roads cross water features (auto-generated) */
   bridges: Bridge[];
+  /** City limits boundary (only one per world) */
+  cityLimits?: CityLimits;
 }
 
 // Label types
@@ -260,6 +278,7 @@ export interface LayerVisibility {
   rivers: boolean;
   contours: boolean;
   neighborhoods: boolean;
+  cityLimits: boolean;
   districts: boolean;
   roads: boolean;
   bridges: boolean;
@@ -276,6 +295,7 @@ export const DEFAULT_LAYER_VISIBILITY: LayerVisibility = {
   rivers: true,
   contours: false,
   neighborhoods: true,
+  cityLimits: true,
   districts: true,
   roads: true,
   bridges: true,

@@ -16,6 +16,7 @@ const LAYER_LABELS: Record<keyof LayerVisibility, string> = {
   rivers: "Rivers",
   contours: "Contours",
   neighborhoods: "Neighborhoods",
+  cityLimits: "City Limits",
   districts: "Districts",
   roads: "Roads",
   pois: "POIs",

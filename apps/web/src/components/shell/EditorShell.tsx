@@ -16,7 +16,7 @@ import { MapCanvasProvider, FeaturesProvider, useFeatures, TerrainProvider, Tran
 import type { TransitLineProperties } from "../canvas";
 import type { RailStationData } from "../canvas/layers";
 import { DrawingProvider, type DrawingMode } from "../canvas/DrawingContext";
-import { generateNeighborhoodName } from "../../utils/nameGenerator";
+import { generateNeighborhoodName, generateCityName } from "../../utils/nameGenerator";
 import { ExportView } from "../export-view";
 import { TimelapseView } from "../timelapse-view";
 import { DensityView } from "../density-view";
@@ -227,10 +227,10 @@ function SelectionWithFeatures({ children }: { children: ReactNode }) {
 
 /**
  * Inner component that connects DrawingProvider to FeaturesContext.
- * Handles polygon completion to create neighborhoods.
+ * Handles polygon completion to create neighborhoods and city limits.
  */
 function DrawingWithFeatures({ children }: { children: ReactNode }) {
-  const { addNeighborhood } = useFeatures();
+  const { addNeighborhood, setCityLimits, features } = useFeatures();
 
   const handlePolygonComplete = useCallback(
     (points: Point[], mode: DrawingMode) => {
@@ -243,10 +243,25 @@ function DrawingWithFeatures({ children }: { children: ReactNode }) {
           accentColor: "#4a90d9", // Default blue color
         };
         addNeighborhood(neighborhood);
+      } else if (mode === "cityLimits") {
+        // Only one city limits per world - check if one already exists
+        if (features.cityLimits) {
+          console.warn("City limits already exists. Remove existing limits first to draw new ones.");
+          return;
+        }
+
+        // Create the city limits boundary
+        const cityLimits = {
+          id: `city-limits-${Date.now()}-${Math.random().toString(36).substr(2, 9)}`,
+          boundary: { points },
+          name: generateCityName(),
+          established: new Date().getFullYear(),
+        };
+        setCityLimits(cityLimits);
       }
       // TODO: Handle "split" mode when implemented
     },
-    [addNeighborhood]
+    [addNeighborhood, setCityLimits, features.cityLimits]
   );
 
   return (

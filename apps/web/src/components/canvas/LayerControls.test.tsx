@@ -10,6 +10,7 @@ const defaultVisibility: LayerVisibility = {
   rivers: true,
   contours: true,
   neighborhoods: true,
+  cityLimits: true,
   districts: true,
   roads: true,
   pois: true,

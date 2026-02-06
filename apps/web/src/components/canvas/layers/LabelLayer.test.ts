@@ -42,6 +42,7 @@ describe("LabelLayer", () => {
       rivers: true,
       contours: false,
       neighborhoods: true,
+  cityLimits: true,
       districts: true,
       roads: true,
       pois: true,

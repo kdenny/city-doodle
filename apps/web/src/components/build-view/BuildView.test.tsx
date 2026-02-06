@@ -12,14 +12,15 @@ describe("BuildView", () => {
     expect(screen.getByTestId("content")).toBeInTheDocument();
   });
 
-  it("renders toolbar with pan, draw, build, and transit-line tools", () => {
+  it("renders toolbar with all tools including city limits", () => {
     render(
       <BuildView>
         <div>Content</div>
       </BuildView>
     );
     expect(screen.getByLabelText("Pan")).toBeInTheDocument();
-    expect(screen.getByLabelText("Draw")).toBeInTheDocument();
+    expect(screen.getByLabelText("Draw Neighborhood")).toBeInTheDocument();
+    expect(screen.getByLabelText("Draw City Limits")).toBeInTheDocument();
     expect(screen.getByLabelText("Build")).toBeInTheDocument();
     expect(screen.getByLabelText("Draw Transit Line")).toBeInTheDocument();
   });

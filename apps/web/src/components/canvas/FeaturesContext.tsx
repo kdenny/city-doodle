@@ -16,7 +16,7 @@ import {
   useRef,
   ReactNode,
 } from "react";
-import type { District, Neighborhood, Road, POI, FeaturesData, Point, DistrictPersonality } from "./layers";
+import type { District, Neighborhood, CityLimits, Road, POI, FeaturesData, Point, DistrictPersonality } from "./layers";
 import { DEFAULT_DISTRICT_PERSONALITY } from "./layers/types";
 import { detectBridges } from "./layers/bridgeDetection";
 import {
@@ -114,6 +114,10 @@ interface FeaturesContextValue {
   removeNeighborhood: (id: string) => void;
   /** Update a neighborhood */
   updateNeighborhood: (id: string, updates: Partial<Omit<Neighborhood, "id">>) => void;
+  /** Set the city limits boundary (only one per world) */
+  setCityLimits: (cityLimits: CityLimits) => void;
+  /** Remove the city limits boundary */
+  removeCityLimits: () => void;
   /** Clear all features */
   clearFeatures: () => void;
   /** Set all features data at once */
@@ -830,6 +834,30 @@ export function FeaturesProvider({
     [worldId, features.neighborhoods, updateFeatures, updateNeighborhoodMutation]
   );
 
+  const setCityLimits = useCallback(
+    (cityLimits: CityLimits) => {
+      // Only one city limits per world, so this replaces any existing
+      updateFeatures((prev) => ({
+        ...prev,
+        cityLimits,
+      }));
+
+      // Note: City limits persistence to backend API is not yet implemented
+      // When city limits API is added, persistence should be added here
+    },
+    [updateFeatures]
+  );
+
+  const removeCityLimits = useCallback(() => {
+    updateFeatures((prev) => ({
+      ...prev,
+      cityLimits: undefined,
+    }));
+
+    // Note: City limits persistence to backend API is not yet implemented
+    // When city limits API is added, deletion should be added here
+  }, [updateFeatures]);
+
   const clearFeatures = useCallback(() => {
     updateFeatures(() => EMPTY_FEATURES);
   }, [updateFeatures]);
@@ -859,6 +887,8 @@ export function FeaturesProvider({
     addNeighborhood,
     removeNeighborhood,
     updateNeighborhood,
+    setCityLimits,
+    removeCityLimits,
     clearFeatures,
     setFeatures,
     isLoading,
