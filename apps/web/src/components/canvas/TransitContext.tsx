@@ -29,6 +29,7 @@ import {
   useCreateTransitLine,
   useCreateTransitLineSegment,
   useDeleteTransitStation,
+  useDeleteTransitLine,
   useUpdateTransitLine,
 } from "../../api/hooks";
 import type {
@@ -164,6 +165,8 @@ interface TransitContextValue {
   ) => Promise<boolean>;
   /** Update a transit line (name, color) */
   updateLine: (lineId: string, updates: { name?: string; color?: string }) => Promise<boolean>;
+  /** Delete a transit line and all its segments */
+  deleteLine: (lineId: string) => Promise<boolean>;
   /** Get the count of existing lines */
   lineCount: number;
   /** Loading state */
@@ -204,6 +207,7 @@ export function TransitProvider({ children, worldId }: TransitProviderProps) {
   const createLine = useCreateTransitLine();
   const createSegment = useCreateTransitLineSegment();
   const deleteStation = useDeleteTransitStation();
+  const deleteLineMutation = useDeleteTransitLine();
   const updateLine = useUpdateTransitLine();
 
   // Sync API data to local state for rendering
@@ -783,6 +787,29 @@ export function TransitProvider({ children, worldId }: TransitProviderProps) {
   );
 
   /**
+   * Delete a transit line and all its segments.
+   */
+  const deleteLineMethod = useCallback(
+    async (lineId: string): Promise<boolean> => {
+      if (!worldId) {
+        toast?.addToast("Cannot delete line: No world selected", "error");
+        return false;
+      }
+
+      try {
+        await deleteLineMutation.mutateAsync({ lineId, worldId });
+        toast?.addToast("Transit line deleted", "success");
+        return true;
+      } catch (error) {
+        console.error("Failed to delete transit line:", error);
+        toast?.addToast("Failed to delete transit line", "error");
+        return false;
+      }
+    },
+    [worldId, deleteLineMutation, toast]
+  );
+
+  /**
    * Get all station IDs that belong to a specific line.
    */
   const getStationIdsForLine = useCallback(
@@ -846,6 +873,7 @@ export function TransitProvider({ children, worldId }: TransitProviderProps) {
     createLine: createLineManual,
     createLineSegment,
     updateLine: updateLineMethod,
+    deleteLine: deleteLineMethod,
     lineCount,
     // Loading/Error
     isLoading,

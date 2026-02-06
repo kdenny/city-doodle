@@ -80,6 +80,18 @@ export function TransitView({
     [transitContext]
   );
 
+  const handleDeleteLine = useCallback(
+    async (lineId: string) => {
+      if (!transitContext?.deleteLine) return;
+      const success = await transitContext.deleteLine(lineId);
+      if (success) {
+        setSelectedLine(null);
+        transitContext.setHighlightedLineId(null);
+      }
+    },
+    [transitContext]
+  );
+
   // Clear highlight when clicking on the map background
   const handleBackgroundClick = useCallback(() => {
     transitContext?.setHighlightedLineId(null);
@@ -108,6 +120,7 @@ export function TransitView({
           <TransitLineInspector
             line={selectedLine}
             onUpdate={handleUpdateLine}
+            onDelete={handleDeleteLine}
             onClose={handleCloseInspector}
             isUpdating={isUpdating}
           />
