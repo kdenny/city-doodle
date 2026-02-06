@@ -27,10 +27,10 @@ function parseGrowthChanges(result: Record<string, unknown>): YearChange[] {
   const summary = result.summary as Record<string, number> | undefined;
 
   if (summary) {
-    if (summary.districts_densified > 0) {
+    if (summary.districts_infilled > 0) {
       changes.push({
         id: "densified",
-        description: `${summary.districts_densified} district${summary.districts_densified > 1 ? "s" : ""} grew denser`,
+        description: `${summary.districts_infilled} district${summary.districts_infilled > 1 ? "s" : ""} grew denser`,
       });
     }
     if (summary.districts_expanded > 0) {
