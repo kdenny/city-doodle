@@ -53,6 +53,7 @@ async def create_district(db: AsyncSession, district_create: DistrictCreate) -> 
         max_height=max_height,
         transit_access=district_create.transit_access,
         historic=district_create.historic,
+        street_grid=district_create.street_grid,
     )
     logger.debug(f"Created DistrictModel with type={district.type}")
 
@@ -89,6 +90,7 @@ async def create_districts_bulk(
                 max_height=max_height,
                 transit_access=d.transit_access,
                 historic=d.historic,
+                street_grid=d.street_grid,
             )
         )
     db.add_all(models)
@@ -155,6 +157,8 @@ async def update_district(
         district.transit_access = district_update.transit_access
     if district_update.historic is not None:
         district.historic = district_update.historic
+    if district_update.street_grid is not None:
+        district.street_grid = district_update.street_grid
 
     await db.commit()
     await db.refresh(district)
@@ -191,6 +195,7 @@ def _to_schema(district: DistrictModel) -> District:
         max_height=district.max_height,
         transit_access=district.transit_access,
         historic=district.historic,
+        street_grid=district.street_grid,
         created_at=_ensure_utc(district.created_at),
         updated_at=_ensure_utc(district.updated_at),
     )

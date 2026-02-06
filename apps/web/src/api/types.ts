@@ -254,6 +254,7 @@ export interface DistrictCreate {
   max_height?: number;
   transit_access?: boolean;
   historic?: boolean;
+  street_grid?: Record<string, unknown>;
 }
 
 export interface DistrictUpdate {
@@ -264,6 +265,7 @@ export interface DistrictUpdate {
   max_height?: number;
   transit_access?: boolean;
   historic?: boolean;
+  street_grid?: Record<string, unknown>;
 }
 
 export interface DistrictBulkCreate {
@@ -280,6 +282,7 @@ export interface District {
   max_height: number;
   transit_access: boolean;
   historic: boolean;
+  street_grid?: Record<string, unknown>;
   created_at: DateTime;
   updated_at: DateTime;
 }

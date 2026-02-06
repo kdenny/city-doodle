@@ -63,6 +63,10 @@ class DistrictCreate(BaseModel):
         default=False,
         description="Historic preservation - prevents redevelopment during growth",
     )
+    street_grid: dict[str, Any] | None = Field(
+        default=None,
+        description="Street grid data (roads, gridAngle, personality)",
+    )
 
 
 class DistrictUpdate(BaseModel):
@@ -75,6 +79,7 @@ class DistrictUpdate(BaseModel):
     max_height: int | None = Field(default=None, ge=1, le=100)
     transit_access: bool | None = None
     historic: bool | None = None
+    street_grid: dict[str, Any] | None = None
 
 
 class District(BaseModel):
@@ -92,6 +97,7 @@ class District(BaseModel):
     max_height: int
     transit_access: bool
     historic: bool
+    street_grid: dict[str, Any] | None = None
     created_at: datetime
     updated_at: datetime
 
