@@ -3,6 +3,7 @@ import { Toolbar, useToolbar, Tool } from "./Toolbar";
 import { LayersPanel, useLayers, LayerVisibility } from "./LayersPanel";
 import { PopulationPanel } from "./PopulationPanel";
 import { CityNeedsPanel, CityNeeds } from "./CityNeedsPanel";
+import { CityNeedsModal } from "./CityNeedsModal";
 import { ScaleBar } from "./ScaleBar";
 import { InspectorPanel, type SelectedFeature } from "./InspectorPanel";
 import { TransitLinePropertiesDialog } from "./TransitLinePropertiesDialog";
@@ -69,6 +70,9 @@ export function BuildView({
 
   // State for showing transit line properties dialog
   const [showLinePropertiesDialog, setShowLinePropertiesDialog] = useState(false);
+
+  // State for showing city needs modal
+  const [showCityNeedsModal, setShowCityNeedsModal] = useState(false);
 
   // Start/stop drawing mode when tool changes
   useEffect(() => {
@@ -170,8 +174,12 @@ export function BuildView({
 
   const handleCityNeedsClick = useCallback(() => {
     onCityNeedsClick?.();
-    // TODO(CITY-213): Open city needs modal
+    setShowCityNeedsModal(true);
   }, [onCityNeedsClick]);
+
+  const handleCloseCityNeedsModal = useCallback(() => {
+    setShowCityNeedsModal(false);
+  }, []);
 
   return (
     <div className="relative w-full h-full">
@@ -257,6 +265,11 @@ export function BuildView({
         onConfirm={handleLinePropertiesConfirm}
         onCancel={handleLinePropertiesCancel}
       />
+
+      {/* City needs modal */}
+      {showCityNeedsModal && (
+        <CityNeedsModal needs={cityNeeds} onClose={handleCloseCityNeedsModal} />
+      )}
     </div>
   );
 }
