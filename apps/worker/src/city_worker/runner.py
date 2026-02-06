@@ -361,10 +361,15 @@ class JobRunner:
                 "changelog": {"entries": [], "summary": {}},
             }
 
+        # Load water regions from terrain for expansion constraints
+        water_regions = await self._load_water_regions(world_id)
+
         # Run simulation
         config = GrowthConfig(world_id=world_id, years=years)
         simulator = GrowthSimulator(config, seed=world_seed)
-        changelog = simulator.simulate(districts, road_nodes, road_edges, pois)
+        changelog = simulator.simulate(
+            districts, road_nodes, road_edges, pois, water_regions,
+        )
 
         # Persist changes back to DB
         await self._save_growth_results(
@@ -464,6 +469,40 @@ class JobRunner:
             ]
 
             return districts, road_nodes, road_edges, pois, world_seed
+        finally:
+            await session.close()
+
+    async def _load_water_regions(self, world_id: UUID) -> list[dict]:
+        """Load water region geometries from terrain tiles for this world.
+
+        Extracts coastline, lake, bay, and lagoon features from terrain data
+        so the growth simulator can avoid expanding districts into water.
+        """
+        import json
+
+        session = await get_session()
+        try:
+            result = await session.execute(
+                text("""
+                    SELECT terrain_data FROM tiles
+                    WHERE world_id = :wid AND terrain_data IS NOT NULL
+                """),
+                {"wid": world_id},
+            )
+            water_types = {"coastline", "lake", "bay", "lagoon"}
+            water_regions: list[dict] = []
+            for (terrain_data,) in result.fetchall():
+                if not terrain_data:
+                    continue
+                # terrain_data may be stored as JSON string or dict
+                data = json.loads(terrain_data) if isinstance(terrain_data, str) else terrain_data
+                features = data.get("features", [])
+                for feat in features:
+                    feat_type = feat.get("type", "")
+                    geom = feat.get("geometry")
+                    if feat_type in water_types and geom:
+                        water_regions.append({"type": feat_type, "geometry": geom})
+            return water_regions
         finally:
             await session.close()
 
