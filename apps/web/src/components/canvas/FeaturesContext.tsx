@@ -33,6 +33,7 @@ import {
 } from "./layers/polygonUtils";
 import { generateInterDistrictRoads } from "./layers/interDistrictRoads";
 import { useTerrainOptional } from "./TerrainContext";
+import { useTransitOptional } from "./TransitContext";
 import { useToastOptional } from "../../contexts";
 
 /**
@@ -419,6 +420,9 @@ export function FeaturesProvider({
   // Get terrain context for water collision detection
   const terrainContext = useTerrainOptional();
 
+  // Get transit context for transit-oriented grid generation (CITY-168)
+  const transitContext = useTransitOptional();
+
   // Get toast context for error notifications
   const toast = useToastOptional();
 
@@ -582,7 +586,20 @@ export function FeaturesProvider({
 
       // Use personality settings to configure district generation
       // sprawl_compact affects block size, grid_organic affects street patterns
-      // Use world settings for scale if available, otherwise use defaults
+      // transit_car affects grid orientation toward transit stations (CITY-168)
+
+      // Get transit station positions for transit-oriented grid generation
+      const transitStations: { x: number; y: number }[] = [];
+      if (transitContext) {
+        // Collect all rail and subway station positions
+        for (const station of transitContext.railStations) {
+          transitStations.push(station.position);
+        }
+        for (const station of transitContext.subwayStations) {
+          transitStations.push(station.position);
+        }
+      }
+
       const generationConfig: DistrictGenerationConfig = {
         ...config,
         organicFactor: personality.grid_organic,
@@ -593,6 +610,9 @@ export function FeaturesProvider({
         },
         // Pass through the explicit seed if provided
         seed: config?.seed,
+        // Transit-oriented grid generation (CITY-168)
+        transitStations: transitStations.length > 0 ? transitStations : undefined,
+        transitCar: personality.transit_car,
       };
 
       // Generate district geometry
@@ -643,13 +663,17 @@ export function FeaturesProvider({
         generated.district.polygon.points = clipResult.clippedPolygon;
         // Regenerate the street grid for the clipped polygon (CITY-142)
         // Pass the existing gridAngle to preserve orientation
+        // Include transit options for transit-oriented grids (CITY-168)
         const clippedGridResult = regenerateStreetGridForClippedDistrict(
           clipResult.clippedPolygon,
           generated.district.id,
           generated.district.type,
           position,
           personality.sprawl_compact,
-          generated.district.gridAngle
+          generated.district.gridAngle,
+          transitStations.length > 0
+            ? { transitStations, transitCar: personality.transit_car }
+            : undefined
         );
         generated.roads = clippedGridResult.roads;
         generated.district.gridAngle = clippedGridResult.gridAngle;
@@ -785,7 +809,7 @@ export function FeaturesProvider({
         clipResult: clipResult.overlapsWater ? clipResult : undefined,
       };
     },
-    [worldId, world, features.districts, updateFeatures, createDistrictMutation, createRoadNodesBulkMutation, createRoadEdgesBulkMutation, terrainContext, toast]
+    [worldId, world, features.districts, updateFeatures, createDistrictMutation, createRoadNodesBulkMutation, createRoadEdgesBulkMutation, terrainContext, transitContext, toast]
   );
 
   const previewDistrictPlacement = useCallback(
