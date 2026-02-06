@@ -5,6 +5,7 @@ import { ZoomProvider, useZoom } from "./ZoomContext";
 import { Header } from "./Header";
 import { ZoomControls } from "./ZoomControls";
 import { HelpButton } from "./HelpButton";
+import { HelpModal } from "./HelpModal";
 import {
   PlacementPalette,
   PlacementProvider,
@@ -431,36 +432,44 @@ export function EditorShell({
   initialZoom = 1,
   onZoomChange,
 }: EditorShellProps) {
+  const [showHelpModal, setShowHelpModal] = useState(false);
+
   const handleHelp = useCallback(() => {
-    // TODO(CITY-212): Open help modal
-    console.log("Help clicked");
+    setShowHelpModal(true);
+  }, []);
+
+  const handleCloseHelp = useCallback(() => {
+    setShowHelpModal(false);
   }, []);
 
   return (
-    <ViewModeProvider>
-      <ZoomProvider initialZoom={initialZoom} onZoomChange={onZoomChange}>
-        <TerrainProvider>
-          <FeaturesProvider worldId={worldId}>
-            <TransitProvider worldId={worldId}>
-              <TransitLineDrawingWithTransit>
-                <PlacedSeedsProvider worldId={worldId}>
-                  <PlacementWithSeeds>
-                    <SelectionWithFeatures>
-                      <DrawingWithFeatures>
-                        <MapCanvasProvider>
-                          <EditorShellContent onHelp={handleHelp}>
-                            {children}
-                          </EditorShellContent>
-                        </MapCanvasProvider>
-                      </DrawingWithFeatures>
-                    </SelectionWithFeatures>
-                  </PlacementWithSeeds>
-                </PlacedSeedsProvider>
-              </TransitLineDrawingWithTransit>
-            </TransitProvider>
-          </FeaturesProvider>
-        </TerrainProvider>
-      </ZoomProvider>
-    </ViewModeProvider>
+    <>
+      <ViewModeProvider>
+        <ZoomProvider initialZoom={initialZoom} onZoomChange={onZoomChange}>
+          <TerrainProvider>
+            <FeaturesProvider worldId={worldId}>
+              <TransitProvider worldId={worldId}>
+                <TransitLineDrawingWithTransit>
+                  <PlacedSeedsProvider worldId={worldId}>
+                    <PlacementWithSeeds>
+                      <SelectionWithFeatures>
+                        <DrawingWithFeatures>
+                          <MapCanvasProvider>
+                            <EditorShellContent onHelp={handleHelp}>
+                              {children}
+                            </EditorShellContent>
+                          </MapCanvasProvider>
+                        </DrawingWithFeatures>
+                      </SelectionWithFeatures>
+                    </PlacementWithSeeds>
+                  </PlacedSeedsProvider>
+                </TransitLineDrawingWithTransit>
+              </TransitProvider>
+            </FeaturesProvider>
+          </TerrainProvider>
+        </ZoomProvider>
+      </ViewModeProvider>
+      {showHelpModal && <HelpModal onClose={handleCloseHelp} />}
+    </>
   );
 }
