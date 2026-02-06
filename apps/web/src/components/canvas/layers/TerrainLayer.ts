@@ -7,6 +7,7 @@ import type {
   TerrainData,
   LayerVisibility,
   WaterFeature,
+  LakeType,
   BeachFeature,
   CoastlineFeature,
   RiverFeature,
@@ -16,7 +17,7 @@ import type {
 // Color palette for terrain features
 const COLORS = {
   ocean: 0x89cff0, // Light blue
-  lake: 0xa7d8de, // Slightly different blue for lakes
+  lake: 0xa7d8de, // Default lake blue (slightly different from ocean)
   coastline: 0x4a90a4, // Darker blue for coastlines
   river: 0x6bb3c9, // Medium blue for rivers
   contour: 0xc9b896, // Tan/brown for contour lines
@@ -27,6 +28,16 @@ const COLORS = {
     lake: 0xe8dcc0, // Muted tan for lake beaches
     river: 0xddd5b8, // Grayish tan for river beaches
   },
+  // Lake type colors - subtle variations in blue to show lake character
+  lakeType: {
+    glacial: 0xa7d8de,   // Cool blue-gray (ice-fed, cold water)
+    crater: 0x4a90d9,    // Deep vibrant blue (clear volcanic water)
+    oxbow: 0x8fc9a8,     // Murky green-blue (still water, organic matter)
+    reservoir: 0x7ec8e3, // Standard lake blue (managed water)
+    rift: 0x5a9bd4,      // Deep blue (very deep water)
+    pond: 0xb8dfe6,      // Light blue-green (shallow, possibly algae)
+    kettle: 0x9dd5e0,    // Clear light blue (glacial origin, clean)
+  } as Record<LakeType, number>,
 };
 
 export class TerrainLayer {
@@ -96,7 +107,18 @@ export class TerrainLayer {
     this.waterGraphics.clear();
 
     for (const feature of features) {
-      const color = feature.type === "ocean" ? COLORS.ocean : COLORS.lake;
+      // Determine color based on water type and lake type
+      let color: number;
+      if (feature.type === "ocean") {
+        color = COLORS.ocean;
+      } else if (feature.lakeType && COLORS.lakeType[feature.lakeType]) {
+        // Use lake type specific color
+        color = COLORS.lakeType[feature.lakeType];
+      } else {
+        // Default lake color
+        color = COLORS.lake;
+      }
+
       const points = feature.polygon.points;
 
       if (points.length < 3) continue;
