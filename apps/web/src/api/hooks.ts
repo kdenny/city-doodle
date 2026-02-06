@@ -1253,6 +1253,10 @@ export function useDeleteTransitStation(
       queryClient.invalidateQueries({
         queryKey: queryKeys.worldTransitStations(worldId),
       });
+      // Station deletion CASCADE deletes segments, so lines are stale too
+      queryClient.invalidateQueries({
+        queryKey: queryKeys.worldTransitLines(worldId),
+      });
       queryClient.invalidateQueries({
         queryKey: queryKeys.worldTransitNetwork(worldId),
       });
