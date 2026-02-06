@@ -3,7 +3,8 @@
  */
 
 import { useState, useEffect, useRef } from "react";
-import { useCreateJob, useJob } from "../../api/hooks";
+import { useQueryClient } from "@tanstack/react-query";
+import { useCreateJob, useJob, queryKeys } from "../../api/hooks";
 import type { YearChange } from "./ChangesPanel";
 
 export interface GrowthSimulationState {
@@ -27,10 +28,10 @@ function parseGrowthChanges(result: Record<string, unknown>): YearChange[] {
   const summary = result.summary as Record<string, number> | undefined;
 
   if (summary) {
-    if (summary.districts_densified > 0) {
+    if (summary.districts_infilled > 0) {
       changes.push({
         id: "densified",
-        description: `${summary.districts_densified} district${summary.districts_densified > 1 ? "s" : ""} grew denser`,
+        description: `${summary.districts_infilled} district${summary.districts_infilled > 1 ? "s" : ""} grew denser`,
       });
     }
     if (summary.districts_expanded > 0) {
@@ -67,6 +68,7 @@ export function useGrowthSimulation(worldId?: string): GrowthSimulationState {
   const [yearsSimulated, setYearsSimulated] = useState(0);
   const hasTriggered = useRef(false);
 
+  const queryClient = useQueryClient();
   const createJobMutation = useCreateJob();
 
   // Poll job status when we have a jobId
@@ -90,6 +92,14 @@ export function useGrowthSimulation(worldId?: string): GrowthSimulationState {
       setYearsSimulated(
         (job.result as Record<string, unknown>).years_simulated as number || 1
       );
+      // Growth modifies districts, roads, and POIs — invalidate their caches
+      if (worldId) {
+        queryClient.invalidateQueries({ queryKey: queryKeys.worldDistricts(worldId) });
+        queryClient.invalidateQueries({ queryKey: queryKeys.worldRoadNetwork(worldId) });
+        queryClient.invalidateQueries({ queryKey: queryKeys.worldRoadNodes(worldId) });
+        queryClient.invalidateQueries({ queryKey: queryKeys.worldRoadEdges(worldId) });
+        queryClient.invalidateQueries({ queryKey: queryKeys.worldPOIs(worldId) });
+      }
     } else if (job.status === "failed") {
       setError(job.error || "Growth simulation failed");
       setChanges([{ id: "error", description: "Simulation failed" }]);
