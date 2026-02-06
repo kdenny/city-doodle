@@ -432,7 +432,8 @@ export function EditorShell({
   onZoomChange,
 }: EditorShellProps) {
   const handleHelp = useCallback(() => {
-    // TODO: Open help modal (CITY-210)
+    // TODO(CITY-212): Open help modal
+    console.log("Help clicked");
   }, []);
 
   return (
