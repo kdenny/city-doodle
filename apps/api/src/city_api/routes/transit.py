@@ -12,6 +12,7 @@ from city_api.repositories import district as district_repo
 from city_api.repositories import transit as transit_repo
 from city_api.repositories import world as world_repo
 from city_api.schemas import (
+    DistrictUpdate,
     TransitLine,
     TransitLineBulkCreate,
     TransitLineCreate,
@@ -130,7 +131,12 @@ async def create_station(
     await _verify_district_exists(db, station_create.district_id)
     # Override world_id from path
     station_create.world_id = world_id
-    return await transit_repo.create_station(db, station_create)
+    station = await transit_repo.create_station(db, station_create)
+    # Mark the district as having transit access
+    await district_repo.update_district(
+        db, station_create.district_id, DistrictUpdate(transit_access=True)
+    )
+    return station
 
 
 @router.post(
@@ -152,7 +158,12 @@ async def create_stations_bulk(
     # Override world_id from path
     for station in bulk_create.stations:
         station.world_id = world_id
-    return await transit_repo.create_stations_bulk(db, bulk_create.stations)
+    stations = await transit_repo.create_stations_bulk(db, bulk_create.stations)
+    # Mark districts as having transit access
+    district_ids = {s.district_id for s in bulk_create.stations}
+    for did in district_ids:
+        await district_repo.update_district(db, did, DistrictUpdate(transit_access=True))
+    return stations
 
 
 @router.get("/transit/stations/{station_id}", response_model=TransitStation)
