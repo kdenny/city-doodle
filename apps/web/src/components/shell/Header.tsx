@@ -1,5 +1,6 @@
 import { Link } from "react-router-dom";
 import { useViewMode, ViewMode } from "./ViewModeContext";
+import { useEditLockOptional } from "./EditLockContext";
 
 const viewModeTabs: { mode: ViewMode; label: string }[] = [
   { mode: "transit", label: "Transit" },
@@ -10,6 +11,7 @@ const viewModeTabs: { mode: ViewMode; label: string }[] = [
 
 export function Header() {
   const { viewMode, setViewMode, viewModeLabel } = useViewMode();
+  const editLock = useEditLockOptional();
 
   return (
     <header className="h-12 bg-gray-800 text-white flex items-center px-4 shrink-0 justify-between">
@@ -18,6 +20,9 @@ export function Header() {
           City Doodle
         </Link>
         <span className="text-gray-400 text-sm">{viewModeLabel}</span>
+        {viewMode === "build" && editLock?.isEditing && (
+          <span className="text-xs text-green-400 font-medium">Editing</span>
+        )}
       </div>
 
       {/* View Mode Tabs */}
@@ -37,7 +42,7 @@ export function Header() {
         ))}
       </nav>
 
-      {/* Exit Button */}
+      {/* Exit Button / Edit Mode Toggle */}
       {viewMode !== "build" && (
         <button
           onClick={() => setViewMode("build")}
@@ -46,7 +51,54 @@ export function Header() {
           Exit {viewModeLabel}
         </button>
       )}
-      {viewMode === "build" && <div className="w-24" />}
+      {viewMode === "build" && editLock && (
+        <div className="flex items-center gap-2">
+          {editLock.lockConflict && (
+            <div className="flex items-center gap-2">
+              <span className="text-xs text-amber-400">
+                Locked by {editLock.lockConflict.lockedBy}
+              </span>
+              <button
+                onClick={() => {
+                  editLock.dismissConflict();
+                  editLock.requestEditMode();
+                }}
+                className="px-2 py-1 text-xs bg-amber-600 hover:bg-amber-500 rounded transition-colors"
+              >
+                Retry
+              </button>
+            </div>
+          )}
+          {!editLock.isEditing && !editLock.lockConflict && (
+            <button
+              onClick={editLock.requestEditMode}
+              disabled={editLock.isAcquiring}
+              className="px-3 py-1.5 text-sm bg-blue-600 hover:bg-blue-500 disabled:opacity-50 rounded transition-colors flex items-center gap-1.5"
+            >
+              {editLock.isAcquiring ? (
+                <>
+                  <svg className="w-3.5 h-3.5 animate-spin" viewBox="0 0 24 24" fill="none">
+                    <circle className="opacity-25" cx="12" cy="12" r="10" stroke="currentColor" strokeWidth="4" />
+                    <path className="opacity-75" fill="currentColor" d="M4 12a8 8 0 018-8V0C5.373 0 0 5.373 0 12h4z" />
+                  </svg>
+                  Acquiring...
+                </>
+              ) : (
+                "Edit"
+              )}
+            </button>
+          )}
+          {editLock.isEditing && (
+            <button
+              onClick={editLock.exitEditMode}
+              className="px-3 py-1.5 text-sm bg-green-600 hover:bg-green-500 rounded transition-colors"
+            >
+              Done Editing
+            </button>
+          )}
+        </div>
+      )}
+      {viewMode === "build" && !editLock && <div className="w-24" />}
     </header>
   );
 }

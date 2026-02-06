@@ -13,6 +13,7 @@ import {
   useState,
   useCallback,
   useEffect,
+  useMemo,
   useRef,
   ReactNode,
 } from "react";
@@ -677,6 +678,8 @@ export function FeaturesProvider({
         // Transit-oriented grid generation (CITY-168)
         transitStations: transitStations.length > 0 ? transitStations : undefined,
         transitCar: personality.transit_car,
+        // Era year affects block sizes and historic flag (CITY-225)
+        eraYear: personality.era_year,
       };
 
       // Generate district geometry
@@ -938,6 +941,8 @@ export function FeaturesProvider({
           districtSizeMeters: config?.scaleSettings?.districtSizeMeters ?? world?.settings.district_size_meters ?? 3200,
           sprawlCompact: personality.sprawl_compact,
         },
+        // Era year affects block sizes and historic flag (CITY-225)
+        eraYear: personality.era_year,
       };
 
       // Generate district geometry for preview
@@ -1401,7 +1406,7 @@ export function FeaturesProvider({
   const isLoading = !isInitialized || (!!worldId && (isLoadingDistricts || isLoadingNeighborhoods || isLoadingPOIs || isLoadingRoads));
   const error = loadDistrictsError || loadNeighborhoodsError || loadPOIsError || loadRoadsError || null;
 
-  const value: FeaturesContextValue = {
+  const value: FeaturesContextValue = useMemo(() => ({
     features,
     addDistrict,
     previewDistrictPlacement,
@@ -1423,7 +1428,29 @@ export function FeaturesProvider({
     setFeatures,
     isLoading,
     error,
-  };
+  }), [
+    features,
+    addDistrict,
+    previewDistrictPlacement,
+    addDistrictWithGeometry,
+    addPOI,
+    addRoads,
+    removeDistrict,
+    removeRoad,
+    removePOI,
+    updatePOI,
+    updateDistrict,
+    updateRoad,
+    addNeighborhood,
+    removeNeighborhood,
+    updateNeighborhood,
+    setCityLimits,
+    removeCityLimits,
+    clearFeatures,
+    setFeatures,
+    isLoading,
+    error,
+  ]);
 
   return (
     <FeaturesContext.Provider value={value}>

@@ -30,10 +30,10 @@ async def create_world(db: AsyncSession, world_create: WorldCreate, user_id: UUI
     if world_create.seed is not None:
         seed = world_create.seed
     else:
-        # Generate seed from world name + user_id for determinism
-        # Same name + user always produces the same world
+        # Generate unique seed from world name + user_id + timestamp
+        # Includes timestamp so same-named worlds get different seeds
         # Mask to int32 range to avoid PostgreSQL integer overflow
-        seed_input = f"{world_create.name}:{user_id}"
+        seed_input = f"{world_create.name}:{user_id}:{now.isoformat()}"
         seed = int(hashlib.sha256(seed_input.encode()).hexdigest()[:8], 16) & 0x7FFFFFFF
 
     # Convert settings to dict for JSONB storage

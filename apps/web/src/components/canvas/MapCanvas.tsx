@@ -51,6 +51,7 @@ import { useZoomOptional } from "../shell/ZoomContext";
 import { usePlacementOptional, usePlacedSeedsOptional } from "../palette";
 import { useSelectionContextOptional } from "../build-view/SelectionContext";
 import type { SelectedFeature } from "../build-view/SelectionContext";
+import { useEditLockOptional } from "../shell/EditLockContext";
 import type { District, Road, POI, CityLimits } from "./layers";
 import { TILE_SIZE, WORLD_TILES, WORLD_SIZE } from "../../utils/worldConstants";
 
@@ -129,6 +130,10 @@ export const MapCanvas = forwardRef<MapCanvasHandle, MapCanvasProps>(
   // Get transit line drawing context for manual line drawing mode
   const transitLineDrawingContext = useTransitLineDrawingOptional();
 
+  // Get edit lock context - when not editing, block mutating interactions
+  const editLockContext = useEditLockOptional();
+  const isEditingAllowed = editLockContext?.isEditing ?? true;
+
   // Ref to setTerrainData for use in init effect (avoids stale closure)
   const setTerrainDataRef = useRef(terrainContext?.setTerrainData);
   useEffect(() => {
@@ -140,6 +145,20 @@ export const MapCanvas = forwardRef<MapCanvasHandle, MapCanvasProps>(
 
   // Get endpoint drag context for road endpoint dragging (CITY-147)
   const endpointDragContext = useEndpointDragOptional();
+
+  // Ref holding latest values for event handlers, updated every render.
+  // This avoids re-registering pointer/keyboard handlers on every state change.
+  const eventStateRef = useRef({
+    placementContext,
+    drawingContext,
+    endpointDragContext,
+    transitLineDrawingContext,
+    transitContext,
+    featuresContext,
+    onFeatureSelect,
+    isEditingAllowed,
+    snapEngine: null as SnapEngine | null,
+  });
 
   // Create snap engine for snapping to district perimeters (CITY-147)
   const snapEngine = useMemo(() => {
@@ -153,6 +172,19 @@ export const MapCanvas = forwardRef<MapCanvasHandle, MapCanvasProps>(
     });
     return engine;
   }, []);
+
+  // Keep eventStateRef in sync with latest values (runs every render, no effect)
+  eventStateRef.current = {
+    placementContext,
+    drawingContext,
+    endpointDragContext,
+    transitLineDrawingContext,
+    transitContext,
+    featuresContext,
+    onFeatureSelect,
+    isEditingAllowed,
+    snapEngine,
+  };
 
   // Create the export handle object
   const exportHandle = {
@@ -541,18 +573,17 @@ export const MapCanvas = forwardRef<MapCanvasHandle, MapCanvasProps>(
         featuresContext.features.neighborhoods.length > 0) {
 
       // Start with mock features if they exist, otherwise empty
+      // Use Sets for O(1) lookups instead of O(n) .some() per item
+      const contextDistrictIds = new Set(featuresContext.features.districts.map(d => d.id));
+      const contextRoadIds = new Set(featuresContext.features.roads.map(r => r.id));
+      const contextPoiIds = new Set(featuresContext.features.pois.map(p => p.id));
+
       const baseData: FeaturesData = showMockFeatures && currentData
         ? {
             // Keep only the original mock districts (filter out user-placed ones)
-            districts: currentData.districts.filter(d =>
-              !featuresContext.features.districts.some(fd => fd.id === d.id)
-            ),
-            roads: currentData.roads.filter(r =>
-              !featuresContext.features.roads.some(fr => fr.id === r.id)
-            ),
-            pois: currentData.pois.filter(p =>
-              !featuresContext.features.pois.some(fp => fp.id === p.id)
-            ),
+            districts: currentData.districts.filter(d => !contextDistrictIds.has(d.id)),
+            roads: currentData.roads.filter(r => !contextRoadIds.has(r.id)),
+            pois: currentData.pois.filter(p => !contextPoiIds.has(p.id)),
             neighborhoods: [],
             bridges: currentData.bridges || [],
           }
@@ -850,40 +881,12 @@ export const MapCanvas = forwardRef<MapCanvasHandle, MapCanvasProps>(
     transitLineDrawingContext?.state.lineProperties?.color,
   ]);
 
-  // Handle clicks for seed placement, feature selection, polygon drawing, endpoint dragging, and transit line drawing
+  // Handle clicks for seed placement, feature selection, polygon drawing, endpoint dragging, and transit line drawing.
+  // Uses eventStateRef to read latest values so handlers are registered once (CITY-231).
   useEffect(() => {
     if (!isReady || !viewportRef.current) return;
 
     const viewport = viewportRef.current;
-    const isPlacing = placementContext?.isPlacing ?? false;
-    const confirmPlacement = placementContext?.confirmPlacement;
-    const setPreviewPosition = placementContext?.setPreviewPosition;
-    const isDrawing = drawingContext?.state.isDrawing ?? false;
-    const inputMode = drawingContext?.state.inputMode ?? "click";
-    const isFreehandActive = drawingContext?.state.isFreehandActive ?? false;
-    const addVertex = drawingContext?.addVertex;
-    const setDrawingPreviewPoint = drawingContext?.setPreviewPoint;
-    const completeDrawing = drawingContext?.completeDrawing;
-    const cancelDrawing = drawingContext?.cancelDrawing;
-    const canComplete = drawingContext?.canComplete;
-    const startFreehand = drawingContext?.startFreehand;
-    const addFreehandPoint = drawingContext?.addFreehandPoint;
-    const endFreehand = drawingContext?.endFreehand;
-
-    // Endpoint drag context functions (CITY-147)
-    const startEndpointDrag = endpointDragContext?.startDrag;
-    const updateEndpointDrag = endpointDragContext?.updateDrag;
-    const completeEndpointDrag = endpointDragContext?.completeDrag;
-    const cancelEndpointDrag = endpointDragContext?.cancelDrag;
-    const isEndpointDragging = endpointDragContext?.isDragging ?? false;
-
-    // Transit line drawing state
-    const isLineDrawing = transitLineDrawingContext?.state.isDrawing ?? false;
-    const selectStation = transitLineDrawingContext?.selectStation;
-    const setLineDrawingPreviewPosition = transitLineDrawingContext?.setPreviewPosition;
-    const setHoveredStation = transitLineDrawingContext?.setHoveredStation;
-    const completeLineDrawing = transitLineDrawingContext?.completeDrawing;
-    const cancelLineDrawing = transitLineDrawingContext?.cancelDrawing;
 
     // Track if we're dragging to avoid triggering click after drag
     let isDragging = false;
@@ -909,8 +912,16 @@ export const MapCanvas = forwardRef<MapCanvasHandle, MapCanvasProps>(
     window.addEventListener("keyup", handleShiftKeyUp);
 
     const handlePointerDown = (event: { global: { x: number; y: number } }) => {
+      const s = eventStateRef.current;
       dragStartPos = { x: event.global.x, y: event.global.y };
       isDragging = false;
+
+      // Block mutating interactions when not in edit mode
+      if (!s.isEditingAllowed) return;
+
+      const isDrawing = s.drawingContext?.state.isDrawing ?? false;
+      const inputMode = s.drawingContext?.state.inputMode ?? "click";
+      const startFreehand = s.drawingContext?.startFreehand;
 
       // Handle freehand drawing start (Shift + drag or freehand mode)
       if (isDrawing && startFreehand && (inputMode === "freehand" || isShiftHeld)) {
@@ -922,6 +933,7 @@ export const MapCanvas = forwardRef<MapCanvasHandle, MapCanvasProps>(
       }
 
       // Check for endpoint hit (CITY-147)
+      const startEndpointDrag = s.endpointDragContext?.startDrag;
       if (roadEndpointLayerRef.current && startEndpointDrag) {
         const worldPos = viewport.toWorld(event.global.x, event.global.y);
         const endpointHit = roadEndpointLayerRef.current.hitTest(worldPos.x, worldPos.y);
@@ -938,6 +950,7 @@ export const MapCanvas = forwardRef<MapCanvasHandle, MapCanvasProps>(
     };
 
     const handlePointerMove = (event: { global: { x: number; y: number } }) => {
+      const s = eventStateRef.current;
       const dx = event.global.x - dragStartPos.x;
       const dy = event.global.y - dragStartPos.y;
       if (Math.sqrt(dx * dx + dy * dy) > DRAG_THRESHOLD) {
@@ -947,10 +960,13 @@ export const MapCanvas = forwardRef<MapCanvasHandle, MapCanvasProps>(
       // Convert to world position
       const worldPos = viewport.toWorld(event.global.x, event.global.y);
 
+      const isEndpointDragging = s.endpointDragContext?.isDragging ?? false;
+      const updateEndpointDrag = s.endpointDragContext?.updateDrag;
+
       // Handle endpoint dragging (CITY-147)
-      if (isEndpointDragging && updateEndpointDrag) {
+      if (isEndpointDragging && updateEndpointDrag && s.snapEngine) {
         // Check for snap points on district perimeters
-        const snapResult = snapEngine.findSnapPoint(worldPos.x, worldPos.y);
+        const snapResult = s.snapEngine.findSnapPoint(worldPos.x, worldPos.y);
 
         if (snapResult.snapPoint) {
           // Snapped to a district perimeter
@@ -982,10 +998,18 @@ export const MapCanvas = forwardRef<MapCanvasHandle, MapCanvasProps>(
         }
       }
 
+      const isPlacing = s.placementContext?.isPlacing ?? false;
+      const setPreviewPosition = s.placementContext?.setPreviewPosition;
+
       // Update preview position if placing seeds
       if (isPlacing && setPreviewPosition) {
         setPreviewPosition({ x: worldPos.x, y: worldPos.y });
       }
+
+      const isFreehandActive = s.drawingContext?.state.isFreehandActive ?? false;
+      const addFreehandPoint = s.drawingContext?.addFreehandPoint;
+      const isDrawing = s.drawingContext?.state.isDrawing ?? false;
+      const setDrawingPreviewPoint = s.drawingContext?.setPreviewPoint;
 
       // Handle freehand drawing - add points while dragging
       if (isFreehandActive && addFreehandPoint) {
@@ -998,14 +1022,16 @@ export const MapCanvas = forwardRef<MapCanvasHandle, MapCanvasProps>(
         setDrawingPreviewPoint({ x: worldPos.x, y: worldPos.y });
       }
 
+      const isLineDrawing = s.transitLineDrawingContext?.state.isDrawing ?? false;
+
       // Update preview for transit line drawing
-      if (isLineDrawing && transitContext) {
-        setLineDrawingPreviewPosition?.({ x: worldPos.x, y: worldPos.y });
+      if (isLineDrawing && s.transitContext) {
+        s.transitLineDrawingContext?.setPreviewPosition?.({ x: worldPos.x, y: worldPos.y });
 
         // Find station being hovered (snap distance)
         const STATION_HOVER_THRESHOLD = 30;
         let hoveredStation: RailStationData | null = null;
-        for (const station of transitContext.railStations) {
+        for (const station of s.transitContext.railStations) {
           const sdx = worldPos.x - station.position.x;
           const sdy = worldPos.y - station.position.y;
           const dist = Math.sqrt(sdx * sdx + sdy * sdy);
@@ -1014,25 +1040,31 @@ export const MapCanvas = forwardRef<MapCanvasHandle, MapCanvasProps>(
             break;
           }
         }
-        setHoveredStation?.(hoveredStation);
+        s.transitLineDrawingContext?.setHoveredStation?.(hoveredStation);
       }
     };
 
     const handlePointerUp = (event: { global: { x: number; y: number } }) => {
-      // Handle freehand drawing completion
-      if (isFreehandActive && endFreehand) {
+      const s = eventStateRef.current;
+      const isFreehandActive = s.drawingContext?.state.isFreehandActive ?? false;
+      const endFreehand = s.drawingContext?.endFreehand;
+      const isEndpointDragging = s.endpointDragContext?.isDragging ?? false;
+      const completeEndpointDrag = s.endpointDragContext?.completeDrag;
+
+      // Handle freehand drawing completion (only if editing)
+      if (s.isEditingAllowed && isFreehandActive && endFreehand) {
         endFreehand();
         // Re-enable viewport drag
         viewport.plugins.resume("drag");
         return;
       }
 
-      // Handle endpoint drag completion (CITY-147)
-      if (isEndpointDragging && completeEndpointDrag && featuresContext) {
+      // Handle endpoint drag completion (CITY-147, only if editing)
+      if (s.isEditingAllowed && isEndpointDragging && completeEndpointDrag && s.featuresContext) {
         const dragResult = completeEndpointDrag();
         if (dragResult) {
           // Update the road geometry with the new endpoint position
-          const road = featuresContext.features.roads.find(
+          const road = s.featuresContext.features.roads.find(
             (r) => r.id === dragResult.roadId
           );
           if (road) {
@@ -1041,7 +1073,7 @@ export const MapCanvas = forwardRef<MapCanvasHandle, MapCanvasProps>(
             newPoints[dragResult.endpointIndex] = dragResult.newPosition;
 
             // Update the road
-            featuresContext.updateRoad(dragResult.roadId, {
+            s.featuresContext.updateRoad(dragResult.roadId, {
               line: { points: newPoints },
             });
           }
@@ -1057,8 +1089,13 @@ export const MapCanvas = forwardRef<MapCanvasHandle, MapCanvasProps>(
       // Convert screen position to world position
       const worldPos = viewport.toWorld(event.global.x, event.global.y);
 
-      // Handle drawing mode
-      if (isDrawing && addVertex) {
+      const isDrawing = s.drawingContext?.state.isDrawing ?? false;
+      const addVertex = s.drawingContext?.addVertex;
+      const canComplete = s.drawingContext?.canComplete;
+      const completeDrawing = s.drawingContext?.completeDrawing;
+
+      // Handle drawing mode (only if editing)
+      if (s.isEditingAllowed && isDrawing && addVertex) {
         // Check if clicking near first vertex to close the polygon
         if (canComplete && canComplete() && drawingLayerRef.current?.isNearFirstVertex(worldPos)) {
           completeDrawing?.();
@@ -1068,12 +1105,15 @@ export const MapCanvas = forwardRef<MapCanvasHandle, MapCanvasProps>(
         return;
       }
 
-      // Handle transit line drawing mode
-      if (isLineDrawing && selectStation && transitContext) {
+      const isLineDrawing = s.transitLineDrawingContext?.state.isDrawing ?? false;
+      const selectStation = s.transitLineDrawingContext?.selectStation;
+
+      // Handle transit line drawing mode (only if editing)
+      if (s.isEditingAllowed && isLineDrawing && selectStation && s.transitContext) {
         // Find the station being clicked (snap to station)
         const STATION_CLICK_THRESHOLD = 30;
         let clickedStation: RailStationData | null = null;
-        for (const station of transitContext.railStations) {
+        for (const station of s.transitContext.railStations) {
           const sdx = worldPos.x - station.position.x;
           const sdy = worldPos.y - station.position.y;
           const dist = Math.sqrt(sdx * sdx + sdy * sdy);
@@ -1090,19 +1130,22 @@ export const MapCanvas = forwardRef<MapCanvasHandle, MapCanvasProps>(
         return;
       }
 
-      // Handle seed placement mode
-      if (isPlacing && confirmPlacement) {
+      const isPlacing = s.placementContext?.isPlacing ?? false;
+      const confirmPlacement = s.placementContext?.confirmPlacement;
+
+      // Handle seed placement mode (only if editing)
+      if (s.isEditingAllowed && isPlacing && confirmPlacement) {
         confirmPlacement({ x: worldPos.x, y: worldPos.y });
         return;
       }
 
-      // Handle feature selection (default mode)
-      if (onFeatureSelect) {
+      // Handle feature selection (default mode - always allowed)
+      if (s.onFeatureSelect) {
         // Check rail stations first (on top)
         if (railStationLayerRef.current) {
           const railHit = railStationLayerRef.current.hitTest(worldPos.x, worldPos.y);
           if (railHit) {
-            onFeatureSelect({
+            s.onFeatureSelect({
               type: "rail_station",
               id: railHit.id,
               name: railHit.name,
@@ -1117,7 +1160,7 @@ export const MapCanvas = forwardRef<MapCanvasHandle, MapCanvasProps>(
         if (subwayStationLayerRef.current) {
           const subwayHit = subwayStationLayerRef.current.hitTest(worldPos.x, worldPos.y);
           if (subwayHit) {
-            onFeatureSelect({
+            s.onFeatureSelect({
               type: "subway_station",
               id: subwayHit.id,
               name: subwayHit.name,
@@ -1132,22 +1175,27 @@ export const MapCanvas = forwardRef<MapCanvasHandle, MapCanvasProps>(
           const hitResult = featuresLayerRef.current.hitTest(worldPos.x, worldPos.y);
           if (hitResult) {
             const selectedFeature = hitTestResultToSelectedFeature(hitResult);
-            onFeatureSelect(selectedFeature);
+            s.onFeatureSelect(selectedFeature);
             return;
           }
         }
 
         // Clicked on empty space - clear selection
-        onFeatureSelect(null);
+        s.onFeatureSelect(null);
       }
     };
 
     // Keyboard handlers for drawing and endpoint drag cancellation
     const handleKeyDown = (event: KeyboardEvent) => {
+      const s = eventStateRef.current;
+      const isEndpointDragging = s.endpointDragContext?.isDragging ?? false;
+      const isDrawing = s.drawingContext?.state.isDrawing ?? false;
+      const isLineDrawing = s.transitLineDrawingContext?.state.isDrawing ?? false;
+
       // Handle endpoint drag cancellation (CITY-147)
       if (isEndpointDragging && event.key === "Escape") {
         event.preventDefault();
-        cancelEndpointDrag?.();
+        s.endpointDragContext?.cancelDrag?.();
         viewport.plugins.resume("drag");
         return;
       }
@@ -1156,10 +1204,10 @@ export const MapCanvas = forwardRef<MapCanvasHandle, MapCanvasProps>(
       if (isDrawing) {
         if (event.key === "Escape") {
           event.preventDefault();
-          cancelDrawing?.();
-        } else if (event.key === "Enter" && canComplete && canComplete()) {
+          s.drawingContext?.cancelDrawing?.();
+        } else if (event.key === "Enter" && s.drawingContext?.canComplete && s.drawingContext.canComplete()) {
           event.preventDefault();
-          completeDrawing?.();
+          s.drawingContext?.completeDrawing?.();
         }
         return;
       }
@@ -1168,10 +1216,10 @@ export const MapCanvas = forwardRef<MapCanvasHandle, MapCanvasProps>(
       if (isLineDrawing) {
         if (event.key === "Escape") {
           event.preventDefault();
-          cancelLineDrawing?.();
+          s.transitLineDrawingContext?.cancelDrawing?.();
         } else if (event.key === "Enter") {
           event.preventDefault();
-          completeLineDrawing?.();
+          s.transitLineDrawingContext?.completeDrawing?.();
         }
         return;
       }
@@ -1190,38 +1238,7 @@ export const MapCanvas = forwardRef<MapCanvasHandle, MapCanvasProps>(
       window.removeEventListener("keydown", handleShiftKeyDown);
       window.removeEventListener("keyup", handleShiftKeyUp);
     };
-  }, [
-    isReady,
-    placementContext?.isPlacing,
-    placementContext?.confirmPlacement,
-    placementContext?.setPreviewPosition,
-    drawingContext?.state.isDrawing,
-    drawingContext?.state.inputMode,
-    drawingContext?.state.isFreehandActive,
-    drawingContext?.addVertex,
-    drawingContext?.setPreviewPoint,
-    drawingContext?.completeDrawing,
-    drawingContext?.cancelDrawing,
-    drawingContext?.canComplete,
-    drawingContext?.startFreehand,
-    drawingContext?.addFreehandPoint,
-    drawingContext?.endFreehand,
-    transitLineDrawingContext?.state.isDrawing,
-    transitLineDrawingContext?.selectStation,
-    transitLineDrawingContext?.setPreviewPosition,
-    transitLineDrawingContext?.setHoveredStation,
-    transitLineDrawingContext?.completeDrawing,
-    transitLineDrawingContext?.cancelDrawing,
-    transitContext?.railStations,
-    onFeatureSelect,
-    endpointDragContext?.startDrag,
-    endpointDragContext?.updateDrag,
-    endpointDragContext?.completeDrag,
-    endpointDragContext?.cancelDrag,
-    endpointDragContext?.isDragging,
-    featuresContext,
-    snapEngine,
-  ]);
+  }, [isReady]);
 
   return (
     <div

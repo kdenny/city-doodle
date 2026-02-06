@@ -15,6 +15,7 @@ import {
 } from "../palette";
 import type { DistrictPersonality, Point } from "../canvas/layers/types";
 import { MapCanvasProvider, FeaturesProvider, useFeatures, TerrainProvider, TransitProvider, useTransitOptional, useTransit, TransitLineDrawingProvider } from "../canvas";
+import { EditLockProvider, useEditLockOptional } from "./EditLockContext";
 import type { TransitLineProperties } from "../canvas";
 import type { RailStationData } from "../canvas/layers";
 import { DrawingProvider, type DrawingMode } from "../canvas/DrawingContext";
@@ -75,7 +76,9 @@ function EditorShellContent({
 }) {
   const { viewMode } = useViewMode();
   const { zoom, zoomIn, zoomOut } = useZoom();
-  const showPalette = viewMode === "build";
+  const editLock = useEditLockOptional();
+  const isEditing = editLock?.isEditing ?? true;
+  const showPalette = viewMode === "build" && isEditing;
   const showZoomControls = viewMode !== "export"; // Export view has its own controls
 
   return (
@@ -452,23 +455,25 @@ export function EditorShell({
         <ZoomProvider initialZoom={initialZoom} onZoomChange={onZoomChange}>
           <TerrainProvider>
             <FeaturesProvider worldId={worldId}>
-              <TransitProvider worldId={worldId}>
-                <TransitLineDrawingWithTransit>
-                  <PlacedSeedsProvider worldId={worldId}>
-                    <PlacementWithSeeds>
-                      <SelectionWithFeatures>
-                        <DrawingWithFeatures>
-                          <MapCanvasProvider>
-                            <EditorShellContent worldId={worldId} onHelp={handleHelp}>
-                              {children}
-                            </EditorShellContent>
-                          </MapCanvasProvider>
-                        </DrawingWithFeatures>
-                      </SelectionWithFeatures>
-                    </PlacementWithSeeds>
-                  </PlacedSeedsProvider>
-                </TransitLineDrawingWithTransit>
-              </TransitProvider>
+              <EditLockProvider worldId={worldId}>
+                <TransitProvider worldId={worldId}>
+                  <TransitLineDrawingWithTransit>
+                    <PlacedSeedsProvider worldId={worldId}>
+                      <PlacementWithSeeds>
+                        <SelectionWithFeatures>
+                          <DrawingWithFeatures>
+                            <MapCanvasProvider>
+                              <EditorShellContent worldId={worldId} onHelp={handleHelp}>
+                                {children}
+                              </EditorShellContent>
+                            </MapCanvasProvider>
+                          </DrawingWithFeatures>
+                        </SelectionWithFeatures>
+                      </PlacementWithSeeds>
+                    </PlacedSeedsProvider>
+                  </TransitLineDrawingWithTransit>
+                </TransitProvider>
+              </EditLockProvider>
             </FeaturesProvider>
           </TerrainProvider>
         </ZoomProvider>
