@@ -7,12 +7,14 @@ from typing import TYPE_CHECKING
 
 from sqlalchemy import (
     Boolean,
+    CheckConstraint,
     DateTime,
     Float,
     ForeignKey,
     Index,
     Integer,
     String,
+    UniqueConstraint,
     Uuid,
     func,
 )
@@ -185,4 +187,6 @@ class TransitLineSegment(Base):
         Index("ix_transit_line_segments_from_station_id", "from_station_id"),
         Index("ix_transit_line_segments_to_station_id", "to_station_id"),
         Index("ix_transit_line_segments_order", "line_id", "order_in_line"),
+        UniqueConstraint("line_id", "from_station_id", "to_station_id", name="uq_segment_line_stations"),
+        CheckConstraint("from_station_id != to_station_id", name="ck_segment_no_self_ref"),
     )
