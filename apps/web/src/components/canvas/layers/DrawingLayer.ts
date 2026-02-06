@@ -22,6 +22,8 @@ interface DrawingState {
   vertices: Point[];
   previewPoint: Point | null;
   isDrawing: boolean;
+  /** Whether freehand drawing is actively happening (mouse held down) */
+  isFreehandActive?: boolean;
 }
 
 export class DrawingLayer {
@@ -65,7 +67,7 @@ export class DrawingLayer {
   private render(): void {
     this.graphics.clear();
 
-    const { vertices, previewPoint, isDrawing } = this.state;
+    const { vertices, previewPoint, isDrawing, isFreehandActive } = this.state;
     if (!isDrawing || vertices.length === 0) return;
 
     // Draw lines between vertices
@@ -82,7 +84,26 @@ export class DrawingLayer {
       this.graphics.stroke();
     }
 
-    // Draw preview line from last vertex to cursor
+    // Freehand mode: skip preview line and vertex dots (too many points)
+    if (isFreehandActive) {
+      // Just show closing line preview when we have enough points
+      if (vertices.length >= 3) {
+        const lastVertex = vertices[vertices.length - 1];
+        const firstVertex = vertices[0];
+
+        this.graphics.setStrokeStyle({
+          width: LINE_WIDTH,
+          color: LINE_COLOR,
+          alpha: PREVIEW_ALPHA * 0.5,
+        });
+
+        // Dashed line to show where it will close
+        this.drawDashedLine(lastVertex, firstVertex);
+      }
+      return;
+    }
+
+    // Click mode: draw preview line from last vertex to cursor
     if (previewPoint && vertices.length >= 1) {
       const lastVertex = vertices[vertices.length - 1];
 
@@ -109,7 +130,7 @@ export class DrawingLayer {
       }
     }
 
-    // Draw vertices as dots
+    // Click mode: draw vertices as dots
     for (let i = 0; i < vertices.length; i++) {
       const vertex = vertices[i];
       const isFirst = i === 0;

@@ -712,12 +712,14 @@ export const MapCanvas = forwardRef<MapCanvasHandle, MapCanvasProps>(
       vertices: drawingContext.state.vertices,
       previewPoint: drawingContext.state.previewPoint,
       isDrawing: drawingContext.state.isDrawing,
+      isFreehandActive: drawingContext.state.isFreehandActive,
     });
   }, [
     isReady,
     drawingContext?.state.vertices,
     drawingContext?.state.previewPoint,
     drawingContext?.state.isDrawing,
+    drawingContext?.state.isFreehandActive,
   ]);
 
   // Update rail station layer when transit context changes
@@ -876,11 +878,16 @@ export const MapCanvas = forwardRef<MapCanvasHandle, MapCanvasProps>(
     const confirmPlacement = placementContext?.confirmPlacement;
     const setPreviewPosition = placementContext?.setPreviewPosition;
     const isDrawing = drawingContext?.state.isDrawing ?? false;
+    const inputMode = drawingContext?.state.inputMode ?? "click";
+    const isFreehandActive = drawingContext?.state.isFreehandActive ?? false;
     const addVertex = drawingContext?.addVertex;
     const setDrawingPreviewPoint = drawingContext?.setPreviewPoint;
     const completeDrawing = drawingContext?.completeDrawing;
     const cancelDrawing = drawingContext?.cancelDrawing;
     const canComplete = drawingContext?.canComplete;
+    const startFreehand = drawingContext?.startFreehand;
+    const addFreehandPoint = drawingContext?.addFreehandPoint;
+    const endFreehand = drawingContext?.endFreehand;
 
     // Endpoint drag context functions (CITY-147)
     const startEndpointDrag = endpointDragContext?.startDrag;
@@ -902,9 +909,36 @@ export const MapCanvas = forwardRef<MapCanvasHandle, MapCanvasProps>(
     let dragStartPos = { x: 0, y: 0 };
     const DRAG_THRESHOLD = 5;
 
+    // Track Shift key state for freehand drawing toggle (via global keyboard events)
+    let isShiftHeld = false;
+
+    const handleShiftKeyDown = (e: KeyboardEvent) => {
+      if (e.key === "Shift") {
+        isShiftHeld = true;
+      }
+    };
+
+    const handleShiftKeyUp = (e: KeyboardEvent) => {
+      if (e.key === "Shift") {
+        isShiftHeld = false;
+      }
+    };
+
+    window.addEventListener("keydown", handleShiftKeyDown);
+    window.addEventListener("keyup", handleShiftKeyUp);
+
     const handlePointerDown = (event: { global: { x: number; y: number } }) => {
       dragStartPos = { x: event.global.x, y: event.global.y };
       isDragging = false;
+
+      // Handle freehand drawing start (Shift + drag or freehand mode)
+      if (isDrawing && startFreehand && (inputMode === "freehand" || isShiftHeld)) {
+        const worldPos = viewport.toWorld(event.global.x, event.global.y);
+        // Disable viewport drag during freehand drawing
+        viewport.plugins.pause("drag");
+        startFreehand({ x: worldPos.x, y: worldPos.y });
+        return;
+      }
 
       // Check for endpoint hit (CITY-147)
       if (roadEndpointLayerRef.current && startEndpointDrag) {
@@ -972,8 +1006,14 @@ export const MapCanvas = forwardRef<MapCanvasHandle, MapCanvasProps>(
         setPreviewPosition({ x: worldPos.x, y: worldPos.y });
       }
 
-      // Update preview point if drawing
-      if (isDrawing && setDrawingPreviewPoint) {
+      // Handle freehand drawing - add points while dragging
+      if (isFreehandActive && addFreehandPoint) {
+        addFreehandPoint({ x: worldPos.x, y: worldPos.y });
+        return;
+      }
+
+      // Update preview point if drawing (click mode only)
+      if (isDrawing && !isFreehandActive && setDrawingPreviewPoint) {
         setDrawingPreviewPoint({ x: worldPos.x, y: worldPos.y });
       }
 
@@ -998,6 +1038,14 @@ export const MapCanvas = forwardRef<MapCanvasHandle, MapCanvasProps>(
     };
 
     const handlePointerUp = (event: { global: { x: number; y: number } }) => {
+      // Handle freehand drawing completion
+      if (isFreehandActive && endFreehand) {
+        endFreehand();
+        // Re-enable viewport drag
+        viewport.plugins.resume("drag");
+        return;
+      }
+
       // Handle endpoint drag completion (CITY-147)
       if (isEndpointDragging && completeEndpointDrag && featuresContext) {
         const dragResult = completeEndpointDrag();
@@ -1158,6 +1206,8 @@ export const MapCanvas = forwardRef<MapCanvasHandle, MapCanvasProps>(
       viewport.off("pointermove", handlePointerMove);
       viewport.off("pointerup", handlePointerUp);
       window.removeEventListener("keydown", handleKeyDown);
+      window.removeEventListener("keydown", handleShiftKeyDown);
+      window.removeEventListener("keyup", handleShiftKeyUp);
     };
   }, [
     isReady,
@@ -1165,11 +1215,16 @@ export const MapCanvas = forwardRef<MapCanvasHandle, MapCanvasProps>(
     placementContext?.confirmPlacement,
     placementContext?.setPreviewPosition,
     drawingContext?.state.isDrawing,
+    drawingContext?.state.inputMode,
+    drawingContext?.state.isFreehandActive,
     drawingContext?.addVertex,
     drawingContext?.setPreviewPoint,
     drawingContext?.completeDrawing,
     drawingContext?.cancelDrawing,
     drawingContext?.canComplete,
+    drawingContext?.startFreehand,
+    drawingContext?.addFreehandPoint,
+    drawingContext?.endFreehand,
     transitLineDrawingContext?.state.isDrawing,
     transitLineDrawingContext?.selectStation,
     transitLineDrawingContext?.setPreviewPosition,
