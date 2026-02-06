@@ -32,6 +32,10 @@ import {
   type ClipResult,
 } from "./layers/polygonUtils";
 import { generateInterDistrictRoads } from "./layers/interDistrictRoads";
+import {
+  districtRequiresArterialAdjacency,
+  generateArterialConnections,
+} from "./layers/poiArterialValidator";
 import { useTerrainOptional } from "./TerrainContext";
 import { useTransitOptional } from "./TransitContext";
 import { useToastOptional } from "../../contexts";
@@ -690,7 +694,26 @@ export function FeaturesProvider({
       );
 
       // Combine internal roads with inter-district roads
-      const allRoads = [...generated.roads, ...interDistrictResult.roads];
+      let allRoads = [...generated.roads, ...interDistrictResult.roads];
+
+      // For districts that require arterial adjacency (CITY-149),
+      // check if connected to arterials and generate additional connections if needed
+      if (districtRequiresArterialAdjacency(generated.district.type)) {
+        // Get all existing roads plus the ones we just generated
+        const allExistingRoads = [...features.roads, ...allRoads];
+
+        const arterialResult = generateArterialConnections(
+          generated.district,
+          features.districts,
+          allExistingRoads,
+          waterFeatures
+        );
+
+        // Add any additional arterial roads that were generated
+        if (!arterialResult.wasAlreadyAdjacent && arterialResult.roads.length > 0) {
+          allRoads = [...allRoads, ...arterialResult.roads];
+        }
+      }
 
       // Optimistically add to local state
       updateFeatures((prev) => ({
