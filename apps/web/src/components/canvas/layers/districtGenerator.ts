@@ -15,6 +15,15 @@
 import type { District, Road, Point, DistrictType, RoadClass } from "./types";
 import { generateDistrictName } from "../../../utils/nameGenerator";
 import { generateId } from "../../../utils/idGenerator";
+import {
+  metersToWorldUnits,
+  worldUnitsToMeters,
+  milesToWorldUnits,
+  worldUnitsToMiles,
+} from "../../../utils/worldConstants";
+
+// Re-export conversion functions for backwards compatibility
+export { metersToWorldUnits, worldUnitsToMeters, milesToWorldUnits, worldUnitsToMiles };
 
 /**
  * Base block sizes by district type (in meters).
@@ -60,48 +69,6 @@ export const DEFAULT_SCALE_SETTINGS: ScaleSettings = {
   sprawlCompact: 0.5,
 };
 
-/**
- * World scale constants.
- *
- * The world is a 3x3 tile grid, 768 world units across, representing 50 miles x 50 miles.
- * This gives us the conversion factor between world units and real-world measurements.
- */
-const WORLD_SIZE_UNITS = 768;
-const WORLD_SIZE_MILES = 50;
-const METERS_PER_MILE = 1609.34;
-const WORLD_SIZE_METERS = WORLD_SIZE_MILES * METERS_PER_MILE; // ~80,467 meters
-
-/**
- * Convert meters to world units.
- *
- * 768 world units = 50 miles = 80,467 meters
- * So 1 meter = 768 / 80467 ≈ 0.00954 world units
- * Or 1 world unit ≈ 104.8 meters
- */
-export function metersToWorldUnits(meters: number): number {
-  return (meters / WORLD_SIZE_METERS) * WORLD_SIZE_UNITS;
-}
-
-/**
- * Convert world units to meters.
- */
-export function worldUnitsToMeters(units: number): number {
-  return (units / WORLD_SIZE_UNITS) * WORLD_SIZE_METERS;
-}
-
-/**
- * Convert miles to world units.
- */
-export function milesToWorldUnits(miles: number): number {
-  return (miles / WORLD_SIZE_MILES) * WORLD_SIZE_UNITS;
-}
-
-/**
- * Convert world units to miles.
- */
-export function worldUnitsToMiles(units: number): number {
-  return (units / WORLD_SIZE_UNITS) * WORLD_SIZE_MILES;
-}
 
 /**
  * Convert sprawl_compact (0-1) to density (0-10) and calculate block size multiplier.

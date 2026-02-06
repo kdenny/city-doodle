@@ -52,12 +52,7 @@ import { usePlacementOptional, usePlacedSeedsOptional } from "../palette";
 import { useSelectionContextOptional } from "../build-view/SelectionContext";
 import type { SelectedFeature } from "../build-view/SelectionContext";
 import type { District, Road, POI, CityLimits } from "./layers";
-
-// Tile size in world coordinates
-const TILE_SIZE = 256;
-// World size (3x3 grid of tiles for now)
-const WORLD_TILES = 3;
-const WORLD_SIZE = TILE_SIZE * WORLD_TILES;
+import { TILE_SIZE, WORLD_TILES, WORLD_SIZE } from "../../utils/worldConstants";
 
 interface MapCanvasProps {
   className?: string;
