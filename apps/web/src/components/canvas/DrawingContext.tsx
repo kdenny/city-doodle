@@ -119,9 +119,13 @@ export function DrawingProvider({ children, onPolygonComplete }: DrawingProvider
   }, []);
 
   const canComplete = useCallback(() => {
-    // Need at least 3 vertices for a valid polygon
+    // Split mode only needs 2 vertices (a line)
+    if (state.mode === "split") {
+      return state.vertices.length >= 2;
+    }
+    // Other modes need at least 3 vertices for a valid polygon
     return state.vertices.length >= 3;
-  }, [state.vertices.length]);
+  }, [state.vertices.length, state.mode]);
 
   const completeDrawing = useCallback(() => {
     if (!canComplete()) return null;

@@ -80,6 +80,9 @@ export function BuildView({
     } else if (activeTool === "city-limits") {
       // Start drawing city limits when city-limits tool is selected
       drawingContext.startDrawing("cityLimits");
+    } else if (activeTool === "split") {
+      // Start split mode when split tool is selected
+      drawingContext.startDrawing("split");
     } else {
       // Cancel drawing when switching away from draw tools
       if (drawingContext.state.isDrawing) {
@@ -93,7 +96,7 @@ export function BuildView({
     if (!drawingContext) return;
 
     // If we were drawing and now we're not (polygon completed), switch to pan
-    const isDrawingTool = activeTool === "draw" || activeTool === "city-limits";
+    const isDrawingTool = activeTool === "draw" || activeTool === "city-limits" || activeTool === "split";
     if (isDrawingTool && !drawingContext.state.isDrawing && drawingContext.state.mode === null) {
       setActiveTool("pan");
     }
@@ -214,19 +217,35 @@ export function BuildView({
       {drawingContext?.state.isDrawing && (
         <div className="absolute bottom-4 left-1/2 -translate-x-1/2">
           <div className="bg-white/90 backdrop-blur-sm rounded-lg shadow-lg px-4 py-2 text-sm text-gray-700">
-            <div className="flex items-center gap-3">
-              <span>
-                {drawingContext.state.isFreehandActive ? (
-                  <>Drawing freehand... release to complete</>
-                ) : (
-                  <>Click to place vertices • Press <kbd className="px-1.5 py-0.5 bg-gray-100 rounded text-xs font-mono">Enter</kbd> or click first vertex to complete</>
-                )}
-              </span>
-              <span className="text-gray-400">|</span>
-              <span className="text-gray-500">
-                Hold <kbd className="px-1.5 py-0.5 bg-gray-100 rounded text-xs font-mono">Shift</kbd> + drag for freehand
-              </span>
-            </div>
+            {drawingContext.state.mode === "split" ? (
+              <div className="flex items-center gap-3">
+                <span>
+                  {drawingContext.state.vertices.length === 0 ? (
+                    <>Click to place the start of the split line</>
+                  ) : (
+                    <>Click to place the end of the split line • Press <kbd className="px-1.5 py-0.5 bg-gray-100 rounded text-xs font-mono">Enter</kbd> to confirm</>
+                  )}
+                </span>
+                <span className="text-gray-400">|</span>
+                <span className="text-gray-500">
+                  Press <kbd className="px-1.5 py-0.5 bg-gray-100 rounded text-xs font-mono">Esc</kbd> to cancel
+                </span>
+              </div>
+            ) : (
+              <div className="flex items-center gap-3">
+                <span>
+                  {drawingContext.state.isFreehandActive ? (
+                    <>Drawing freehand... release to complete</>
+                  ) : (
+                    <>Click to place vertices • Press <kbd className="px-1.5 py-0.5 bg-gray-100 rounded text-xs font-mono">Enter</kbd> or click first vertex to complete</>
+                  )}
+                </span>
+                <span className="text-gray-400">|</span>
+                <span className="text-gray-500">
+                  Hold <kbd className="px-1.5 py-0.5 bg-gray-100 rounded text-xs font-mono">Shift</kbd> + drag for freehand
+                </span>
+              </div>
+            )}
           </div>
         </div>
       )}

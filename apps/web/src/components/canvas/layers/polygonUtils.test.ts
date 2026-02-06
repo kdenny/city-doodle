@@ -10,6 +10,8 @@ import {
   overlapsWater,
   meetsMinimumSize,
   clipAndValidateDistrict,
+  splitPolygonWithLine,
+  findDistrictAtPoint,
 } from "./polygonUtils";
 import type { WaterFeature, Point } from "./types";
 
@@ -281,5 +283,139 @@ describe("clipAndValidateDistrict", () => {
 
     expect(result.overlapsWater).toBe(false);
     expect(result.clippedPolygon).toEqual(district);
+  });
+});
+
+describe("splitPolygonWithLine", () => {
+  const square: Point[] = [
+    { x: 0, y: 0 },
+    { x: 100, y: 0 },
+    { x: 100, y: 100 },
+    { x: 0, y: 100 },
+  ];
+
+  it("splits a square horizontally", () => {
+    // Horizontal line through the middle
+    const result = splitPolygonWithLine(
+      square,
+      { x: -10, y: 50 },
+      { x: 110, y: 50 }
+    );
+
+    expect(result.success).toBe(true);
+    expect(result.polygons).not.toBeNull();
+    expect(result.polygons!.length).toBe(2);
+
+    // Both resulting polygons should have at least 3 points
+    expect(result.polygons![0].length).toBeGreaterThanOrEqual(3);
+    expect(result.polygons![1].length).toBeGreaterThanOrEqual(3);
+
+    // Combined area should roughly equal original
+    const area1 = Math.abs(polygonArea(result.polygons![0]));
+    const area2 = Math.abs(polygonArea(result.polygons![1]));
+    const originalArea = Math.abs(polygonArea(square));
+    expect(area1 + area2).toBeCloseTo(originalArea, 0);
+  });
+
+  it("splits a square vertically", () => {
+    // Vertical line through the middle
+    const result = splitPolygonWithLine(
+      square,
+      { x: 50, y: -10 },
+      { x: 50, y: 110 }
+    );
+
+    expect(result.success).toBe(true);
+    expect(result.polygons).not.toBeNull();
+    expect(result.polygons!.length).toBe(2);
+  });
+
+  it("fails when line does not cross polygon", () => {
+    // Line completely outside the square
+    const result = splitPolygonWithLine(
+      square,
+      { x: 200, y: 0 },
+      { x: 200, y: 100 }
+    );
+
+    expect(result.success).toBe(false);
+    expect(result.polygons).toBeNull();
+    expect(result.error).toContain("does not cross");
+  });
+
+  it("fails when line only touches one edge", () => {
+    // Line that only touches the corner
+    const result = splitPolygonWithLine(
+      square,
+      { x: 0, y: 0 },
+      { x: -50, y: -50 }
+    );
+
+    expect(result.success).toBe(false);
+    expect(result.polygons).toBeNull();
+  });
+
+  it("handles diagonal split", () => {
+    // Diagonal line from one corner toward opposite
+    const result = splitPolygonWithLine(
+      square,
+      { x: -10, y: 50 },
+      { x: 50, y: 110 }
+    );
+
+    expect(result.success).toBe(true);
+    expect(result.polygons).not.toBeNull();
+  });
+
+  it("rejects invalid polygon", () => {
+    const result = splitPolygonWithLine(
+      [{ x: 0, y: 0 }, { x: 10, y: 0 }],
+      { x: 5, y: -10 },
+      { x: 5, y: 10 }
+    );
+
+    expect(result.success).toBe(false);
+    expect(result.error).toContain("Invalid polygon");
+  });
+});
+
+describe("findDistrictAtPoint", () => {
+  const districts = [
+    {
+      id: "district-1",
+      polygon: {
+        points: [
+          { x: 0, y: 0 },
+          { x: 50, y: 0 },
+          { x: 50, y: 50 },
+          { x: 0, y: 50 },
+        ],
+      },
+    },
+    {
+      id: "district-2",
+      polygon: {
+        points: [
+          { x: 60, y: 0 },
+          { x: 110, y: 0 },
+          { x: 110, y: 50 },
+          { x: 60, y: 50 },
+        ],
+      },
+    },
+  ];
+
+  it("finds district containing point", () => {
+    expect(findDistrictAtPoint({ x: 25, y: 25 }, districts)).toBe("district-1");
+    expect(findDistrictAtPoint({ x: 85, y: 25 }, districts)).toBe("district-2");
+  });
+
+  it("returns null for point outside all districts", () => {
+    expect(findDistrictAtPoint({ x: 55, y: 25 }, districts)).toBeNull();
+    expect(findDistrictAtPoint({ x: 200, y: 200 }, districts)).toBeNull();
+  });
+
+  it("returns null for empty district list", () => {
+    expect(findDistrictAtPoint({ x: 25, y: 25 }, [])).toBeNull();
   });
 });

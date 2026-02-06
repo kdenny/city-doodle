@@ -35,8 +35,10 @@ export {
   pointInPolygon,
   polygonArea,
   getPolygonBounds,
+  splitPolygonWithLine,
+  findDistrictAtPoint,
 } from "./polygonUtils";
-export type { ClipResult } from "./polygonUtils";
+export type { ClipResult, SplitResult } from "./polygonUtils";
 export type {
   TerrainData,
   LayerVisibility,
