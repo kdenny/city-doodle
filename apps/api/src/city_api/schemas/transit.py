@@ -136,7 +136,7 @@ class TransitLineSegmentCreate(BaseModel):
     from_station_id: UUID
     to_station_id: UUID
     geometry: list[Point] = Field(default_factory=list)
-    is_underground: bool = True
+    is_underground: bool = False
     order_in_line: int = Field(..., ge=0)
 
 
@@ -169,7 +169,7 @@ class TransitLineSegment(BaseModel):
     @classmethod
     def convert_geometry(cls, v: list) -> list[Point]:
         """Convert list of dicts to list of Points."""
-        if v and isinstance(v[0], dict):
+        if v and len(v) > 0 and isinstance(v[0], dict):
             return [Point(**p) for p in v]
         return v
 
