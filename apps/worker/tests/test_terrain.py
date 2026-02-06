@@ -105,7 +105,7 @@ class TestHeightfieldGeneration:
     def test_erosion_preserves_range(self):
         """Erosion should keep values in valid range."""
         heightfield = generate_heightfield(seed=42, tx=0, ty=0, tile_size=1000.0, resolution=32)
-        eroded = apply_erosion(heightfield, iterations=10)
+        eroded = apply_erosion(heightfield, seed=42, iterations=10)
 
         # Values should still be mostly in [0, 1] (erosion might slightly exceed)
         assert eroded.min() >= -0.1

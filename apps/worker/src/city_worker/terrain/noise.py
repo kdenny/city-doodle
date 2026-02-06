@@ -108,6 +108,7 @@ def generate_heightfield(
 
 def apply_erosion(
     heightfield: NDArray[np.float64],
+    seed: int,
     iterations: int = 50,
     rain_amount: float = 0.01,
     evaporation: float = 0.5,
@@ -119,6 +120,7 @@ def apply_erosion(
 
     Args:
         heightfield: 2D height array
+        seed: Random seed for deterministic erosion
         iterations: Number of rain drops to simulate
         rain_amount: Amount of water per drop
         evaporation: Rate of water loss
@@ -129,7 +131,7 @@ def apply_erosion(
     """
     result = heightfield.copy()
     h, w = result.shape
-    rng = np.random.default_rng(42)
+    rng = np.random.default_rng(seed)
 
     for _ in range(iterations * w):
         # Random starting position

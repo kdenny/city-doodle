@@ -88,7 +88,10 @@ class TerrainGenerator:
         )
 
         # Apply erosion for more realistic features
-        heightfield = apply_erosion(heightfield, iterations=30)
+        # Derive tile-specific seed from world seed and tile coordinates
+        # Use abs() to ensure non-negative seed for numpy's RNG
+        erosion_seed = abs(cfg.world_seed ^ (tx * 7919 + ty * 7927))
+        heightfield = apply_erosion(heightfield, seed=erosion_seed, iterations=30)
 
         # Calculate flow accumulation for river and bay detection
         flow_accumulation = calculate_flow_accumulation(heightfield)
