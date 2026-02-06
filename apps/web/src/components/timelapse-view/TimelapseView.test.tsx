@@ -14,7 +14,7 @@ describe("TimelapseView", () => {
 
   it("displays date with month and year", () => {
     render(
-      <TimelapseView currentDate={new Date(2023, 7, 1)}>
+      <TimelapseView initialDate={new Date(2023, 7, 1)}>
         <div>Content</div>
       </TimelapseView>
     );
@@ -23,7 +23,11 @@ describe("TimelapseView", () => {
 
   it("displays year progress", () => {
     render(
-      <TimelapseView currentYear={4} totalYears={7}>
+      <TimelapseView
+        startDate={new Date(2020, 0, 1)}
+        endDate={new Date(2026, 1, 1)}
+        initialDate={new Date(2023, 0, 1)}
+      >
         <div>Content</div>
       </TimelapseView>
     );
@@ -152,7 +156,7 @@ describe("TimelapseView", () => {
     const onDateChange = vi.fn();
     render(
       <TimelapseView
-        currentDate={new Date(2023, 7, 1)}
+        initialDate={new Date(2023, 7, 1)}
         endDate={new Date(2026, 1, 1)}
         onDateChange={onDateChange}
       >
@@ -169,7 +173,7 @@ describe("TimelapseView", () => {
     const onDateChange = vi.fn();
     render(
       <TimelapseView
-        currentDate={new Date(2023, 7, 1)}
+        initialDate={new Date(2023, 7, 1)}
         startDate={new Date(2020, 0, 1)}
         onDateChange={onDateChange}
       >

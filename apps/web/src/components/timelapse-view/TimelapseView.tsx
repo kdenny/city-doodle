@@ -1,4 +1,4 @@
-import { ReactNode, useCallback, useState } from "react";
+import { ReactNode, useCallback, useEffect, useRef, useState } from "react";
 import { DateDisplay } from "./DateDisplay";
 import { ChangesPanel, YearChange, defaultChanges } from "./ChangesPanel";
 import { TimelineScrubber, defaultYearMarkers } from "./TimelineScrubber";
@@ -11,9 +11,7 @@ export interface TimelapseViewProps {
   worldId?: string;
   startDate?: Date;
   endDate?: Date;
-  currentDate?: Date;
-  currentYear?: number;
-  totalYears?: number;
+  initialDate?: Date;
   changes?: YearChange[];
   yearMarkers?: number[];
   onDateChange?: (date: Date) => void;
@@ -21,16 +19,19 @@ export interface TimelapseViewProps {
 
 const defaultStartDate = new Date(2020, 0, 1);
 const defaultEndDate = new Date(2026, 1, 1);
-const defaultCurrentDate = new Date(2023, 7, 1);
+const defaultInitialDate = new Date(2020, 0, 1);
+
+// Base interval in ms — how often we advance the date at 1x speed
+const BASE_TICK_MS = 100;
+// How many months to advance per tick at 1x speed
+const MONTHS_PER_TICK = 1;
 
 export function TimelapseView({
   children,
   worldId,
   startDate = defaultStartDate,
   endDate = defaultEndDate,
-  currentDate = defaultCurrentDate,
-  currentYear = 4,
-  totalYears = 7,
+  initialDate = defaultInitialDate,
   changes: propChanges,
   yearMarkers = defaultYearMarkers,
   onDateChange,
@@ -49,27 +50,80 @@ export function TimelapseView({
   const changes = growth.changes.length > 0
     ? growth.changes
     : (propChanges ?? defaultChanges);
+
+  // Internal date state for playback
+  const [currentDate, setCurrentDate] = useState(initialDate);
   const [isPlaying, setIsPlaying] = useState(false);
   const [speed, setSpeed] = useState<PlaybackSpeed>(1);
+  const intervalRef = useRef<ReturnType<typeof setInterval> | null>(null);
 
+  // Derived values
   const totalTime = endDate.getTime() - startDate.getTime();
   const currentTime = currentDate.getTime() - startDate.getTime();
   const position = (currentTime / totalTime) * 100;
+  const currentYear = currentDate.getFullYear() - startDate.getFullYear() + 1;
+  const totalYears = endDate.getFullYear() - startDate.getFullYear() + 1;
+
+  // Update date and notify parent
+  const updateDate = useCallback((newDate: Date) => {
+    setCurrentDate(newDate);
+    onDateChange?.(newDate);
+  }, [onDateChange]);
+
+  // Playback timer: advance date by months based on speed
+  useEffect(() => {
+    if (intervalRef.current) {
+      clearInterval(intervalRef.current);
+      intervalRef.current = null;
+    }
+
+    if (!isPlaying) return;
+
+    const tickInterval = BASE_TICK_MS / speed;
+    intervalRef.current = setInterval(() => {
+      setCurrentDate((prev) => {
+        const next = new Date(prev);
+        next.setMonth(next.getMonth() + MONTHS_PER_TICK);
+        if (next >= endDate) {
+          setIsPlaying(false);
+          return endDate;
+        }
+        onDateChange?.(next);
+        return next;
+      });
+    }, tickInterval);
+
+    return () => {
+      if (intervalRef.current) {
+        clearInterval(intervalRef.current);
+        intervalRef.current = null;
+      }
+    };
+  }, [isPlaying, speed, endDate, onDateChange]);
 
   const handlePositionChange = (newPosition: number) => {
     const newTime = startDate.getTime() + (newPosition / 100) * totalTime;
-    onDateChange?.(new Date(newTime));
+    updateDate(new Date(newTime));
   };
 
   const handlePlayPause = () => {
-    setIsPlaying(!isPlaying);
+    if (isPlaying) {
+      setIsPlaying(false);
+    } else {
+      // If at end, restart from beginning
+      if (currentDate >= endDate) {
+        updateDate(startDate);
+      }
+      setIsPlaying(true);
+    }
   };
 
   const handleStepBack = () => {
     const newDate = new Date(currentDate);
     newDate.setFullYear(newDate.getFullYear() - 1);
     if (newDate >= startDate) {
-      onDateChange?.(newDate);
+      setIsPlaying(false);
+      updateDate(newDate);
     }
   };
 
@@ -77,7 +131,8 @@ export function TimelapseView({
     const newDate = new Date(currentDate);
     newDate.setFullYear(newDate.getFullYear() + 1);
     if (newDate <= endDate) {
-      onDateChange?.(newDate);
+      setIsPlaying(false);
+      updateDate(newDate);
     }
   };
 
