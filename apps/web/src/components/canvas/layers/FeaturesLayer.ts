@@ -171,6 +171,8 @@ export class FeaturesLayer {
   private poisGraphics: Graphics;
   private data: FeaturesData | null = null;
   private currentZoom: number = 1;
+  /** Scale factor derived from average district size. Roads widen for larger districts. */
+  private districtScale: number = 1;
 
   constructor() {
     this.container = new Container();
@@ -214,6 +216,7 @@ export class FeaturesLayer {
 
   setData(data: FeaturesData): void {
     this.data = data;
+    this.districtScale = this.computeDistrictScale(data.districts);
     this.render();
   }
 
@@ -238,6 +241,33 @@ export class FeaturesLayer {
         this.renderRoads(this.data.roads);
       }
     }
+  }
+
+  /**
+   * Compute a road width scale factor from the average district diameter.
+   * The base road widths were designed for districts ~200px across.
+   */
+  private computeDistrictScale(districts: District[]): number {
+    if (districts.length === 0) return 1;
+
+    let totalDiameter = 0;
+    for (const d of districts) {
+      const pts = d.polygon.points;
+      if (pts.length < 3) continue;
+      let minX = Infinity, maxX = -Infinity, minY = Infinity, maxY = -Infinity;
+      for (const p of pts) {
+        if (p.x < minX) minX = p.x;
+        if (p.x > maxX) maxX = p.x;
+        if (p.y < minY) minY = p.y;
+        if (p.y > maxY) maxY = p.y;
+      }
+      totalDiameter += Math.sqrt((maxX - minX) ** 2 + (maxY - minY) ** 2);
+    }
+
+    const avgDiameter = totalDiameter / districts.length;
+    const referenceDiameter = 200;
+    // Clamp between 0.5x and 3x to avoid extreme values
+    return Math.max(0.5, Math.min(3, avgDiameter / referenceDiameter));
   }
 
   private render(): void {
@@ -489,8 +519,8 @@ export class FeaturesLayer {
       return this.currentZoom >= style.minZoom;
     });
 
-    // Scale road widths with zoom (thinner when zoomed out)
-    const zoomScale = Math.max(0.5, Math.min(1.5, this.currentZoom));
+    // Scale road widths with zoom (thinner when zoomed out) and district size
+    const zoomScale = Math.max(0.5, Math.min(1.5, this.currentZoom)) * this.districtScale;
 
     // Draw road casings first (outlines) - only for roads that have casings
     for (const road of visibleRoads) {
@@ -613,8 +643,8 @@ export class FeaturesLayer {
       }
     }
 
-    // Scale bridge widths with zoom
-    const zoomScale = Math.max(0.5, Math.min(1.5, this.currentZoom));
+    // Scale bridge widths with zoom and district size
+    const zoomScale = Math.max(0.5, Math.min(1.5, this.currentZoom)) * this.districtScale;
 
     for (const bridge of bridges) {
       const style = BRIDGE_STYLES[bridge.waterType] || BRIDGE_STYLES.river;
