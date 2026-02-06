@@ -7,7 +7,7 @@ from numpy.typing import NDArray
 from shapely.geometry import LineString, MultiPolygon, Polygon
 from shapely.ops import unary_union
 
-from city_worker.terrain.types import TerrainFeature
+from city_worker.terrain.types import DEFAULT_LAKE_TYPE, LakeType, TerrainFeature
 
 
 def extract_coastlines(
@@ -521,6 +521,103 @@ def extract_beaches(
     return features
 
 
+def _classify_lake_type(
+    poly: Polygon,
+    region_cells: list[tuple[int, int]],
+    heightfield: NDArray[np.float64],
+    water_level: float,
+    cell_size: float,
+) -> tuple[LakeType, dict[str, Any]]:
+    """Classify lake type based on shape analysis and surrounding terrain.
+
+    Uses circularity, elongation, size, and depth to determine lake origin type.
+
+    Returns:
+        Tuple of (lake_type, properties_dict with metrics)
+    """
+    area = poly.area
+    perimeter = poly.length
+
+    # Circularity: 4π × area / perimeter² (1.0 = perfect circle)
+    circularity = (4 * np.pi * area) / (perimeter * perimeter) if perimeter > 0 else 0
+
+    # Get bounding box for elongation
+    minx, miny, maxx, maxy = poly.bounds
+    bbox_width = maxx - minx
+    bbox_height = maxy - miny
+
+    # Elongation: ratio of longer to shorter side
+    if bbox_width > 0 and bbox_height > 0:
+        elongation = max(bbox_width, bbox_height) / min(bbox_width, bbox_height)
+    else:
+        elongation = 1.0
+
+    # Calculate average depth (how far below water level)
+    depths = []
+    for ci, cj in region_cells:
+        depths.append(water_level - heightfield[ci, cj])
+    avg_depth = float(np.mean(depths)) if depths else 0.0
+    max_depth = float(np.max(depths)) if depths else 0.0
+
+    # Calculate surrounding terrain elevation (rim height)
+    h, w = heightfield.shape
+    rim_heights = []
+    for ci, cj in region_cells:
+        for di, dj in [(-1, 0), (1, 0), (0, -1), (0, 1)]:
+            ni, nj = ci + di, cj + dj
+            if 0 <= ni < h and 0 <= nj < w:
+                if heightfield[ni, nj] >= water_level:
+                    rim_heights.append(heightfield[ni, nj])
+    avg_rim_height = float(np.mean(rim_heights)) if rim_heights else water_level
+    rim_elevation = avg_rim_height - water_level
+
+    # Size thresholds in world units (approximate)
+    # cell_size is ~628m for default 128 resolution, 80km tile
+    pond_threshold = 50 * cell_size * cell_size  # ~50 cells worth
+    small_lake_threshold = 200 * cell_size * cell_size
+    large_lake_threshold = 1000 * cell_size * cell_size
+
+    # Classification logic
+    lake_type: LakeType = DEFAULT_LAKE_TYPE
+
+    if area < pond_threshold:
+        # Small bodies of water
+        if circularity > 0.7:
+            lake_type = "kettle"  # Small, circular - glacial ice block origin
+        else:
+            lake_type = "pond"
+    elif circularity > 0.75 and rim_elevation > 0.15:
+        # Very circular with high rim = volcanic crater
+        lake_type = "crater"
+    elif elongation > 4.0:
+        # Very elongated
+        if area > large_lake_threshold:
+            lake_type = "rift"  # Long, narrow, large = tectonic rift
+        else:
+            lake_type = "glacial"  # Finger lake style
+    elif elongation > 2.5 and circularity < 0.4:
+        # Crescent-shaped, irregular
+        lake_type = "oxbow"
+    elif area > small_lake_threshold:
+        # Larger lakes with irregular shores
+        lake_type = "glacial"
+    else:
+        lake_type = "glacial"  # Default for medium irregular lakes
+
+    # Build properties dict with metrics
+    properties = {
+        "area": area,
+        "lake_type": lake_type,
+        "circularity": round(circularity, 3),
+        "elongation": round(elongation, 2),
+        "avg_depth": round(avg_depth, 4),
+        "max_depth": round(max_depth, 4),
+        "rim_elevation": round(rim_elevation, 4),
+    }
+
+    return lake_type, properties
+
+
 def extract_lakes(
     heightfield: NDArray[np.float64],
     water_level: float,
@@ -532,6 +629,8 @@ def extract_lakes(
     """Extract lake polygons from heightfield depressions.
 
     Lakes form in areas below water level that are surrounded by higher terrain.
+    Each lake is classified by type (glacial, crater, oxbow, etc.) based on
+    shape analysis.
     """
     h, w = heightfield.shape
     cell_size = tile_size / w
@@ -563,6 +662,15 @@ def extract_lakes(
                             region_cells, tile_x, tile_y, tile_size, cell_size, w
                         )
                         if poly is not None and poly.is_valid:
+                            # Classify lake type based on shape
+                            lake_type, properties = _classify_lake_type(
+                                poly,
+                                region_cells,
+                                heightfield,
+                                water_level,
+                                cell_size,
+                            )
+
                             features.append(
                                 TerrainFeature(
                                     type="lake",
@@ -570,7 +678,7 @@ def extract_lakes(
                                         "type": "Polygon",
                                         "coordinates": [list(poly.exterior.coords)],
                                     },
-                                    properties={"area": poly.area},
+                                    properties=properties,
                                 )
                             )
 

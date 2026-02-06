@@ -16,12 +16,34 @@ export interface Line {
   width?: number;
 }
 
+/**
+ * Lake type classifications based on geological origin and shape.
+ * Used to determine visual rendering style and naming.
+ */
+export type LakeType =
+  | "glacial"   // Irregular shores, formed by glacial activity (Great Lakes, Finger Lakes)
+  | "crater"    // Circular, volcanic caldera (Crater Lake)
+  | "oxbow"     // Crescent-shaped, formed from river meander cutoff
+  | "reservoir" // Man-made with dam at one end
+  | "rift"      // Long, narrow, deep (Lake Victoria, Lake Baikal)
+  | "pond"      // Small body of water
+  | "kettle";   // Small, circular, formed by glacial ice blocks
+
 export interface WaterFeature {
   id: string;
   type: "ocean" | "lake";
   polygon: Polygon;
   /** Auto-generated or user-edited name for lakes (oceans typically don't have names) */
   name?: string;
+  /** Lake classification based on shape/origin (only for type="lake") */
+  lakeType?: LakeType;
+  /** Shape metrics for lake classification */
+  metrics?: {
+    circularity?: number;  // 0-1, how circular (1 = perfect circle)
+    elongation?: number;   // Ratio of long/short axis
+    avgDepth?: number;     // Average depth below water level
+    maxDepth?: number;     // Maximum depth
+  };
 }
 
 export interface CoastlineFeature {
