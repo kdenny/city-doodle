@@ -15,6 +15,7 @@
 
 import type { Point, Road, RoadClass, Polygon, District } from "./types";
 import { ParkSize, PARK_SIZE_CONFIG } from "../../palette/types";
+import { generateId } from "../../../utils/idGenerator";
 
 /**
  * Configuration for park generation.
@@ -87,12 +88,6 @@ class SeededRandom {
   }
 }
 
-/**
- * Generate a unique ID.
- */
-function generateId(prefix: string): string {
-  return `${prefix}-${Date.now()}-${Math.random().toString(36).substr(2, 9)}`;
-}
 
 /**
  * Calculate distance between two points.

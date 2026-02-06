@@ -14,6 +14,7 @@
 
 import type { District, Road, Point, DistrictType, RoadClass } from "./types";
 import { generateDistrictName } from "../../../utils/nameGenerator";
+import { generateId } from "../../../utils/idGenerator";
 
 /**
  * Base block sizes by district type (in meters).
@@ -248,12 +249,6 @@ class SeededRandom {
   }
 }
 
-/**
- * Generate a unique ID for a district or road.
- */
-function generateId(prefix: string): string {
-  return `${prefix}-${Date.now()}-${Math.random().toString(36).substr(2, 9)}`;
-}
 
 /**
  * Map seed type IDs to district types.

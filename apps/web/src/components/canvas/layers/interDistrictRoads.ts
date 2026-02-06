@@ -12,6 +12,7 @@
  */
 
 import type { District, Road, Point, RoadClass, WaterFeature } from "./types";
+import { generateId } from "../../../utils/idGenerator";
 
 /**
  * Configuration for inter-district road generation.
@@ -68,12 +69,6 @@ function distance(p1: Point, p2: Point): number {
   return Math.sqrt(dx * dx + dy * dy);
 }
 
-/**
- * Generate a unique ID for a road.
- */
-function generateRoadId(prefix: string): string {
-  return `${prefix}-${Date.now()}-${Math.random().toString(36).substr(2, 9)}`;
-}
 
 /**
  * Find the nearest point on a polygon boundary to a given point.
@@ -459,7 +454,7 @@ function createConnectionRoad(
   }
 
   return {
-    id: generateRoadId(`inter-district-${fromDistrict.id}-${toDistrict.id}`),
+    id: generateId(`inter-district-${fromDistrict.id}-${toDistrict.id}`),
     name: `${fromDistrict.name} - ${toDistrict.name} Connector`,
     roadClass: config.roadClass,
     line: { points: pathPoints },
