@@ -152,6 +152,7 @@ class JobRunner:
         handlers = {
             JobType.TERRAIN_GENERATION.value: self._handle_terrain_generation,
             JobType.CITY_GROWTH.value: self._handle_city_growth,
+            JobType.GROWTH_SIMULATION.value: self._handle_city_growth,
             JobType.EXPORT_PNG.value: self._handle_export_png,
             JobType.EXPORT_GIF.value: self._handle_export_gif,
         }
@@ -314,11 +315,302 @@ class JobRunner:
     async def _handle_city_growth(self, params: dict) -> dict[str, Any]:
         """Handle city growth simulation job.
 
-        Placeholder - will be implemented in CITY-15.
+        Simulates city growth over 1/5/10 year steps:
+        - Infill development in existing districts
+        - Expansion at district edges
+        - New road connections
+        - New supporting POIs
+        - Respects historic district flag (no changes)
+
+        Expected params:
+            world_id: UUID of the world
+            years: int time steps to simulate (1, 5, or 10)
         """
+        from uuid import UUID
+
+        from city_worker.growth import GrowthConfig, GrowthSimulator
+
         logger.info("City growth job with params: %s", params)
-        await asyncio.sleep(0.1)
-        return {"status": "simulated", "message": "City growth not yet implemented"}
+
+        # Validate params
+        world_id = params.get("world_id")
+        years = params.get("years", 1)
+        if world_id is None:
+            raise ValueError("world_id is required")
+
+        world_id = UUID(world_id) if isinstance(world_id, str) else world_id
+        years = max(1, min(int(years), 10))
+
+        # Fetch current world state from DB
+        districts, road_nodes, road_edges, pois, world_seed = (
+            await self._load_world_state(world_id)
+        )
+
+        if not districts:
+            return {
+                "status": "skipped",
+                "message": "No districts found in world",
+                "changelog": {"entries": [], "summary": {}},
+            }
+
+        # Run simulation
+        config = GrowthConfig(world_id=world_id, years=years)
+        simulator = GrowthSimulator(config, seed=world_seed)
+        changelog = simulator.simulate(districts, road_nodes, road_edges, pois)
+
+        # Persist changes back to DB
+        await self._save_growth_results(
+            world_id, districts, road_nodes, road_edges, pois, changelog,
+        )
+
+        result = changelog.to_dict()
+        result["status"] = "simulated"
+        return result
+
+    async def _load_world_state(
+        self, world_id: UUID,
+    ) -> tuple[list[dict], list[dict], list[dict], list[dict], int]:
+        """Load districts, road nodes, road edges, POIs, and world seed."""
+        session = await get_session()
+        try:
+            # Get world seed
+            result = await session.execute(
+                text("SELECT seed FROM worlds WHERE id = :wid"),
+                {"wid": world_id},
+            )
+            row = result.fetchone()
+            world_seed = row[0] if row else 0
+
+            # Fetch districts
+            result = await session.execute(
+                text("""
+                    SELECT id, world_id, type, name, geometry, density,
+                           max_height, transit_access, historic
+                    FROM districts WHERE world_id = :wid
+                """),
+                {"wid": world_id},
+            )
+            districts = [
+                {
+                    "id": str(r[0]), "world_id": str(r[1]), "type": r[2],
+                    "name": r[3], "geometry": r[4], "density": float(r[5]),
+                    "max_height": r[6], "transit_access": r[7], "historic": r[8],
+                }
+                for r in result.fetchall()
+            ]
+
+            # Fetch road nodes
+            result = await session.execute(
+                text("""
+                    SELECT id, world_id, position, node_type, name
+                    FROM road_nodes WHERE world_id = :wid
+                """),
+                {"wid": world_id},
+            )
+            road_nodes = [
+                {
+                    "id": str(r[0]), "world_id": str(r[1]),
+                    "position": r[2], "node_type": r[3], "name": r[4],
+                }
+                for r in result.fetchall()
+            ]
+
+            # Fetch road edges
+            result = await session.execute(
+                text("""
+                    SELECT id, world_id, from_node_id, to_node_id, road_class,
+                           geometry, length_meters, speed_limit, name,
+                           is_one_way, lanes, district_id
+                    FROM road_edges WHERE world_id = :wid
+                """),
+                {"wid": world_id},
+            )
+            road_edges = [
+                {
+                    "id": str(r[0]), "world_id": str(r[1]),
+                    "from_node_id": str(r[2]), "to_node_id": str(r[3]),
+                    "road_class": r[4], "geometry": r[5],
+                    "length_meters": float(r[6]) if r[6] else 0,
+                    "speed_limit": r[7], "name": r[8],
+                    "is_one_way": r[9], "lanes": r[10],
+                    "district_id": str(r[11]) if r[11] else None,
+                }
+                for r in result.fetchall()
+            ]
+
+            # Fetch POIs
+            result = await session.execute(
+                text("""
+                    SELECT id, world_id, type, name, position_x, position_y
+                    FROM pois WHERE world_id = :wid
+                """),
+                {"wid": world_id},
+            )
+            pois = [
+                {
+                    "id": str(r[0]), "world_id": str(r[1]),
+                    "type": r[2], "name": r[3],
+                    "position_x": float(r[4]), "position_y": float(r[5]),
+                }
+                for r in result.fetchall()
+            ]
+
+            return districts, road_nodes, road_edges, pois, world_seed
+        finally:
+            await session.close()
+
+    async def _save_growth_results(
+        self,
+        world_id: UUID,
+        districts: list[dict],
+        road_nodes: list[dict],
+        road_edges: list[dict],
+        pois: list[dict],
+        changelog: Any,
+    ) -> None:
+        """Persist growth simulation results to the database."""
+        session = await get_session()
+        try:
+            async with session.begin():
+                now = datetime.now(UTC)
+
+                # Update districts (density, max_height, geometry)
+                for entry in changelog.entries:
+                    if entry.entity_type != "district":
+                        continue
+
+                    district = next(
+                        (d for d in districts if str(d["id"]) == entry.entity_id),
+                        None,
+                    )
+                    if district is None:
+                        continue
+
+                    await session.execute(
+                        text("""
+                            UPDATE districts
+                            SET density = :density,
+                                max_height = :max_height,
+                                geometry = :geometry,
+                                updated_at = :now
+                            WHERE id = :did
+                        """),
+                        {
+                            "density": district["density"],
+                            "max_height": district["max_height"],
+                            "geometry": district["geometry"],
+                            "now": now,
+                            "did": district["id"],
+                        },
+                    )
+
+                # Insert new road nodes
+                for entry in changelog.entries:
+                    if entry.entity_type != "road_node":
+                        continue
+
+                    node = next(
+                        (n for n in road_nodes if str(n["id"]) == entry.entity_id),
+                        None,
+                    )
+                    if node is None:
+                        continue
+
+                    await session.execute(
+                        text("""
+                            INSERT INTO road_nodes
+                                (id, world_id, position, node_type, name)
+                            VALUES
+                                (:id, :world_id, :position, :node_type, :name)
+                        """),
+                        {
+                            "id": node["id"],
+                            "world_id": world_id,
+                            "position": node["position"],
+                            "node_type": node["node_type"],
+                            "name": node.get("name"),
+                        },
+                    )
+
+                # Insert new road edges
+                for entry in changelog.entries:
+                    if entry.entity_type != "road_edge":
+                        continue
+
+                    edge = next(
+                        (e for e in road_edges if str(e["id"]) == entry.entity_id),
+                        None,
+                    )
+                    if edge is None:
+                        continue
+
+                    await session.execute(
+                        text("""
+                            INSERT INTO road_edges
+                                (id, world_id, from_node_id, to_node_id,
+                                 road_class, geometry, length_meters,
+                                 speed_limit, name, is_one_way, lanes, district_id)
+                            VALUES
+                                (:id, :world_id, :from_node_id, :to_node_id,
+                                 :road_class, :geometry, :length_meters,
+                                 :speed_limit, :name, :is_one_way, :lanes, :district_id)
+                        """),
+                        {
+                            "id": edge["id"],
+                            "world_id": world_id,
+                            "from_node_id": edge["from_node_id"],
+                            "to_node_id": edge["to_node_id"],
+                            "road_class": edge["road_class"],
+                            "geometry": edge.get("geometry", []),
+                            "length_meters": edge.get("length_meters", 0),
+                            "speed_limit": edge.get("speed_limit"),
+                            "name": edge.get("name"),
+                            "is_one_way": edge.get("is_one_way", False),
+                            "lanes": edge.get("lanes", 2),
+                            "district_id": edge.get("district_id"),
+                        },
+                    )
+
+                # Insert new POIs
+                for entry in changelog.entries:
+                    if entry.entity_type != "poi":
+                        continue
+
+                    poi = next(
+                        (p for p in pois if str(p["id"]) == entry.entity_id),
+                        None,
+                    )
+                    if poi is None:
+                        continue
+
+                    await session.execute(
+                        text("""
+                            INSERT INTO pois
+                                (id, world_id, type, name, position_x, position_y)
+                            VALUES
+                                (:id, :world_id, :type, :name, :position_x, :position_y)
+                        """),
+                        {
+                            "id": poi["id"],
+                            "world_id": world_id,
+                            "type": poi["type"],
+                            "name": poi["name"],
+                            "position_x": poi["position_x"],
+                            "position_y": poi["position_y"],
+                        },
+                    )
+
+                logger.info(
+                    "Saved growth results for world %s: %d infilled, %d expanded, "
+                    "%d roads, %d POIs",
+                    world_id,
+                    changelog.districts_infilled,
+                    changelog.districts_expanded,
+                    changelog.roads_added,
+                    changelog.pois_added,
+                )
+        finally:
+            await session.close()
 
     async def _handle_export_png(self, params: dict) -> dict[str, Any]:
         """Handle PNG export job.

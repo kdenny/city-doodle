@@ -93,10 +93,39 @@ async def test_job_handler_terrain_generation_missing_params():
 async def test_job_handler_city_growth():
     """Test city growth handler returns expected result."""
     runner = JobRunner()
-    result = await runner._handle_city_growth({})
+    world_id = str(uuid4())
+
+    # Mock _load_world_state and _save_growth_results to avoid DB
+    districts = [
+        {
+            "id": str(uuid4()),
+            "world_id": world_id,
+            "type": "residential",
+            "name": "Test District",
+            "geometry": {
+                "type": "Polygon",
+                "coordinates": [[[0, 0], [1000, 0], [1000, 1000], [0, 1000], [0, 0]]],
+            },
+            "density": 3.0,
+            "max_height": 8,
+            "transit_access": False,
+            "historic": False,
+        }
+    ]
+    with (
+        patch.object(
+            runner, "_load_world_state", new_callable=AsyncMock,
+            return_value=(districts, [], [], [], 42),
+        ),
+        patch.object(runner, "_save_growth_results", new_callable=AsyncMock),
+    ):
+        result = await runner._handle_city_growth(
+            {"world_id": world_id, "years": 1},
+        )
 
     assert "status" in result
     assert result["status"] == "simulated"
+    assert "summary" in result
 
 
 @pytest.mark.asyncio
@@ -133,9 +162,8 @@ async def test_run_job_handler_valid_types():
     """Test that implemented job types are handled."""
     runner = JobRunner()
 
-    # Test non-terrain job types that don't require complex params
+    # Test export job types that don't require complex params
     simple_types = [
-        JobType.CITY_GROWTH,
         JobType.EXPORT_PNG,
         JobType.EXPORT_GIF,
     ]
@@ -150,6 +178,21 @@ async def test_run_job_handler_valid_types():
         result = await runner._run_job_handler(
             JobType.TERRAIN_GENERATION.value,
             {"world_id": str(uuid4()), "world_seed": 42, "center_tx": 0, "center_ty": 0},
+        )
+        assert isinstance(result, dict)
+        assert "status" in result
+
+    # Test city growth with required params and mocked DB
+    world_id = str(uuid4())
+    with (
+        patch.object(
+            runner, "_load_world_state", new_callable=AsyncMock,
+            return_value=([], [], [], [], 42),
+        ),
+        patch.object(runner, "_save_growth_results", new_callable=AsyncMock),
+    ):
+        result = await runner._run_job_handler(
+            JobType.CITY_GROWTH.value, {"world_id": world_id},
         )
         assert isinstance(result, dict)
         assert "status" in result
