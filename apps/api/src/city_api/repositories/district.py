@@ -28,9 +28,10 @@ async def create_district(db: AsyncSession, district_create: DistrictCreate) -> 
         f"type_value={district_create.type.value}, world_id={district_create.world_id}"
     )
 
-    # Apply type defaults if not explicitly set
-    defaults = DISTRICT_TYPE_DEFAULTS.get(district_create.type, {})
-    logger.debug(f"Type defaults lookup: type={district_create.type}, defaults={defaults}")
+    # Apply type defaults if not explicitly set (use .value for string key lookup)
+    type_value = district_create.type.value
+    defaults = DISTRICT_TYPE_DEFAULTS.get(type_value, {})
+    logger.debug(f"Type defaults lookup: type={type_value}, defaults={defaults}")
 
     density = (
         district_create.density
@@ -45,7 +46,7 @@ async def create_district(db: AsyncSession, district_create: DistrictCreate) -> 
 
     district = DistrictModel(
         world_id=district_create.world_id,
-        type=district_create.type.value,  # Pass string value, not enum (PostgreSQL expects lowercase)
+        type=type_value,  # Pass string value (PostgreSQL expects lowercase)
         name=district_create.name,
         geometry=district_create.geometry,
         density=density,
@@ -73,14 +74,15 @@ async def create_districts_bulk(
     """Create multiple districts at once."""
     models = []
     for d in districts:
-        defaults = DISTRICT_TYPE_DEFAULTS.get(d.type, {})
+        type_value = d.type.value
+        defaults = DISTRICT_TYPE_DEFAULTS.get(type_value, {})
         density = d.density if d.density != 1.0 else defaults.get("density", 1.0)
         max_height = d.max_height if d.max_height != 4 else defaults.get("max_height", 4)
 
         models.append(
             DistrictModel(
                 world_id=d.world_id,
-                type=d.type.value,  # Pass string value, not enum (PostgreSQL expects lowercase)
+                type=type_value,  # Pass string value (PostgreSQL expects lowercase)
                 name=d.name,
                 geometry=d.geometry,
                 density=density,

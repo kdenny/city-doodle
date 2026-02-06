@@ -6,7 +6,7 @@ from enum import Enum
 from typing import TYPE_CHECKING
 
 from sqlalchemy import Boolean, DateTime, Float, ForeignKey, Index, Integer, String, Uuid, func
-from sqlalchemy import Enum as SQLEnum
+from sqlalchemy.dialects.postgresql import ENUM as PGEnum
 from sqlalchemy.orm import Mapped, mapped_column, relationship
 
 from city_api.database import Base, JSONVariant
@@ -42,8 +42,22 @@ class District(Base):
     world_id: Mapped[uuid.UUID] = mapped_column(
         Uuid, ForeignKey("worlds.id", ondelete="CASCADE"), nullable=False
     )
-    type: Mapped[DistrictType] = mapped_column(
-        SQLEnum(DistrictType, name="district_type", create_constraint=True),
+    # Use PostgreSQL native enum with explicit lowercase values
+    # create_type=False since the enum is managed by migrations
+    type: Mapped[str] = mapped_column(
+        PGEnum(
+            "residential",
+            "downtown",
+            "commercial",
+            "industrial",
+            "hospital",
+            "university",
+            "k12",
+            "park",
+            "airport",
+            name="district_type",
+            create_type=False,
+        ),
         nullable=False,
     )
     # Name for labels
@@ -80,15 +94,15 @@ class District(Base):
     )
 
 
-# Default district properties by type
-DISTRICT_TYPE_DEFAULTS: dict[DistrictType, dict] = {
-    DistrictType.RESIDENTIAL: {"density": 3.0, "max_height": 8},
-    DistrictType.DOWNTOWN: {"density": 7.0, "max_height": 30},
-    DistrictType.COMMERCIAL: {"density": 5.0, "max_height": 15},
-    DistrictType.INDUSTRIAL: {"density": 2.0, "max_height": 4},
-    DistrictType.HOSPITAL: {"density": 2.0, "max_height": 6},
-    DistrictType.UNIVERSITY: {"density": 2.5, "max_height": 8},
-    DistrictType.K12: {"density": 1.5, "max_height": 4},
-    DistrictType.PARK: {"density": 0.1, "max_height": 1},
-    DistrictType.AIRPORT: {"density": 0.5, "max_height": 3},
+# Default district properties by type (keyed by string value for easy lookup)
+DISTRICT_TYPE_DEFAULTS: dict[str, dict] = {
+    "residential": {"density": 3.0, "max_height": 8},
+    "downtown": {"density": 7.0, "max_height": 30},
+    "commercial": {"density": 5.0, "max_height": 15},
+    "industrial": {"density": 2.0, "max_height": 4},
+    "hospital": {"density": 2.0, "max_height": 6},
+    "university": {"density": 2.5, "max_height": 8},
+    "k12": {"density": 1.5, "max_height": 4},
+    "park": {"density": 0.1, "max_height": 1},
+    "airport": {"density": 0.5, "max_height": 3},
 }
