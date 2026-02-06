@@ -648,13 +648,13 @@ export function FeaturesProvider({
         const { roads: newRoads, gridAngle: actualAngle } = regenerateStreetGridWithAngle(
           currentDistrict,
           updates.gridAngle,
-          currentDistrict.personality?.sprawlCompact ?? 0.5
+          currentDistrict.personality?.sprawl_compact ?? 0.5
         );
 
         // Update district with new gridAngle and replace its roads
         updateFeatures((prev) => {
-          // Remove old roads belonging to this district
-          const otherRoads = prev.roads.filter((r) => r.districtId !== id);
+          // Remove old roads belonging to this district (road IDs start with district ID)
+          const otherRoads = prev.roads.filter((r) => !r.id.startsWith(id));
           return {
             ...prev,
             districts: prev.districts.map((d) =>
