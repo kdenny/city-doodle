@@ -20,8 +20,8 @@ interface ScaleSettingsProps {
 
 const BLOCK_SIZE_MIN = 50;
 const BLOCK_SIZE_MAX = 300;
-const DISTRICT_SIZE_MIN = 200;
-const DISTRICT_SIZE_MAX = 1000;
+const DISTRICT_SIZE_MIN = 1000;
+const DISTRICT_SIZE_MAX = 6000;
 
 export function ScaleSettings({
   values,
@@ -152,7 +152,7 @@ export function ScaleSettings({
               type="range"
               min={DISTRICT_SIZE_MIN}
               max={DISTRICT_SIZE_MAX}
-              step={50}
+              step={200}
               value={values.district_size_meters}
               onChange={handleDistrictSizeChange}
               disabled={disabled}
@@ -180,7 +180,7 @@ export function ScaleSettings({
 export function useScaleSettings(initialValues?: Partial<ScaleSettingsValues>) {
   const [values, setValues] = useState<ScaleSettingsValues>({
     block_size_meters: initialValues?.block_size_meters ?? 100,
-    district_size_meters: initialValues?.district_size_meters ?? 500,
+    district_size_meters: initialValues?.district_size_meters ?? 3200,
   });
 
   const updateValues = useCallback((newValues: ScaleSettingsValues) => {

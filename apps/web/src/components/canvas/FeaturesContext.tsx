@@ -609,7 +609,7 @@ export function FeaturesProvider({
         organicFactor: personality.grid_organic,
         scaleSettings: {
           blockSizeMeters: config?.scaleSettings?.blockSizeMeters ?? world?.settings.block_size_meters ?? 100,
-          districtSizeMeters: config?.scaleSettings?.districtSizeMeters ?? world?.settings.district_size_meters ?? 500,
+          districtSizeMeters: config?.scaleSettings?.districtSizeMeters ?? world?.settings.district_size_meters ?? 3200,
           sprawlCompact: personality.sprawl_compact,
         },
         // Pass through the explicit seed if provided
@@ -862,7 +862,7 @@ export function FeaturesProvider({
         organicFactor: personality.grid_organic,
         scaleSettings: {
           blockSizeMeters: config?.scaleSettings?.blockSizeMeters ?? world?.settings.block_size_meters ?? 100,
-          districtSizeMeters: config?.scaleSettings?.districtSizeMeters ?? world?.settings.district_size_meters ?? 500,
+          districtSizeMeters: config?.scaleSettings?.districtSizeMeters ?? world?.settings.district_size_meters ?? 3200,
           sprawlCompact: personality.sprawl_compact,
         },
       };

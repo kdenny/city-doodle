@@ -396,7 +396,7 @@ describe("getEffectiveDistrictConfig", () => {
     const sprawlingConfig = getEffectiveDistrictConfig({
       scaleSettings: {
         blockSizeMeters: 100,
-        districtSizeMeters: 500,
+        districtSizeMeters: 3200,
         sprawlCompact: 0, // Sprawling
       },
     });
@@ -404,7 +404,7 @@ describe("getEffectiveDistrictConfig", () => {
     const compactConfig = getEffectiveDistrictConfig({
       scaleSettings: {
         blockSizeMeters: 100,
-        districtSizeMeters: 500,
+        districtSizeMeters: 3200,
         sprawlCompact: 1, // Compact
       },
     });
@@ -421,7 +421,7 @@ describe("getEffectiveDistrictConfig", () => {
       maxSize: 1111,
       scaleSettings: {
         blockSizeMeters: 100,
-        districtSizeMeters: 500,
+        districtSizeMeters: 3200,
         sprawlCompact: 0.5,
       },
     });
@@ -466,7 +466,7 @@ describe("generateDistrictGeometry with scale settings", () => {
     const denseConfig: DistrictGenerationConfig = {
       scaleSettings: {
         blockSizeMeters: 50,
-        districtSizeMeters: 500,
+        districtSizeMeters: 3200,
         sprawlCompact: 0.5,
       },
     };
@@ -474,7 +474,7 @@ describe("generateDistrictGeometry with scale settings", () => {
     const sparseConfig: DistrictGenerationConfig = {
       scaleSettings: {
         blockSizeMeters: 200,
-        districtSizeMeters: 500,
+        districtSizeMeters: 3200,
         sprawlCompact: 0.5,
       },
     };
@@ -490,7 +490,7 @@ describe("generateDistrictGeometry with scale settings", () => {
     const sprawlingConfig: DistrictGenerationConfig = {
       scaleSettings: {
         blockSizeMeters: 100,
-        districtSizeMeters: 500,
+        districtSizeMeters: 3200,
         sprawlCompact: 0.1, // Very sprawling
       },
     };
@@ -498,7 +498,7 @@ describe("generateDistrictGeometry with scale settings", () => {
     const compactConfig: DistrictGenerationConfig = {
       scaleSettings: {
         blockSizeMeters: 100,
-        districtSizeMeters: 500,
+        districtSizeMeters: 3200,
         sprawlCompact: 0.9, // Very compact
       },
     };
@@ -606,7 +606,7 @@ describe("CITY-142: Street hierarchy", () => {
     const result = generateDistrictGeometry({ x: 700, y: 700 }, "commercial", {
       scaleSettings: {
         blockSizeMeters: 40, // Small blocks = more streets
-        districtSizeMeters: 500,
+        districtSizeMeters: 3200,
         sprawlCompact: 0.5,
       },
     });

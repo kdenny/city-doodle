@@ -58,7 +58,7 @@ export interface WorldSettings {
   transit_car: number;
   /** Size of a city block in meters (50-300) */
   block_size_meters: number;
-  /** Size of a district in meters (200-1000) */
+  /** Size of a district in meters (1000-6000) */
   district_size_meters: number;
   /** Whether to generate beaches along coastlines */
   beach_enabled: boolean;
