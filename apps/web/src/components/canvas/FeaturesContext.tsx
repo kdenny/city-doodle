@@ -16,7 +16,7 @@ import {
   useRef,
   ReactNode,
 } from "react";
-import type { District, Neighborhood, CityLimits, Road, POI, FeaturesData, Point, DistrictPersonality } from "./layers";
+import type { District, Neighborhood, CityLimits, Road, POI, FeaturesData, Point, DistrictPersonality, RoadClass } from "./layers";
 import { DEFAULT_DISTRICT_PERSONALITY } from "./layers/types";
 import { detectBridges } from "./layers/bridgeDetection";
 import {
@@ -50,6 +50,7 @@ interface AddDistrictConfig extends DistrictGenerationConfig {
   seed?: number;
 }
 import {
+  useWorld,
   useWorldDistricts,
   useCreateDistrict,
   useUpdateDistrict,
@@ -58,11 +59,19 @@ import {
   useCreateNeighborhood,
   useUpdateNeighborhood,
   useDeleteNeighborhood,
+  useRoadNetwork,
+  useCreateRoadNodesBulk,
+  useCreateRoadEdgesBulk,
 } from "../../api/hooks";
 import type {
   District as ApiDistrict,
   DistrictType as ApiDistrictType,
   Neighborhood as ApiNeighborhood,
+  RoadNetwork as ApiRoadNetwork,
+  RoadNode as ApiRoadNode,
+  RoadNodeCreate,
+  RoadEdgeCreate,
+  RoadClass as ApiRoadClass,
 } from "../../api/types";
 
 /**
@@ -241,6 +250,142 @@ function fromApiNeighborhood(apiNeighborhood: ApiNeighborhood): Neighborhood {
   };
 }
 
+/**
+ * Map frontend road class to API road class.
+ */
+function toApiRoadClass(frontendClass: RoadClass): ApiRoadClass {
+  const mapping: Record<RoadClass, ApiRoadClass> = {
+    highway: "highway",
+    arterial: "arterial",
+    collector: "collector",
+    local: "local",
+    trail: "alley", // Map trail to alley as closest match
+  };
+  return mapping[frontendClass] || "local";
+}
+
+/**
+ * Map API road class to frontend road class.
+ */
+function fromApiRoadClass(apiClass: ApiRoadClass): RoadClass {
+  const mapping: Record<ApiRoadClass, RoadClass> = {
+    highway: "highway",
+    arterial: "arterial",
+    collector: "collector",
+    local: "local",
+    alley: "trail", // Map alley to trail as closest match
+  };
+  return mapping[apiClass] || "local";
+}
+
+/**
+ * Convert frontend roads to API nodes and edges.
+ * Creates nodes at endpoints and shared intersections.
+ */
+function roadsToGraph(
+  roads: Road[],
+  worldId: string,
+  districtId?: string
+): { nodes: RoadNodeCreate[]; edges: RoadEdgeCreate[] } {
+  const nodes: RoadNodeCreate[] = [];
+  const edges: RoadEdgeCreate[] = [];
+
+  // Map to track nodes by position (x,y key -> node index)
+  const nodeMap = new Map<string, number>();
+
+  const posKey = (p: Point) => `${p.x.toFixed(3)},${p.y.toFixed(3)}`;
+
+  for (const road of roads) {
+    if (road.line.points.length < 2) continue;
+
+    const firstPoint = road.line.points[0];
+    const lastPoint = road.line.points[road.line.points.length - 1];
+
+    // Get or create node for first point
+    const firstKey = posKey(firstPoint);
+    let fromNodeIndex: number;
+    if (nodeMap.has(firstKey)) {
+      fromNodeIndex = nodeMap.get(firstKey)!;
+    } else {
+      fromNodeIndex = nodes.length;
+      nodeMap.set(firstKey, fromNodeIndex);
+      nodes.push({
+        world_id: worldId,
+        position: { x: firstPoint.x, y: firstPoint.y },
+        node_type: "intersection",
+      });
+    }
+
+    // Get or create node for last point
+    const lastKey = posKey(lastPoint);
+    let toNodeIndex: number;
+    if (nodeMap.has(lastKey)) {
+      toNodeIndex = nodeMap.get(lastKey)!;
+    } else {
+      toNodeIndex = nodes.length;
+      nodeMap.set(lastKey, toNodeIndex);
+      nodes.push({
+        world_id: worldId,
+        position: { x: lastPoint.x, y: lastPoint.y },
+        node_type: "intersection",
+      });
+    }
+
+    // Create edge with intermediate geometry
+    const geometry = road.line.points.slice(1, -1).map(p => ({ x: p.x, y: p.y }));
+    edges.push({
+      world_id: worldId,
+      from_node_id: String(fromNodeIndex), // Will be replaced with real IDs after node creation
+      to_node_id: String(toNodeIndex),
+      road_class: toApiRoadClass(road.roadClass),
+      geometry,
+      name: road.name,
+      district_id: districtId,
+    });
+  }
+
+  return { nodes, edges };
+}
+
+/**
+ * Convert API road network to frontend roads.
+ */
+function graphToRoads(network: ApiRoadNetwork): Road[] {
+  if (!network.nodes.length || !network.edges.length) {
+    return [];
+  }
+
+  // Build node lookup map
+  const nodeMap = new Map<string, ApiRoadNode>();
+  for (const node of network.nodes) {
+    nodeMap.set(node.id, node);
+  }
+
+  const roads: Road[] = [];
+
+  for (const edge of network.edges) {
+    const fromNode = nodeMap.get(edge.from_node_id);
+    const toNode = nodeMap.get(edge.to_node_id);
+    if (!fromNode || !toNode) continue;
+
+    // Build points array: from_node -> geometry -> to_node
+    const points: Point[] = [
+      { x: fromNode.position.x, y: fromNode.position.y },
+      ...(edge.geometry || []).map(p => ({ x: p.x, y: p.y })),
+      { x: toNode.position.x, y: toNode.position.y },
+    ];
+
+    roads.push({
+      id: edge.id,
+      name: edge.name,
+      roadClass: fromApiRoadClass(edge.road_class),
+      line: { points },
+    });
+  }
+
+  return roads;
+}
+
 export function FeaturesProvider({
   children,
   worldId,
@@ -260,6 +405,10 @@ export function FeaturesProvider({
   const pendingCreates = useRef<Set<string>>(new Set());
 
   // API hooks - only enabled when worldId is provided
+  const { data: world } = useWorld(worldId || "", {
+    enabled: !!worldId,
+  });
+
   const {
     data: apiDistricts,
     isLoading: isLoadingDistricts,
@@ -284,6 +433,17 @@ export function FeaturesProvider({
   const updateNeighborhoodMutation = useUpdateNeighborhood();
   const deleteNeighborhoodMutation = useDeleteNeighborhood();
 
+  const {
+    data: apiRoadNetwork,
+    isLoading: isLoadingRoads,
+    error: loadRoadsError,
+  } = useRoadNetwork(worldId || "", {
+    enabled: !!worldId,
+  });
+
+  const createRoadNodesBulkMutation = useCreateRoadNodesBulk();
+  const createRoadEdgesBulkMutation = useCreateRoadEdgesBulk();
+
   // Load districts and neighborhoods from API when data is available
   useEffect(() => {
     if (worldId && apiDistricts) {
@@ -305,14 +465,25 @@ export function FeaturesProvider({
     }
   }, [worldId, apiNeighborhoods]);
 
-  // Mark as initialized when both districts and neighborhoods are loaded (or not using worldId)
+  // Load roads from API when data is available
+  useEffect(() => {
+    if (worldId && apiRoadNetwork) {
+      const loadedRoads = graphToRoads(apiRoadNetwork);
+      setFeaturesState((prev) => ({
+        ...prev,
+        roads: loadedRoads,
+      }));
+    }
+  }, [worldId, apiRoadNetwork]);
+
+  // Mark as initialized when districts, neighborhoods, and roads are loaded (or not using worldId)
   useEffect(() => {
     if (!worldId) {
       setIsInitialized(true);
-    } else if (apiDistricts !== undefined && apiNeighborhoods !== undefined) {
+    } else if (apiDistricts !== undefined && apiNeighborhoods !== undefined && apiRoadNetwork !== undefined) {
       setIsInitialized(true);
     }
-  }, [worldId, apiDistricts, apiNeighborhoods]);
+  }, [worldId, apiDistricts, apiNeighborhoods, apiRoadNetwork]);
 
   // Auto-detect bridges when roads or terrain change (CITY-148)
   useEffect(() => {
@@ -366,12 +537,13 @@ export function FeaturesProvider({
 
       // Use personality settings to configure district generation
       // sprawl_compact affects block size, grid_organic affects street patterns
+      // Use world settings for scale if available, otherwise use defaults
       const generationConfig: DistrictGenerationConfig = {
         ...config,
         organicFactor: personality.grid_organic,
         scaleSettings: {
-          blockSizeMeters: config?.scaleSettings?.blockSizeMeters ?? DEFAULT_SCALE_SETTINGS.blockSizeMeters,
-          districtSizeMeters: config?.scaleSettings?.districtSizeMeters ?? DEFAULT_SCALE_SETTINGS.districtSizeMeters,
+          blockSizeMeters: config?.scaleSettings?.blockSizeMeters ?? world?.settings.block_size_meters ?? 100,
+          districtSizeMeters: config?.scaleSettings?.districtSizeMeters ?? world?.settings.district_size_meters ?? 500,
           sprawlCompact: personality.sprawl_compact,
         },
         // Pass through the explicit seed if provided
@@ -473,9 +645,14 @@ export function FeaturesProvider({
             },
           },
           {
-            onSuccess: (apiDistrict) => {
+            onSuccess: async (apiDistrict) => {
               // Replace temp ID with real ID from API
               pendingCreates.current.delete(tempId);
+
+              // Get roads for this district from local state
+              const districtRoads = allRoads.filter(r => r.id.startsWith(tempId));
+
+              // Update IDs in local state
               updateFeatures((prev) => ({
                 ...prev,
                 districts: prev.districts.map((d) =>
@@ -488,6 +665,56 @@ export function FeaturesProvider({
                     : r
                 ),
               }));
+
+              // Persist roads to API if there are any
+              if (districtRoads.length > 0 && worldId) {
+                try {
+                  // Convert roads to graph model
+                  const { nodes, edges } = roadsToGraph(districtRoads, worldId, apiDistrict.id);
+
+                  if (nodes.length > 0) {
+                    // Create nodes first to get their IDs
+                    const createdNodes = await new Promise<ApiRoadNode[]>((resolve, reject) => {
+                      createRoadNodesBulkMutation.mutate(
+                        { worldId, data: { nodes } },
+                        {
+                          onSuccess: resolve,
+                          onError: reject,
+                        }
+                      );
+                    });
+
+                    // Map node indices to real IDs
+                    const nodeIdMap = new Map<string, string>();
+                    for (let i = 0; i < createdNodes.length; i++) {
+                      nodeIdMap.set(String(i), createdNodes[i].id);
+                    }
+
+                    // Update edge references with real node IDs
+                    const edgesWithRealIds: RoadEdgeCreate[] = edges.map((edge) => ({
+                      ...edge,
+                      from_node_id: nodeIdMap.get(edge.from_node_id) || edge.from_node_id,
+                      to_node_id: nodeIdMap.get(edge.to_node_id) || edge.to_node_id,
+                    }));
+
+                    // Create edges
+                    if (edgesWithRealIds.length > 0) {
+                      await new Promise<void>((resolve, reject) => {
+                        createRoadEdgesBulkMutation.mutate(
+                          { worldId, data: { edges: edgesWithRealIds } },
+                          {
+                            onSuccess: () => resolve(),
+                            onError: reject,
+                          }
+                        );
+                      });
+                    }
+                  }
+                } catch (roadError) {
+                  console.error("Failed to save roads:", roadError);
+                  // Roads are non-critical, don't show error toast for this
+                }
+              }
             },
             onError: (error) => {
               // Remove the optimistically added district on error
@@ -513,7 +740,7 @@ export function FeaturesProvider({
         clipResult: clipResult.overlapsWater ? clipResult : undefined,
       };
     },
-    [worldId, features.districts, updateFeatures, createDistrictMutation, terrainContext, toast]
+    [worldId, world, features.districts, updateFeatures, createDistrictMutation, createRoadNodesBulkMutation, createRoadEdgesBulkMutation, terrainContext, toast]
   );
 
   const previewDistrictPlacement = useCallback(
@@ -528,8 +755,8 @@ export function FeaturesProvider({
         ...config,
         organicFactor: personality.grid_organic,
         scaleSettings: {
-          blockSizeMeters: config?.scaleSettings?.blockSizeMeters ?? DEFAULT_SCALE_SETTINGS.blockSizeMeters,
-          districtSizeMeters: config?.scaleSettings?.districtSizeMeters ?? DEFAULT_SCALE_SETTINGS.districtSizeMeters,
+          blockSizeMeters: config?.scaleSettings?.blockSizeMeters ?? world?.settings.block_size_meters ?? 100,
+          districtSizeMeters: config?.scaleSettings?.districtSizeMeters ?? world?.settings.district_size_meters ?? 500,
           sprawlCompact: personality.sprawl_compact,
         },
       };
@@ -545,7 +772,7 @@ export function FeaturesProvider({
         generated.district.type
       );
     },
-    [terrainContext]
+    [world, terrainContext]
   );
 
   const addDistrictWithGeometry = useCallback(
@@ -897,8 +1124,8 @@ export function FeaturesProvider({
     [updateFeatures]
   );
 
-  const isLoading = !isInitialized || (!!worldId && (isLoadingDistricts || isLoadingNeighborhoods));
-  const error = loadDistrictsError || loadNeighborhoodsError || null;
+  const isLoading = !isInitialized || (!!worldId && (isLoadingDistricts || isLoadingNeighborhoods || isLoadingRoads));
+  const error = loadDistrictsError || loadNeighborhoodsError || loadRoadsError || null;
 
   const value: FeaturesContextValue = {
     features,
