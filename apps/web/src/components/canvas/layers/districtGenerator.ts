@@ -567,7 +567,8 @@ function pointToLineDistance(point: Point, lineStart: Point, lineEnd: Point): nu
  * - Every 3-4 blocks, internal street upgraded to COLLECTOR
  * - All other internal streets = LOCAL class
  *
- * Grid is rotated by a semi-random angle based on district position.
+ * Grid is rotated by a semi-random angle based on district position,
+ * or by an explicitly provided angle.
  */
 function generateStreetGrid(
   polygon: Point[],
@@ -575,14 +576,15 @@ function generateStreetGrid(
   _roadClass: RoadClass, // Ignored - we determine class based on hierarchy
   districtId: string,
   rng: SeededRandom,
-  districtType: DistrictType = "residential"
-): Road[] {
+  districtType: DistrictType = "residential",
+  explicitGridAngle?: number
+): { roads: Road[]; gridAngle: number } {
   const bounds = getPolygonBounds(polygon);
   const centroid = getPolygonCentroid(polygon);
   const roads: Road[] = [];
 
-  // Calculate grid rotation angle (-15 to +15 degrees)
-  const rotationAngle = calculateGridRotation(centroid, rng);
+  // Use explicit angle if provided, otherwise calculate from position
+  const rotationAngle = explicitGridAngle ?? calculateGridRotation(centroid, rng);
 
   // Collector interval: upgrade to collector every 3-4 blocks
   const collectorInterval = rng.intRange(3, 5);
@@ -733,7 +735,7 @@ function generateStreetGrid(
     vStreetCount++;
   }
 
-  return roads;
+  return { roads, gridAngle: rotationAngle };
 }
 
 /**
@@ -817,7 +819,7 @@ export function generateDistrictGeometry(
     const densityMultiplier = calculateDensityMultiplier(sprawlCompact);
     const effectiveBlockSize = metersToWorldUnits(baseBlockSize * densityMultiplier);
 
-    roads = generateStreetGrid(
+    const gridResult = generateStreetGrid(
       polygonPoints,
       effectiveBlockSize,
       cfg.streetClass, // This is now ignored - hierarchy determines class
@@ -825,6 +827,9 @@ export function generateDistrictGeometry(
       rng,
       districtType
     );
+    roads = gridResult.roads;
+    // Store the grid angle for future editing
+    district.gridAngle = gridResult.gridAngle;
   }
 
   return { district, roads };
@@ -879,23 +884,25 @@ export function wouldOverlap(
  * @param districtType - The district type for block sizing
  * @param position - Original district position (for deterministic RNG)
  * @param sprawlCompact - Sprawl-compact slider value (0-1)
- * @returns Array of roads for the clipped polygon
+ * @param gridAngle - Optional explicit grid angle (if not provided, calculated from position)
+ * @returns Object with roads array and the grid angle used
  */
 export function regenerateStreetGridForClippedDistrict(
   clippedPolygon: Point[],
   districtId: string,
   districtType: DistrictType,
   position: { x: number; y: number },
-  sprawlCompact: number = 0.5
-): Road[] {
+  sprawlCompact: number = 0.5,
+  gridAngle?: number
+): { roads: Road[]; gridAngle: number } {
   // Don't generate streets for parks or airports
   if (districtType === "park" || districtType === "airport") {
-    return [];
+    return { roads: [], gridAngle: gridAngle ?? 0 };
   }
 
   // Need at least 3 points for a valid polygon
   if (clippedPolygon.length < 3) {
-    return [];
+    return { roads: [], gridAngle: gridAngle ?? 0 };
   }
 
   // Use position to seed the RNG for deterministic results
@@ -913,6 +920,54 @@ export function regenerateStreetGridForClippedDistrict(
     "local", // Ignored - hierarchy determines class
     districtId,
     rng,
-    districtType
+    districtType,
+    gridAngle
+  );
+}
+
+/**
+ * Regenerate the street grid for a district with a new grid angle.
+ * Used when the user rotates the grid via the inspector panel.
+ *
+ * @param district - The district to regenerate streets for
+ * @param newGridAngle - The new grid angle in radians
+ * @param sprawlCompact - Sprawl-compact slider value (0-1)
+ * @returns Object with new roads array and the grid angle
+ */
+export function regenerateStreetGridWithAngle(
+  district: District,
+  newGridAngle: number,
+  sprawlCompact: number = 0.5
+): { roads: Road[]; gridAngle: number } {
+  // Don't generate streets for parks or airports
+  if (district.type === "park" || district.type === "airport") {
+    return { roads: [], gridAngle: newGridAngle };
+  }
+
+  const polygonPoints = district.polygon.points;
+
+  // Need at least 3 points for a valid polygon
+  if (polygonPoints.length < 3) {
+    return { roads: [], gridAngle: newGridAngle };
+  }
+
+  // Get centroid for position-based seed
+  const centroid = getPolygonCentroid(polygonPoints);
+  const seed = Math.floor(centroid.x * 1000 + centroid.y * 7919);
+  const rng = new SeededRandom(seed);
+
+  // Calculate type-specific block size with density multiplier
+  const baseBlockSize = getBaseBlockSize(district.type);
+  const densityMultiplier = calculateDensityMultiplier(sprawlCompact);
+  const effectiveBlockSize = metersToWorldUnits(baseBlockSize * densityMultiplier);
+
+  return generateStreetGrid(
+    polygonPoints,
+    effectiveBlockSize,
+    "local", // Ignored - hierarchy determines class
+    district.id,
+    rng,
+    district.type,
+    newGridAngle
   );
 }

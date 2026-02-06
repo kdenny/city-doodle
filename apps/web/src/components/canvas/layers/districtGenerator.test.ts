@@ -633,7 +633,7 @@ describe("CITY-142: regenerateStreetGridForClippedDistrict", () => {
       { x: 100, y: 250 },
     ];
 
-    const roads = regenerateStreetGridForClippedDistrict(
+    const result = regenerateStreetGridForClippedDistrict(
       clippedPolygon,
       "district-123",
       "residential",
@@ -641,10 +641,11 @@ describe("CITY-142: regenerateStreetGridForClippedDistrict", () => {
       0.5
     );
 
-    expect(roads.length).toBeGreaterThan(0);
+    expect(result.roads.length).toBeGreaterThan(0);
+    expect(typeof result.gridAngle).toBe("number");
 
     // Road IDs should include the district ID
-    for (const road of roads) {
+    for (const road of result.roads) {
       expect(road.id).toContain("district-123");
     }
   });
@@ -657,7 +658,7 @@ describe("CITY-142: regenerateStreetGridForClippedDistrict", () => {
       { x: 0, y: 100 },
     ];
 
-    const parkRoads = regenerateStreetGridForClippedDistrict(
+    const parkResult = regenerateStreetGridForClippedDistrict(
       polygon,
       "park-1",
       "park",
@@ -665,7 +666,7 @@ describe("CITY-142: regenerateStreetGridForClippedDistrict", () => {
       0.5
     );
 
-    const airportRoads = regenerateStreetGridForClippedDistrict(
+    const airportResult = regenerateStreetGridForClippedDistrict(
       polygon,
       "airport-1",
       "airport",
@@ -673,8 +674,8 @@ describe("CITY-142: regenerateStreetGridForClippedDistrict", () => {
       0.5
     );
 
-    expect(parkRoads).toHaveLength(0);
-    expect(airportRoads).toHaveLength(0);
+    expect(parkResult.roads).toHaveLength(0);
+    expect(airportResult.roads).toHaveLength(0);
   });
 
   it("returns empty array for invalid polygons (less than 3 points)", () => {
@@ -683,7 +684,7 @@ describe("CITY-142: regenerateStreetGridForClippedDistrict", () => {
       { x: 100, y: 100 },
     ];
 
-    const roads = regenerateStreetGridForClippedDistrict(
+    const result = regenerateStreetGridForClippedDistrict(
       invalidPolygon,
       "district-1",
       "residential",
@@ -691,7 +692,7 @@ describe("CITY-142: regenerateStreetGridForClippedDistrict", () => {
       0.5
     );
 
-    expect(roads).toHaveLength(0);
+    expect(result.roads).toHaveLength(0);
   });
 
   it("applies density multiplier based on sprawl_compact", () => {
@@ -703,7 +704,7 @@ describe("CITY-142: regenerateStreetGridForClippedDistrict", () => {
     ];
 
     // Sprawling (low density)
-    const sprawlingRoads = regenerateStreetGridForClippedDistrict(
+    const sprawlingResult = regenerateStreetGridForClippedDistrict(
       polygon,
       "district-s",
       "residential",
@@ -712,7 +713,7 @@ describe("CITY-142: regenerateStreetGridForClippedDistrict", () => {
     );
 
     // Compact (high density)
-    const compactRoads = regenerateStreetGridForClippedDistrict(
+    const compactResult = regenerateStreetGridForClippedDistrict(
       polygon,
       "district-c",
       "residential",
@@ -721,7 +722,7 @@ describe("CITY-142: regenerateStreetGridForClippedDistrict", () => {
     );
 
     // Compact should have more roads due to smaller block spacing
-    expect(compactRoads.length).toBeGreaterThanOrEqual(sprawlingRoads.length);
+    expect(compactResult.roads.length).toBeGreaterThanOrEqual(sprawlingResult.roads.length);
   });
 
   it("uses consistent RNG based on position for deterministic results", () => {
@@ -732,7 +733,7 @@ describe("CITY-142: regenerateStreetGridForClippedDistrict", () => {
       { x: 0, y: 200 },
     ];
 
-    const roads1 = regenerateStreetGridForClippedDistrict(
+    const result1 = regenerateStreetGridForClippedDistrict(
       polygon,
       "district-1",
       "residential",
@@ -740,7 +741,7 @@ describe("CITY-142: regenerateStreetGridForClippedDistrict", () => {
       0.5
     );
 
-    const roads2 = regenerateStreetGridForClippedDistrict(
+    const result2 = regenerateStreetGridForClippedDistrict(
       polygon,
       "district-2", // Different ID
       "residential",
@@ -749,10 +750,34 @@ describe("CITY-142: regenerateStreetGridForClippedDistrict", () => {
     );
 
     // Road positions should be the same (same position = same RNG seed)
-    expect(roads1.length).toBe(roads2.length);
-    if (roads1.length > 0 && roads2.length > 0) {
-      expect(roads1[0].line.points[0].x).toBeCloseTo(roads2[0].line.points[0].x, 1);
-      expect(roads1[0].line.points[0].y).toBeCloseTo(roads2[0].line.points[0].y, 1);
+    expect(result1.roads.length).toBe(result2.roads.length);
+    if (result1.roads.length > 0 && result2.roads.length > 0) {
+      expect(result1.roads[0].line.points[0].x).toBeCloseTo(result2.roads[0].line.points[0].x, 1);
+      expect(result1.roads[0].line.points[0].y).toBeCloseTo(result2.roads[0].line.points[0].y, 1);
     }
+  });
+
+  it("accepts explicit grid angle parameter", () => {
+    const polygon = [
+      { x: 0, y: 0 },
+      { x: 200, y: 0 },
+      { x: 200, y: 200 },
+      { x: 0, y: 200 },
+    ];
+
+    const explicitAngle = Math.PI / 6; // 30 degrees
+
+    const result = regenerateStreetGridForClippedDistrict(
+      polygon,
+      "district-1",
+      "residential",
+      { x: 100, y: 100 },
+      0.5,
+      explicitAngle
+    );
+
+    // Should use the explicit angle
+    expect(result.gridAngle).toBe(explicitAngle);
+    expect(result.roads.length).toBeGreaterThan(0);
   });
 });

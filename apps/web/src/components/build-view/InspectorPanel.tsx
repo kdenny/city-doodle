@@ -28,6 +28,8 @@ export interface SelectedDistrict {
   population?: number;
   /** Per-district personality settings */
   personality?: DistrictPersonality;
+  /** Grid orientation angle in radians */
+  gridAngle?: number;
 }
 
 export interface SelectedRoad {
@@ -207,6 +209,23 @@ const DENSITY_PRESETS = [
   { label: "Max", value: 10, description: "Downtown core" },
 ] as const;
 
+/** Convert radians to degrees */
+function radToDeg(rad: number): number {
+  return (rad * 180) / Math.PI;
+}
+
+/** Convert degrees to radians */
+function degToRad(deg: number): number {
+  return (deg * Math.PI) / 180;
+}
+
+/** Normalize angle to -180 to 180 degrees */
+function normalizeAngle(deg: number): number {
+  while (deg > 180) deg -= 360;
+  while (deg < -180) deg += 360;
+  return deg;
+}
+
 function DistrictInspector({
   district,
   onUpdate,
@@ -219,6 +238,10 @@ function DistrictInspector({
   const [isHistoric, setIsHistoric] = useState(district.isHistoric);
   const [personality, setPersonality] = useState<DistrictPersonality>(
     district.personality ?? DEFAULT_DISTRICT_PERSONALITY
+  );
+  // Grid angle in degrees for easier editing
+  const [gridAngleDeg, setGridAngleDeg] = useState(
+    district.gridAngle !== undefined ? radToDeg(district.gridAngle) : 0
   );
 
   // Get the type-specific default density
@@ -261,6 +284,17 @@ function DistrictInspector({
       const newType = e.target.value as DistrictType;
       setEditedDistrictType(newType);
       onUpdate?.({ ...district, districtType: newType });
+    },
+    [district, onUpdate]
+  );
+
+  const handleGridAngleChange = useCallback(
+    (newAngleDeg: number) => {
+      // Normalize to -180 to 180
+      const normalized = normalizeAngle(newAngleDeg);
+      setGridAngleDeg(normalized);
+      const newAngleRad = degToRad(normalized);
+      onUpdate?.({ ...district, gridAngle: newAngleRad });
     },
     [district, onUpdate]
   );
@@ -386,6 +420,59 @@ function DistrictInspector({
           </button>
         )}
       </div>
+
+      {/* Grid Orientation (CITY-151) */}
+      {district.districtType !== "park" && district.districtType !== "airport" && (
+        <div>
+          <div className="flex items-center justify-between mb-1">
+            <label className="text-xs font-medium text-gray-600">
+              Grid Angle
+            </label>
+            <span className="text-xs text-gray-500">
+              {Math.round(gridAngleDeg)}°
+            </span>
+          </div>
+          <input
+            type="range"
+            min={-45}
+            max={45}
+            step={1}
+            value={gridAngleDeg}
+            onChange={(e) => handleGridAngleChange(Number(e.target.value))}
+            className="w-full h-2 bg-gray-200 rounded-lg appearance-none cursor-pointer accent-blue-500"
+            data-testid="grid-angle-slider"
+          />
+          <div className="flex justify-between text-xs text-gray-400 mt-0.5">
+            <span>-45°</span>
+            <span>0°</span>
+            <span>+45°</span>
+          </div>
+          {/* Quick angle presets */}
+          <div className="flex gap-1 mt-2">
+            {[
+              { label: "-15°", value: -15 },
+              { label: "0°", value: 0 },
+              { label: "+15°", value: 15 },
+              { label: "+45°", value: 45 },
+            ].map((preset) => (
+              <button
+                key={preset.value}
+                onClick={() => handleGridAngleChange(preset.value)}
+                className={`flex-1 px-1 py-0.5 text-xs rounded border transition-colors ${
+                  Math.round(gridAngleDeg) === preset.value
+                    ? "bg-blue-100 border-blue-400 text-blue-700"
+                    : "bg-white border-gray-300 text-gray-600 hover:bg-gray-50"
+                }`}
+              >
+                {preset.label}
+              </button>
+            ))}
+          </div>
+          <p className="text-xs text-gray-400 mt-1">
+            Regenerates street grid with new orientation
+          </p>
+        </div>
+      )}
 
       {/* Historic toggle with era-based validation */}
       <div className="relative group">
