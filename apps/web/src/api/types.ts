@@ -319,6 +319,51 @@ export interface Neighborhood {
 }
 
 // ============================================================================
+// POI Types
+// ============================================================================
+
+/** API POI types - must match backend POIType enum */
+export type POIType =
+  | "hospital"
+  | "school"
+  | "university"
+  | "park"
+  | "transit"
+  | "shopping"
+  | "civic"
+  | "industrial";
+
+export interface POICreate {
+  world_id: UUID;
+  type: POIType;
+  name: string;
+  position_x: number;
+  position_y: number;
+}
+
+export interface POIUpdate {
+  type?: POIType;
+  name?: string;
+  position_x?: number;
+  position_y?: number;
+}
+
+export interface POIBulkCreate {
+  pois: POICreate[];
+}
+
+export interface POI {
+  id: UUID;
+  world_id: UUID;
+  type: POIType;
+  name: string;
+  position_x: number;
+  position_y: number;
+  created_at: DateTime;
+  updated_at: DateTime;
+}
+
+// ============================================================================
 // Placed Seed Types
 // ============================================================================
 

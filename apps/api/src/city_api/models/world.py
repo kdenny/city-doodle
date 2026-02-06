@@ -12,6 +12,7 @@ from city_api.database import Base, JSONVariant
 if TYPE_CHECKING:
     from city_api.models.district import District
     from city_api.models.neighborhood import Neighborhood
+    from city_api.models.poi import POI
     from city_api.models.road_network import RoadEdge, RoadNode
     from city_api.models.seed import PlacedSeed
     from city_api.models.tile import Tile
@@ -55,4 +56,7 @@ class World(Base):
     )
     neighborhoods: Mapped[list["Neighborhood"]] = relationship(
         "Neighborhood", back_populates="world", cascade="all, delete-orphan"
+    )
+    pois: Mapped[list["POI"]] = relationship(
+        "POI", back_populates="world", cascade="all, delete-orphan"
     )

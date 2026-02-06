@@ -19,6 +19,10 @@ import {
   PlacedSeed,
   PlacedSeedBulkCreate,
   PlacedSeedCreate,
+  POI,
+  POIBulkCreate,
+  POICreate,
+  POIUpdate,
   RoadEdge,
   RoadEdgeBulkCreate,
   RoadEdgeCreate,
@@ -433,6 +437,51 @@ export const neighborhoods = {
 };
 
 // ============================================================================
+// POI Endpoints
+// ============================================================================
+
+export const pois = {
+  /** List all POIs in a world */
+  async list(worldId: string, poiType?: string): Promise<POI[]> {
+    return request<POI[]>("GET", `/worlds/${worldId}/pois`, {
+      params: poiType ? { poi_type: poiType } : undefined,
+    });
+  },
+
+  /** Create a new POI */
+  async create(worldId: string, data: Omit<POICreate, "world_id">): Promise<POI> {
+    return request<POI>("POST", `/worlds/${worldId}/pois`, {
+      body: { ...data, world_id: worldId },
+    });
+  },
+
+  /** Create multiple POIs in a single request */
+  async createBulk(worldId: string, data: POIBulkCreate): Promise<POI[]> {
+    return request<POI[]>("POST", `/worlds/${worldId}/pois/bulk`, { body: data });
+  },
+
+  /** Get a POI by ID */
+  async get(poiId: string): Promise<POI> {
+    return request<POI>("GET", `/pois/${poiId}`);
+  },
+
+  /** Update a POI */
+  async update(poiId: string, data: POIUpdate): Promise<POI> {
+    return request<POI>("PATCH", `/pois/${poiId}`, { body: data });
+  },
+
+  /** Delete a POI */
+  async delete(poiId: string): Promise<void> {
+    return request<void>("DELETE", `/pois/${poiId}`);
+  },
+
+  /** Delete all POIs in a world */
+  async deleteAll(worldId: string): Promise<void> {
+    return request<void>("DELETE", `/worlds/${worldId}/pois`);
+  },
+};
+
+// ============================================================================
 // Road Network Endpoints
 // ============================================================================
 
@@ -670,6 +719,7 @@ export const api = {
   seeds,
   districts,
   neighborhoods,
+  pois,
   roads,
   transit,
 };
