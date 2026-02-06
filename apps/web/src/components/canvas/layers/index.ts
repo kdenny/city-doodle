@@ -67,3 +67,17 @@ export type {
 export { DEFAULT_LAYER_VISIBILITY, DEFAULT_DISTRICT_PERSONALITY } from "./types";
 export { detectBridges, roadCrossesWater } from "./bridgeDetection";
 export type { BridgeDetectionConfig, BridgeDetectionResult } from "./bridgeDetection";
+export {
+  requiresArterialAdjacency,
+  districtRequiresArterialAdjacency,
+  isAdjacentToArterial,
+  isDistrictAdjacentToArterial,
+  findNearestArterial,
+  findConnectionCandidates,
+  generateArterialConnections,
+  DISTRICT_TYPES_REQUIRING_ARTERIAL,
+} from "./poiArterialValidator";
+export type {
+  ConnectionCandidate,
+  ArterialGenerationResult,
+} from "./poiArterialValidator";
