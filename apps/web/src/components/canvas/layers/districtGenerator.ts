@@ -131,9 +131,20 @@ export interface DistrictGenerationConfig {
    * Same seed + settings = same district geometry.
    */
   seed?: number;
+  /**
+   * Transit station positions for transit-oriented grid generation.
+   * When provided with low transit_car value, grid will orient toward nearest station.
+   */
+  transitStations?: Point[];
+  /**
+   * Transit-car slider value (0-1).
+   * 0 = transit-oriented (grid orients toward stations)
+   * 1 = car-dependent (standard grid orientation)
+   */
+  transitCar?: number;
 }
 
-const DEFAULT_CONFIG: Required<Omit<DistrictGenerationConfig, "scaleSettings" | "seed">> & {
+const DEFAULT_CONFIG: Required<Omit<DistrictGenerationConfig, "scaleSettings" | "seed" | "transitStations" | "transitCar">> & {
   scaleSettings: ScaleSettings;
 } = {
   size: 120,
@@ -151,7 +162,7 @@ const DEFAULT_CONFIG: Required<Omit<DistrictGenerationConfig, "scaleSettings" | 
  */
 export function getEffectiveDistrictConfig(
   config: DistrictGenerationConfig = {}
-): Required<Omit<DistrictGenerationConfig, "scaleSettings" | "seed">> & {
+): Required<Omit<DistrictGenerationConfig, "scaleSettings" | "seed" | "transitStations" | "transitCar">> & {
   scaleSettings: ScaleSettings;
 } {
   const scaleSettings = config.scaleSettings ?? DEFAULT_SCALE_SETTINGS;
@@ -434,6 +445,96 @@ function calculateGridRotation(centroid: Point, rng: SeededRandom): number {
 }
 
 /**
+ * Find the nearest transit station to a point.
+ * Returns null if no stations provided or array is empty.
+ */
+function findNearestStation(
+  point: Point,
+  stations: Point[]
+): { station: Point; distance: number } | null {
+  if (!stations || stations.length === 0) return null;
+
+  let nearest = stations[0];
+  let minDist = Math.sqrt(
+    (point.x - nearest.x) ** 2 + (point.y - nearest.y) ** 2
+  );
+
+  for (let i = 1; i < stations.length; i++) {
+    const dist = Math.sqrt(
+      (point.x - stations[i].x) ** 2 + (point.y - stations[i].y) ** 2
+    );
+    if (dist < minDist) {
+      minDist = dist;
+      nearest = stations[i];
+    }
+  }
+
+  return { station: nearest, distance: minDist };
+}
+
+/**
+ * Calculate the angle from a point toward a target.
+ * Returns angle in radians, normalized to grid orientation.
+ * Grid streets will be perpendicular and parallel to this direction.
+ */
+function calculateAngleTowardTarget(from: Point, target: Point): number {
+  const dx = target.x - from.x;
+  const dy = target.y - from.y;
+  // atan2 returns angle from positive x-axis, we want angle from north (negative y)
+  // Rotate by 90 degrees to align with grid orientation
+  return Math.atan2(dx, -dy);
+}
+
+/**
+ * Calculate transit-oriented grid rotation.
+ * When transit_car is low (< 0.5), orients grid toward nearest transit station.
+ * When transit_car is high (>= 0.5), uses standard random orientation.
+ *
+ * @param centroid - Center of the district
+ * @param rng - Seeded random number generator
+ * @param transitStations - Array of transit station positions
+ * @param transitCar - Transit-car slider value (0 = transit-oriented, 1 = car-dependent)
+ * @returns Grid rotation angle in radians
+ */
+function calculateTransitOrientedGridRotation(
+  centroid: Point,
+  rng: SeededRandom,
+  transitStations?: Point[],
+  transitCar: number = 0.5
+): number {
+  // Standard orientation as fallback
+  const standardAngle = calculateGridRotation(centroid, rng);
+
+  // If car-dependent (transit_car >= 0.5) or no stations, use standard orientation
+  if (transitCar >= 0.5 || !transitStations || transitStations.length === 0) {
+    return standardAngle;
+  }
+
+  // Find nearest station
+  const nearest = findNearestStation(centroid, transitStations);
+  if (!nearest) {
+    return standardAngle;
+  }
+
+  // Calculate angle toward the station
+  const stationAngle = calculateAngleTowardTarget(centroid, nearest.station);
+
+  // Blend between station-oriented and standard based on transit_car
+  // At transit_car = 0, fully station-oriented
+  // At transit_car = 0.5, equal blend
+  const blendFactor = transitCar * 2; // 0 to 1 as transit_car goes 0 to 0.5
+
+  // Normalize angles for proper interpolation
+  let angleDiff = stationAngle - standardAngle;
+  // Ensure we take the shorter path around the circle
+  while (angleDiff > Math.PI) angleDiff -= Math.PI * 2;
+  while (angleDiff < -Math.PI) angleDiff += Math.PI * 2;
+
+  // Interpolate between station angle and standard angle
+  return stationAngle - angleDiff * blendFactor;
+}
+
+/**
  * Calculate the centroid of a polygon.
  */
 function getPolygonCentroid(polygon: Point[]): Point {
@@ -522,6 +623,16 @@ function pointToLineDistance(point: Point, lineStart: Point, lineEnd: Point): nu
 }
 
 /**
+ * Options for transit-oriented grid generation.
+ */
+interface TransitGridOptions {
+  /** Transit station positions for orientation */
+  transitStations?: Point[];
+  /** Transit-car slider value (0 = transit-oriented, 1 = car-dependent) */
+  transitCar?: number;
+}
+
+/**
  * Generate a street grid within a polygon with proper street hierarchy.
  *
  * Street Hierarchy (CITY-142):
@@ -530,7 +641,8 @@ function pointToLineDistance(point: Point, lineStart: Point, lineEnd: Point): nu
  * - All other internal streets = LOCAL class
  *
  * Grid is rotated by a semi-random angle based on district position,
- * or by an explicitly provided angle.
+ * or by an explicitly provided angle. When transit options are provided
+ * and transit_car is low, grid orients toward nearest transit station.
  */
 function generateStreetGrid(
   polygon: Point[],
@@ -539,14 +651,28 @@ function generateStreetGrid(
   districtId: string,
   rng: SeededRandom,
   districtType: DistrictType = "residential",
-  explicitGridAngle?: number
+  explicitGridAngle?: number,
+  transitOptions?: TransitGridOptions
 ): { roads: Road[]; gridAngle: number } {
   const bounds = getPolygonBounds(polygon);
   const centroid = getPolygonCentroid(polygon);
   const roads: Road[] = [];
 
-  // Use explicit angle if provided, otherwise calculate from position
-  const rotationAngle = explicitGridAngle ?? calculateGridRotation(centroid, rng);
+  // Use explicit angle if provided, otherwise calculate based on transit orientation
+  let rotationAngle: number;
+  if (explicitGridAngle !== undefined) {
+    rotationAngle = explicitGridAngle;
+  } else if (transitOptions) {
+    // Use transit-oriented calculation when transit options provided
+    rotationAngle = calculateTransitOrientedGridRotation(
+      centroid,
+      rng,
+      transitOptions.transitStations,
+      transitOptions.transitCar
+    );
+  } else {
+    rotationAngle = calculateGridRotation(centroid, rng);
+  }
 
   // Collector interval: upgrade to collector every 3-4 blocks
   const collectorInterval = rng.intRange(3, 5);
@@ -781,13 +907,24 @@ export function generateDistrictGeometry(
     const densityMultiplier = calculateDensityMultiplier(sprawlCompact);
     const effectiveBlockSize = metersToWorldUnits(baseBlockSize * densityMultiplier);
 
+    // Build transit options if available
+    const transitOptions: TransitGridOptions | undefined =
+      config.transitStations || config.transitCar !== undefined
+        ? {
+            transitStations: config.transitStations,
+            transitCar: config.transitCar,
+          }
+        : undefined;
+
     const gridResult = generateStreetGrid(
       polygonPoints,
       effectiveBlockSize,
       cfg.streetClass, // This is now ignored - hierarchy determines class
       districtId,
       rng,
-      districtType
+      districtType,
+      undefined, // No explicit grid angle
+      transitOptions
     );
     roads = gridResult.roads;
     // Store the grid angle for future editing
@@ -847,6 +984,7 @@ export function wouldOverlap(
  * @param position - Original district position (for deterministic RNG)
  * @param sprawlCompact - Sprawl-compact slider value (0-1)
  * @param gridAngle - Optional explicit grid angle (if not provided, calculated from position)
+ * @param transitOptions - Optional transit options for transit-oriented grid generation
  * @returns Object with roads array and the grid angle used
  */
 export function regenerateStreetGridForClippedDistrict(
@@ -855,7 +993,8 @@ export function regenerateStreetGridForClippedDistrict(
   districtType: DistrictType,
   position: { x: number; y: number },
   sprawlCompact: number = 0.5,
-  gridAngle?: number
+  gridAngle?: number,
+  transitOptions?: { transitStations?: Point[]; transitCar?: number }
 ): { roads: Road[]; gridAngle: number } {
   // Don't generate streets for parks or airports
   if (districtType === "park" || districtType === "airport") {
@@ -883,13 +1022,15 @@ export function regenerateStreetGridForClippedDistrict(
     districtId,
     rng,
     districtType,
-    gridAngle
+    gridAngle,
+    transitOptions
   );
 }
 
 /**
  * Regenerate the street grid for a district with a new grid angle.
  * Used when the user rotates the grid via the inspector panel.
+ * Note: When user explicitly sets an angle, transit orientation is not applied.
  *
  * @param district - The district to regenerate streets for
  * @param newGridAngle - The new grid angle in radians
@@ -923,6 +1064,7 @@ export function regenerateStreetGridWithAngle(
   const densityMultiplier = calculateDensityMultiplier(sprawlCompact);
   const effectiveBlockSize = metersToWorldUnits(baseBlockSize * densityMultiplier);
 
+  // Explicit grid angle overrides transit orientation, so no transit options needed
   return generateStreetGrid(
     polygonPoints,
     effectiveBlockSize,
@@ -930,6 +1072,7 @@ export function regenerateStreetGridWithAngle(
     district.id,
     rng,
     district.type,
-    newGridAngle
+    newGridAngle,
+    undefined // No transit options when angle is explicitly set
   );
 }

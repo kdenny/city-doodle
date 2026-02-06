@@ -14,6 +14,7 @@ import {
   DEFAULT_ERA_YEAR,
   HISTORIC_THRESHOLD_YEAR,
 } from "./EraSelector";
+import { useTransitOptional } from "../canvas/TransitContext";
 
 // Feature types that can be selected
 export type SelectableFeatureType = "district" | "road" | "poi" | "neighborhood" | "rail_station" | "subway_station" | null;
@@ -231,6 +232,13 @@ function DistrictInspector({
   onUpdate,
   onDelete,
 }: DistrictInspectorProps) {
+  // Get transit context to determine if transit stations exist
+  const transitContext = useTransitOptional();
+  const hasTransitStations =
+    (transitContext?.railStations.length ?? 0) +
+      (transitContext?.subwayStations.length ?? 0) >
+    0;
+
   const [editedName, setEditedName] = useState(district.name);
   const [editedDistrictType, setEditedDistrictType] = useState<DistrictType>(
     district.districtType as DistrictType
@@ -512,6 +520,7 @@ function DistrictInspector({
         onChange={handlePersonalityChange}
         compact
         isHistoric={isHistoric}
+        hasTransitStations={hasTransitStations}
       />
 
       {/* Stats */}
