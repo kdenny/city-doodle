@@ -4,7 +4,7 @@ from datetime import datetime
 from enum import StrEnum
 from uuid import UUID
 
-from pydantic import BaseModel, Field, field_validator
+from pydantic import BaseModel, Field, field_validator, model_validator
 
 
 class StationType(StrEnum):
@@ -138,6 +138,12 @@ class TransitLineSegmentCreate(BaseModel):
     geometry: list[Point] = Field(default_factory=list)
     is_underground: bool = False
     order_in_line: int = Field(..., ge=0)
+
+    @model_validator(mode="after")
+    def check_no_self_reference(self) -> "TransitLineSegmentCreate":
+        if self.from_station_id == self.to_station_id:
+            raise ValueError("from_station_id and to_station_id must be different")
+        return self
 
 
 class TransitLineSegmentUpdate(BaseModel):
