@@ -19,6 +19,16 @@ import {
   PlacedSeed,
   PlacedSeedBulkCreate,
   PlacedSeedCreate,
+  RoadEdge,
+  RoadEdgeBulkCreate,
+  RoadEdgeCreate,
+  RoadEdgeUpdate,
+  RoadNetwork,
+  RoadNetworkStats,
+  RoadNode,
+  RoadNodeBulkCreate,
+  RoadNodeCreate,
+  RoadNodeUpdate,
   Tile,
   TileCreate,
   TileLock,
@@ -423,6 +433,102 @@ export const neighborhoods = {
 };
 
 // ============================================================================
+// Road Network Endpoints
+// ============================================================================
+
+export const roads = {
+  /** Get the complete road network for a world */
+  async getNetwork(worldId: string): Promise<RoadNetwork> {
+    return request<RoadNetwork>("GET", `/worlds/${worldId}/road-network`);
+  },
+
+  /** Get statistics about the road network */
+  async getStats(worldId: string): Promise<RoadNetworkStats> {
+    return request<RoadNetworkStats>("GET", `/worlds/${worldId}/road-network/stats`);
+  },
+
+  /** Clear all road nodes and edges in a world */
+  async clearNetwork(worldId: string): Promise<void> {
+    return request<void>("DELETE", `/worlds/${worldId}/road-network`);
+  },
+
+  // Node endpoints
+  nodes: {
+    /** List all road nodes in a world */
+    async list(worldId: string): Promise<RoadNode[]> {
+      return request<RoadNode[]>("GET", `/worlds/${worldId}/road-nodes`);
+    },
+
+    /** Create a new road node */
+    async create(worldId: string, data: Omit<RoadNodeCreate, "world_id">): Promise<RoadNode> {
+      return request<RoadNode>("POST", `/worlds/${worldId}/road-nodes`, {
+        body: { ...data, world_id: worldId },
+      });
+    },
+
+    /** Create multiple road nodes in a single request */
+    async createBulk(worldId: string, data: RoadNodeBulkCreate): Promise<RoadNode[]> {
+      return request<RoadNode[]>("POST", `/worlds/${worldId}/road-nodes/bulk`, { body: data });
+    },
+
+    /** Get a road node by ID */
+    async get(nodeId: string): Promise<RoadNode> {
+      return request<RoadNode>("GET", `/road-nodes/${nodeId}`);
+    },
+
+    /** Update a road node */
+    async update(nodeId: string, data: RoadNodeUpdate): Promise<RoadNode> {
+      return request<RoadNode>("PATCH", `/road-nodes/${nodeId}`, { body: data });
+    },
+
+    /** Delete a road node */
+    async delete(nodeId: string): Promise<void> {
+      return request<void>("DELETE", `/road-nodes/${nodeId}`);
+    },
+
+    /** List all edges connected to a node */
+    async listEdges(nodeId: string): Promise<RoadEdge[]> {
+      return request<RoadEdge[]>("GET", `/road-nodes/${nodeId}/edges`);
+    },
+  },
+
+  // Edge endpoints
+  edges: {
+    /** List all road edges in a world */
+    async list(worldId: string): Promise<RoadEdge[]> {
+      return request<RoadEdge[]>("GET", `/worlds/${worldId}/road-edges`);
+    },
+
+    /** Create a new road edge */
+    async create(worldId: string, data: Omit<RoadEdgeCreate, "world_id">): Promise<RoadEdge> {
+      return request<RoadEdge>("POST", `/worlds/${worldId}/road-edges`, {
+        body: { ...data, world_id: worldId },
+      });
+    },
+
+    /** Create multiple road edges in a single request */
+    async createBulk(worldId: string, data: RoadEdgeBulkCreate): Promise<RoadEdge[]> {
+      return request<RoadEdge[]>("POST", `/worlds/${worldId}/road-edges/bulk`, { body: data });
+    },
+
+    /** Get a road edge by ID */
+    async get(edgeId: string): Promise<RoadEdge> {
+      return request<RoadEdge>("GET", `/road-edges/${edgeId}`);
+    },
+
+    /** Update a road edge */
+    async update(edgeId: string, data: RoadEdgeUpdate): Promise<RoadEdge> {
+      return request<RoadEdge>("PATCH", `/road-edges/${edgeId}`, { body: data });
+    },
+
+    /** Delete a road edge */
+    async delete(edgeId: string): Promise<void> {
+      return request<void>("DELETE", `/road-edges/${edgeId}`);
+    },
+  },
+};
+
+// ============================================================================
 // Transit Endpoints
 // ============================================================================
 
@@ -564,6 +670,7 @@ export const api = {
   seeds,
   districts,
   neighborhoods,
+  roads,
   transit,
 };
 
