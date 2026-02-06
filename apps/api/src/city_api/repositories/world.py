@@ -27,8 +27,9 @@ async def create_world(db: AsyncSession, world_create: WorldCreate, user_id: UUI
         seed = world_create.seed
     else:
         # Generate seed from world name + user_id for determinism
+        # Same name + user always produces the same world
         # Mask to int32 range to avoid PostgreSQL integer overflow
-        seed_input = f"{world_create.name}:{user_id}:{now.isoformat()}"
+        seed_input = f"{world_create.name}:{user_id}"
         seed = int(hashlib.sha256(seed_input.encode()).hexdigest()[:8], 16) & 0x7FFFFFFF
 
     # Convert settings to dict for JSONB storage
