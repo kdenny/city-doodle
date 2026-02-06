@@ -171,6 +171,35 @@ const EMPTY_FEATURES: FeaturesData = {
 };
 
 /**
+ * Map world-level historic_modern (0-1) to an era_year.
+ * 0 = historic preservation (1700), 0.5 = mid-century (1960), 1 = modern (2024).
+ */
+const ERA_YEAR_STEPS = [1700, 1800, 1850, 1875, 1900, 1920, 1940, 1960, 1980, 2024];
+function historicModernToEraYear(historicModern: number): number {
+  const idx = Math.round(historicModern * (ERA_YEAR_STEPS.length - 1));
+  return ERA_YEAR_STEPS[Math.min(idx, ERA_YEAR_STEPS.length - 1)];
+}
+
+/**
+ * Build default district personality from world settings.
+ * Falls back to DEFAULT_DISTRICT_PERSONALITY for any missing values.
+ */
+function worldSettingsToPersonality(
+  settings: { grid_organic?: number; sprawl_compact?: number; transit_car?: number; historic_modern?: number } | undefined
+): DistrictPersonality {
+  if (!settings) return DEFAULT_DISTRICT_PERSONALITY;
+  return {
+    grid_organic: settings.grid_organic ?? DEFAULT_DISTRICT_PERSONALITY.grid_organic,
+    sprawl_compact: settings.sprawl_compact ?? DEFAULT_DISTRICT_PERSONALITY.sprawl_compact,
+    transit_car: settings.transit_car ?? DEFAULT_DISTRICT_PERSONALITY.transit_car,
+    era_year: settings.historic_modern !== undefined
+      ? historicModernToEraYear(settings.historic_modern)
+      : DEFAULT_DISTRICT_PERSONALITY.era_year,
+    density: DEFAULT_DISTRICT_PERSONALITY.density,
+  };
+}
+
+/**
  * Map frontend district type to API district type.
  * Frontend and API use the same types now.
  */
@@ -615,8 +644,8 @@ export function FeaturesProvider({
       seedId: string,
       config?: AddDistrictConfig
     ): AddDistrictResult => {
-      // Extract personality from config, use defaults if not provided
-      const personality = config?.personality ?? DEFAULT_DISTRICT_PERSONALITY;
+      // Extract personality from config; fall back to world settings, then hardcoded defaults
+      const personality = config?.personality ?? worldSettingsToPersonality(world?.settings);
 
       // Use personality settings to configure district generation
       // sprawl_compact affects block size, grid_organic affects street patterns
@@ -898,7 +927,7 @@ export function FeaturesProvider({
       seedId: string,
       config?: AddDistrictConfig
     ): ClipResult | null => {
-      const personality = config?.personality ?? DEFAULT_DISTRICT_PERSONALITY;
+      const personality = config?.personality ?? worldSettingsToPersonality(world?.settings);
 
       const generationConfig: DistrictGenerationConfig = {
         ...config,
