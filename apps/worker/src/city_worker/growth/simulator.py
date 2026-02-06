@@ -276,85 +276,185 @@ class GrowthSimulator:
         road_edges: list[dict],
         changelog: GrowthChangelog,
     ) -> None:
-        """Add new road nodes/edges in the expanded area of a district."""
+        """Add new road segments in the expanded area of a district.
+
+        Strategy: find existing endpoint nodes near the district boundary and
+        extend them outward from the centroid, creating grid-like growth.
+        Also adds cross-streets between nearby new endpoints.
+        """
         geometry = district.get("geometry", {})
         coords = geometry.get("coordinates", [])
         ring = coords[0] if isinstance(coords[0], list) and isinstance(coords[0][0], list) else coords
         if not ring or len(ring) < 3:
             return
 
-        # Calculate centroid and pick a point on the boundary for new road endpoint
         cx = sum(p[0] for p in ring if isinstance(p, list) and len(p) >= 2) / max(len(ring), 1)
         cy = sum(p[1] for p in ring if isinstance(p, list) and len(p) >= 2) / max(len(ring), 1)
 
-        # Pick a random boundary point for a new road endpoint
-        idx = self.rng.randint(0, max(len(ring) - 2, 0))
-        bp = ring[idx]
-        if not isinstance(bp, list) or len(bp) < 2:
-            return
-
-        # Find nearest existing road node to connect to
-        nearest_node = None
-        nearest_dist = float("inf")
         world_id = str(district["world_id"])
 
+        # Find existing endpoint nodes near the district boundary
+        # that have only 1 connected edge (dead ends — good candidates for extension)
+        edge_count: dict[str, int] = {}
+        for edge in road_edges:
+            fid = str(edge.get("from_node_id", ""))
+            tid = str(edge.get("to_node_id", ""))
+            edge_count[fid] = edge_count.get(fid, 0) + 1
+            edge_count[tid] = edge_count.get(tid, 0) + 1
+
+        # Collect endpoints (degree 1) within the district boundary region
+        boundary_nodes = []
         for node in road_nodes:
+            nid = str(node.get("id", ""))
             pos = node.get("position", {})
             nx, ny = pos.get("x", 0), pos.get("y", 0)
-            d = math.hypot(bp[0] - nx, bp[1] - ny)
-            if d < nearest_dist:
-                nearest_dist = d
-                nearest_node = node
+            # Node should be near district (within 1500m of centroid)
+            if math.hypot(nx - cx, ny - cy) > 3000:
+                continue
+            if edge_count.get(nid, 0) == 1:
+                boundary_nodes.append(node)
 
-        # Create new endpoint node
-        new_node_id = str(uuid.uuid4())
-        new_node = {
-            "id": new_node_id,
+        # Road extension parameters
+        max_road_length = 800  # meters — roughly one city block
+        min_road_length = 300
+
+        new_endpoints: list[dict] = []
+
+        # Extend up to 2 dead-end roads outward from centroid
+        self.rng.shuffle(boundary_nodes)
+        extensions = 0
+        for node in boundary_nodes:
+            if extensions >= 2:
+                break
+            pos = node.get("position", {})
+            nx, ny = pos.get("x", 0), pos.get("y", 0)
+
+            # Direction: outward from centroid with slight random variation
+            dx = nx - cx
+            dy = ny - cy
+            dist = math.hypot(dx, dy)
+            if dist < 1:
+                continue
+
+            # Normalize and scale to road length
+            road_len = self.rng.uniform(min_road_length, max_road_length)
+            angle_jitter = self.rng.uniform(-0.3, 0.3)  # radians (~17 degrees)
+            base_angle = math.atan2(dy, dx) + angle_jitter
+
+            end_x = nx + math.cos(base_angle) * road_len
+            end_y = ny + math.sin(base_angle) * road_len
+
+            new_node_id = str(uuid.uuid4())
+            new_node = {
+                "id": new_node_id,
+                "world_id": world_id,
+                "position": {"x": end_x, "y": end_y},
+                "node_type": "endpoint",
+                "name": None,
+            }
+            road_nodes.append(new_node)
+            new_endpoints.append(new_node)
+
+            self._record_road_addition(
+                node["id"], new_node_id, new_node, road_len,
+                world_id, district, road_edges, changelog,
+            )
+            extensions += 1
+
+        # If no endpoint extensions possible, fall back to boundary point approach
+        if extensions == 0:
+            idx = self.rng.randint(0, max(len(ring) - 2, 0))
+            bp = ring[idx]
+            if not isinstance(bp, list) or len(bp) < 2:
+                return
+
+            # Find nearest existing node within reasonable range
+            nearest_node = None
+            nearest_dist = float("inf")
+            for node in road_nodes:
+                pos = node.get("position", {})
+                nnx, nny = pos.get("x", 0), pos.get("y", 0)
+                d = math.hypot(bp[0] - nnx, bp[1] - nny)
+                if d < nearest_dist:
+                    nearest_dist = d
+                    nearest_node = node
+
+            new_node_id = str(uuid.uuid4())
+            new_node = {
+                "id": new_node_id,
+                "world_id": world_id,
+                "position": {"x": bp[0], "y": bp[1]},
+                "node_type": "endpoint",
+                "name": None,
+            }
+            road_nodes.append(new_node)
+            new_endpoints.append(new_node)
+
+            if nearest_node and nearest_dist < 1500:
+                self._record_road_addition(
+                    nearest_node["id"], new_node_id, new_node, nearest_dist,
+                    world_id, district, road_edges, changelog,
+                )
+
+        # Add a cross-street between new endpoints if they're close enough
+        if len(new_endpoints) >= 2:
+            p1 = new_endpoints[0]["position"]
+            p2 = new_endpoints[1]["position"]
+            cross_dist = math.hypot(p1["x"] - p2["x"], p1["y"] - p2["y"])
+            if min_road_length <= cross_dist <= max_road_length * 2:
+                self._record_road_addition(
+                    new_endpoints[0]["id"], new_endpoints[1]["id"],
+                    new_endpoints[1], cross_dist,
+                    world_id, district, road_edges, changelog,
+                )
+
+    def _record_road_addition(
+        self,
+        from_node_id: str,
+        to_node_id: str,
+        to_node: dict,
+        length: float,
+        world_id: str,
+        district: dict,
+        road_edges: list[dict],
+        changelog: GrowthChangelog,
+    ) -> None:
+        """Record a new road edge and its changelog entries."""
+        new_edge_id = str(uuid.uuid4())
+        new_edge = {
+            "id": new_edge_id,
             "world_id": world_id,
-            "position": {"x": bp[0], "y": bp[1]},
-            "node_type": "endpoint",
+            "from_node_id": from_node_id,
+            "to_node_id": to_node_id,
+            "road_class": GROWTH_ROAD_CLASS,
+            "geometry": [],
+            "length_meters": length,
+            "speed_limit": 40,
             "name": None,
+            "is_one_way": False,
+            "lanes": 2,
+            "district_id": str(district["id"]),
         }
-        road_nodes.append(new_node)
+        road_edges.append(new_edge)
 
         changelog.entries.append(ChangeEntry(
             action="new_road",
             entity_type="road_node",
-            entity_id=new_node_id,
-            details={"position": new_node["position"]},
+            entity_id=to_node_id,
+            details={"position": to_node["position"]},
         ))
-
-        # Connect to nearest existing node if one exists within reasonable distance
-        if nearest_node and nearest_dist < 5000:
-            new_edge_id = str(uuid.uuid4())
-            new_edge = {
-                "id": new_edge_id,
-                "world_id": world_id,
-                "from_node_id": nearest_node["id"],
-                "to_node_id": new_node_id,
+        changelog.entries.append(ChangeEntry(
+            action="new_road",
+            entity_type="road_edge",
+            entity_id=new_edge_id,
+            details={
+                "from_node_id": from_node_id,
+                "to_node_id": to_node_id,
                 "road_class": GROWTH_ROAD_CLASS,
-                "geometry": [],
-                "length_meters": nearest_dist,
-                "speed_limit": 40,
-                "name": None,
-                "is_one_way": False,
-                "lanes": 2,
-                "district_id": str(district["id"]),
-            }
-            road_edges.append(new_edge)
-
-            changelog.entries.append(ChangeEntry(
-                action="new_road",
-                entity_type="road_edge",
-                entity_id=new_edge_id,
-                details={
-                    "from_node_id": str(nearest_node["id"]),
-                    "to_node_id": new_node_id,
-                    "road_class": GROWTH_ROAD_CLASS,
-                    "length_meters": round(nearest_dist, 1),
-                },
-            ))
-            changelog.roads_added += 1
+                "length_meters": round(length, 1),
+            },
+        ))
+        changelog.roads_added += 1
 
     def _add_growth_pois(
         self,
