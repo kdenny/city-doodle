@@ -365,20 +365,6 @@ export const MapCanvas = forwardRef<MapCanvasHandle, MapCanvasProps>(
 
       grid.stroke();
 
-      // Draw tile coordinates
-      for (let tx = 0; tx < WORLD_TILES; tx++) {
-        for (let ty = 0; ty < WORLD_TILES; ty++) {
-          const label = new Graphics();
-          const x = tx * TILE_SIZE + TILE_SIZE / 2;
-          const y = ty * TILE_SIZE + TILE_SIZE / 2;
-
-          // Small center marker
-          label.circle(x, y, 3);
-          label.fill({ color: 0x999999 });
-          gridContainer.addChild(label);
-        }
-      }
-
       // World boundary (darker)
       const boundary = new Graphics();
       boundary.setStrokeStyle({ width: 2, color: 0x666666 });
