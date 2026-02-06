@@ -3,7 +3,8 @@
  */
 
 import { useState, useEffect, useRef } from "react";
-import { useCreateJob, useJob } from "../../api/hooks";
+import { useQueryClient } from "@tanstack/react-query";
+import { useCreateJob, useJob, queryKeys } from "../../api/hooks";
 import type { YearChange } from "./ChangesPanel";
 
 export interface GrowthSimulationState {
@@ -67,6 +68,7 @@ export function useGrowthSimulation(worldId?: string): GrowthSimulationState {
   const [yearsSimulated, setYearsSimulated] = useState(0);
   const hasTriggered = useRef(false);
 
+  const queryClient = useQueryClient();
   const createJobMutation = useCreateJob();
 
   // Poll job status when we have a jobId
@@ -90,6 +92,14 @@ export function useGrowthSimulation(worldId?: string): GrowthSimulationState {
       setYearsSimulated(
         (job.result as Record<string, unknown>).years_simulated as number || 1
       );
+      // Growth modifies districts, roads, and POIs — invalidate their caches
+      if (worldId) {
+        queryClient.invalidateQueries({ queryKey: queryKeys.worldDistricts(worldId) });
+        queryClient.invalidateQueries({ queryKey: queryKeys.worldRoadNetwork(worldId) });
+        queryClient.invalidateQueries({ queryKey: queryKeys.worldRoadNodes(worldId) });
+        queryClient.invalidateQueries({ queryKey: queryKeys.worldRoadEdges(worldId) });
+        queryClient.invalidateQueries({ queryKey: queryKeys.worldPOIs(worldId) });
+      }
     } else if (job.status === "failed") {
       setError(job.error || "Growth simulation failed");
       setChanges([{ id: "error", description: "Simulation failed" }]);
