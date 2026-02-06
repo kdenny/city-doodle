@@ -237,15 +237,39 @@ function fromGeoJsonGeometry(geometry: Record<string, unknown>): Point[] {
 
 /**
  * Convert API district to frontend district.
+ * Restores gridAngle and personality from the persisted street_grid JSONB.
  */
 function fromApiDistrict(apiDistrict: ApiDistrict): District {
+  const streetGrid = apiDistrict.street_grid as Record<string, unknown> | undefined;
   return {
     id: apiDistrict.id,
     type: fromApiDistrictType(apiDistrict.type) as District["type"],
     name: apiDistrict.name || `${apiDistrict.type} district`,
     polygon: { points: fromGeoJsonGeometry(apiDistrict.geometry) },
     isHistoric: apiDistrict.historic,
+    gridAngle: typeof streetGrid?.gridAngle === "number" ? streetGrid.gridAngle : undefined,
+    personality: streetGrid?.personality as District["personality"] | undefined,
   };
+}
+
+/**
+ * Extract roads from an API district's persisted street_grid data.
+ * Returns empty array if no street_grid or no roads data.
+ */
+function roadsFromApiStreetGrid(apiDistrict: ApiDistrict): Road[] {
+  const streetGrid = apiDistrict.street_grid as Record<string, unknown> | undefined;
+  if (!streetGrid?.roads || !Array.isArray(streetGrid.roads)) return [];
+  return (streetGrid.roads as Array<Record<string, unknown>>).map((r) => ({
+    id: r.id as string,
+    name: r.name as string | undefined,
+    roadClass: (r.roadClass as RoadClass) || "local",
+    line: {
+      points: (r.points as Array<{ x: number; y: number }>).map((p) => ({
+        x: p.x,
+        y: p.y,
+      })),
+    },
+  }));
 }
 
 /**
@@ -490,9 +514,15 @@ export function FeaturesProvider({
   useEffect(() => {
     if (worldId && apiDistricts) {
       const loadedDistricts = apiDistricts.map(fromApiDistrict);
+      // Restore district-internal roads from persisted street_grid data
+      const streetGridRoads = apiDistricts.flatMap(roadsFromApiStreetGrid);
       setFeaturesState((prev) => ({
         ...prev,
         districts: loadedDistricts,
+        roads: [...streetGridRoads, ...prev.roads.filter((r) => {
+          // Keep roads not belonging to any loaded district (e.g., inter-district roads from road network)
+          return !loadedDistricts.some((d) => r.id.startsWith(d.id));
+        })],
       }));
     }
   }, [worldId, apiDistricts]);
@@ -726,6 +756,18 @@ export function FeaturesProvider({
       if (worldId) {
         pendingCreates.current.add(tempId);
 
+        // Build street_grid payload with roads, gridAngle, and personality
+        const streetGridPayload: Record<string, unknown> = {
+          roads: allRoads.map((r) => ({
+            id: r.id,
+            name: r.name,
+            roadClass: r.roadClass,
+            points: r.line.points.map((p) => ({ x: p.x, y: p.y })),
+          })),
+          gridAngle: generated.district.gridAngle,
+          personality: generated.district.personality,
+        };
+
         createDistrictMutation.mutate(
           {
             worldId,
@@ -734,6 +776,7 @@ export function FeaturesProvider({
               name: generated.district.name,
               geometry: toGeoJsonGeometry(generated.district.polygon.points),
               historic: generated.district.isHistoric || false,
+              street_grid: streetGridPayload,
             },
           },
           {
@@ -1071,7 +1114,30 @@ export function FeaturesProvider({
           };
         });
 
-        // gridAngle is a local-only property (not persisted to API), so return early
+        // Persist the updated street grid to the API
+        if (worldId && !pendingCreates.current.has(id)) {
+          const updatedDistrict = features.districts.find((d) => d.id === id);
+          if (updatedDistrict) {
+            const streetGridPayload: Record<string, unknown> = {
+              roads: newRoads.map((r) => ({
+                id: r.id,
+                name: r.name,
+                roadClass: r.roadClass,
+                points: r.line.points.map((p) => ({ x: p.x, y: p.y })),
+              })),
+              gridAngle: actualAngle,
+              personality: updatedDistrict.personality,
+            };
+            updateDistrictMutation.mutate(
+              { districtId: id, data: { street_grid: streetGridPayload }, worldId },
+              {
+                onError: (error) => {
+                  console.error("Failed to persist street grid update:", error);
+                },
+              }
+            );
+          }
+        }
         return;
       }
 

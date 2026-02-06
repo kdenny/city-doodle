@@ -70,6 +70,8 @@ class District(Base):
     transit_access: Mapped[bool] = mapped_column(Boolean, nullable=False, default=False)
     # Historic preservation flag
     historic: Mapped[bool] = mapped_column(Boolean, nullable=False, default=False)
+    # Street grid data (roads, gridAngle, personality) as JSONB
+    street_grid: Mapped[dict | None] = mapped_column(JSONVariant, nullable=True)
     # Timestamps
     created_at: Mapped[datetime] = mapped_column(
         DateTime(timezone=True), server_default=func.now(), nullable=False
