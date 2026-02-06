@@ -61,7 +61,7 @@ class TransitStation(BaseModel):
 
     id: UUID
     world_id: UUID
-    district_id: UUID
+    district_id: UUID | None
     station_type: StationType
     name: str
     position_x: float

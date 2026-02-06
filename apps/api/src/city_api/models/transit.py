@@ -49,8 +49,8 @@ class TransitStation(Base):
     world_id: Mapped[uuid.UUID] = mapped_column(
         Uuid, ForeignKey("worlds.id", ondelete="CASCADE"), nullable=False
     )
-    district_id: Mapped[uuid.UUID] = mapped_column(
-        Uuid, ForeignKey("districts.id", ondelete="SET NULL"), nullable=False
+    district_id: Mapped[uuid.UUID | None] = mapped_column(
+        Uuid, ForeignKey("districts.id", ondelete="SET NULL"), nullable=True
     )
     station_type: Mapped[str] = mapped_column(
         PGEnum(
