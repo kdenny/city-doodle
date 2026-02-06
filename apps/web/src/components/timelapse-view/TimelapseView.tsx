@@ -102,6 +102,15 @@ export function TimelapseView({
             {growth.error}
           </div>
         )}
+        {!growth.isSimulating && (
+          <button
+            onClick={() => growth.simulate(1)}
+            disabled={!worldId}
+            className="w-full mb-2 px-4 py-2 bg-green-600 text-white text-sm font-medium rounded-lg hover:bg-green-700 disabled:opacity-50 disabled:cursor-not-allowed shadow-lg"
+          >
+            Simulate 1 Year of Growth
+          </button>
+        )}
         <ChangesPanel changes={changes} />
       </div>
 

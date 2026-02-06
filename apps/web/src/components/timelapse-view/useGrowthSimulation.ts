@@ -2,7 +2,7 @@
  * Hook to trigger and poll a city growth simulation job.
  */
 
-import { useState, useEffect, useRef } from "react";
+import { useState, useEffect } from "react";
 import { useQueryClient } from "@tanstack/react-query";
 import { useCreateJob, useJob, queryKeys } from "../../api/hooks";
 import type { YearChange } from "./ChangesPanel";
@@ -66,7 +66,6 @@ export function useGrowthSimulation(worldId?: string): GrowthSimulationState {
   const [changes, setChanges] = useState<YearChange[]>([]);
   const [error, setError] = useState<string | null>(null);
   const [yearsSimulated, setYearsSimulated] = useState(0);
-  const hasTriggered = useRef(false);
 
   const queryClient = useQueryClient();
   const createJobMutation = useCreateJob();
@@ -128,14 +127,6 @@ export function useGrowthSimulation(worldId?: string): GrowthSimulationState {
       }
     );
   };
-
-  // Auto-trigger growth when first mounted with a worldId
-  useEffect(() => {
-    if (worldId && !hasTriggered.current) {
-      hasTriggered.current = true;
-      simulate(1);
-    }
-  }, [worldId]);
 
   return {
     isSimulating,
