@@ -741,8 +741,14 @@ export function FeaturesProvider({
               // Replace temp ID with real ID from API
               pendingCreates.current.delete(tempId);
 
-              // Get roads for this district from local state
-              const districtRoads = allRoads.filter(r => r.id.startsWith(tempId));
+              // Get all roads generated for this district
+              // This includes internal streets, inter-district roads, and arterial connections
+              // Note: allRoads is captured from the closure and contains all roads created
+              // during this district placement operation
+              const districtRoads = allRoads;
+
+              // Track which road IDs belong to this district for state updates
+              const districtRoadIds = new Set(allRoads.map(r => r.id));
 
               // Update IDs in local state
               updateFeatures((prev) => ({
@@ -750,12 +756,13 @@ export function FeaturesProvider({
                 districts: prev.districts.map((d) =>
                   d.id === tempId ? { ...d, id: apiDistrict.id } : d
                 ),
-                // Also update road IDs that reference the district
-                roads: prev.roads.map((r) =>
-                  r.id.startsWith(tempId)
-                    ? { ...r, id: r.id.replace(tempId, apiDistrict.id) }
-                    : r
-                ),
+                // Update road IDs that reference the district temp ID
+                roads: prev.roads.map((r) => {
+                  // Only update roads that belong to this district
+                  if (!districtRoadIds.has(r.id)) return r;
+                  // Replace temp ID references with real district ID
+                  return { ...r, id: r.id.replace(tempId, apiDistrict.id) };
+                }),
               }));
 
               // Persist roads to API if there are any
@@ -804,17 +811,24 @@ export function FeaturesProvider({
                   }
                 } catch (roadError) {
                   console.error("Failed to save roads:", roadError);
-                  // Roads are non-critical, don't show error toast for this
+                  // Show a warning toast so users know roads weren't saved
+                  toast?.addToast(
+                    "Roads for this district could not be saved. They will appear until refresh.",
+                    "warning"
+                  );
                 }
               }
             },
             onError: (error) => {
               // Remove the optimistically added district on error
               pendingCreates.current.delete(tempId);
+              // Track which road IDs belong to this district for removal
+              const districtRoadIds = new Set(allRoads.map(r => r.id));
               updateFeatures((prev) => ({
                 ...prev,
                 districts: prev.districts.filter((d) => d.id !== tempId),
-                roads: prev.roads.filter((r) => !r.id.startsWith(tempId)),
+                // Remove all roads that were created for this district
+                roads: prev.roads.filter((r) => !districtRoadIds.has(r.id)),
               }));
               console.error("Failed to save district:", error);
               toast?.addToast(
