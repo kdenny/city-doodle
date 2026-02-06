@@ -1,14 +1,18 @@
 """World repository - data access for worlds."""
 
 import hashlib
+import logging
 from datetime import UTC, datetime
 from uuid import UUID
 
+from pydantic import ValidationError
 from sqlalchemy import delete, select
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from city_api.models import World as WorldModel
 from city_api.schemas import World, WorldCreate, WorldSettings, WorldUpdate
+
+logger = logging.getLogger(__name__)
 
 
 def _ensure_utc(dt: datetime) -> datetime:
@@ -115,11 +119,27 @@ async def update_world(
 
 def _to_schema(world: WorldModel) -> World:
     """Convert SQLAlchemy model to Pydantic schema."""
+    try:
+        settings = WorldSettings.model_validate(world.settings)
+    except ValidationError:
+        # Legacy data may not match current schema constraints (e.g. after
+        # range changes).  Fall back to defaults, preserving any valid fields.
+        raw = world.settings if isinstance(world.settings, dict) else {}
+        defaults = WorldSettings()
+        merged = {**defaults.model_dump(), **raw}
+        # Use construct() to bypass validation — the defaults are known-good
+        # and out-of-range legacy values are acceptable for existing worlds.
+        settings = WorldSettings.model_construct(**merged)
+        logger.warning(
+            "World %s has settings that fail current validation; using lenient parse",
+            world.id,
+        )
+
     return World(
         id=world.id,
         user_id=world.user_id,
         name=world.name,
         seed=world.seed,
-        settings=WorldSettings.model_validate(world.settings),
+        settings=settings,
         created_at=_ensure_utc(world.created_at),
     )

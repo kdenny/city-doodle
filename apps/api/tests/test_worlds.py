@@ -71,7 +71,7 @@ class TestCreateWorld:
                 "seed": 12121,
                 "settings": {
                     "block_size_meters": 150,
-                    "district_size_meters": 700,
+                    "district_size_meters": 2000,
                 },
             },
             headers={"X-User-Id": TEST_USER_ID},
@@ -79,7 +79,7 @@ class TestCreateWorld:
         assert response.status_code == 201
         data = response.json()
         assert data["settings"]["block_size_meters"] == 150
-        assert data["settings"]["district_size_meters"] == 700
+        assert data["settings"]["district_size_meters"] == 2000
 
     @pytest.mark.asyncio
     async def test_create_world_default_scale_settings(self, client: AsyncClient):
@@ -92,8 +92,8 @@ class TestCreateWorld:
         assert response.status_code == 201
         data = response.json()
         # Check defaults are applied
-        assert data["settings"]["block_size_meters"] == 100
-        assert data["settings"]["district_size_meters"] == 500
+        assert data["settings"]["block_size_meters"] == 150
+        assert data["settings"]["district_size_meters"] == 3200
 
     @pytest.mark.asyncio
     async def test_create_world_invalid_block_size_too_small(self, client: AsyncClient):
@@ -131,7 +131,7 @@ class TestCreateWorld:
             json={
                 "name": "Invalid World",
                 "seed": 16161,
-                "settings": {"district_size_meters": 100},  # Below min of 200
+                "settings": {"district_size_meters": 500},  # Below min of 1000
             },
             headers={"X-User-Id": TEST_USER_ID},
         )
@@ -145,11 +145,50 @@ class TestCreateWorld:
             json={
                 "name": "Invalid World",
                 "seed": 17171,
-                "settings": {"district_size_meters": 1500},  # Above max of 1000
+                "settings": {"district_size_meters": 7000},  # Above max of 6000
             },
             headers={"X-User-Id": TEST_USER_ID},
         )
         assert response.status_code == 422
+
+
+class TestLegacySettings:
+    """Tests for worlds with legacy settings that predate current validation."""
+
+    @pytest.mark.asyncio
+    async def test_list_worlds_with_legacy_district_size(self, client: AsyncClient, db_session):
+        """Worlds with old district_size_meters values should still load."""
+        from sqlalchemy import text
+
+        user_id = TEST_USER_ID
+        user_id_str = str(user_id).replace("-", "")
+
+        # Insert a world with legacy settings (district_size_meters=500, valid before CITY-216)
+        await db_session.execute(
+            text(
+                "INSERT INTO worlds (id, user_id, name, seed, settings) "
+                "VALUES (:id, :user_id, :name, :seed, :settings)"
+            ),
+            {
+                "id": "00000000000000000000000000000099",
+                "user_id": user_id_str,
+                "name": "Legacy World",
+                "seed": 42,
+                "settings": '{"district_size_meters": 500, "grid_organic": 0.5}',
+            },
+        )
+        await db_session.commit()
+
+        response = await client.get(
+            "/worlds",
+            headers={"X-User-Id": str(user_id)},
+        )
+        assert response.status_code == 200
+        data = response.json()
+        legacy = next(w for w in data if w["name"] == "Legacy World")
+        # Legacy value is preserved even though it's outside current constraints
+        assert legacy["settings"]["district_size_meters"] == 500
+        assert legacy["settings"]["grid_organic"] == 0.5
 
 
 class TestListWorlds:
@@ -319,7 +358,7 @@ class TestUpdateWorld:
                     "historic_modern": 0.5,
                     "transit_car": 0.5,
                     "block_size_meters": 200,
-                    "district_size_meters": 800,
+                    "district_size_meters": 2000,
                 }
             },
             headers={"X-User-Id": TEST_USER_ID},
@@ -329,7 +368,7 @@ class TestUpdateWorld:
         assert data["settings"]["grid_organic"] == 0.9
         assert data["settings"]["sprawl_compact"] == 0.1
         assert data["settings"]["block_size_meters"] == 200
-        assert data["settings"]["district_size_meters"] == 800
+        assert data["settings"]["district_size_meters"] == 2000
 
     @pytest.mark.asyncio
     async def test_update_world_scale_settings_only(self, client: AsyncClient):
@@ -346,7 +385,7 @@ class TestUpdateWorld:
                     "historic_modern": 0.6,
                     "transit_car": 0.4,
                     "block_size_meters": 100,
-                    "district_size_meters": 500,
+                    "district_size_meters": 2000,
                 },
             },
             headers={"X-User-Id": TEST_USER_ID},
@@ -363,7 +402,7 @@ class TestUpdateWorld:
                     "historic_modern": 0.6,
                     "transit_car": 0.4,
                     "block_size_meters": 150,
-                    "district_size_meters": 600,
+                    "district_size_meters": 3000,
                 }
             },
             headers={"X-User-Id": TEST_USER_ID},
@@ -372,7 +411,7 @@ class TestUpdateWorld:
         data = response.json()
         # Scale settings updated
         assert data["settings"]["block_size_meters"] == 150
-        assert data["settings"]["district_size_meters"] == 600
+        assert data["settings"]["district_size_meters"] == 3000
         # Personality settings preserved
         assert data["settings"]["grid_organic"] == 0.7
         assert data["settings"]["sprawl_compact"] == 0.3
@@ -428,7 +467,7 @@ class TestUpdateWorld:
                     "historic_modern": 0.5,
                     "transit_car": 0.5,
                     "block_size_meters": 10,  # Below min
-                    "district_size_meters": 500,
+                    "district_size_meters": 2000,
                 }
             },
             headers={"X-User-Id": TEST_USER_ID},
