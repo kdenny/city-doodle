@@ -15,6 +15,7 @@ class RoadClass(str, Enum):
     COLLECTOR = "collector"
     LOCAL = "local"
     ALLEY = "alley"
+    TRAIL = "trail"
 
 
 class NodeType(str, Enum):
@@ -192,4 +193,5 @@ ROAD_CLASS_DEFAULTS: dict[RoadClass, dict] = {
     RoadClass.COLLECTOR: {"speed_limit": 50, "lanes": 2},
     RoadClass.LOCAL: {"speed_limit": 40, "lanes": 2},
     RoadClass.ALLEY: {"speed_limit": 20, "lanes": 1},
+    RoadClass.TRAIL: {"speed_limit": 15, "lanes": 1},
 }

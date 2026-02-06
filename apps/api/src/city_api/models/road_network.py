@@ -32,6 +32,7 @@ class RoadClass(str, Enum):
     COLLECTOR = "collector"
     LOCAL = "local"
     ALLEY = "alley"
+    TRAIL = "trail"
 
 
 class NodeType(str, Enum):

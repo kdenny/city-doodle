@@ -338,7 +338,7 @@ function toApiRoadClass(frontendClass: RoadClass): ApiRoadClass {
     arterial: "arterial",
     collector: "collector",
     local: "local",
-    trail: "alley", // Map trail to alley as closest match
+    trail: "trail",
   };
   return mapping[frontendClass] || "local";
 }
@@ -352,7 +352,8 @@ function fromApiRoadClass(apiClass: ApiRoadClass): RoadClass {
     arterial: "arterial",
     collector: "collector",
     local: "local",
-    alley: "trail", // Map alley to trail as closest match
+    alley: "trail", // Legacy: treat existing alley records as trails
+    trail: "trail",
   };
   return mapping[apiClass] || "local";
 }

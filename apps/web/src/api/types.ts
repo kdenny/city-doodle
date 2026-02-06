@@ -555,7 +555,7 @@ export interface TransitNetworkStats {
 // Road Network Types
 // ============================================================================
 
-export type RoadClass = "highway" | "arterial" | "collector" | "local" | "alley";
+export type RoadClass = "highway" | "arterial" | "collector" | "local" | "alley" | "trail";
 
 export type NodeType = "intersection" | "endpoint" | "roundabout" | "interchange";
 
