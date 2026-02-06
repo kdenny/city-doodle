@@ -14,6 +14,13 @@ from city_api.schemas.neighborhood import (
     NeighborhoodCreate,
     NeighborhoodUpdate,
 )
+from city_api.schemas.poi import (
+    POI,
+    POIBulkCreate,
+    POICreate,
+    POIType,
+    POIUpdate,
+)
 from city_api.schemas.road_network import (
     NodeType,
     Point,
@@ -109,6 +116,12 @@ __all__ = [
     "NeighborhoodBulkCreate",
     "NeighborhoodCreate",
     "NeighborhoodUpdate",
+    # POI
+    "POI",
+    "POIBulkCreate",
+    "POICreate",
+    "POIType",
+    "POIUpdate",
     # Road Network
     "RoadClass",
     "NodeType",

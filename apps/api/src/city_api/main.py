@@ -16,6 +16,7 @@ from city_api.routes import (
     jobs_router,
     locks_router,
     neighborhoods_router,
+    pois_router,
     road_network_router,
     seeds_router,
     tiles_router,
@@ -57,6 +58,7 @@ app.include_router(jobs_router)
 app.include_router(seeds_router)
 app.include_router(districts_router)
 app.include_router(neighborhoods_router)
+app.include_router(pois_router)
 app.include_router(road_network_router)
 app.include_router(transit_router)
 

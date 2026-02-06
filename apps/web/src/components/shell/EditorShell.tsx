@@ -172,7 +172,7 @@ function PlacementWithSeeds({ children }: { children: ReactNode }) {
  * This allows the inspector panel to persist edits to the database.
  */
 function SelectionWithFeatures({ children }: { children: ReactNode }) {
-  const { updateDistrict, removeDistrict, updateRoad, removeRoad, updateNeighborhood, removeNeighborhood } = useFeatures();
+  const { updateDistrict, removeDistrict, updateRoad, removeRoad, updateNeighborhood, removeNeighborhood, updatePOI, removePOI } = useFeatures();
   const transitContext = useTransitOptional();
 
   const handleUpdate = useCallback(
@@ -196,10 +196,13 @@ function SelectionWithFeatures({ children }: { children: ReactNode }) {
         updateNeighborhood(feature.id, {
           name: feature.name,
         });
+      } else if (feature.type === "poi") {
+        updatePOI(feature.id, {
+          name: feature.name,
+        });
       }
-      // TODO: Add update handlers for POIs when those are persisted
     },
-    [updateDistrict, updateRoad, updateNeighborhood]
+    [updateDistrict, updateRoad, updateNeighborhood, updatePOI]
   );
 
   const handleDelete = useCallback(
@@ -216,10 +219,11 @@ function SelectionWithFeatures({ children }: { children: ReactNode }) {
         transitContext.removeRailStation(feature.id);
       } else if (feature.type === "subway_station" && transitContext) {
         transitContext.removeSubwayStation(feature.id);
+      } else if (feature.type === "poi") {
+        removePOI(feature.id);
       }
-      // TODO: Add delete handlers for POIs when those are persisted
     },
-    [removeDistrict, removeRoad, removeNeighborhood, transitContext]
+    [removeDistrict, removeRoad, removeNeighborhood, transitContext, removePOI]
   );
 
   return (

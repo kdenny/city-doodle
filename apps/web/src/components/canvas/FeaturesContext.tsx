@@ -58,6 +58,10 @@ import {
   useCreateNeighborhood,
   useUpdateNeighborhood,
   useDeleteNeighborhood,
+  useWorldPOIs,
+  useCreatePOI,
+  useUpdatePOI,
+  useDeletePOI,
   useRoadNetwork,
   useCreateRoadNodesBulk,
   useCreateRoadEdgesBulk,
@@ -66,6 +70,7 @@ import type {
   District as ApiDistrict,
   DistrictType as ApiDistrictType,
   Neighborhood as ApiNeighborhood,
+  POI as ApiPOI,
   RoadNetwork as ApiRoadNetwork,
   RoadNode as ApiRoadNode,
   RoadNodeCreate,
@@ -114,6 +119,8 @@ interface FeaturesContextValue {
   removeRoad: (id: string) => void;
   /** Remove a POI by ID */
   removePOI: (id: string) => void;
+  /** Update a POI */
+  updatePOI: (id: string, updates: Partial<Omit<POI, "id">>) => void;
   /** Update a district */
   updateDistrict: (id: string, updates: Partial<Omit<District, "id">>) => void;
   /** Update a road */
@@ -246,6 +253,21 @@ function fromApiNeighborhood(apiNeighborhood: ApiNeighborhood): Neighborhood {
     polygon: { points: fromGeoJsonGeometry(apiNeighborhood.geometry) },
     labelColor: apiNeighborhood.label_color || undefined,
     accentColor: apiNeighborhood.accent_color || undefined,
+  };
+}
+
+/**
+ * Convert an API POI to a frontend POI.
+ */
+function fromApiPOI(apiPOI: ApiPOI): POI {
+  return {
+    id: apiPOI.id,
+    name: apiPOI.name,
+    type: apiPOI.type as POI["type"],
+    position: {
+      x: apiPOI.position_x,
+      y: apiPOI.position_y,
+    },
   };
 }
 
@@ -432,6 +454,19 @@ export function FeaturesProvider({
   const updateNeighborhoodMutation = useUpdateNeighborhood();
   const deleteNeighborhoodMutation = useDeleteNeighborhood();
 
+  // POI queries and mutations
+  const {
+    data: apiPOIs,
+    isLoading: isLoadingPOIs,
+    error: loadPOIsError,
+  } = useWorldPOIs(worldId || "", undefined, {
+    enabled: !!worldId,
+  });
+
+  const createPOIMutation = useCreatePOI();
+  const updatePOIMutation = useUpdatePOI();
+  const deletePOIMutation = useDeletePOI();
+
   const {
     data: apiRoadNetwork,
     isLoading: isLoadingRoads,
@@ -464,6 +499,17 @@ export function FeaturesProvider({
     }
   }, [worldId, apiNeighborhoods]);
 
+  // Load POIs from API when data is available
+  useEffect(() => {
+    if (worldId && apiPOIs) {
+      const loadedPOIs = apiPOIs.map(fromApiPOI);
+      setFeaturesState((prev) => ({
+        ...prev,
+        pois: loadedPOIs,
+      }));
+    }
+  }, [worldId, apiPOIs]);
+
   // Load roads from API when data is available
   useEffect(() => {
     if (worldId && apiRoadNetwork) {
@@ -475,14 +521,14 @@ export function FeaturesProvider({
     }
   }, [worldId, apiRoadNetwork]);
 
-  // Mark as initialized when districts, neighborhoods, and roads are loaded (or not using worldId)
+  // Mark as initialized when districts, neighborhoods, POIs, and roads are loaded (or not using worldId)
   useEffect(() => {
     if (!worldId) {
       setIsInitialized(true);
-    } else if (apiDistricts !== undefined && apiNeighborhoods !== undefined && apiRoadNetwork !== undefined) {
+    } else if (apiDistricts !== undefined && apiNeighborhoods !== undefined && apiPOIs !== undefined && apiRoadNetwork !== undefined) {
       setIsInitialized(true);
     }
-  }, [worldId, apiDistricts, apiNeighborhoods, apiRoadNetwork]);
+  }, [worldId, apiDistricts, apiNeighborhoods, apiPOIs, apiRoadNetwork]);
 
   // Auto-detect bridges when roads or terrain change (CITY-148)
   useEffect(() => {
@@ -787,12 +833,26 @@ export function FeaturesProvider({
 
   const addPOI = useCallback(
     (poi: POI) => {
+      // Update local state immediately for responsiveness
       updateFeatures((prev) => ({
         ...prev,
         pois: [...prev.pois, poi],
       }));
+
+      // Persist to backend if we have a worldId
+      if (worldId) {
+        createPOIMutation.mutate({
+          worldId,
+          data: {
+            type: poi.type,
+            name: poi.name,
+            position_x: poi.position.x,
+            position_y: poi.position.y,
+          },
+        });
+      }
     },
-    [updateFeatures]
+    [updateFeatures, worldId, createPOIMutation]
   );
 
   const addRoads = useCallback(
@@ -857,12 +917,70 @@ export function FeaturesProvider({
 
   const removePOI = useCallback(
     (id: string) => {
+      // Update local state immediately for responsiveness
       updateFeatures((prev) => ({
         ...prev,
         pois: prev.pois.filter((p) => p.id !== id),
       }));
+
+      // Persist to backend if we have a worldId
+      if (worldId) {
+        deletePOIMutation.mutate({ poiId: id, worldId });
+      }
     },
-    [updateFeatures]
+    [updateFeatures, worldId, deletePOIMutation]
+  );
+
+  const updatePOI = useCallback(
+    (id: string, updates: Partial<Omit<POI, "id">>) => {
+      // Find the current POI for rollback
+      const currentPOI = features.pois.find((p) => p.id === id);
+      if (!currentPOI) return;
+
+      // Optimistically update local state
+      updateFeatures((prev) => ({
+        ...prev,
+        pois: prev.pois.map((p) =>
+          p.id === id ? { ...p, ...updates } : p
+        ),
+      }));
+
+      // Persist to API if worldId is provided
+      if (worldId) {
+        // Build API update payload from the updates
+        const apiUpdate: Record<string, unknown> = {};
+        if (updates.name !== undefined) apiUpdate.name = updates.name;
+        if (updates.type !== undefined) apiUpdate.type = updates.type;
+        if (updates.position !== undefined) {
+          apiUpdate.position_x = updates.position.x;
+          apiUpdate.position_y = updates.position.y;
+        }
+
+        // Only call API if there are fields to update
+        if (Object.keys(apiUpdate).length > 0) {
+          updatePOIMutation.mutate(
+            { poiId: id, data: apiUpdate, worldId },
+            {
+              onError: (error) => {
+                // Rollback to previous state on error
+                updateFeatures((prev) => ({
+                  ...prev,
+                  pois: prev.pois.map((p) =>
+                    p.id === id ? currentPOI : p
+                  ),
+                }));
+                console.error("Failed to update POI:", error);
+                toast?.addToast(
+                  "Failed to update POI. Please try again.",
+                  "error"
+                );
+              },
+            }
+          );
+        }
+      }
+    },
+    [worldId, features.pois, updateFeatures, updatePOIMutation, toast]
   );
 
   const updateDistrict = useCallback(
@@ -1123,8 +1241,8 @@ export function FeaturesProvider({
     [updateFeatures]
   );
 
-  const isLoading = !isInitialized || (!!worldId && (isLoadingDistricts || isLoadingNeighborhoods || isLoadingRoads));
-  const error = loadDistrictsError || loadNeighborhoodsError || loadRoadsError || null;
+  const isLoading = !isInitialized || (!!worldId && (isLoadingDistricts || isLoadingNeighborhoods || isLoadingPOIs || isLoadingRoads));
+  const error = loadDistrictsError || loadNeighborhoodsError || loadPOIsError || loadRoadsError || null;
 
   const value: FeaturesContextValue = {
     features,
@@ -1136,6 +1254,7 @@ export function FeaturesProvider({
     removeDistrict,
     removeRoad,
     removePOI,
+    updatePOI,
     updateDistrict,
     updateRoad,
     addNeighborhood,

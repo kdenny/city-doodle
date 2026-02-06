@@ -25,6 +25,10 @@ import {
   PlacedSeed,
   PlacedSeedBulkCreate,
   PlacedSeedCreate,
+  POI,
+  POIBulkCreate,
+  POICreate,
+  POIUpdate,
   RoadEdge,
   RoadEdgeBulkCreate,
   RoadEdgeCreate,
@@ -95,6 +99,13 @@ export const queryKeys = {
   // Neighborhoods
   worldNeighborhoods: (worldId: string) => ["worlds", worldId, "neighborhoods"] as const,
   neighborhood: (id: string) => ["neighborhoods", id] as const,
+
+  // POIs
+  worldPOIs: (worldId: string, poiType?: string) =>
+    poiType
+      ? (["worlds", worldId, "pois", { poiType }] as const)
+      : (["worlds", worldId, "pois"] as const),
+  poi: (id: string) => ["pois", id] as const,
 
   // Road Network
   worldRoadNetwork: (worldId: string) => ["worlds", worldId, "road-network"] as const,
@@ -704,6 +715,114 @@ export function useDeleteAllNeighborhoods(
     onSuccess: (_, worldId) => {
       queryClient.invalidateQueries({
         queryKey: queryKeys.worldNeighborhoods(worldId),
+      });
+    },
+    ...options,
+  });
+}
+
+// ============================================================================
+// POI Hooks
+// ============================================================================
+
+export function useWorldPOIs(
+  worldId: string,
+  poiType?: string,
+  options?: Omit<UseQueryOptions<POI[]>, "queryKey" | "queryFn">
+) {
+  return useQuery({
+    queryKey: queryKeys.worldPOIs(worldId, poiType),
+    queryFn: () => api.pois.list(worldId, poiType),
+    enabled: !!worldId,
+    ...options,
+  });
+}
+
+export function usePOI(
+  poiId: string,
+  options?: Omit<UseQueryOptions<POI>, "queryKey" | "queryFn">
+) {
+  return useQuery({
+    queryKey: queryKeys.poi(poiId),
+    queryFn: () => api.pois.get(poiId),
+    enabled: !!poiId,
+    ...options,
+  });
+}
+
+export function useCreatePOI(
+  options?: UseMutationOptions<POI, Error, { worldId: string; data: Omit<POICreate, "world_id"> }>
+) {
+  const queryClient = useQueryClient();
+  return useMutation({
+    mutationFn: ({ worldId, data }) => api.pois.create(worldId, data),
+    onSuccess: (_, { worldId }) => {
+      queryClient.invalidateQueries({
+        queryKey: queryKeys.worldPOIs(worldId),
+      });
+    },
+    ...options,
+  });
+}
+
+export function useCreatePOIsBulk(
+  options?: UseMutationOptions<POI[], Error, { worldId: string; data: POIBulkCreate }>
+) {
+  const queryClient = useQueryClient();
+  return useMutation({
+    mutationFn: ({ worldId, data }) => api.pois.createBulk(worldId, data),
+    onSuccess: (_, { worldId }) => {
+      queryClient.invalidateQueries({
+        queryKey: queryKeys.worldPOIs(worldId),
+      });
+    },
+    ...options,
+  });
+}
+
+export function useUpdatePOI(
+  options?: UseMutationOptions<POI, Error, { poiId: string; data: POIUpdate; worldId?: string }>
+) {
+  const queryClient = useQueryClient();
+  return useMutation({
+    mutationFn: ({ poiId, data }) => api.pois.update(poiId, data),
+    onSuccess: (poi, { worldId }) => {
+      queryClient.setQueryData(queryKeys.poi(poi.id), poi);
+      if (worldId) {
+        queryClient.invalidateQueries({
+          queryKey: queryKeys.worldPOIs(worldId),
+        });
+      }
+    },
+    ...options,
+  });
+}
+
+export function useDeletePOI(
+  options?: UseMutationOptions<void, Error, { poiId: string; worldId: string }>
+) {
+  const queryClient = useQueryClient();
+  return useMutation({
+    mutationFn: ({ poiId }) => api.pois.delete(poiId),
+    onSuccess: (_, { poiId, worldId }) => {
+      queryClient.removeQueries({ queryKey: queryKeys.poi(poiId) });
+      queryClient.invalidateQueries({
+        queryKey: queryKeys.worldPOIs(worldId),
+      });
+    },
+    ...options,
+  });
+}
+
+export function useDeleteAllPOIs(
+  options?: UseMutationOptions<void, Error, string>
+) {
+  const queryClient = useQueryClient();
+  return useMutation({
+    mutationFn: (worldId: string) => api.pois.deleteAll(worldId),
+    onSuccess: (_, worldId) => {
+      queryClient.invalidateQueries({
+        queryKey: queryKeys.worldPOIs(worldId),
       });
     },
     ...options,
