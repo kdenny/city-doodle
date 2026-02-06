@@ -3,9 +3,12 @@ import { DateDisplay } from "./DateDisplay";
 import { ChangesPanel, YearChange, defaultChanges } from "./ChangesPanel";
 import { TimelineScrubber, defaultYearMarkers } from "./TimelineScrubber";
 import { PlaybackControls, PlaybackSpeed } from "./PlaybackControls";
+import { useGrowthSimulation } from "./useGrowthSimulation";
 
 export interface TimelapseViewProps {
   children: ReactNode;
+  /** World ID to trigger growth simulation */
+  worldId?: string;
   startDate?: Date;
   endDate?: Date;
   currentDate?: Date;
@@ -22,15 +25,23 @@ const defaultCurrentDate = new Date(2023, 7, 1);
 
 export function TimelapseView({
   children,
+  worldId,
   startDate = defaultStartDate,
   endDate = defaultEndDate,
   currentDate = defaultCurrentDate,
   currentYear = 4,
   totalYears = 7,
-  changes = defaultChanges,
+  changes: propChanges,
   yearMarkers = defaultYearMarkers,
   onDateChange,
 }: TimelapseViewProps) {
+  // Trigger growth simulation when worldId is provided
+  const growth = useGrowthSimulation(worldId);
+
+  // Use growth results if available, otherwise fall back to prop changes or defaults
+  const changes = growth.changes.length > 0
+    ? growth.changes
+    : (propChanges ?? defaultChanges);
   const [isPlaying, setIsPlaying] = useState(false);
   const [speed, setSpeed] = useState<PlaybackSpeed>(1);
 
@@ -81,6 +92,16 @@ export function TimelapseView({
 
       {/* Changes panel (right) */}
       <div className="absolute top-4 right-4">
+        {growth.isSimulating && (
+          <div className="bg-blue-50 border border-blue-200 rounded-lg px-4 py-2 mb-2 text-sm text-blue-700">
+            Simulating growth...
+          </div>
+        )}
+        {growth.error && (
+          <div className="bg-red-50 border border-red-200 rounded-lg px-4 py-2 mb-2 text-sm text-red-700">
+            {growth.error}
+          </div>
+        )}
         <ChangesPanel changes={changes} />
       </div>
 

@@ -41,16 +41,18 @@ interface EditorShellProps {
 // Helper to render the appropriate view wrapper based on viewMode
 function ViewWrapper({
   viewMode,
+  worldId,
   children,
 }: {
   viewMode: ViewMode;
+  worldId?: string;
   children: ReactNode;
 }) {
   switch (viewMode) {
     case "export":
       return <ExportView>{children}</ExportView>;
     case "timelapse":
-      return <TimelapseView>{children}</TimelapseView>;
+      return <TimelapseView worldId={worldId}>{children}</TimelapseView>;
     case "density":
       return <DensityView>{children}</DensityView>;
     case "transit":
@@ -64,9 +66,11 @@ function ViewWrapper({
 // Inner component that can access the ViewMode and Zoom contexts
 function EditorShellContent({
   children,
+  worldId,
   onHelp,
 }: {
   children: ReactNode;
+  worldId?: string;
   onHelp: () => void;
 }) {
   const { viewMode } = useViewMode();
@@ -81,7 +85,7 @@ function EditorShellContent({
       {/* Main content area */}
       <main className="flex-1 relative overflow-hidden">
         {/* View-specific wrapper with canvas */}
-        <ViewWrapper viewMode={viewMode}>{children}</ViewWrapper>
+        <ViewWrapper viewMode={viewMode} worldId={worldId}>{children}</ViewWrapper>
 
         {/* Left side: Placement palette (only in build mode) */}
         {showPalette && (
@@ -455,7 +459,7 @@ export function EditorShell({
                       <SelectionWithFeatures>
                         <DrawingWithFeatures>
                           <MapCanvasProvider>
-                            <EditorShellContent onHelp={handleHelp}>
+                            <EditorShellContent worldId={worldId} onHelp={handleHelp}>
                               {children}
                             </EditorShellContent>
                           </MapCanvasProvider>
