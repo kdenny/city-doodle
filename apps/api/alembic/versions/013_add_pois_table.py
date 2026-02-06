@@ -30,7 +30,7 @@ def upgrade() -> None:
         "civic",
         "industrial",
         name="poi_type",
-        create_type=True,
+        create_type=False,
     )
     poi_type_enum.create(op.get_bind(), checkfirst=True)
 

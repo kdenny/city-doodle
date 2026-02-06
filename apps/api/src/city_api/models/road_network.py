@@ -15,9 +15,7 @@ from sqlalchemy import (
     Uuid,
     func,
 )
-from sqlalchemy import (
-    Enum as SQLEnum,
-)
+from sqlalchemy.dialects.postgresql import ENUM as PGEnum
 from sqlalchemy.orm import Mapped, mapped_column, relationship
 
 from city_api.database import Base, JSONVariant
@@ -56,10 +54,16 @@ class RoadNode(Base):
     )
     # Position stored as JSON {x, y}
     position: Mapped[dict] = mapped_column(JSONVariant, nullable=False)
-    node_type: Mapped[NodeType] = mapped_column(
-        SQLEnum(NodeType, name="node_type", create_constraint=True),
+    # Use PostgreSQL native enum with explicit lowercase values
+    # create_type=False since the enum is managed by migrations
+    node_type: Mapped[str] = mapped_column(
+        PGEnum(
+            "intersection", "endpoint", "roundabout", "interchange",
+            name="node_type",
+            create_type=False,
+        ),
         nullable=False,
-        default=NodeType.INTERSECTION,
+        default="intersection",
     )
     # Optional name for major intersections
     name: Mapped[str | None] = mapped_column(String(255), nullable=True)
@@ -110,10 +114,16 @@ class RoadEdge(Base):
     to_node_id: Mapped[uuid.UUID] = mapped_column(
         Uuid, ForeignKey("road_nodes.id", ondelete="CASCADE"), nullable=False
     )
-    road_class: Mapped[RoadClass] = mapped_column(
-        SQLEnum(RoadClass, name="road_class", create_constraint=True),
+    # Use PostgreSQL native enum with explicit lowercase values
+    # create_type=False since the enum is managed by migrations
+    road_class: Mapped[str] = mapped_column(
+        PGEnum(
+            "highway", "arterial", "collector", "local", "alley", "trail",
+            name="road_class",
+            create_type=False,
+        ),
         nullable=False,
-        default=RoadClass.LOCAL,
+        default="local",
     )
     # Geometry: array of intermediate points [{x, y}, ...] for curved roads
     geometry: Mapped[list] = mapped_column(JSONVariant, nullable=False, default=list)

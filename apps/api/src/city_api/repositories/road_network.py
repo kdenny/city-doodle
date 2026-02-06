@@ -52,7 +52,7 @@ async def create_node(db: AsyncSession, node_create: RoadNodeCreate) -> RoadNode
     node = RoadNodeModel(
         world_id=node_create.world_id,
         position=node_create.position.model_dump(),
-        node_type=node_create.node_type.value,  # Pass string value for PostgreSQL enum
+        node_type=node_create.node_type.value,
         name=node_create.name,
     )
     db.add(node)
@@ -127,7 +127,7 @@ async def update_node(
     if node_update.position is not None:
         node.position = node_update.position.model_dump()
     if node_update.node_type is not None:
-        node.node_type = node_update.node_type.value  # Pass string value for PostgreSQL enum
+        node.node_type = node_update.node_type.value
     if node_update.name is not None:
         node.name = node_update.name
 
@@ -171,7 +171,7 @@ async def create_edge(db: AsyncSession, edge_create: RoadEdgeCreate) -> RoadEdge
         world_id=edge_create.world_id,
         from_node_id=edge_create.from_node_id,
         to_node_id=edge_create.to_node_id,
-        road_class=edge_create.road_class.value,  # Pass string value for PostgreSQL enum
+        road_class=edge_create.road_class.value,
         geometry=geometry,
         length_meters=length,
         speed_limit=speed_limit,
@@ -233,7 +233,7 @@ async def update_edge(
         return None
 
     if edge_update.road_class is not None:
-        edge.road_class = edge_update.road_class.value  # Pass string value for PostgreSQL enum
+        edge.road_class = edge_update.road_class.value
     if edge_update.geometry is not None:
         edge.geometry = [p.model_dump() for p in edge_update.geometry]
         # Recalculate length when geometry changes
