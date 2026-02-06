@@ -7,7 +7,7 @@ import { renderHook, act } from "@testing-library/react";
 describe("ScaleSettings", () => {
   const defaultValues = {
     block_size_meters: 100,
-    district_size_meters: 500,
+    district_size_meters: 3200,
   };
 
   it("renders collapsed by default", () => {
@@ -55,7 +55,7 @@ describe("ScaleSettings", () => {
 
     expect(onChange).toHaveBeenCalledWith({
       block_size_meters: 200,
-      district_size_meters: 500,
+      district_size_meters: 3200,
     });
   });
 
@@ -142,7 +142,7 @@ describe("useScaleSettings", () => {
 
     expect(result.current.values).toEqual({
       block_size_meters: 100,
-      district_size_meters: 500,
+      district_size_meters: 3200,
     });
   });
 
