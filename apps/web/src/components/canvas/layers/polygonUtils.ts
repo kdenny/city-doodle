@@ -378,6 +378,158 @@ export function meetsMinimumSize(
 }
 
 /**
+ * Result of splitting a polygon with a line.
+ */
+export interface SplitResult {
+  /** Whether the split was successful */
+  success: boolean;
+  /** The two resulting polygons (empty if split failed) */
+  polygons: [Point[], Point[]] | null;
+  /** Error message if split failed */
+  error?: string;
+}
+
+/**
+ * Split a polygon with a line defined by two points.
+ * Returns two new polygons if the line crosses the polygon.
+ *
+ * @param polygon - The polygon to split
+ * @param lineStart - Start point of the split line
+ * @param lineEnd - End point of the split line
+ * @returns SplitResult with two polygons or error
+ */
+export function splitPolygonWithLine(
+  polygon: Point[],
+  lineStart: Point,
+  lineEnd: Point
+): SplitResult {
+  if (polygon.length < 3) {
+    return { success: false, polygons: null, error: "Invalid polygon" };
+  }
+
+  // Find all intersection points between the line and polygon edges
+  const intersections: { point: Point; edgeIndex: number; t: number }[] = [];
+
+  for (let i = 0; i < polygon.length; i++) {
+    const p1 = polygon[i];
+    const p2 = polygon[(i + 1) % polygon.length];
+
+    const intersection = lineSegmentIntersection(lineStart, lineEnd, p1, p2);
+    if (intersection) {
+      intersections.push({
+        point: intersection.point,
+        edgeIndex: i,
+        t: intersection.t,
+      });
+    }
+  }
+
+  // Need exactly 2 intersections to split
+  if (intersections.length !== 2) {
+    return {
+      success: false,
+      polygons: null,
+      error: intersections.length === 0
+        ? "Line does not cross the polygon"
+        : intersections.length === 1
+        ? "Line only touches one edge"
+        : "Line crosses polygon multiple times",
+    };
+  }
+
+  // Sort intersections by edge index
+  intersections.sort((a, b) => a.edgeIndex - b.edgeIndex);
+
+  const [int1, int2] = intersections;
+
+  // Build the two polygons
+  // Polygon 1: from int1 to int2 along the "forward" path
+  // Polygon 2: from int2 to int1 along the "backward" path (rest of polygon)
+
+  const polygon1: Point[] = [int1.point];
+  const polygon2: Point[] = [int2.point];
+
+  // Walk from int1's edge end to int2's intersection
+  for (let i = int1.edgeIndex + 1; i <= int2.edgeIndex; i++) {
+    polygon1.push(polygon[i]);
+  }
+  polygon1.push(int2.point);
+
+  // Walk from int2's edge end back to int1's intersection
+  for (let i = int2.edgeIndex + 1; i < polygon.length; i++) {
+    polygon2.push(polygon[i]);
+  }
+  for (let i = 0; i <= int1.edgeIndex; i++) {
+    polygon2.push(polygon[i]);
+  }
+  polygon2.push(int1.point);
+
+  // Validate resulting polygons
+  if (polygon1.length < 3 || polygon2.length < 3) {
+    return { success: false, polygons: null, error: "Split resulted in invalid polygons" };
+  }
+
+  return { success: true, polygons: [polygon1, polygon2] };
+}
+
+/**
+ * Find intersection between a line (infinite) and a line segment.
+ * Returns the intersection point and the parameter t along the segment (0-1).
+ */
+function lineSegmentIntersection(
+  lineStart: Point,
+  lineEnd: Point,
+  segStart: Point,
+  segEnd: Point
+): { point: Point; t: number } | null {
+  const dx1 = lineEnd.x - lineStart.x;
+  const dy1 = lineEnd.y - lineStart.y;
+  const dx2 = segEnd.x - segStart.x;
+  const dy2 = segEnd.y - segStart.y;
+
+  const denom = dx1 * dy2 - dy1 * dx2;
+  if (Math.abs(denom) < 0.0001) return null; // Parallel
+
+  const dx3 = segStart.x - lineStart.x;
+  const dy3 = segStart.y - lineStart.y;
+
+  // Parameter along the line (not bounded)
+  const s = (dx3 * dy2 - dy3 * dx2) / denom;
+  // Parameter along the segment (must be 0-1)
+  const t = (dx3 * dy1 - dy3 * dx1) / denom;
+
+  // For the split line, we want the line to be unbounded (extend beyond the 2 points)
+  // But we still check s is "reasonably" in range to avoid numerical issues
+  if (t >= 0 && t <= 1 && s >= -100 && s <= 100) {
+    return {
+      point: {
+        x: segStart.x + t * dx2,
+        y: segStart.y + t * dy2,
+      },
+      t,
+    };
+  }
+
+  return null;
+}
+
+/**
+ * Find which district (if any) a point is inside.
+ * Returns the district ID or null.
+ */
+export function findDistrictAtPoint(
+  point: Point,
+  districts: Array<{ id: string; polygon: { points: Point[] } }>
+): string | null {
+  for (const district of districts) {
+    if (pointInPolygon(point, district.polygon.points)) {
+      return district.id;
+    }
+  }
+  return null;
+}
+
+/**
  * Clip a district polygon against water features and validate.
  *
  * @param districtPoints - The district polygon to clip

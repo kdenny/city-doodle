@@ -17,6 +17,7 @@ import { MapCanvasProvider, FeaturesProvider, useFeatures, TerrainProvider, Tran
 import type { TransitLineProperties } from "../canvas";
 import type { RailStationData } from "../canvas/layers";
 import { DrawingProvider, type DrawingMode } from "../canvas/DrawingContext";
+import { splitPolygonWithLine, findDistrictAtPoint } from "../canvas/layers/polygonUtils";
 import { generateNeighborhoodName, generateCityName } from "../../utils/nameGenerator";
 import { generateId } from "../../utils/idGenerator";
 import { ExportView } from "../export-view";
@@ -231,10 +232,10 @@ function SelectionWithFeatures({ children }: { children: ReactNode }) {
 
 /**
  * Inner component that connects DrawingProvider to FeaturesContext.
- * Handles polygon completion to create neighborhoods and city limits.
+ * Handles polygon completion to create neighborhoods, city limits, and split districts.
  */
 function DrawingWithFeatures({ children }: { children: ReactNode }) {
-  const { addNeighborhood, setCityLimits, features } = useFeatures();
+  const { addNeighborhood, setCityLimits, features, removeDistrict, addDistrictWithGeometry, addRoads } = useFeatures();
   const toast = useToastOptional();
 
   const handlePolygonComplete = useCallback(
@@ -263,10 +264,94 @@ function DrawingWithFeatures({ children }: { children: ReactNode }) {
           established: new Date().getFullYear(),
         };
         setCityLimits(cityLimits);
+      } else if (mode === "split") {
+        // Split mode: points is a line (2 points) that divides a district
+        if (points.length < 2) {
+          toast?.addToast("Draw a line to split a district", "warning");
+          return;
+        }
+
+        const lineStart = points[0];
+        const lineEnd = points[1];
+
+        // Find which district the line crosses (check midpoint)
+        const midpoint = {
+          x: (lineStart.x + lineEnd.x) / 2,
+          y: (lineStart.y + lineEnd.y) / 2,
+        };
+
+        const districtsForSearch = features.districts.map((d) => ({
+          id: d.id,
+          polygon: d.polygon,
+        }));
+
+        const targetDistrictId = findDistrictAtPoint(midpoint, districtsForSearch);
+
+        if (!targetDistrictId) {
+          toast?.addToast("Line must cross a district to split it", "warning");
+          return;
+        }
+
+        const targetDistrict = features.districts.find((d) => d.id === targetDistrictId);
+        if (!targetDistrict) {
+          toast?.addToast("District not found", "error");
+          return;
+        }
+
+        // Attempt to split the district polygon
+        const splitResult = splitPolygonWithLine(
+          targetDistrict.polygon.points,
+          lineStart,
+          lineEnd
+        );
+
+        if (!splitResult.success || !splitResult.polygons) {
+          toast?.addToast(splitResult.error || "Failed to split district", "warning");
+          return;
+        }
+
+        const [polygon1Points, polygon2Points] = splitResult.polygons;
+
+        // Create two new districts from the split
+        const baseProps = {
+          type: targetDistrict.type,
+          name: targetDistrict.name,
+          isHistoric: targetDistrict.isHistoric,
+          personality: targetDistrict.personality,
+          gridAngle: targetDistrict.gridAngle,
+        };
+
+        const newDistrict1 = {
+          ...baseProps,
+          id: generateId("district"),
+          name: `${targetDistrict.name} (North)`,
+          polygon: { points: polygon1Points },
+          center: {
+            x: polygon1Points.reduce((sum, p) => sum + p.x, 0) / polygon1Points.length,
+            y: polygon1Points.reduce((sum, p) => sum + p.y, 0) / polygon1Points.length,
+          },
+        };
+
+        const newDistrict2 = {
+          ...baseProps,
+          id: generateId("district"),
+          name: `${targetDistrict.name} (South)`,
+          polygon: { points: polygon2Points },
+          center: {
+            x: polygon2Points.reduce((sum, p) => sum + p.x, 0) / polygon2Points.length,
+            y: polygon2Points.reduce((sum, p) => sum + p.y, 0) / polygon2Points.length,
+          },
+        };
+
+        // Remove the original district and add the two new ones
+        removeDistrict(targetDistrictId);
+        addDistrictWithGeometry(newDistrict1);
+        addDistrictWithGeometry(newDistrict2);
+
+        toast?.addToast(`Split "${targetDistrict.name}" into two districts`, "info");
       }
-      // TODO: Handle "split" mode when implemented
     },
-    [addNeighborhood, setCityLimits, features.cityLimits, toast]
+    [addNeighborhood, setCityLimits, features.cityLimits, features.districts, toast, removeDistrict, addDistrictWithGeometry, addRoads]
   );
 
   return (

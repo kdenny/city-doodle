@@ -1,6 +1,6 @@
 import { useState } from "react";
 
-export type Tool = "pan" | "draw" | "city-limits" | "build" | "transit-line";
+export type Tool = "pan" | "draw" | "city-limits" | "split" | "build" | "transit-line";
 
 interface ToolbarProps {
   activeTool: Tool;
@@ -34,6 +34,16 @@ const tools: { id: Tool; label: string; icon: JSX.Element }[] = [
       <svg className="w-5 h-5" fill="none" stroke="currentColor" viewBox="0 0 24 24">
         {/* Map/boundary icon for city limits */}
         <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M9 20l-5.447-2.724A1 1 0 013 16.382V5.618a1 1 0 011.447-.894L9 7m0 13l6-3m-6 3V7m6 10l4.553 2.276A1 1 0 0021 18.382V7.618a1 1 0 00-.553-.894L15 4m0 13V4m0 0L9 7" />
+      </svg>
+    ),
+  },
+  {
+    id: "split",
+    label: "Split District",
+    icon: (
+      <svg className="w-5 h-5" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+        {/* Scissors icon for splitting */}
+        <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M14.121 14.121L19 19m-7-7l7-7m-7 7l-2.879 2.879M12 12L9.121 9.121m0 5.758a3 3 0 10-4.243 4.243 3 3 0 004.243-4.243zm0-5.758a3 3 0 10-4.243-4.243 3 3 0 004.243 4.243z" />
       </svg>
     ),
   },
