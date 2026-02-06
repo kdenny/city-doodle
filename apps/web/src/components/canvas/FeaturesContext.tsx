@@ -385,7 +385,6 @@ export function FeaturesProvider({
 
       // Check for overlap with existing districts
       if (wouldOverlap(generated.district.polygon.points, features.districts)) {
-        console.warn("District would overlap with existing district");
         return {
           generated: null,
           wasClipped: false,
@@ -403,7 +402,6 @@ export function FeaturesProvider({
 
       // If district is completely in water, reject placement
       if (clipResult.clippedPolygon.length < 3) {
-        console.warn("District would be completely in water");
         return {
           generated: null,
           wasClipped: true,
@@ -414,7 +412,6 @@ export function FeaturesProvider({
 
       // If clipped area is too small, reject placement
       if (clipResult.tooSmall) {
-        console.warn("District area after clipping is too small");
         return {
           generated: null,
           wasClipped: true,

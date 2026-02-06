@@ -167,8 +167,7 @@ export function BuildView({
 
   const handleCityNeedsClick = useCallback(() => {
     onCityNeedsClick?.();
-    // TODO: Open city needs modal
-    console.log("City needs clicked");
+    // TODO: Open city needs modal (CITY-210)
   }, [onCityNeedsClick]);
 
   return (

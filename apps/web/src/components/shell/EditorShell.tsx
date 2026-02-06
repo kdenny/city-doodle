@@ -1,4 +1,5 @@
 import { ReactNode, useCallback, useState } from "react";
+import { useToastOptional } from "../../contexts";
 import { ViewModeProvider, useViewMode, ViewMode } from "./ViewModeContext";
 import { ZoomProvider, useZoom } from "./ZoomContext";
 import { Header } from "./Header";
@@ -110,6 +111,7 @@ function PlacementWithSeeds({ children }: { children: ReactNode }) {
   const { addSeed } = usePlacedSeeds();
   const { addDistrict } = useFeatures();
   const transitContext = useTransitOptional();
+  const toast = useToastOptional();
 
   const handlePlaceSeed = useCallback(
     async (
@@ -124,11 +126,11 @@ function PlacementWithSeeds({ children }: { children: ReactNode }) {
         const result = addDistrict(position, seed.id, { personality, seed: generationSeed });
         if (!result.generated) {
           // District overlapped, in water, or failed
-          console.warn("Failed to place district:", result.error);
+          toast?.addToast(result.error || "Failed to place district", "warning");
           return;
         }
         if (result.wasClipped) {
-          console.info("District was clipped to avoid water overlap");
+          toast?.addToast("District was clipped to avoid water overlap", "info");
         }
         // Don't add a seed marker for districts - the geometry is enough
       } else if (seed.id === "rail_station" && transitContext) {
@@ -136,7 +138,7 @@ function PlacementWithSeeds({ children }: { children: ReactNode }) {
         // This handles validation (must be in district) and auto-connection
         const station = await transitContext.placeRailStation(position);
         if (!station) {
-          console.warn("Failed to place rail station - must be inside a district");
+          toast?.addToast("Rail station must be placed inside a district", "warning");
           return;
         }
         // Don't add a seed marker for rail stations - the transit layer renders them
@@ -145,7 +147,7 @@ function PlacementWithSeeds({ children }: { children: ReactNode }) {
         // This handles validation (must be in district) and auto-connection
         const station = await transitContext.placeSubwayStation(position);
         if (!station) {
-          console.warn("Failed to place subway station - must be inside a district");
+          toast?.addToast("Subway station must be placed inside a district", "warning");
           return;
         }
         // Don't add a seed marker for subway stations - the subway station layer renders them
@@ -154,7 +156,7 @@ function PlacementWithSeeds({ children }: { children: ReactNode }) {
         addSeed(seed, position);
       }
     },
-    [addSeed, addDistrict, transitContext]
+    [addSeed, addDistrict, transitContext, toast]
   );
 
   return (
@@ -232,6 +234,7 @@ function SelectionWithFeatures({ children }: { children: ReactNode }) {
  */
 function DrawingWithFeatures({ children }: { children: ReactNode }) {
   const { addNeighborhood, setCityLimits, features } = useFeatures();
+  const toast = useToastOptional();
 
   const handlePolygonComplete = useCallback(
     (points: Point[], mode: DrawingMode) => {
@@ -247,7 +250,7 @@ function DrawingWithFeatures({ children }: { children: ReactNode }) {
       } else if (mode === "cityLimits") {
         // Only one city limits per world - check if one already exists
         if (features.cityLimits) {
-          console.warn("City limits already exists. Remove existing limits first to draw new ones.");
+          toast?.addToast("City limits already exists. Remove existing limits first.", "warning");
           return;
         }
 
@@ -262,7 +265,7 @@ function DrawingWithFeatures({ children }: { children: ReactNode }) {
       }
       // TODO: Handle "split" mode when implemented
     },
-    [addNeighborhood, setCityLimits, features.cityLimits]
+    [addNeighborhood, setCityLimits, features.cityLimits, toast]
   );
 
   return (
@@ -339,8 +342,7 @@ export function EditorShell({
   onZoomChange,
 }: EditorShellProps) {
   const handleHelp = useCallback(() => {
-    // TODO: Open help modal
-    console.log("Help clicked");
+    // TODO: Open help modal (CITY-210)
   }, []);
 
   return (
