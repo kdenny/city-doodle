@@ -17,6 +17,7 @@ import {
   useState,
   useCallback,
   useEffect,
+  useMemo,
   ReactNode,
 } from "react";
 import type { Point } from "./layers";
@@ -817,7 +818,9 @@ export function TransitProvider({ children, worldId }: TransitProviderProps) {
   const isLoading = isLoadingNetwork || createStation.isPending || createLine.isPending || updateLine.isPending;
   const error = networkError || createStation.error || null;
 
-  const value: TransitContextValue = {
+  const transitNetworkValue = transitNetwork ?? null;
+
+  const value: TransitContextValue = useMemo(() => ({
     // Rail
     railStations,
     trackSegments,
@@ -833,7 +836,7 @@ export function TransitProvider({ children, worldId }: TransitProviderProps) {
     removeSubwayStation,
     getNearbySubwayStations,
     // Raw network data for panels
-    transitNetwork: transitNetwork ?? null,
+    transitNetwork: transitNetworkValue,
     // Highlighting (CITY-195)
     highlightedLineId,
     setHighlightedLineId,
@@ -847,7 +850,31 @@ export function TransitProvider({ children, worldId }: TransitProviderProps) {
     // Loading/Error
     isLoading,
     error,
-  };
+  }), [
+    railStations,
+    trackSegments,
+    validateRailStationPlacement,
+    placeRailStation,
+    removeRailStation,
+    getNearbyStations,
+    subwayStations,
+    subwayTunnels,
+    validateSubwayStationPlacement,
+    placeSubwayStation,
+    removeSubwayStation,
+    getNearbySubwayStations,
+    transitNetworkValue,
+    highlightedLineId,
+    setHighlightedLineId,
+    getStationIdsForLine,
+    getSegmentIdsForLine,
+    createLineManual,
+    createLineSegment,
+    updateLineMethod,
+    lineCount,
+    isLoading,
+    error,
+  ]);
 
   return (
     <TransitContext.Provider value={value}>{children}</TransitContext.Provider>

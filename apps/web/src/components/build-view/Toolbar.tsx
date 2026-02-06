@@ -5,6 +5,10 @@ export type Tool = "pan" | "draw" | "city-limits" | "split" | "build" | "transit
 interface ToolbarProps {
   activeTool: Tool;
   onToolChange: (tool: Tool) => void;
+  disabled?: boolean;
+  onGrow?: (timeStep: number) => void;
+  growDisabled?: boolean;
+  isGrowing?: boolean;
 }
 
 const tools: { id: Tool; label: string; icon: JSX.Element }[] = [
@@ -70,24 +74,97 @@ const tools: { id: Tool; label: string; icon: JSX.Element }[] = [
   },
 ];
 
-export function Toolbar({ activeTool, onToolChange }: ToolbarProps) {
+const TIME_STEPS = [
+  { value: 1, label: "1 yr" },
+  { value: 5, label: "5 yr" },
+  { value: 10, label: "10 yr" },
+];
+
+export function Toolbar({ activeTool, onToolChange, disabled, onGrow, growDisabled, isGrowing }: ToolbarProps) {
+  const [showGrowPopover, setShowGrowPopover] = useState(false);
+
+  const handleGrow = (timeStep: number) => {
+    setShowGrowPopover(false);
+    onGrow?.(timeStep);
+  };
+
+  const isGrowDisabled = disabled || growDisabled || isGrowing;
+
   return (
     <div className="flex flex-col gap-1 bg-white rounded-lg shadow-lg p-1">
-      {tools.map(({ id, label, icon }) => (
+      {tools.map(({ id, label, icon }) => {
+        const isDisabled = disabled && id !== "pan";
+        return (
+          <button
+            key={id}
+            onClick={() => !isDisabled && onToolChange(id)}
+            disabled={isDisabled}
+            className={`w-10 h-10 flex items-center justify-center rounded transition-colors ${
+              isDisabled
+                ? "text-gray-300 cursor-not-allowed"
+                : activeTool === id
+                  ? "bg-blue-600 text-white"
+                  : "text-gray-600 hover:bg-gray-100"
+            }`}
+            title={isDisabled ? "Enter edit mode to use this tool" : label}
+            aria-label={label}
+          >
+            {icon}
+          </button>
+        );
+      })}
+
+      {/* Divider */}
+      <div className="border-t border-gray-200 my-0.5" />
+
+      {/* Grow button */}
+      <div className="relative">
         <button
-          key={id}
-          onClick={() => onToolChange(id)}
+          onClick={() => !isGrowDisabled && setShowGrowPopover(!showGrowPopover)}
+          disabled={isGrowDisabled}
           className={`w-10 h-10 flex items-center justify-center rounded transition-colors ${
-            activeTool === id
-              ? "bg-blue-600 text-white"
-              : "text-gray-600 hover:bg-gray-100"
+            isGrowDisabled
+              ? "text-gray-300 cursor-not-allowed"
+              : isGrowing
+                ? "bg-green-100 text-green-600"
+                : "text-green-600 hover:bg-green-50"
           }`}
-          title={label}
-          aria-label={label}
+          title={isGrowing ? "Growing city..." : isGrowDisabled ? "Enter edit mode to grow city" : "Grow City"}
+          aria-label="Grow City"
         >
-          {icon}
+          {isGrowing ? (
+            <svg className="w-5 h-5 animate-spin" fill="none" viewBox="0 0 24 24">
+              <circle className="opacity-25" cx="12" cy="12" r="10" stroke="currentColor" strokeWidth="4" />
+              <path className="opacity-75" fill="currentColor" d="M4 12a8 8 0 018-8V0C5.373 0 0 5.373 0 12h4z" />
+            </svg>
+          ) : (
+            <svg className="w-5 h-5" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+              {/* Sprout/plant icon */}
+              <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M12 19V13m0 0c0-3 2.5-5 5-5-1 3-2.5 5-5 5zm0 0c0-3-2.5-5-5-5 1 3 2.5 5 5 5z" />
+              <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M12 22v-3" />
+            </svg>
+          )}
         </button>
-      ))}
+
+        {/* Time step popover */}
+        {showGrowPopover && (
+          <>
+            <div className="fixed inset-0" onClick={() => setShowGrowPopover(false)} />
+            <div className="absolute left-12 top-0 bg-white rounded-lg shadow-lg border border-gray-200 p-2 z-50 whitespace-nowrap">
+              <div className="text-xs text-gray-500 px-2 pb-1">Grow by</div>
+              {TIME_STEPS.map(({ value, label }) => (
+                <button
+                  key={value}
+                  onClick={() => handleGrow(value)}
+                  className="block w-full text-left px-3 py-1.5 text-sm rounded hover:bg-green-50 text-gray-700 hover:text-green-700"
+                >
+                  {label}
+                </button>
+              ))}
+            </div>
+          </>
+        )}
+      </div>
     </div>
   );
 }

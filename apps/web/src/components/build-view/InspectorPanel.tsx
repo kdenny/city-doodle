@@ -85,6 +85,7 @@ interface InspectorPanelProps {
   onUpdate?: (feature: SelectedFeature) => void;
   onDelete?: (feature: SelectedFeature) => void;
   onClose?: () => void;
+  readOnly?: boolean;
 }
 
 // District type display names
@@ -139,6 +140,7 @@ export function InspectorPanel({
   onUpdate,
   onDelete,
   onClose,
+  readOnly,
 }: InspectorPanelProps) {
   if (!selection) {
     return (
@@ -169,28 +171,30 @@ export function InspectorPanel({
       {selection.type === "district" && (
         <DistrictInspector
           district={selection}
-          onUpdate={onUpdate}
-          onDelete={onDelete}
+          onUpdate={readOnly ? undefined : onUpdate}
+          onDelete={readOnly ? undefined : onDelete}
+          readOnly={readOnly}
         />
       )}
       {selection.type === "road" && (
         <RoadInspector
           road={selection}
-          onUpdate={onUpdate}
-          onDelete={onDelete}
+          onUpdate={readOnly ? undefined : onUpdate}
+          onDelete={readOnly ? undefined : onDelete}
+          readOnly={readOnly}
         />
       )}
       {selection.type === "poi" && (
-        <POIInspector poi={selection} onUpdate={onUpdate} onDelete={onDelete} />
+        <POIInspector poi={selection} onUpdate={readOnly ? undefined : onUpdate} onDelete={readOnly ? undefined : onDelete} readOnly={readOnly} />
       )}
       {selection.type === "neighborhood" && (
-        <NeighborhoodInspector neighborhood={selection} onUpdate={onUpdate} onDelete={onDelete} />
+        <NeighborhoodInspector neighborhood={selection} onUpdate={readOnly ? undefined : onUpdate} onDelete={readOnly ? undefined : onDelete} readOnly={readOnly} />
       )}
       {selection.type === "rail_station" && (
-        <RailStationInspector station={selection} onDelete={onDelete} />
+        <RailStationInspector station={selection} onDelete={readOnly ? undefined : onDelete} />
       )}
       {selection.type === "subway_station" && (
-        <SubwayStationInspector station={selection} onDelete={onDelete} />
+        <SubwayStationInspector station={selection} onDelete={readOnly ? undefined : onDelete} />
       )}
     </div>
   );
@@ -200,6 +204,7 @@ interface DistrictInspectorProps {
   district: SelectedDistrict;
   onUpdate?: (feature: SelectedFeature) => void;
   onDelete?: (feature: SelectedFeature) => void;
+  readOnly?: boolean;
 }
 
 // Density presets for quick selection
@@ -231,6 +236,7 @@ function DistrictInspector({
   district,
   onUpdate,
   onDelete,
+  readOnly,
 }: DistrictInspectorProps) {
   // Get transit context to determine if transit stations exist
   const transitContext = useTransitOptional();
@@ -352,7 +358,8 @@ function DistrictInspector({
         <select
           value={editedDistrictType}
           onChange={handleDistrictTypeChange}
-          className="w-full px-2 py-1 text-sm border border-gray-300 rounded focus:outline-none focus:ring-1 focus:ring-blue-500 bg-white"
+          disabled={readOnly}
+          className="w-full px-2 py-1 text-sm border border-gray-300 rounded focus:outline-none focus:ring-1 focus:ring-blue-500 bg-white disabled:opacity-60 disabled:cursor-not-allowed"
           data-testid="district-type-select"
         >
           {DISTRICT_TYPE_OPTIONS.map((districtType) => (
@@ -372,7 +379,8 @@ function DistrictInspector({
           type="text"
           value={editedName}
           onChange={handleNameChange}
-          className="w-full px-2 py-1 text-sm border border-gray-300 rounded focus:outline-none focus:ring-1 focus:ring-blue-500"
+          disabled={readOnly}
+          className="w-full px-2 py-1 text-sm border border-gray-300 rounded focus:outline-none focus:ring-1 focus:ring-blue-500 disabled:opacity-60 disabled:cursor-not-allowed"
         />
       </div>
 
@@ -394,7 +402,8 @@ function DistrictInspector({
           step={1}
           value={currentDensity}
           onChange={(e) => handleDensityChange(Number(e.target.value))}
-          className="w-full h-2 bg-gray-200 rounded-lg appearance-none cursor-pointer accent-blue-500"
+          disabled={readOnly}
+          className="w-full h-2 bg-gray-200 rounded-lg appearance-none cursor-pointer accent-blue-500 disabled:opacity-60 disabled:cursor-not-allowed"
           data-testid="density-slider"
         />
         <div className="flex justify-between text-xs text-gray-400 mt-0.5">
@@ -447,7 +456,8 @@ function DistrictInspector({
             step={1}
             value={gridAngleDeg}
             onChange={(e) => handleGridAngleChange(Number(e.target.value))}
-            className="w-full h-2 bg-gray-200 rounded-lg appearance-none cursor-pointer accent-blue-500"
+            disabled={readOnly}
+            className="w-full h-2 bg-gray-200 rounded-lg appearance-none cursor-pointer accent-blue-500 disabled:opacity-60 disabled:cursor-not-allowed"
             data-testid="grid-angle-slider"
           />
           <div className="flex justify-between text-xs text-gray-400 mt-0.5">
@@ -493,7 +503,7 @@ function DistrictInspector({
             type="checkbox"
             checked={isHistoric}
             onChange={handleHistoricToggle}
-            disabled={!canMarkHistoric}
+            disabled={!canMarkHistoric || readOnly}
             className="w-4 h-4 rounded border-gray-300 text-amber-600 focus:ring-amber-500 disabled:opacity-50"
             data-testid="historic-checkbox"
           />
@@ -557,12 +567,13 @@ interface RoadInspectorProps {
   road: SelectedRoad;
   onUpdate?: (feature: SelectedFeature) => void;
   onDelete?: (feature: SelectedFeature) => void;
+  readOnly?: boolean;
 }
 
 // Road classes available for selection
 const ROAD_CLASS_OPTIONS: RoadClass[] = ["highway", "arterial", "collector", "local", "trail"];
 
-function RoadInspector({ road, onUpdate, onDelete }: RoadInspectorProps) {
+function RoadInspector({ road, onUpdate, onDelete, readOnly }: RoadInspectorProps) {
   const [editedName, setEditedName] = useState(road.name || "");
   const [editedRoadClass, setEditedRoadClass] = useState<RoadClass>(road.roadClass as RoadClass);
 
@@ -601,7 +612,8 @@ function RoadInspector({ road, onUpdate, onDelete }: RoadInspectorProps) {
         <select
           value={editedRoadClass}
           onChange={handleRoadClassChange}
-          className="w-full px-2 py-1 text-sm border border-gray-300 rounded focus:outline-none focus:ring-1 focus:ring-blue-500 bg-white"
+          disabled={readOnly}
+          className="w-full px-2 py-1 text-sm border border-gray-300 rounded focus:outline-none focus:ring-1 focus:ring-blue-500 bg-white disabled:opacity-60 disabled:cursor-not-allowed"
         >
           {ROAD_CLASS_OPTIONS.map((roadClass) => (
             <option key={roadClass} value={roadClass}>
@@ -621,7 +633,8 @@ function RoadInspector({ road, onUpdate, onDelete }: RoadInspectorProps) {
           value={editedName}
           onChange={handleNameChange}
           placeholder="Unnamed road"
-          className="w-full px-2 py-1 text-sm border border-gray-300 rounded focus:outline-none focus:ring-1 focus:ring-blue-500"
+          disabled={readOnly}
+          className="w-full px-2 py-1 text-sm border border-gray-300 rounded focus:outline-none focus:ring-1 focus:ring-blue-500 disabled:opacity-60 disabled:cursor-not-allowed"
         />
       </div>
 
@@ -652,9 +665,10 @@ interface POIInspectorProps {
   poi: SelectedPOI;
   onUpdate?: (feature: SelectedFeature) => void;
   onDelete?: (feature: SelectedFeature) => void;
+  readOnly?: boolean;
 }
 
-function POIInspector({ poi, onUpdate, onDelete }: POIInspectorProps) {
+function POIInspector({ poi, onUpdate, onDelete, readOnly }: POIInspectorProps) {
   const [editedName, setEditedName] = useState(poi.name);
 
   const handleNameChange = useCallback(
@@ -687,7 +701,8 @@ function POIInspector({ poi, onUpdate, onDelete }: POIInspectorProps) {
           type="text"
           value={editedName}
           onChange={handleNameChange}
-          className="w-full px-2 py-1 text-sm border border-gray-300 rounded focus:outline-none focus:ring-1 focus:ring-blue-500"
+          disabled={readOnly}
+          className="w-full px-2 py-1 text-sm border border-gray-300 rounded focus:outline-none focus:ring-1 focus:ring-blue-500 disabled:opacity-60 disabled:cursor-not-allowed"
         />
       </div>
 
@@ -708,9 +723,10 @@ interface NeighborhoodInspectorProps {
   neighborhood: SelectedNeighborhood;
   onUpdate?: (feature: SelectedFeature) => void;
   onDelete?: (feature: SelectedFeature) => void;
+  readOnly?: boolean;
 }
 
-function NeighborhoodInspector({ neighborhood, onUpdate, onDelete }: NeighborhoodInspectorProps) {
+function NeighborhoodInspector({ neighborhood, onUpdate, onDelete, readOnly }: NeighborhoodInspectorProps) {
   const [editedName, setEditedName] = useState(neighborhood.name);
 
   const handleNameChange = useCallback(
@@ -740,7 +756,8 @@ function NeighborhoodInspector({ neighborhood, onUpdate, onDelete }: Neighborhoo
           type="text"
           value={editedName}
           onChange={handleNameChange}
-          className="w-full px-2 py-1 text-sm border border-gray-300 rounded focus:outline-none focus:ring-1 focus:ring-blue-500"
+          disabled={readOnly}
+          className="w-full px-2 py-1 text-sm border border-gray-300 rounded focus:outline-none focus:ring-1 focus:ring-blue-500 disabled:opacity-60 disabled:cursor-not-allowed"
         />
       </div>
 

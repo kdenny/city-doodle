@@ -1,10 +1,25 @@
 import { render, screen, fireEvent } from "@testing-library/react";
+import { MemoryRouter } from "react-router-dom";
+import { QueryClient, QueryClientProvider } from "@tanstack/react-query";
 import { describe, it, expect, vi } from "vitest";
 import { BuildView } from "./BuildView";
 
+function renderBuildView(ui: React.ReactElement) {
+  const queryClient = new QueryClient({
+    defaultOptions: { queries: { retry: false } },
+  });
+  return render(
+    <QueryClientProvider client={queryClient}>
+      <MemoryRouter>
+        {ui}
+      </MemoryRouter>
+    </QueryClientProvider>
+  );
+}
+
 describe("BuildView", () => {
   it("renders children", () => {
-    render(
+    renderBuildView(
       <BuildView>
         <div data-testid="content">Map Content</div>
       </BuildView>
@@ -13,7 +28,7 @@ describe("BuildView", () => {
   });
 
   it("renders toolbar with all tools including city limits", () => {
-    render(
+    renderBuildView(
       <BuildView>
         <div>Content</div>
       </BuildView>
@@ -26,7 +41,7 @@ describe("BuildView", () => {
   });
 
   it("renders layers panel with toggles", () => {
-    render(
+    renderBuildView(
       <BuildView>
         <div>Content</div>
       </BuildView>
@@ -37,7 +52,7 @@ describe("BuildView", () => {
   });
 
   it("renders population panel", () => {
-    render(
+    renderBuildView(
       <BuildView population={500000} growthPercent={1.5}>
         <div>Content</div>
       </BuildView>
@@ -48,7 +63,7 @@ describe("BuildView", () => {
   });
 
   it("renders city needs icons", () => {
-    render(
+    renderBuildView(
       <BuildView>
         <div>Content</div>
       </BuildView>
@@ -58,7 +73,7 @@ describe("BuildView", () => {
 
   it("calls onToolChange when tool is selected", () => {
     const onToolChange = vi.fn();
-    render(
+    renderBuildView(
       <BuildView onToolChange={onToolChange}>
         <div>Content</div>
       </BuildView>
@@ -70,7 +85,7 @@ describe("BuildView", () => {
 
   it("calls onCityNeedsClick when city needs is clicked", () => {
     const onCityNeedsClick = vi.fn();
-    render(
+    renderBuildView(
       <BuildView onCityNeedsClick={onCityNeedsClick}>
         <div>Content</div>
       </BuildView>
@@ -81,7 +96,7 @@ describe("BuildView", () => {
   });
 
   it("toggles layer visibility when checkbox clicked", () => {
-    render(
+    renderBuildView(
       <BuildView>
         <div>Content</div>
       </BuildView>
@@ -90,5 +105,14 @@ describe("BuildView", () => {
     const densityLabel = screen.getByText("Density");
     fireEvent.click(densityLabel);
     // Layer state should toggle (internal state, tested via callback in integration)
+  });
+
+  it("renders grow button", () => {
+    renderBuildView(
+      <BuildView>
+        <div>Content</div>
+      </BuildView>
+    );
+    expect(screen.getByLabelText("Grow City")).toBeInTheDocument();
   });
 });

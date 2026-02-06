@@ -142,6 +142,11 @@ export interface DistrictGenerationConfig {
    * 1 = car-dependent (standard grid orientation)
    */
   transitCar?: number;
+  /**
+   * Era year for the district (e.g. 1200-2024).
+   * Historic eras produce smaller, tighter blocks; modern eras produce larger blocks.
+   */
+  eraYear?: number;
 }
 
 const DEFAULT_CONFIG: Required<Omit<DistrictGenerationConfig, "scaleSettings" | "seed" | "transitStations" | "transitCar">> & {
@@ -851,42 +856,68 @@ export function generateDistrictGeometry(
   const districtType = seedIdToDistrictType(seedId);
   const districtId = generateId(`district`);
 
-  // Choose polygon shape based on district type and organic factor
+  // Choose polygon shape based on organic factor and district type.
+  // organicFactor (from grid_organic slider) controls the blend:
+  //   0.0 = strict grid (rectangular)
+  //   1.0 = fully organic (irregular polygon)
+  // District type provides a bias: downtown/commercial lean rectangular,
+  // park/airport always organic regardless of slider.
   let polygonPoints: Point[];
 
-  if (districtType === "downtown" || districtType === "commercial") {
-    // More rectangular for urban areas
-    const width = size * rng.range(0.8, 1.2);
-    const height = size * rng.range(0.7, 1.0);
-    polygonPoints = generateRoundedRectangle(
-      position.x,
-      position.y,
-      width,
-      height,
-      size * 0.1
-    );
-  } else if (districtType === "park" || districtType === "airport") {
-    // More organic for parks, larger for airports
+  if (districtType === "park" || districtType === "airport") {
+    // Parks and airports are always organic shapes
     const factor = districtType === "airport" ? 1.5 : 1.0;
     polygonPoints = generateOrganicPolygon(
       position.x,
       position.y,
       size * factor / 2,
       cfg.polygonPoints + rng.intRange(0, 4),
-      cfg.organicFactor + 0.2,
+      Math.max(cfg.organicFactor, 0.3) + 0.2,
       rng
     );
   } else {
-    // Default organic shape with some variation
-    polygonPoints = generateOrganicPolygon(
-      position.x,
-      position.y,
-      size / 2,
-      cfg.polygonPoints,
-      cfg.organicFactor,
-      rng
-    );
+    // For all other district types, use organicFactor to blend shape.
+    // Downtown/commercial get a bias toward rectangular (subtract 0.2).
+    const typeBias = (districtType === "downtown" || districtType === "commercial") ? -0.2 : 0;
+    const effectiveOrganic = Math.max(0, Math.min(1, cfg.organicFactor + typeBias));
+
+    if (effectiveOrganic < 0.3) {
+      // Grid-dominant: rectangular shape with slight rounding
+      const width = size * rng.range(0.8, 1.2);
+      const height = size * rng.range(0.7, 1.0);
+      polygonPoints = generateRoundedRectangle(
+        position.x,
+        position.y,
+        width,
+        height,
+        size * (0.05 + effectiveOrganic * 0.15)
+      );
+    } else if (effectiveOrganic < 0.6) {
+      // Blended: organic polygon with fewer points and less variation
+      polygonPoints = generateOrganicPolygon(
+        position.x,
+        position.y,
+        size / 2,
+        cfg.polygonPoints - 2 + rng.intRange(0, 2),
+        effectiveOrganic * 0.6,
+        rng
+      );
+    } else {
+      // Organic-dominant: full organic shape with more variation
+      polygonPoints = generateOrganicPolygon(
+        position.x,
+        position.y,
+        size / 2,
+        cfg.polygonPoints + rng.intRange(0, 3),
+        effectiveOrganic,
+        rng
+      );
+    }
   }
+
+  // Determine if district is historic based on era_year
+  const eraYear = config.eraYear ?? 2024;
+  const isHistoric = eraYear <= 1940;
 
   // Generate district
   const district: District = {
@@ -894,7 +925,7 @@ export function generateDistrictGeometry(
     type: districtType,
     name: getDistrictName(districtType, seed),
     polygon: { points: polygonPoints },
-    isHistoric: false,
+    isHistoric,
   };
 
   // Generate street grid within the district
@@ -905,7 +936,15 @@ export function generateDistrictGeometry(
     const baseBlockSize = getBaseBlockSize(districtType);
     const sprawlCompact = cfg.scaleSettings.sprawlCompact ?? 0.5;
     const densityMultiplier = calculateDensityMultiplier(sprawlCompact);
-    const effectiveBlockSize = metersToWorldUnits(baseBlockSize * densityMultiplier);
+
+    // Apply era-based block size adjustment:
+    // Historic eras (pre-1940) have smaller, tighter blocks (walking-scale).
+    // Modern eras (post-1960) have larger blocks (car-scale).
+    // Multiplier: 0.7 at year 1200, 1.0 at 1940, 1.2 at 2024
+    const eraMultiplier = eraYear <= 1940
+      ? 0.7 + 0.3 * ((eraYear - 1200) / 740)
+      : 1.0 + 0.2 * ((eraYear - 1940) / 84);
+    const effectiveBlockSize = metersToWorldUnits(baseBlockSize * densityMultiplier * eraMultiplier);
 
     // Build transit options if available
     const transitOptions: TransitGridOptions | undefined =

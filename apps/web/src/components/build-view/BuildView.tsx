@@ -1,4 +1,6 @@
 import { ReactNode, useCallback, useEffect, useState } from "react";
+import { useParams } from "react-router-dom";
+import { useQueryClient } from "@tanstack/react-query";
 import { Toolbar, useToolbar, Tool } from "./Toolbar";
 import { LayersPanel, useLayers, LayerVisibility } from "./LayersPanel";
 import { PopulationPanel } from "./PopulationPanel";
@@ -12,6 +14,8 @@ import { useZoomOptional } from "../shell/ZoomContext";
 import { useDrawingOptional } from "../canvas/DrawingContext";
 import { useTransitLineDrawingOptional, usePopulationStats } from "../canvas";
 import type { TransitLineProperties } from "../canvas";
+import { useEditLockOptional } from "../shell/EditLockContext";
+import { useCreateJob, useJobPolling, queryKeys } from "../../api/hooks";
 
 interface BuildViewProps {
   children: ReactNode;
@@ -64,6 +68,40 @@ export function BuildView({
 
   // Get transit line drawing context
   const transitLineDrawingContext = useTransitLineDrawingOptional();
+
+  // Get edit lock context for gating tools
+  const editLock = useEditLockOptional();
+  const isEditing = editLock?.isEditing ?? true; // default to true if no provider
+
+  // City growth simulation
+  const { worldId } = useParams<{ worldId: string }>();
+  const queryClient = useQueryClient();
+  const createJob = useCreateJob();
+  const [growthJobId, setGrowthJobId] = useState<string | null>(null);
+  const { status: growthStatus } = useJobPolling(growthJobId);
+
+  // Refresh districts when growth job completes
+  useEffect(() => {
+    if (growthStatus === "completed" && worldId) {
+      queryClient.invalidateQueries({ queryKey: queryKeys.worldDistricts(worldId) });
+      setGrowthJobId(null);
+    } else if (growthStatus === "failed") {
+      setGrowthJobId(null);
+    }
+  }, [growthStatus, worldId, queryClient]);
+
+  const isGrowing = growthJobId !== null && growthStatus !== "completed" && growthStatus !== "failed";
+
+  const handleGrow = useCallback(
+    (timeStep: number) => {
+      if (!worldId || isGrowing) return;
+      createJob.mutate(
+        { type: "city_growth", params: { world_id: worldId, time_step: timeStep } },
+        { onSuccess: (job) => setGrowthJobId(job.id) }
+      );
+    },
+    [worldId, isGrowing, createJob]
+  );
 
   // Note: Transit context is used by TransitLineDrawingProvider in EditorShell
   // We don't need direct access here, but the hook call ensures the provider exists
@@ -193,7 +231,14 @@ export function BuildView({
 
       {/* Toolbar (top-left) */}
       <div className="absolute top-4 left-4">
-        <Toolbar activeTool={activeTool} onToolChange={handleToolChange} />
+        <Toolbar
+          activeTool={activeTool}
+          onToolChange={handleToolChange}
+          disabled={!isEditing}
+          onGrow={handleGrow}
+          growDisabled={!worldId}
+          isGrowing={isGrowing}
+        />
       </div>
 
       {/* Layers panel (bottom-left) */}
@@ -218,6 +263,7 @@ export function BuildView({
           onUpdate={onFeatureUpdate}
           onDelete={onFeatureDeleteProp}
           onClose={onSelectionClear}
+          readOnly={!isEditing}
         />
       </div>
 

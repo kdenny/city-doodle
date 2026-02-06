@@ -431,6 +431,27 @@ export function useCancelJob(options?: UseMutationOptions<Job, Error, string>) {
   });
 }
 
+export function useJobPolling(jobId: string | null) {
+  const { data: job } = useQuery({
+    queryKey: queryKeys.job(jobId ?? ""),
+    queryFn: () => api.jobs.get(jobId!),
+    enabled: !!jobId,
+    refetchInterval: (query) => {
+      const status = query.state.data?.status;
+      if (status === "completed" || status === "failed") return false;
+      return 2000;
+    },
+  });
+
+  return {
+    job: job ?? null,
+    status: job?.status ?? null,
+    result: job?.result ?? null,
+    error: job?.error ?? null,
+    isPolling: !!jobId && !!job && job.status !== "completed" && job.status !== "failed",
+  };
+}
+
 // ============================================================================
 // Seed Hooks
 // ============================================================================

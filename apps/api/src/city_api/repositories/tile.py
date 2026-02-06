@@ -104,12 +104,15 @@ async def update_tile(db: AsyncSession, tile_id: UUID, tile_update: TileUpdate) 
     return _to_schema(tile)
 
 
-async def get_or_create_tile(db: AsyncSession, world_id: UUID, tx: int, ty: int) -> Tile:
-    """Get a tile by coordinates, creating it if it doesn't exist."""
+async def get_or_create_tile(db: AsyncSession, world_id: UUID, tx: int, ty: int) -> tuple[Tile, bool]:
+    """Get a tile by coordinates, creating it if it doesn't exist.
+
+    Returns a tuple of (tile, created) where created is True if a new tile was made.
+    """
     tile = await get_tile_by_coords(db, world_id, tx, ty)
     if tile is not None:
-        return tile
-    return await create_tile(db, TileCreate(world_id=world_id, tx=tx, ty=ty))
+        return tile, False
+    return await create_tile(db, TileCreate(world_id=world_id, tx=tx, ty=ty)), True
 
 
 def _to_schema(tile: TileModel) -> Tile:
