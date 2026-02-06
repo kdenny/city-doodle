@@ -504,6 +504,105 @@ export interface TransitNetworkStats {
 }
 
 // ============================================================================
+// Road Network Types
+// ============================================================================
+
+export type RoadClass = "highway" | "arterial" | "collector" | "local" | "alley";
+
+export type NodeType = "intersection" | "endpoint" | "roundabout" | "interchange";
+
+export interface RoadPoint {
+  x: number;
+  y: number;
+}
+
+export interface RoadNodeCreate {
+  world_id: UUID;
+  position: RoadPoint;
+  node_type?: NodeType;
+  name?: string;
+}
+
+export interface RoadNodeUpdate {
+  position?: RoadPoint;
+  node_type?: NodeType;
+  name?: string;
+}
+
+export interface RoadNode {
+  id: UUID;
+  world_id: UUID;
+  position: RoadPoint;
+  node_type: NodeType;
+  name?: string;
+  connected_edges: UUID[];
+  created_at: DateTime;
+  updated_at: DateTime;
+}
+
+export interface RoadNodeBulkCreate {
+  nodes: RoadNodeCreate[];
+}
+
+export interface RoadEdgeCreate {
+  world_id: UUID;
+  from_node_id: UUID;
+  to_node_id: UUID;
+  road_class?: RoadClass;
+  geometry?: RoadPoint[];
+  speed_limit?: number;
+  name?: string;
+  is_one_way?: boolean;
+  lanes?: number;
+  district_id?: UUID;
+}
+
+export interface RoadEdgeUpdate {
+  road_class?: RoadClass;
+  geometry?: RoadPoint[];
+  speed_limit?: number;
+  name?: string;
+  is_one_way?: boolean;
+  lanes?: number;
+}
+
+export interface RoadEdge {
+  id: UUID;
+  world_id: UUID;
+  from_node_id: UUID;
+  to_node_id: UUID;
+  road_class: RoadClass;
+  geometry: RoadPoint[];
+  length_meters: number;
+  speed_limit?: number;
+  name?: string;
+  is_one_way: boolean;
+  lanes: number;
+  district_id?: UUID;
+  created_at: DateTime;
+  updated_at: DateTime;
+}
+
+export interface RoadEdgeBulkCreate {
+  edges: RoadEdgeCreate[];
+}
+
+export interface RoadNetwork {
+  world_id: UUID;
+  nodes: RoadNode[];
+  edges: RoadEdge[];
+}
+
+export interface RoadNetworkStats {
+  world_id: UUID;
+  total_nodes: number;
+  total_edges: number;
+  total_length_meters: number;
+  edges_by_class: Record<string, number>;
+  connectivity_score: number;
+}
+
+// ============================================================================
 // API Error Types
 // ============================================================================
 

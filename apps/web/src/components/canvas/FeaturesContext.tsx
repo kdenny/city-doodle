@@ -24,7 +24,6 @@ import {
   wouldOverlap,
   regenerateStreetGridForClippedDistrict,
   regenerateStreetGridWithAngle,
-  DEFAULT_SCALE_SETTINGS,
   type DistrictGenerationConfig,
   type GeneratedDistrict,
 } from "./layers/districtGenerator";

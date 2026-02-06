@@ -25,6 +25,16 @@ import {
   PlacedSeed,
   PlacedSeedBulkCreate,
   PlacedSeedCreate,
+  RoadEdge,
+  RoadEdgeBulkCreate,
+  RoadEdgeCreate,
+  RoadEdgeUpdate,
+  RoadNetwork,
+  RoadNetworkStats,
+  RoadNode,
+  RoadNodeBulkCreate,
+  RoadNodeCreate,
+  RoadNodeUpdate,
   Tile,
   TileCreate,
   TileLock,
@@ -85,6 +95,14 @@ export const queryKeys = {
   // Neighborhoods
   worldNeighborhoods: (worldId: string) => ["worlds", worldId, "neighborhoods"] as const,
   neighborhood: (id: string) => ["neighborhoods", id] as const,
+
+  // Road Network
+  worldRoadNetwork: (worldId: string) => ["worlds", worldId, "road-network"] as const,
+  worldRoadNetworkStats: (worldId: string) => ["worlds", worldId, "road-network", "stats"] as const,
+  worldRoadNodes: (worldId: string) => ["worlds", worldId, "road-nodes"] as const,
+  roadNode: (id: string) => ["road-nodes", id] as const,
+  worldRoadEdges: (worldId: string) => ["worlds", worldId, "road-edges"] as const,
+  roadEdge: (id: string) => ["road-edges", id] as const,
 
   // Transit
   worldTransitNetwork: (worldId: string) => ["worlds", worldId, "transit"] as const,
@@ -686,6 +704,283 @@ export function useDeleteAllNeighborhoods(
     onSuccess: (_, worldId) => {
       queryClient.invalidateQueries({
         queryKey: queryKeys.worldNeighborhoods(worldId),
+      });
+    },
+    ...options,
+  });
+}
+
+// ============================================================================
+// Road Network Hooks
+// ============================================================================
+
+export function useRoadNetwork(
+  worldId: string,
+  options?: Omit<UseQueryOptions<RoadNetwork>, "queryKey" | "queryFn">
+) {
+  return useQuery({
+    queryKey: queryKeys.worldRoadNetwork(worldId),
+    queryFn: () => api.roads.getNetwork(worldId),
+    enabled: !!worldId,
+    ...options,
+  });
+}
+
+export function useRoadNetworkStats(
+  worldId: string,
+  options?: Omit<UseQueryOptions<RoadNetworkStats>, "queryKey" | "queryFn">
+) {
+  return useQuery({
+    queryKey: queryKeys.worldRoadNetworkStats(worldId),
+    queryFn: () => api.roads.getStats(worldId),
+    enabled: !!worldId,
+    ...options,
+  });
+}
+
+export function useClearRoadNetwork(
+  options?: UseMutationOptions<void, Error, string>
+) {
+  const queryClient = useQueryClient();
+  return useMutation({
+    mutationFn: (worldId: string) => api.roads.clearNetwork(worldId),
+    onSuccess: (_, worldId) => {
+      queryClient.invalidateQueries({
+        queryKey: queryKeys.worldRoadNetwork(worldId),
+      });
+      queryClient.invalidateQueries({
+        queryKey: queryKeys.worldRoadNetworkStats(worldId),
+      });
+      queryClient.invalidateQueries({
+        queryKey: queryKeys.worldRoadNodes(worldId),
+      });
+      queryClient.invalidateQueries({
+        queryKey: queryKeys.worldRoadEdges(worldId),
+      });
+    },
+    ...options,
+  });
+}
+
+// Road Node Hooks
+
+export function useRoadNodes(
+  worldId: string,
+  options?: Omit<UseQueryOptions<RoadNode[]>, "queryKey" | "queryFn">
+) {
+  return useQuery({
+    queryKey: queryKeys.worldRoadNodes(worldId),
+    queryFn: () => api.roads.nodes.list(worldId),
+    enabled: !!worldId,
+    ...options,
+  });
+}
+
+export function useRoadNode(
+  nodeId: string,
+  options?: Omit<UseQueryOptions<RoadNode>, "queryKey" | "queryFn">
+) {
+  return useQuery({
+    queryKey: queryKeys.roadNode(nodeId),
+    queryFn: () => api.roads.nodes.get(nodeId),
+    enabled: !!nodeId,
+    ...options,
+  });
+}
+
+export function useCreateRoadNode(
+  options?: UseMutationOptions<RoadNode, Error, { worldId: string; data: Omit<RoadNodeCreate, "world_id"> }>
+) {
+  const queryClient = useQueryClient();
+  return useMutation({
+    mutationFn: ({ worldId, data }) => api.roads.nodes.create(worldId, data),
+    onSuccess: (_, { worldId }) => {
+      queryClient.invalidateQueries({
+        queryKey: queryKeys.worldRoadNodes(worldId),
+      });
+      queryClient.invalidateQueries({
+        queryKey: queryKeys.worldRoadNetwork(worldId),
+      });
+      queryClient.invalidateQueries({
+        queryKey: queryKeys.worldRoadNetworkStats(worldId),
+      });
+    },
+    ...options,
+  });
+}
+
+export function useCreateRoadNodesBulk(
+  options?: UseMutationOptions<RoadNode[], Error, { worldId: string; data: RoadNodeBulkCreate }>
+) {
+  const queryClient = useQueryClient();
+  return useMutation({
+    mutationFn: ({ worldId, data }) => api.roads.nodes.createBulk(worldId, data),
+    onSuccess: (_, { worldId }) => {
+      queryClient.invalidateQueries({
+        queryKey: queryKeys.worldRoadNodes(worldId),
+      });
+      queryClient.invalidateQueries({
+        queryKey: queryKeys.worldRoadNetwork(worldId),
+      });
+      queryClient.invalidateQueries({
+        queryKey: queryKeys.worldRoadNetworkStats(worldId),
+      });
+    },
+    ...options,
+  });
+}
+
+export function useUpdateRoadNode(
+  options?: UseMutationOptions<RoadNode, Error, { nodeId: string; data: RoadNodeUpdate; worldId?: string }>
+) {
+  const queryClient = useQueryClient();
+  return useMutation({
+    mutationFn: ({ nodeId, data }) => api.roads.nodes.update(nodeId, data),
+    onSuccess: (node, { worldId }) => {
+      queryClient.setQueryData(queryKeys.roadNode(node.id), node);
+      if (worldId) {
+        queryClient.invalidateQueries({
+          queryKey: queryKeys.worldRoadNodes(worldId),
+        });
+        queryClient.invalidateQueries({
+          queryKey: queryKeys.worldRoadNetwork(worldId),
+        });
+      }
+    },
+    ...options,
+  });
+}
+
+export function useDeleteRoadNode(
+  options?: UseMutationOptions<void, Error, { nodeId: string; worldId: string }>
+) {
+  const queryClient = useQueryClient();
+  return useMutation({
+    mutationFn: ({ nodeId }) => api.roads.nodes.delete(nodeId),
+    onSuccess: (_, { nodeId, worldId }) => {
+      queryClient.removeQueries({ queryKey: queryKeys.roadNode(nodeId) });
+      queryClient.invalidateQueries({
+        queryKey: queryKeys.worldRoadNodes(worldId),
+      });
+      queryClient.invalidateQueries({
+        queryKey: queryKeys.worldRoadEdges(worldId),
+      });
+      queryClient.invalidateQueries({
+        queryKey: queryKeys.worldRoadNetwork(worldId),
+      });
+      queryClient.invalidateQueries({
+        queryKey: queryKeys.worldRoadNetworkStats(worldId),
+      });
+    },
+    ...options,
+  });
+}
+
+// Road Edge Hooks
+
+export function useRoadEdges(
+  worldId: string,
+  options?: Omit<UseQueryOptions<RoadEdge[]>, "queryKey" | "queryFn">
+) {
+  return useQuery({
+    queryKey: queryKeys.worldRoadEdges(worldId),
+    queryFn: () => api.roads.edges.list(worldId),
+    enabled: !!worldId,
+    ...options,
+  });
+}
+
+export function useRoadEdge(
+  edgeId: string,
+  options?: Omit<UseQueryOptions<RoadEdge>, "queryKey" | "queryFn">
+) {
+  return useQuery({
+    queryKey: queryKeys.roadEdge(edgeId),
+    queryFn: () => api.roads.edges.get(edgeId),
+    enabled: !!edgeId,
+    ...options,
+  });
+}
+
+export function useCreateRoadEdge(
+  options?: UseMutationOptions<RoadEdge, Error, { worldId: string; data: Omit<RoadEdgeCreate, "world_id"> }>
+) {
+  const queryClient = useQueryClient();
+  return useMutation({
+    mutationFn: ({ worldId, data }) => api.roads.edges.create(worldId, data),
+    onSuccess: (_, { worldId }) => {
+      queryClient.invalidateQueries({
+        queryKey: queryKeys.worldRoadEdges(worldId),
+      });
+      queryClient.invalidateQueries({
+        queryKey: queryKeys.worldRoadNetwork(worldId),
+      });
+      queryClient.invalidateQueries({
+        queryKey: queryKeys.worldRoadNetworkStats(worldId),
+      });
+    },
+    ...options,
+  });
+}
+
+export function useCreateRoadEdgesBulk(
+  options?: UseMutationOptions<RoadEdge[], Error, { worldId: string; data: RoadEdgeBulkCreate }>
+) {
+  const queryClient = useQueryClient();
+  return useMutation({
+    mutationFn: ({ worldId, data }) => api.roads.edges.createBulk(worldId, data),
+    onSuccess: (_, { worldId }) => {
+      queryClient.invalidateQueries({
+        queryKey: queryKeys.worldRoadEdges(worldId),
+      });
+      queryClient.invalidateQueries({
+        queryKey: queryKeys.worldRoadNetwork(worldId),
+      });
+      queryClient.invalidateQueries({
+        queryKey: queryKeys.worldRoadNetworkStats(worldId),
+      });
+    },
+    ...options,
+  });
+}
+
+export function useUpdateRoadEdge(
+  options?: UseMutationOptions<RoadEdge, Error, { edgeId: string; data: RoadEdgeUpdate; worldId?: string }>
+) {
+  const queryClient = useQueryClient();
+  return useMutation({
+    mutationFn: ({ edgeId, data }) => api.roads.edges.update(edgeId, data),
+    onSuccess: (edge, { worldId }) => {
+      queryClient.setQueryData(queryKeys.roadEdge(edge.id), edge);
+      if (worldId) {
+        queryClient.invalidateQueries({
+          queryKey: queryKeys.worldRoadEdges(worldId),
+        });
+        queryClient.invalidateQueries({
+          queryKey: queryKeys.worldRoadNetwork(worldId),
+        });
+      }
+    },
+    ...options,
+  });
+}
+
+export function useDeleteRoadEdge(
+  options?: UseMutationOptions<void, Error, { edgeId: string; worldId: string }>
+) {
+  const queryClient = useQueryClient();
+  return useMutation({
+    mutationFn: ({ edgeId }) => api.roads.edges.delete(edgeId),
+    onSuccess: (_, { edgeId, worldId }) => {
+      queryClient.removeQueries({ queryKey: queryKeys.roadEdge(edgeId) });
+      queryClient.invalidateQueries({
+        queryKey: queryKeys.worldRoadEdges(worldId),
+      });
+      queryClient.invalidateQueries({
+        queryKey: queryKeys.worldRoadNetwork(worldId),
+      });
+      queryClient.invalidateQueries({
+        queryKey: queryKeys.worldRoadNetworkStats(worldId),
       });
     },
     ...options,
