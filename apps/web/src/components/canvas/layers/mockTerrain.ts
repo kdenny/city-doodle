@@ -42,60 +42,73 @@ export function generateMockTerrain(
 ): TerrainData {
   const random = seededRandom(seed);
 
-  // Generate ocean on the left side
+  // Seed-dependent ocean edge position: varies between 20-40% of worldSize
+  const oceanBase = 0.2 + random() * 0.2; // 0.20 to 0.40
+  // Seed-dependent variation for each vertex (up to ±8% of worldSize)
+  const ov = () => (random() - 0.5) * worldSize * 0.16;
+
+  // Generate ocean on the left side with seed-dependent shape
   const oceanPolygon = {
     points: [
       { x: 0, y: 0 },
-      { x: worldSize * 0.3 + random() * 50, y: 0 },
-      { x: worldSize * 0.25 + random() * 40, y: worldSize * 0.3 },
-      { x: worldSize * 0.35 + random() * 30, y: worldSize * 0.5 },
-      { x: worldSize * 0.28 + random() * 40, y: worldSize * 0.7 },
-      { x: worldSize * 0.32 + random() * 50, y: worldSize },
+      { x: worldSize * oceanBase + ov(), y: 0 },
+      { x: worldSize * oceanBase + ov(), y: worldSize * 0.25 },
+      { x: worldSize * oceanBase + ov(), y: worldSize * 0.5 },
+      { x: worldSize * oceanBase + ov(), y: worldSize * 0.75 },
+      { x: worldSize * oceanBase + ov(), y: worldSize },
       { x: 0, y: worldSize },
     ],
   };
 
-  // Generate a lake in the upper right
-  const lakeCenter = { x: worldSize * 0.7, y: worldSize * 0.25 };
-  const lakeRadius = worldSize * 0.08;
+  // Seed-dependent lake position: placed in the non-ocean portion of the map
+  const lakeX = worldSize * (oceanBase + 0.15 + random() * 0.4); // well past ocean edge
+  const lakeY = worldSize * (0.15 + random() * 0.7); // anywhere top to bottom
+  const lakeCenter = { x: lakeX, y: lakeY };
+  const lakeRadius = worldSize * (0.05 + random() * 0.06); // 5-11% of worldSize
   const lakePoints: Point[] = [];
-  for (let i = 0; i < 12; i++) {
-    const angle = (i / 12) * Math.PI * 2;
-    const r = lakeRadius * (0.8 + random() * 0.4);
+  const lakeVertices = 10 + Math.floor(random() * 8); // 10-17 vertices
+  for (let i = 0; i < lakeVertices; i++) {
+    const angle = (i / lakeVertices) * Math.PI * 2;
+    const r = lakeRadius * (0.7 + random() * 0.6);
     lakePoints.push({
       x: lakeCenter.x + Math.cos(angle) * r,
       y: lakeCenter.y + Math.sin(angle) * r,
     });
   }
 
-  // Generate coastline along the ocean edge
+  // Coastline start/end follow the ocean polygon edge (2nd and 2nd-to-last interior points)
+  const coastStart = oceanPolygon.points[1];
+  const coastEnd = oceanPolygon.points[oceanPolygon.points.length - 2];
   const coastlinePoints = generateSmoothLine(
-    { x: worldSize * 0.3, y: 0 },
-    { x: worldSize * 0.32, y: worldSize },
+    coastStart,
+    coastEnd,
     20,
-    15,
+    worldSize * 0.01 + random() * worldSize * 0.02,
     random
   );
 
-  // Generate a river from the lake to the ocean
+  // River flows from lake toward the ocean edge
+  const riverEndX = worldSize * oceanBase + ov() * 0.5;
+  const riverEndY = lakeY + (random() - 0.5) * worldSize * 0.3;
   const riverPoints = generateSmoothLine(
-    { x: lakeCenter.x - lakeRadius, y: lakeCenter.y + lakeRadius * 0.5 },
-    { x: worldSize * 0.3, y: worldSize * 0.6 },
+    { x: lakeCenter.x - lakeRadius * 0.8, y: lakeCenter.y + lakeRadius * 0.3 },
+    { x: riverEndX, y: Math.max(0, Math.min(worldSize, riverEndY)) },
     15,
-    20,
+    worldSize * 0.015,
     random
   );
 
-  // Generate contour lines
+  // Contour lines with seed-dependent offsets
   const contours = [];
+  const contourBaseOffset = random() * worldSize * 0.1;
   for (let elevation = 10; elevation <= 100; elevation += 10) {
-    // Create wavy horizontal contour lines
-    const baseY = worldSize * (1 - elevation / 120);
+    const baseY = worldSize * (1 - elevation / 120) + contourBaseOffset;
+    const contourStartX = worldSize * (oceanBase + 0.05);
     const contourPoints = generateSmoothLine(
-      { x: worldSize * 0.35, y: baseY - 20 },
-      { x: worldSize, y: baseY + 20 },
+      { x: contourStartX, y: baseY - 20 + random() * 40 },
+      { x: worldSize, y: baseY + random() * 40 - 20 },
       10,
-      25,
+      25 + random() * 15,
       random
     );
 
