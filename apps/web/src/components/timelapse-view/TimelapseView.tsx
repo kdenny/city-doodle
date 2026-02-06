@@ -1,4 +1,4 @@
-import { ReactNode, useState } from "react";
+import { ReactNode, useCallback, useState } from "react";
 import { DateDisplay } from "./DateDisplay";
 import { ChangesPanel, YearChange, defaultChanges } from "./ChangesPanel";
 import { TimelineScrubber, defaultYearMarkers } from "./TimelineScrubber";
@@ -35,8 +35,15 @@ export function TimelapseView({
   yearMarkers = defaultYearMarkers,
   onDateChange,
 }: TimelapseViewProps) {
-  // Trigger growth simulation when worldId is provided
+  const YEAR_OPTIONS = [1, 5, 10] as const;
+  const [selectedYears, setSelectedYears] = useState<number>(1);
+
+  // Growth simulation (no longer auto-triggers)
   const growth = useGrowthSimulation(worldId);
+
+  const handleSimulate = useCallback(() => {
+    growth.simulate(selectedYears);
+  }, [growth.simulate, selectedYears]);
 
   // Use growth results if available, otherwise fall back to prop changes or defaults
   const changes = growth.changes.length > 0
@@ -90,11 +97,38 @@ export function TimelapseView({
         />
       </div>
 
-      {/* Changes panel (right) */}
+      {/* Simulation controls + changes panel (right) */}
       <div className="absolute top-4 right-4">
+        {/* Simulation length selector */}
+        <div className="bg-white rounded-lg shadow-lg px-4 py-3 mb-2">
+          <div className="text-xs font-medium text-gray-500 mb-2">Simulate Growth</div>
+          <div className="flex items-center gap-2">
+            {YEAR_OPTIONS.map((y) => (
+              <button
+                key={y}
+                onClick={() => setSelectedYears(y)}
+                className={`px-3 py-1 text-sm rounded-md border transition-colors ${
+                  selectedYears === y
+                    ? "bg-blue-500 text-white border-blue-500"
+                    : "bg-white text-gray-700 border-gray-300 hover:border-blue-300"
+                }`}
+              >
+                {y}yr
+              </button>
+            ))}
+            <button
+              onClick={handleSimulate}
+              disabled={growth.isSimulating || !worldId}
+              className="ml-1 px-3 py-1 text-sm rounded-md bg-green-500 text-white hover:bg-green-600 disabled:opacity-50 disabled:cursor-not-allowed transition-colors"
+            >
+              {growth.isSimulating ? "Running..." : "Go"}
+            </button>
+          </div>
+        </div>
+
         {growth.isSimulating && (
           <div className="bg-blue-50 border border-blue-200 rounded-lg px-4 py-2 mb-2 text-sm text-blue-700">
-            Simulating growth...
+            Simulating {selectedYears} year{selectedYears > 1 ? "s" : ""} of growth...
           </div>
         )}
         {growth.error && (
