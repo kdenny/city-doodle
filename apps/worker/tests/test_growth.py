@@ -4,7 +4,7 @@ from uuid import uuid4
 
 import pytest
 from city_worker.growth import GrowthChangelog, GrowthConfig
-from city_worker.growth.simulator import GrowthSimulator
+from city_worker.growth.simulator import GrowthSimulator, _point_in_ring
 from city_worker.growth.types import ChangeEntry
 
 
@@ -241,3 +241,98 @@ class TestGrowthSimulator:
 
         # With different seeds, we may get different POI types
         assert len(results) > 0
+
+    def test_expansion_blocked_by_adjacent_district(self):
+        """District expansion stops at vertices that would enter another district."""
+        world_id = str(uuid4())
+        # District A: square at (0,0)-(1000,1000)
+        district_a = _make_district("residential", density=3.0)
+        district_a["world_id"] = world_id
+        district_a["geometry"]["coordinates"] = [
+            [[0, 0], [1000, 0], [1000, 1000], [0, 1000], [0, 0]],
+        ]
+        # District B: square directly adjacent at (1000,0)-(2000,1000)
+        district_b = _make_district("commercial", density=3.0)
+        district_b["world_id"] = world_id
+        district_b["geometry"]["coordinates"] = [
+            [[1000, 0], [2000, 0], [2000, 1000], [1000, 1000], [1000, 0]],
+        ]
+
+        config = GrowthConfig(world_id=uuid4(), years=1)
+        sim = GrowthSimulator(config, seed=42)
+
+        changelog = sim.simulate([district_a, district_b], [], [], [])
+
+        # District A's right-edge points should NOT have entered district B
+        a_ring = district_a["geometry"]["coordinates"][0]
+        b_ring = district_b["geometry"]["coordinates"][0]
+        for p in a_ring:
+            assert not _point_in_ring(p[0], p[1], [[1000, 0], [2000, 0], [2000, 1000], [1000, 1000], [1000, 0]]), \
+                f"District A vertex {p} entered district B"
+
+    def test_expansion_blocked_by_water_region(self):
+        """District expansion stops at vertices that would enter water."""
+        district = _make_district("residential", density=3.0)
+        # Place a lake covering the area above y=1000
+        water_regions = [{
+            "type": "lake",
+            "geometry": {
+                "type": "Polygon",
+                "coordinates": [
+                    [[-500, 1000], [1500, 1000], [1500, 3000], [-500, 3000], [-500, 1000]],
+                ],
+            },
+        }]
+
+        config = GrowthConfig(world_id=uuid4(), years=1)
+        sim = GrowthSimulator(config, seed=42)
+
+        changelog = sim.simulate([district], [], [], [], water_regions)
+
+        # Top-edge points should not have expanded into the lake
+        ring = district["geometry"]["coordinates"][0]
+        for p in ring:
+            assert p[1] <= 1001, f"District vertex {p} expanded into water"
+
+    def test_fully_surrounded_does_not_expand(self):
+        """A district fully surrounded by others should not count as expanded."""
+        world_id = str(uuid4())
+        # Inner district: small square at (500,500)-(600,600)
+        inner = _make_district("residential", density=3.0)
+        inner["world_id"] = world_id
+        inner["geometry"]["coordinates"] = [
+            [[500, 500], [600, 500], [600, 600], [500, 600], [500, 500]],
+        ]
+        # Outer district: large square enclosing the inner one
+        outer = _make_district("commercial", density=3.0)
+        outer["world_id"] = world_id
+        outer["geometry"]["coordinates"] = [
+            [[0, 0], [1100, 0], [1100, 1100], [0, 1100], [0, 0]],
+        ]
+
+        config = GrowthConfig(world_id=uuid4(), years=1)
+        sim = GrowthSimulator(config, seed=42)
+        changelog = sim.simulate([inner, outer], [], [], [])
+
+        # Inner district had all points constrained, should not count as expanded
+        expand_entries = [
+            e for e in changelog.entries
+            if e.action == "expand" and e.entity_id == inner["id"]
+        ]
+        assert len(expand_entries) == 0
+
+
+class TestPointInRing:
+    def test_point_inside_square(self):
+        ring = [[0, 0], [10, 0], [10, 10], [0, 10], [0, 0]]
+        assert _point_in_ring(5, 5, ring) is True
+
+    def test_point_outside_square(self):
+        ring = [[0, 0], [10, 0], [10, 10], [0, 10], [0, 0]]
+        assert _point_in_ring(15, 5, ring) is False
+
+    def test_point_on_edge(self):
+        ring = [[0, 0], [10, 0], [10, 10], [0, 10], [0, 0]]
+        # On the boundary — ray casting can go either way, just don't crash
+        result = _point_in_ring(10, 5, ring)
+        assert isinstance(result, bool)

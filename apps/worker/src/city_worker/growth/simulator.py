@@ -35,6 +35,36 @@ DISTRICT_POI_NEEDS: dict[str, list[str]] = {
 GROWTH_ROAD_CLASS = "local"
 
 
+def _get_outer_ring(geometry: dict) -> list[list[float]] | None:
+    """Extract the outer ring from a GeoJSON-like polygon geometry."""
+    coords = geometry.get("coordinates")
+    if not coords or not isinstance(coords, list) or len(coords) == 0:
+        return None
+    ring = coords[0] if isinstance(coords[0], list) and len(coords[0]) > 0 else coords
+    if not ring or len(ring) < 3:
+        return None
+    return ring
+
+
+def _point_in_ring(px: float, py: float, ring: list[list[float]]) -> bool:
+    """Ray-casting point-in-polygon test for a single ring."""
+    n = len(ring)
+    inside = False
+    j = n - 1
+    for i in range(n):
+        pi = ring[i]
+        pj = ring[j]
+        if not (isinstance(pi, list) and len(pi) >= 2 and isinstance(pj, list) and len(pj) >= 2):
+            j = i
+            continue
+        xi, yi = pi[0], pi[1]
+        xj, yj = pj[0], pj[1]
+        if ((yi > py) != (yj > py)) and (px < (xj - xi) * (py - yi) / (yj - yi) + xi):
+            inside = not inside
+        j = i
+    return inside
+
+
 class GrowthSimulator:
     """Runs growth simulation on in-memory data and produces a changelog."""
 
@@ -88,8 +118,11 @@ class GrowthSimulator:
             # 1. Infill development
             self._infill_district(district, changelog)
 
-            # 2. Expansion at edges
-            expanded = self._expand_district(district, water_regions, changelog)
+            # 2. Expansion at edges (constrained by other districts and water)
+            other_districts = [d for d in districts if d["id"] != district["id"]]
+            expanded = self._expand_district(
+                district, other_districts, water_regions, changelog,
+            )
 
             # 3. New roads in expanded area
             if expanded:
@@ -135,10 +168,15 @@ class GrowthSimulator:
     def _expand_district(
         self,
         district: dict,
+        other_districts: list[dict],
         water_regions: list[dict] | None,
         changelog: GrowthChangelog,
     ) -> bool:
-        """Expand district geometry outward. Returns True if expanded."""
+        """Expand district geometry outward. Returns True if expanded.
+
+        Constrains expansion so points don't enter other districts (CITY-310)
+        or water regions (CITY-309).
+        """
         geometry = district.get("geometry")
         if not geometry or not isinstance(geometry, dict):
             return False
@@ -156,19 +194,62 @@ class GrowthSimulator:
         cx = sum(p[0] for p in ring if isinstance(p, list) and len(p) >= 2) / max(len(ring), 1)
         cy = sum(p[1] for p in ring if isinstance(p, list) and len(p) >= 2) / max(len(ring), 1)
 
+        # Pre-compute outer rings of other districts for collision checks
+        other_rings = []
+        for od in other_districts:
+            od_geom = od.get("geometry")
+            if od_geom and isinstance(od_geom, dict):
+                od_ring = _get_outer_ring(od_geom)
+                if od_ring:
+                    other_rings.append(od_ring)
+
+        # Pre-compute water region rings
+        water_rings: list[list[list[float]]] = []
+        if water_regions:
+            for wr in water_regions:
+                wr_geom = wr.get("geometry")
+                if wr_geom and isinstance(wr_geom, dict):
+                    wr_ring = _get_outer_ring(wr_geom)
+                    if wr_ring:
+                        water_rings.append(wr_ring)
+
         # Expand each point outward from centroid
         expansion = self.config.expansion_rate
         new_ring = []
+        points_constrained = 0
         for p in ring:
             if not isinstance(p, list) or len(p) < 2:
                 new_ring.append(p)
                 continue
             dx = p[0] - cx
             dy = p[1] - cy
-            new_ring.append([
-                p[0] + dx * expansion,
-                p[1] + dy * expansion,
-            ])
+            new_x = p[0] + dx * expansion
+            new_y = p[1] + dy * expansion
+
+            # Check if expanded point falls inside another district
+            constrained = False
+            for or_ring in other_rings:
+                if _point_in_ring(new_x, new_y, or_ring):
+                    constrained = True
+                    break
+
+            # Check if expanded point falls inside water
+            if not constrained:
+                for wr_ring in water_rings:
+                    if _point_in_ring(new_x, new_y, wr_ring):
+                        constrained = True
+                        break
+
+            if constrained:
+                # Keep original point position (don't expand this vertex)
+                new_ring.append([p[0], p[1]])
+                points_constrained += 1
+            else:
+                new_ring.append([new_x, new_y])
+
+        # Only count as expanded if at least one point actually moved
+        if points_constrained >= len(ring):
+            return False
 
         # Update geometry
         if isinstance(coords[0], list) and isinstance(coords[0][0], list):
@@ -181,7 +262,10 @@ class GrowthSimulator:
             action="expand",
             entity_type="district",
             entity_id=str(district["id"]),
-            details={"expansion_rate": expansion},
+            details={
+                "expansion_rate": expansion,
+                "points_constrained": points_constrained,
+            },
         ))
         return True
 
