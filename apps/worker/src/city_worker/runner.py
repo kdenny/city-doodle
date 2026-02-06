@@ -204,6 +204,7 @@ class JobRunner:
             world_seed: int seed for deterministic generation
             center_tx: int x-coordinate of center tile
             center_ty: int y-coordinate of center tile
+            world_settings: dict of world settings (beach_enabled, beach_width_multiplier, etc.)
         """
         from uuid import UUID
 
@@ -224,9 +225,16 @@ class JobRunner:
 
         world_id = UUID(world_id) if isinstance(world_id, str) else world_id
 
+        # Extract world settings if provided (from WorldSettings schema)
+        world_settings = params.get("world_settings", {})
+
         # Run terrain generation in thread pool (CPU-bound)
         loop = asyncio.get_running_loop()
-        config = TerrainConfig(world_seed=int(world_seed))
+        config = TerrainConfig(
+            world_seed=int(world_seed),
+            beach_enabled=world_settings.get("beach_enabled", True),
+            beach_width_multiplier=world_settings.get("beach_width_multiplier", 1.0),
+        )
         generator = TerrainGenerator(config)
 
         result = await loop.run_in_executor(
