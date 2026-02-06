@@ -8,10 +8,11 @@ from sqlalchemy.ext.asyncio import AsyncSession
 
 from city_api.database import get_db
 from city_api.dependencies import get_current_user
+from city_api.repositories import job as job_repo
 from city_api.repositories import lock as lock_repo
 from city_api.repositories import tile as tile_repo
 from city_api.repositories import world as world_repo
-from city_api.schemas import Tile, TileUpdate
+from city_api.schemas import JobCreate, JobType, Tile, TileCreate, TileUpdate, WorldSettings
 
 logger = logging.getLogger(__name__)
 
@@ -197,4 +198,41 @@ async def get_or_create_tile(
             detail="You don't have access to this world",
         )
 
-    return await tile_repo.get_or_create_tile(db, world_id, tx, ty)
+    # Check if tile already exists
+    existing_tile = await tile_repo.get_tile_by_coords(db, world_id, tx, ty)
+    if existing_tile is not None:
+        return existing_tile
+
+    # Create new tile with empty terrain
+    tile = await tile_repo.create_tile(db, TileCreate(world_id=world_id, tx=tx, ty=ty))
+
+    # Automatically queue a terrain_generation job for the new tile,
+    # including world settings so the worker can apply them
+    try:
+        settings = WorldSettings.model_validate(world_model.settings or {})
+        await job_repo.create_job(
+            db,
+            JobCreate(
+                type=JobType.TERRAIN_GENERATION,
+                tile_id=tile.id,
+                params={
+                    "world_id": str(world_id),
+                    "world_seed": world_model.seed,
+                    "center_tx": tx,
+                    "center_ty": ty,
+                    "world_settings": settings.model_dump(),
+                },
+            ),
+            user_id=user_id,
+        )
+        logger.info(
+            "Queued terrain_generation job for new tile: world_id=%s tx=%s ty=%s",
+            world_id, tx, ty,
+        )
+    except Exception:
+        logger.exception(
+            "Failed to queue terrain_generation job: world_id=%s tx=%s ty=%s",
+            world_id, tx, ty,
+        )
+
+    return tile
