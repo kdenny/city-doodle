@@ -16,9 +16,7 @@ from sqlalchemy import (
     Uuid,
     func,
 )
-from sqlalchemy import (
-    Enum as SQLEnum,
-)
+from sqlalchemy.dialects.postgresql import ENUM as PGEnum
 from sqlalchemy.orm import Mapped, mapped_column, relationship
 
 from city_api.database import Base, JSONVariant
@@ -54,8 +52,12 @@ class TransitStation(Base):
     district_id: Mapped[uuid.UUID] = mapped_column(
         Uuid, ForeignKey("districts.id", ondelete="SET NULL"), nullable=False
     )
-    station_type: Mapped[StationType] = mapped_column(
-        SQLEnum(StationType, name="station_type", create_constraint=True),
+    station_type: Mapped[str] = mapped_column(
+        PGEnum(
+            "subway", "rail",
+            name="station_type",
+            create_type=False,
+        ),
         nullable=False,
     )
     name: Mapped[str] = mapped_column(String(255), nullable=False)
@@ -104,8 +106,12 @@ class TransitLine(Base):
     world_id: Mapped[uuid.UUID] = mapped_column(
         Uuid, ForeignKey("worlds.id", ondelete="CASCADE"), nullable=False
     )
-    line_type: Mapped[LineType] = mapped_column(
-        SQLEnum(LineType, name="line_type", create_constraint=True),
+    line_type: Mapped[str] = mapped_column(
+        PGEnum(
+            "subway", "rail",
+            name="line_type",
+            create_type=False,
+        ),
         nullable=False,
     )
     name: Mapped[str] = mapped_column(String(255), nullable=False)
