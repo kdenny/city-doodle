@@ -269,9 +269,9 @@ interface TransitContextValue {
   /** Validate if a position is valid for subway station placement */
   validateSubwayStationPlacement: (position: Point) => StationValidation;
   /** Place a rail station at the given position (returns null if invalid) */
-  placeRailStation: (position: Point) => Promise<TransitStation | null>;
+  placeRailStation: (position: Point, options?: { skipAutoConnect?: boolean }) => Promise<TransitStation | null>;
   /** Place a subway station at the given position (returns null if invalid) */
-  placeSubwayStation: (position: Point) => Promise<TransitStation | null>;
+  placeSubwayStation: (position: Point, options?: { skipAutoConnect?: boolean }) => Promise<TransitStation | null>;
   /** Remove a rail station */
   removeRailStation: (stationId: string) => Promise<void>;
   /** Remove a subway station */
@@ -526,7 +526,7 @@ export function TransitProvider({ children, worldId }: TransitProviderProps) {
    * Validates placement, creates the station, and auto-connects to nearby stations.
    */
   const placeRailStation = useCallback(
-    async (position: Point): Promise<TransitStation | null> => {
+    async (position: Point, options?: { skipAutoConnect?: boolean }): Promise<TransitStation | null> => {
       if (!worldId) {
         toast?.addToast("Cannot place station: No world selected", "error");
         return null;
@@ -604,14 +604,16 @@ export function TransitProvider({ children, worldId }: TransitProviderProps) {
           },
         });
 
-        if (nearbySubway) {
-          toast?.addToast(`Created transfer station "${stationName}" (rail ↔ subway)`, "success");
-        } else {
-          toast?.addToast(`Created ${stationName}`, "success");
+        if (!options?.skipAutoConnect) {
+          if (nearbySubway) {
+            toast?.addToast(`Created transfer station "${stationName}" (rail ↔ subway)`, "success");
+          } else {
+            toast?.addToast(`Created ${stationName}`, "success");
+          }
         }
 
-        // Auto-connect to nearby stations
-        const nearbyStations = getNearbyStations(position);
+        // Auto-connect to nearby stations (CITY-394: skip when creating during line drawing)
+        const nearbyStations = !options?.skipAutoConnect ? getNearbyStations(position) : [];
         if (nearbyStations.length > 0) {
           // Find or create a rail line
           let lineId: string | null = null;
@@ -709,7 +711,7 @@ export function TransitProvider({ children, worldId }: TransitProviderProps) {
    * Subway lines are underground and NOT visible on the map surface.
    */
   const placeSubwayStation = useCallback(
-    async (position: Point): Promise<TransitStation | null> => {
+    async (position: Point, options?: { skipAutoConnect?: boolean }): Promise<TransitStation | null> => {
       if (!worldId) {
         toast?.addToast("Cannot place station: No world selected", "error");
         return null;
@@ -787,14 +789,16 @@ export function TransitProvider({ children, worldId }: TransitProviderProps) {
           },
         });
 
-        if (nearbyRail) {
-          toast?.addToast(`Created transfer station "${stationName}" (subway ↔ rail)`, "success");
-        } else {
-          toast?.addToast(`Created ${stationName}`, "success");
+        if (!options?.skipAutoConnect) {
+          if (nearbyRail) {
+            toast?.addToast(`Created transfer station "${stationName}" (subway ↔ rail)`, "success");
+          } else {
+            toast?.addToast(`Created ${stationName}`, "success");
+          }
         }
 
-        // Auto-connect to nearby subway stations
-        const nearbyStations = getNearbySubwayStations(position);
+        // Auto-connect to nearby subway stations (CITY-394: skip when creating during line drawing)
+        const nearbyStations = !options?.skipAutoConnect ? getNearbySubwayStations(position) : [];
         if (nearbyStations.length > 0) {
           // Find or create a subway line
           let lineId: string | null = null;

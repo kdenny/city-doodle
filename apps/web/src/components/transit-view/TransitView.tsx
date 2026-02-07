@@ -523,8 +523,8 @@ export function TransitView({
           <div className="absolute top-4 left-4 z-10 bg-blue-600 text-white px-4 py-2 rounded-lg shadow-lg flex items-center gap-2">
             <span className="text-sm font-medium">
               {transitLineDrawingContext.state.connectedStations.length === 0
-                ? "Click a station to start"
-                : "Click another station to extend"}
+                ? "Click a station or empty space to start"
+                : "Click a station or empty space to extend"}
               {transitLineDrawingContext.state.connectedStations.length >= 2 && (
                 <> — Press <kbd className="px-1 py-0.5 bg-blue-500 rounded text-xs font-mono">Enter</kbd> to finish</>
               )}

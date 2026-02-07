@@ -1251,7 +1251,7 @@ export const MapCanvas = forwardRef<MapCanvasHandle, MapCanvasProps>(
       }
     };
 
-    const handlePointerUp = (event: { global: { x: number; y: number } }) => {
+    const handlePointerUp = async (event: { global: { x: number; y: number } }) => {
       const s = eventStateRef.current;
       const isFreehandActive = s.drawingContext?.state.isFreehandActive ?? false;
       const endFreehand = s.drawingContext?.endFreehand;
@@ -1379,8 +1379,36 @@ export const MapCanvas = forwardRef<MapCanvasHandle, MapCanvasProps>(
 
         if (clickedStation) {
           selectStation(clickedStation);
+          return;
         }
-        // Clicking off a station does nothing (user must click a station)
+
+        // CITY-394: Auto-create station when clicking empty space during line drawing
+        const lineType = s.transitLineDrawingContext?.state.lineProperties?.type;
+        if (s.transitContext && lineType) {
+          const createStation = lineType === "subway"
+            ? s.transitContext.placeSubwayStation
+            : s.transitContext.placeRailStation;
+
+          // Create station at click position (skip auto-connect since drawing context manages connections)
+          const newStation = await createStation(
+            { x: worldPos.x, y: worldPos.y },
+            { skipAutoConnect: true }
+          );
+
+          if (newStation) {
+            // Convert to RailStationData for selectStation
+            selectStation({
+              id: newStation.id,
+              name: newStation.name,
+              position: { x: newStation.position_x, y: newStation.position_y },
+              isTerminus: false,
+              isHub: false,
+            });
+          } else {
+            // Station creation failed (outside district) — show error flash
+            seedsLayerRef.current?.showPlacementError({ x: worldPos.x, y: worldPos.y });
+          }
+        }
         return;
       }
 
