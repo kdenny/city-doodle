@@ -40,6 +40,7 @@ import {
 } from "./layers/poiArterialValidator";
 import { generatePOIsForDistrict } from "./layers/poiAutoGenerator";
 import { generateParkFeaturesForDistrict } from "./layers/parkGenerator";
+import { generateAirportFeaturesForDistrict } from "./layers/airportGenerator";
 import { useTerrainOptional } from "./TerrainContext";
 import { useTransitOptional } from "./TransitContext";
 import { useToastOptional } from "../../contexts";
@@ -864,6 +865,20 @@ export function FeaturesProvider({
       // Attach ponds to the district for rendering (CITY-378)
       if (parkPonds.length > 0) {
         generated.district.ponds = parkPonds;
+      }
+
+      // CITY-379: Generate airport features (runways, taxiways, access roads)
+      if (generated.district.type === "airport") {
+        const airportFeatures = generateAirportFeaturesForDistrict(
+          generated.district.polygon.points,
+          generated.district.id,
+          [...features.roads, ...allRoads]
+        );
+        allRoads = [
+          ...allRoads,
+          ...airportFeatures.runways,
+          ...airportFeatures.accessRoads,
+        ];
       }
 
       // Auto-generate POIs matching the district type (CITY-345)
