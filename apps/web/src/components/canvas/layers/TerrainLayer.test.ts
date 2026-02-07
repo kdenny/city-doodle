@@ -241,7 +241,7 @@ describe("generateMockTerrain", () => {
   });
 
   it("generates water features with required properties", () => {
-    const data = generateMockTerrain(768, 42);
+    const data = generateMockTerrain(768, 42, "coastal");
 
     expect(data.water.length).toBeGreaterThan(0);
     for (const water of data.water) {
@@ -252,7 +252,7 @@ describe("generateMockTerrain", () => {
   });
 
   it("generates coastlines with required properties", () => {
-    const data = generateMockTerrain(768, 42);
+    const data = generateMockTerrain(768, 42, "coastal");
 
     expect(data.coastlines.length).toBeGreaterThan(0);
     for (const coastline of data.coastlines) {
@@ -262,7 +262,7 @@ describe("generateMockTerrain", () => {
   });
 
   it("generates rivers with required properties", () => {
-    const data = generateMockTerrain(768, 42);
+    const data = generateMockTerrain(768, 42, "coastal");
 
     expect(data.rivers.length).toBeGreaterThan(0);
     for (const river of data.rivers) {
@@ -293,8 +293,8 @@ describe("generateMockTerrain", () => {
   });
 
   it("generates different output for different seeds", () => {
-    const data1 = generateMockTerrain(768, 42);
-    const data2 = generateMockTerrain(768, 99);
+    const data1 = generateMockTerrain(768, 42, "coastal");
+    const data2 = generateMockTerrain(768, 99, "coastal");
 
     // At least some coordinates should differ
     const r1Points = data1.rivers[0].line.points;

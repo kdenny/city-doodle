@@ -1,14 +1,30 @@
 """World schema - represents a user's city map."""
 
 from datetime import datetime
+from typing import Literal
 from uuid import UUID
 
 from pydantic import BaseModel, Field
+
+GeographicSetting = Literal[
+    "coastal",
+    "bay_harbor",
+    "river_valley",
+    "lakefront",
+    "inland",
+    "island",
+    "peninsula",
+    "delta",
+]
 
 
 class WorldSettings(BaseModel):
     """Configuration settings for a world."""
 
+    geographic_setting: GeographicSetting = Field(
+        default="coastal",
+        description="Geographic setting determining water body layout",
+    )
     grid_organic: float = Field(
         default=0.5,
         ge=0.0,

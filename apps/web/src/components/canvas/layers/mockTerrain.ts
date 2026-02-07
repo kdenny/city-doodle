@@ -1,16 +1,32 @@
 /**
  * Generate mock terrain data for demonstration.
  * In production, this would come from the API.
+ *
+ * CITY-325: Improved RNG (xorshift128), 11 archetypes
+ * CITY-322: Fractal coastlines with bays and inlets
+ * CITY-321: River valley, bay harbor, lakefront, inland, delta settings
+ * CITY-326: River and bay water features
  */
 
 import type { TerrainData, Point } from "./types";
+import type { GeographicSetting } from "../../../api/types";
 import { generateLakeName, generateRiverName } from "../../../utils/nameGenerator";
 
-// Simple seeded random number generator for determinism
+// ---------------------------------------------------------------------------
+// xorshift128 PRNG — period 2^128−1, much better than the old LCG
+// ---------------------------------------------------------------------------
 function seededRandom(seed: number) {
+  let s0 = (seed >>> 0) | 1;
+  let s1 = ((seed * 1103515245 + 12345) >>> 0) | 1;
+  let s2 = ((seed * 214013 + 2531011) >>> 0) | 1;
+  let s3 = ((seed * 48271) >>> 0) | 1;
   return function () {
-    seed = (seed * 9301 + 49297) % 233280;
-    return seed / 233280;
+    const t = s0 ^ (s0 << 11);
+    s0 = s1;
+    s1 = s2;
+    s2 = s3;
+    s3 = (s3 ^ (s3 >>> 19) ^ (t ^ (t >>> 8))) >>> 0;
+    return s3 / 4294967296;
   };
 }
 
@@ -36,20 +52,86 @@ function generateSmoothLine(
   return points;
 }
 
-/**
- * Terrain archetype — determines the fundamental layout of the map.
- * The seed selects which archetype is used so different seeds produce
- * structurally different terrain.
- */
+// ---------------------------------------------------------------------------
+// Fractal coastline — recursive midpoint displacement for realistic edges
+// ---------------------------------------------------------------------------
+function fractalCoast(
+  points: Point[],
+  depth: number,
+  roughness: number,
+  random: () => number
+): Point[] {
+  if (depth <= 0 || points.length < 2) return points;
+  const result: Point[] = [];
+  for (let i = 0; i < points.length - 1; i++) {
+    const a = points[i];
+    const b = points[i + 1];
+    const mx = (a.x + b.x) / 2;
+    const my = (a.y + b.y) / 2;
+    const dx = b.x - a.x;
+    const dy = b.y - a.y;
+    const len = Math.sqrt(dx * dx + dy * dy);
+    // Displace perpendicular to the segment
+    const nx = -dy / len;
+    const ny = dx / len;
+    const displacement = (random() - 0.5) * roughness * len;
+    result.push(a);
+    result.push({ x: mx + nx * displacement, y: my + ny * displacement });
+  }
+  result.push(points[points.length - 1]);
+  return fractalCoast(result, depth - 1, roughness * 0.55, random);
+}
+
+// ---------------------------------------------------------------------------
+// Terrain archetypes — expanded set
+// ---------------------------------------------------------------------------
 type TerrainArchetype =
   | "west_coast"
   | "east_coast"
   | "south_coast"
   | "north_coast"
   | "island"
-  | "peninsula";
+  | "peninsula"
+  | "bay_harbor"
+  | "river_valley"
+  | "lakefront"
+  | "inland"
+  | "delta";
 
-function pickArchetype(seed: number): TerrainArchetype {
+function pickArchetype(
+  seed: number,
+  geographicSetting?: GeographicSetting
+): TerrainArchetype {
+  if (geographicSetting) {
+    // Map geographic settings to archetypes
+    switch (geographicSetting) {
+      case "coastal": {
+        // Pick a random coast direction based on seed
+        const coastTypes: TerrainArchetype[] = [
+          "west_coast",
+          "east_coast",
+          "south_coast",
+          "north_coast",
+        ];
+        return coastTypes[Math.abs(seed) % coastTypes.length];
+      }
+      case "bay_harbor":
+        return "bay_harbor";
+      case "river_valley":
+        return "river_valley";
+      case "lakefront":
+        return "lakefront";
+      case "inland":
+        return "inland";
+      case "island":
+        return "island";
+      case "peninsula":
+        return "peninsula";
+      case "delta":
+        return "delta";
+    }
+  }
+  // Fallback: pick from all archetypes including new ones
   const archetypes: TerrainArchetype[] = [
     "west_coast",
     "east_coast",
@@ -57,13 +139,126 @@ function pickArchetype(seed: number): TerrainArchetype {
     "north_coast",
     "island",
     "peninsula",
+    "bay_harbor",
+    "river_valley",
+    "lakefront",
+    "inland",
+    "delta",
   ];
   return archetypes[Math.abs(seed) % archetypes.length];
 }
 
-/**
- * Generate an ocean polygon for the given archetype.
- */
+// ---------------------------------------------------------------------------
+// Bay polygon generation for bay_harbor archetype
+// ---------------------------------------------------------------------------
+function generateBayPolygon(
+  worldSize: number,
+  random: () => number
+): { polygon: { points: Point[] }; coastlineStart: Point; coastlineEnd: Point } {
+  // Bay opens from one side with a parabolic indentation
+  const side = Math.floor(random() * 4); // 0=left, 1=right, 2=top, 3=bottom
+  const bayDepth = worldSize * (0.2 + random() * 0.15);
+  const bayWidth = worldSize * (0.3 + random() * 0.2);
+  const bayCenter = worldSize * (0.35 + random() * 0.3);
+
+  // Build ocean polygon with bay indentation
+  let points: Point[];
+  let cStart: Point, cEnd: Point;
+
+  switch (side) {
+    case 0: { // Bay opens from left
+      const baseDepth = worldSize * (0.2 + random() * 0.1);
+      const bayTop = bayCenter - bayWidth / 2;
+      const bayBottom = bayCenter + bayWidth / 2;
+      points = [
+        { x: 0, y: 0 },
+        { x: baseDepth, y: 0 },
+        { x: baseDepth + (random() - 0.5) * worldSize * 0.03, y: bayTop },
+        { x: baseDepth + bayDepth + (random() - 0.5) * worldSize * 0.02, y: bayTop + bayWidth * 0.25 },
+        { x: baseDepth + bayDepth * 1.1 + (random() - 0.5) * worldSize * 0.02, y: bayCenter },
+        { x: baseDepth + bayDepth + (random() - 0.5) * worldSize * 0.02, y: bayBottom - bayWidth * 0.25 },
+        { x: baseDepth + (random() - 0.5) * worldSize * 0.03, y: bayBottom },
+        { x: baseDepth, y: worldSize },
+        { x: 0, y: worldSize },
+      ];
+      cStart = { x: baseDepth, y: 0 };
+      cEnd = { x: baseDepth, y: worldSize };
+      break;
+    }
+    case 1: { // Bay opens from right
+      const baseDepth = worldSize * (0.2 + random() * 0.1);
+      const coastX = worldSize - baseDepth;
+      const bayTop = bayCenter - bayWidth / 2;
+      const bayBottom = bayCenter + bayWidth / 2;
+      points = [
+        { x: worldSize, y: 0 },
+        { x: coastX, y: 0 },
+        { x: coastX - (random() - 0.5) * worldSize * 0.03, y: bayTop },
+        { x: coastX - bayDepth - (random() - 0.5) * worldSize * 0.02, y: bayTop + bayWidth * 0.25 },
+        { x: coastX - bayDepth * 1.1 - (random() - 0.5) * worldSize * 0.02, y: bayCenter },
+        { x: coastX - bayDepth - (random() - 0.5) * worldSize * 0.02, y: bayBottom - bayWidth * 0.25 },
+        { x: coastX - (random() - 0.5) * worldSize * 0.03, y: bayBottom },
+        { x: coastX, y: worldSize },
+        { x: worldSize, y: worldSize },
+      ];
+      cStart = { x: coastX, y: 0 };
+      cEnd = { x: coastX, y: worldSize };
+      break;
+    }
+    case 2: { // Bay opens from top
+      const baseDepth = worldSize * (0.2 + random() * 0.1);
+      const bayLeft = bayCenter - bayWidth / 2;
+      const bayRight = bayCenter + bayWidth / 2;
+      points = [
+        { x: 0, y: 0 },
+        { x: 0, y: baseDepth },
+        { x: bayLeft, y: baseDepth + (random() - 0.5) * worldSize * 0.03 },
+        { x: bayLeft + bayWidth * 0.25, y: baseDepth + bayDepth + (random() - 0.5) * worldSize * 0.02 },
+        { x: bayCenter, y: baseDepth + bayDepth * 1.1 + (random() - 0.5) * worldSize * 0.02 },
+        { x: bayRight - bayWidth * 0.25, y: baseDepth + bayDepth + (random() - 0.5) * worldSize * 0.02 },
+        { x: bayRight, y: baseDepth + (random() - 0.5) * worldSize * 0.03 },
+        { x: worldSize, y: baseDepth },
+        { x: worldSize, y: 0 },
+      ];
+      cStart = { x: 0, y: baseDepth };
+      cEnd = { x: worldSize, y: baseDepth };
+      break;
+    }
+    default: { // Bay opens from bottom
+      const baseDepth = worldSize * (0.2 + random() * 0.1);
+      const coastY = worldSize - baseDepth;
+      const bayLeft = bayCenter - bayWidth / 2;
+      const bayRight = bayCenter + bayWidth / 2;
+      points = [
+        { x: 0, y: worldSize },
+        { x: 0, y: coastY },
+        { x: bayLeft, y: coastY - (random() - 0.5) * worldSize * 0.03 },
+        { x: bayLeft + bayWidth * 0.25, y: coastY - bayDepth - (random() - 0.5) * worldSize * 0.02 },
+        { x: bayCenter, y: coastY - bayDepth * 1.1 - (random() - 0.5) * worldSize * 0.02 },
+        { x: bayRight - bayWidth * 0.25, y: coastY - bayDepth - (random() - 0.5) * worldSize * 0.02 },
+        { x: bayRight, y: coastY - (random() - 0.5) * worldSize * 0.03 },
+        { x: worldSize, y: coastY },
+        { x: worldSize, y: worldSize },
+      ];
+      cStart = { x: 0, y: coastY };
+      cEnd = { x: worldSize, y: coastY };
+      break;
+    }
+  }
+
+  // Apply fractal detail to the ocean polygon (skip first and last which are corners)
+  const fractalPoints = fractalCoast(points, 3, 0.15, random);
+
+  return {
+    polygon: { points: fractalPoints },
+    coastlineStart: cStart,
+    coastlineEnd: cEnd,
+  };
+}
+
+// ---------------------------------------------------------------------------
+// Ocean generation
+// ---------------------------------------------------------------------------
 function generateOcean(
   archetype: TerrainArchetype,
   worldSize: number,
@@ -75,7 +270,7 @@ function generateOcean(
   switch (archetype) {
     case "west_coast": {
       const depth = worldSize * (0.25 + random() * 0.1);
-      const points: Point[] = [
+      const rawPoints: Point[] = [
         { x: 0, y: 0 },
         { x: depth + edgeJitter(), y: 0 },
         { x: depth * 0.85 + jitter(), y: worldSize * 0.2 },
@@ -85,6 +280,7 @@ function generateOcean(
         { x: depth + edgeJitter(), y: worldSize },
         { x: 0, y: worldSize },
       ];
+      const points = fractalCoast(rawPoints, 3, 0.12, random);
       return {
         polygon: { points },
         coastlineStart: { x: depth, y: 0 },
@@ -94,7 +290,7 @@ function generateOcean(
     case "east_coast": {
       const depth = worldSize * (0.25 + random() * 0.1);
       const coastX = worldSize - depth;
-      const points: Point[] = [
+      const rawPoints: Point[] = [
         { x: worldSize, y: 0 },
         { x: coastX - edgeJitter(), y: 0 },
         { x: coastX + jitter(), y: worldSize * 0.2 },
@@ -104,6 +300,7 @@ function generateOcean(
         { x: coastX - edgeJitter(), y: worldSize },
         { x: worldSize, y: worldSize },
       ];
+      const points = fractalCoast(rawPoints, 3, 0.12, random);
       return {
         polygon: { points },
         coastlineStart: { x: coastX, y: 0 },
@@ -113,7 +310,7 @@ function generateOcean(
     case "south_coast": {
       const depth = worldSize * (0.25 + random() * 0.1);
       const coastY = worldSize - depth;
-      const points: Point[] = [
+      const rawPoints: Point[] = [
         { x: 0, y: worldSize },
         { x: 0, y: coastY - edgeJitter() },
         { x: worldSize * 0.2, y: coastY + jitter() },
@@ -123,6 +320,7 @@ function generateOcean(
         { x: worldSize, y: coastY - edgeJitter() },
         { x: worldSize, y: worldSize },
       ];
+      const points = fractalCoast(rawPoints, 3, 0.12, random);
       return {
         polygon: { points },
         coastlineStart: { x: 0, y: coastY },
@@ -131,7 +329,7 @@ function generateOcean(
     }
     case "north_coast": {
       const depth = worldSize * (0.25 + random() * 0.1);
-      const points: Point[] = [
+      const rawPoints: Point[] = [
         { x: 0, y: 0 },
         { x: 0, y: depth + edgeJitter() },
         { x: worldSize * 0.2, y: depth + jitter() },
@@ -141,26 +339,54 @@ function generateOcean(
         { x: worldSize, y: depth + edgeJitter() },
         { x: worldSize, y: 0 },
       ];
+      const points = fractalCoast(rawPoints, 3, 0.12, random);
       return {
         polygon: { points },
         coastlineStart: { x: 0, y: depth },
         coastlineEnd: { x: worldSize, y: depth },
       };
     }
+    case "bay_harbor":
+      return generateBayPolygon(worldSize, random);
+    case "delta": {
+      // Irregular marshy coastline at bottom with channels
+      const depth = worldSize * (0.3 + random() * 0.1);
+      const coastY = worldSize - depth;
+      const rawPoints: Point[] = [
+        { x: 0, y: worldSize },
+        { x: 0, y: coastY + edgeJitter() },
+        { x: worldSize * 0.15, y: coastY + jitter() * 2 },
+        { x: worldSize * 0.3, y: coastY - worldSize * 0.06 + jitter() },
+        { x: worldSize * 0.45, y: coastY + worldSize * 0.04 + jitter() },
+        { x: worldSize * 0.6, y: coastY - worldSize * 0.03 + jitter() },
+        { x: worldSize * 0.75, y: coastY + worldSize * 0.05 + jitter() },
+        { x: worldSize * 0.9, y: coastY + jitter() * 2 },
+        { x: worldSize, y: coastY + edgeJitter() },
+        { x: worldSize, y: worldSize },
+      ];
+      // Higher roughness for delta = more irregular marshy edge
+      const points = fractalCoast(rawPoints, 4, 0.2, random);
+      return {
+        polygon: { points },
+        coastlineStart: { x: 0, y: coastY },
+        coastlineEnd: { x: worldSize, y: coastY },
+      };
+    }
     case "island":
-      // No ocean polygon — land fills the whole map
+    case "river_valley":
+    case "lakefront":
+    case "inland":
+      // No ocean polygon for these archetypes
       return null;
     case "peninsula": {
-      // Ocean wraps two sides (like a corner)
       const depthX = worldSize * (0.2 + random() * 0.1);
       const depthY = worldSize * (0.2 + random() * 0.1);
-      // Pick which corner the ocean wraps around
       const corner = Math.floor(random() * 4);
-      let points: Point[];
+      let rawPoints: Point[];
       let cStart: Point, cEnd: Point;
       switch (corner) {
         case 0: // top-left
-          points = [
+          rawPoints = [
             { x: 0, y: 0 },
             { x: worldSize, y: 0 },
             { x: worldSize, y: depthY + edgeJitter() },
@@ -176,7 +402,7 @@ function generateOcean(
           cEnd = { x: depthX, y: worldSize };
           break;
         case 1: // top-right
-          points = [
+          rawPoints = [
             { x: 0, y: 0 },
             { x: worldSize, y: 0 },
             { x: worldSize, y: worldSize },
@@ -192,7 +418,7 @@ function generateOcean(
           cEnd = { x: worldSize - depthX, y: worldSize };
           break;
         case 2: // bottom-left
-          points = [
+          rawPoints = [
             { x: 0, y: 0 },
             { x: depthX + edgeJitter(), y: 0 },
             { x: depthX + jitter(), y: worldSize * 0.3 + jitter() },
@@ -208,7 +434,7 @@ function generateOcean(
           cEnd = { x: worldSize, y: worldSize - depthY };
           break;
         default: // bottom-right
-          points = [
+          rawPoints = [
             { x: worldSize, y: 0 },
             { x: worldSize, y: worldSize },
             { x: 0, y: worldSize },
@@ -224,6 +450,7 @@ function generateOcean(
           cEnd = { x: 0, y: worldSize - depthY };
           break;
       }
+      const points = fractalCoast(rawPoints, 3, 0.12, random);
       return {
         polygon: { points },
         coastlineStart: cStart,
@@ -233,24 +460,38 @@ function generateOcean(
   }
 }
 
-/**
- * Generate lake(s) placed within the landmass.
- * The seed controls how many lakes (0-3) and where they go.
- */
+// ---------------------------------------------------------------------------
+// Lakes
+// ---------------------------------------------------------------------------
 function generateLakes(
   archetype: TerrainArchetype,
   worldSize: number,
   seed: number,
   random: () => number
 ): { points: Point[]; center: Point; radius: number }[] {
-  // Determine lake count from seed
   const countSeed = Math.abs(seed * 7 + 31);
-  const lakeCount = archetype === "island" ? 1 + (countSeed % 2) : countSeed % 4; // 0-3
+
+  let lakeCount: number;
+  switch (archetype) {
+    case "lakefront":
+      lakeCount = 1; // One large prominent lake
+      break;
+    case "island":
+      lakeCount = 1 + (countSeed % 2);
+      break;
+    case "inland":
+      lakeCount = 1 + (countSeed % 3); // 1-3 lakes for inland
+      break;
+    case "river_valley":
+      lakeCount = countSeed % 2; // 0-1 lakes
+      break;
+    default:
+      lakeCount = countSeed % 4; // 0-3
+      break;
+  }
 
   const lakes: { points: Point[]; center: Point; radius: number }[] = [];
 
-  // Define safe zone — avoid placing lakes in the ocean region
-  // Use the center of the landmass biased by archetype
   const landCenters: Record<TerrainArchetype, { cx: number; cy: number }> = {
     west_coast: { cx: 0.65, cy: 0.5 },
     east_coast: { cx: 0.35, cy: 0.5 },
@@ -258,52 +499,58 @@ function generateLakes(
     north_coast: { cx: 0.5, cy: 0.65 },
     island: { cx: 0.5, cy: 0.5 },
     peninsula: { cx: 0.5, cy: 0.5 },
+    bay_harbor: { cx: 0.6, cy: 0.5 },
+    river_valley: { cx: 0.5, cy: 0.5 },
+    lakefront: { cx: 0.5, cy: 0.5 },
+    inland: { cx: 0.5, cy: 0.5 },
+    delta: { cx: 0.5, cy: 0.35 },
   };
 
   const { cx, cy } = landCenters[archetype];
 
   for (let i = 0; i < lakeCount; i++) {
-    // Spread lakes around the land center using seed-derived offsets
-    const angle = (random() * Math.PI * 2);
+    const angle = random() * Math.PI * 2;
     const dist = worldSize * (0.05 + random() * 0.2);
     const lakeCenter = {
       x: worldSize * cx + Math.cos(angle) * dist,
       y: worldSize * cy + Math.sin(angle) * dist,
     };
 
-    // Clamp to stay well within bounds
     lakeCenter.x = Math.max(worldSize * 0.15, Math.min(worldSize * 0.85, lakeCenter.x));
     lakeCenter.y = Math.max(worldSize * 0.15, Math.min(worldSize * 0.85, lakeCenter.y));
 
-    const lakeRadius = worldSize * (0.04 + random() * 0.06);
+    // Lakefront archetype gets a larger lake
+    const baseRadius = archetype === "lakefront"
+      ? worldSize * (0.08 + random() * 0.06)
+      : worldSize * (0.04 + random() * 0.06);
+
     const numPoints = 10 + Math.floor(random() * 6);
     const lakePoints: Point[] = [];
 
     for (let j = 0; j < numPoints; j++) {
       const a = (j / numPoints) * Math.PI * 2;
-      const r = lakeRadius * (0.7 + random() * 0.5);
+      const r = baseRadius * (0.7 + random() * 0.5);
       lakePoints.push({
         x: lakeCenter.x + Math.cos(a) * r,
         y: lakeCenter.y + Math.sin(a) * r,
       });
     }
 
-    lakes.push({ points: lakePoints, center: lakeCenter, radius: lakeRadius });
+    lakes.push({ points: lakePoints, center: lakeCenter, radius: baseRadius });
   }
 
   return lakes;
 }
 
-/**
- * Generate a river flowing from a source (lake or highland) toward the coast or map edge.
- */
+// ---------------------------------------------------------------------------
+// Rivers
+// ---------------------------------------------------------------------------
 function generateRiver(
   source: Point,
   archetype: TerrainArchetype,
   worldSize: number,
   random: () => number
 ): Point[] {
-  // Determine flow direction based on archetype (rivers flow toward ocean)
   let target: Point;
   switch (archetype) {
     case "west_coast":
@@ -313,31 +560,102 @@ function generateRiver(
       target = { x: worldSize * 0.7, y: source.y + (random() - 0.5) * worldSize * 0.3 };
       break;
     case "south_coast":
+    case "delta":
       target = { x: source.x + (random() - 0.5) * worldSize * 0.3, y: worldSize * 0.7 };
       break;
     case "north_coast":
       target = { x: source.x + (random() - 0.5) * worldSize * 0.3, y: worldSize * 0.3 };
       break;
     case "island":
-      // Flow to nearest edge
       target = { x: random() < 0.5 ? 0 : worldSize, y: source.y + (random() - 0.5) * worldSize * 0.4 };
       break;
     case "peninsula":
-      // Flow toward the coast wrap
+    case "bay_harbor":
       target = { x: worldSize * (0.2 + random() * 0.6), y: worldSize * (0.2 + random() * 0.6) };
+      break;
+    case "river_valley":
+      // River flows across the map (main river feature)
+      target = { x: random() < 0.5 ? 0 : worldSize, y: source.y + (random() - 0.5) * worldSize * 0.3 };
+      break;
+    case "lakefront":
+    case "inland":
+      // Flow toward nearest edge
+      target = { x: random() < 0.5 ? 0 : worldSize, y: source.y + (random() - 0.5) * worldSize * 0.4 };
       break;
   }
 
-  // Clamp target to map bounds
   target.x = Math.max(0, Math.min(worldSize, target.x));
   target.y = Math.max(0, Math.min(worldSize, target.y));
 
   return generateSmoothLine(source, target, 12 + Math.floor(random() * 8), worldSize * 0.025, random);
 }
 
-/**
- * Generate coastline from a start/end pair with jitter.
- */
+// ---------------------------------------------------------------------------
+// Generate a major river for river_valley archetype
+// ---------------------------------------------------------------------------
+function generateMajorRiver(
+  worldSize: number,
+  random: () => number
+): Point[] {
+  // River flows from one side to the other with meanders
+  const vertical = random() < 0.5;
+  let start: Point, end: Point;
+  if (vertical) {
+    start = { x: worldSize * (0.3 + random() * 0.4), y: 0 };
+    end = { x: worldSize * (0.3 + random() * 0.4), y: worldSize };
+  } else {
+    start = { x: 0, y: worldSize * (0.3 + random() * 0.4) };
+    end = { x: worldSize, y: worldSize * (0.3 + random() * 0.4) };
+  }
+  return generateSmoothLine(start, end, 20, worldSize * 0.06, random);
+}
+
+// ---------------------------------------------------------------------------
+// Delta channels
+// ---------------------------------------------------------------------------
+function generateDeltaChannels(
+  worldSize: number,
+  random: () => number
+): { points: Point[]; name: string }[] {
+  const channels: { points: Point[]; name: string }[] = [];
+  const numChannels = 3 + Math.floor(random() * 3);
+  const baseY = worldSize * (0.25 + random() * 0.1);
+
+  // Main river comes from the top
+  const mainX = worldSize * (0.35 + random() * 0.3);
+  const forkY = worldSize * (0.4 + random() * 0.15);
+
+  // Main stem
+  const mainStem = generateSmoothLine(
+    { x: mainX, y: 0 },
+    { x: mainX + (random() - 0.5) * worldSize * 0.1, y: forkY },
+    10,
+    worldSize * 0.03,
+    random
+  );
+  channels.push({ points: mainStem, name: "Main Channel" });
+
+  // Distributary channels fan out from the fork point
+  for (let i = 0; i < numChannels; i++) {
+    const spreadX = worldSize * (0.15 + (i / numChannels) * 0.7);
+    const channelEnd = { x: spreadX + (random() - 0.5) * worldSize * 0.08, y: worldSize - baseY };
+    const forkPoint = mainStem[mainStem.length - 1];
+    const channelPoints = generateSmoothLine(
+      forkPoint,
+      channelEnd,
+      8 + Math.floor(random() * 4),
+      worldSize * 0.025,
+      random
+    );
+    channels.push({ points: channelPoints, name: `Channel ${i + 1}` });
+  }
+
+  return channels;
+}
+
+// ---------------------------------------------------------------------------
+// Coastline, beach, and inland direction helpers
+// ---------------------------------------------------------------------------
 function generateCoastline(
   start: Point,
   end: Point,
@@ -347,9 +665,6 @@ function generateCoastline(
   return generateSmoothLine(start, end, 20, worldSize * 0.015, random);
 }
 
-/**
- * Generate a beach strip along a coastline.
- */
 function generateCoastBeach(
   coastlinePoints: Point[],
   beachWidth: number,
@@ -357,12 +672,9 @@ function generateCoastBeach(
   random: () => number
 ): Point[] {
   const beachPoints: Point[] = [];
-
-  // Forward pass — coastline edge
   for (const point of coastlinePoints) {
     beachPoints.push({ x: point.x, y: point.y });
   }
-  // Reverse pass — inland offset
   for (let i = coastlinePoints.length - 1; i >= 0; i--) {
     const point = coastlinePoints[i];
     beachPoints.push({
@@ -370,25 +682,18 @@ function generateCoastBeach(
       y: point.y + inlandDirection.dy * beachWidth + (random() - 0.5) * beachWidth * 0.3,
     });
   }
-
   return beachPoints;
 }
 
-/**
- * Generate a beach ring around a lake.
- */
 function generateLakeBeach(
   lakePoints: Point[],
   lakeCenter: Point,
   beachWidth: number
 ): Point[] {
   const beachPolygon: Point[] = [];
-
-  // Inner ring (lake shore)
   for (const point of lakePoints) {
     beachPolygon.push({ x: point.x, y: point.y });
   }
-  // Outer ring
   for (let i = lakePoints.length - 1; i >= 0; i--) {
     const point = lakePoints[i];
     const dx = point.x - lakeCenter.x;
@@ -400,34 +705,36 @@ function generateLakeBeach(
       y: lakeCenter.y + dy * scale,
     });
   }
-
   return beachPolygon;
 }
 
-/**
- * Determine the "inland" direction for beach generation based on archetype.
- */
 function getInlandDirection(archetype: TerrainArchetype): { dx: number; dy: number } {
   switch (archetype) {
     case "west_coast": return { dx: 1, dy: 0 };
     case "east_coast": return { dx: -1, dy: 0 };
-    case "south_coast": return { dx: 0, dy: -1 };
+    case "south_coast":
+    case "delta": return { dx: 0, dy: -1 };
     case "north_coast": return { dx: 0, dy: 1 };
-    case "peninsula": return { dx: 0.7, dy: 0.7 }; // diagonal
+    case "bay_harbor": return { dx: 1, dy: 0 }; // Approximate
+    case "peninsula": return { dx: 0.7, dy: 0.7 };
     default: return { dx: 1, dy: 0 };
   }
 }
 
+// ---------------------------------------------------------------------------
+// Main terrain generation
+// ---------------------------------------------------------------------------
 export function generateMockTerrain(
   worldSize: number,
-  seed: number = 12345
+  seed: number = 12345,
+  geographicSetting?: GeographicSetting
 ): TerrainData {
   const random = seededRandom(seed);
 
-  // Step 1: Pick terrain archetype from seed
-  const archetype = pickArchetype(seed);
+  // Step 1: Pick terrain archetype from seed and optional geographic setting
+  const archetype = pickArchetype(seed, geographicSetting);
 
-  // Step 2: Generate ocean (may be null for island archetype)
+  // Step 2: Generate ocean (may be null for inland archetypes)
   const oceanResult = generateOcean(archetype, worldSize, random);
 
   // Step 3: Generate lakes
@@ -444,11 +751,31 @@ export function generateMockTerrain(
     );
   }
 
-  // Step 5: Generate rivers from lakes toward coast
+  // Step 5: Generate rivers
   const rivers: { points: Point[]; name: string }[] = [];
+
+  // River valley gets a prominent major river
+  if (archetype === "river_valley") {
+    rivers.push({
+      points: generateMajorRiver(worldSize, random),
+      name: generateRiverName({ seed: seed + 3000 }),
+    });
+  }
+
+  // Delta gets branching channels
+  if (archetype === "delta") {
+    const channels = generateDeltaChannels(worldSize, random);
+    for (let i = 0; i < channels.length; i++) {
+      rivers.push({
+        points: channels[i].points,
+        name: generateRiverName({ seed: seed + 4000 + i }),
+      });
+    }
+  }
+
+  // Rivers from lakes
   for (let i = 0; i < lakes.length; i++) {
     const lake = lakes[i];
-    // River starts from the edge of the lake facing the ocean
     const riverStart = {
       x: lake.center.x + (random() - 0.5) * lake.radius,
       y: lake.center.y + (random() - 0.5) * lake.radius,
@@ -460,8 +787,8 @@ export function generateMockTerrain(
     });
   }
 
-  // If no lakes but we have an ocean, generate a standalone river from highlands
-  if (lakes.length === 0 && oceanResult) {
+  // Standalone river if no lakes but we have an ocean (and not already a river_valley/delta)
+  if (lakes.length === 0 && oceanResult && archetype !== "river_valley" && archetype !== "delta") {
     const highlandStart = {
       x: worldSize * (0.4 + random() * 0.2),
       y: worldSize * (0.4 + random() * 0.2),
@@ -473,9 +800,8 @@ export function generateMockTerrain(
     });
   }
 
-  // Step 6: Generate contour lines based on terrain layout
+  // Step 6: Generate contour lines
   const contours = [];
-  // Elevation increases away from coast
   for (let elevation = 10; elevation <= 100; elevation += 10) {
     let contourStart: Point;
     let contourEnd: Point;
@@ -502,6 +828,7 @@ export function generateMockTerrain(
         };
         break;
       case "south_coast":
+      case "delta":
         contourStart = {
           x: (random() - 0.5) * worldSize * 0.1,
           y: worldSize * (0.65 - elevation / 300) + (random() - 0.5) * worldSize * 0.05,
@@ -521,6 +848,33 @@ export function generateMockTerrain(
           y: worldSize * (0.35 + elevation / 300) + (random() - 0.5) * worldSize * 0.05,
         };
         break;
+      case "bay_harbor":
+        // Similar to the coast side the bay opens from
+        contourStart = {
+          x: worldSize * (0.4 + elevation / 300) + (random() - 0.5) * worldSize * 0.05,
+          y: (random() - 0.5) * worldSize * 0.1,
+        };
+        contourEnd = {
+          x: worldSize * (0.4 + elevation / 300) + (random() - 0.5) * worldSize * 0.05,
+          y: worldSize + (random() - 0.5) * worldSize * 0.1,
+        };
+        break;
+      case "river_valley":
+      case "inland":
+      case "lakefront": {
+        // Gentle rolling hills — radial contours from random highlands
+        const angle = (elevation / 100) * Math.PI * 0.5 + random() * Math.PI;
+        const radiusFactor = 0.3 + elevation / 200;
+        contourStart = {
+          x: worldSize * 0.5 + Math.cos(angle) * worldSize * radiusFactor * 0.4,
+          y: worldSize * (0.2 + random() * 0.1),
+        };
+        contourEnd = {
+          x: worldSize * 0.5 + Math.cos(angle + Math.PI) * worldSize * radiusFactor * 0.4,
+          y: worldSize * (0.8 + random() * 0.1),
+        };
+        break;
+      }
       default: {
         // Island / peninsula: concentric-ish contours from center
         const angle = (elevation / 100) * Math.PI * 0.3 + random() * 0.5;
