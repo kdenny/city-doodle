@@ -193,7 +193,7 @@ export function getEffectiveDistrictConfig(
     maxSize: config.maxSize ?? effectiveDistrictSize * 1.3,
     polygonPoints: config.polygonPoints ?? DEFAULT_CONFIG.polygonPoints,
     organicFactor: config.organicFactor ?? DEFAULT_CONFIG.organicFactor,
-    streetSpacing: config.streetSpacing ?? effectiveStreetSpacing * 0.3, // ~30% of block for streets
+    streetSpacing: config.streetSpacing ?? effectiveStreetSpacing * 0.5, // ~50% of block for streets
     streetClass: config.streetClass ?? DEFAULT_CONFIG.streetClass,
     scaleSettings,
   };
