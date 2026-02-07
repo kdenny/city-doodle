@@ -156,8 +156,13 @@ const CITY_LIMITS_STYLE = {
 
 /**
  * Grid-based spatial index for O(1) road proximity lookups.
- * Divides the world into cells and maps each cell to the roads that
- * pass through it (including a buffer for hit-testing tolerance).
+ *
+ * Divides the world into square cells (default 50 world-units) and maps each
+ * cell to the roads whose segments pass through it. A buffer equal to
+ * {@link ROAD_HIT_DISTANCE} is added so that hit-testing catches roads just
+ * outside a cell boundary. Rebuild via {@link build} whenever the road set changes.
+ *
+ * Complexity: O(R * S) to build (R roads, S segments per road); O(1) per query.
  */
 class RoadSpatialIndex {
   private cellSize: number;
@@ -167,7 +172,10 @@ class RoadSpatialIndex {
     this.cellSize = cellSize;
   }
 
-  /** Build index from a list of roads. */
+  /**
+   * Rebuild the index from scratch for the given road set.
+   * @param roads - Full list of roads to index
+   */
   build(roads: Road[]): void {
     this.grid.clear();
     const buffer = ROAD_HIT_DISTANCE;
@@ -206,7 +214,13 @@ class RoadSpatialIndex {
     }
   }
 
-  /** Get candidate roads near a world coordinate. */
+  /**
+   * Return candidate roads that may be near the given world coordinate.
+   * The caller must still do precise distance checks against each candidate.
+   * @param x - World X coordinate
+   * @param y - World Y coordinate
+   * @returns Roads in the same cell (may include false positives, never false negatives)
+   */
   getCandidates(x: number, y: number): Road[] {
     const key = `${Math.floor(x / this.cellSize)},${Math.floor(y / this.cellSize)}`;
     return this.grid.get(key) || [];

@@ -121,13 +121,13 @@ interface FeaturesContextValue {
   addDistrictWithGeometry: (district: District, roads?: Road[]) => void;
   /** Add a POI */
   addPOI: (poi: POI) => void;
-  /** Add roads */
+  /** Append roads to local state (does not persist — caller handles API sync). */
   addRoads: (roads: Road[]) => void;
   /** Add interchanges (auto-detected at highway-road crossings) */
   addInterchanges: (interchanges: Interchange[]) => void;
   /** Remove a district by ID */
   removeDistrict: (id: string) => void;
-  /** Remove a road by ID */
+  /** Optimistically remove a road by ID. Persists deletion to API and rolls back on failure. */
   removeRoad: (id: string) => void;
   /** Remove a POI by ID */
   removePOI: (id: string) => void;
@@ -135,7 +135,7 @@ interface FeaturesContextValue {
   updatePOI: (id: string, updates: Partial<Omit<POI, "id">>) => void;
   /** Update a district */
   updateDistrict: (id: string, updates: Partial<Omit<District, "id">>) => void;
-  /** Update a road */
+  /** Optimistically update a road's properties. Persists to API and rolls back on failure. */
   updateRoad: (id: string, updates: Partial<Omit<Road, "id">>) => void;
   /** Add a neighborhood with explicit geometry */
   addNeighborhood: (neighborhood: Neighborhood) => void;
@@ -289,8 +289,15 @@ function fromApiDistrict(apiDistrict: ApiDistrict): District {
 }
 
 /**
- * Extract roads from an API district's persisted street_grid data.
- * Returns empty array if no street_grid or no roads data.
+ * Extract roads from an API district's persisted street_grid JSON blob.
+ *
+ * The street_grid field stores the serialized output of `generateStreetGrid`
+ * (road IDs, classes, and point arrays). This function deserializes that back
+ * into frontend Road objects, falling back to the district's own ID for
+ * `districtId` if the stored data predates the districtId field.
+ *
+ * @param apiDistrict - API district object whose `street_grid` may contain roads
+ * @returns Array of Road objects (empty if no street_grid data)
  */
 function roadsFromApiStreetGrid(apiDistrict: ApiDistrict): Road[] {
   const streetGrid = apiDistrict.street_grid as Record<string, unknown> | undefined;
@@ -367,8 +374,17 @@ function fromApiRoadClass(apiClass: ApiRoadClass): RoadClass {
 }
 
 /**
- * Convert frontend roads to API nodes and edges.
- * Creates nodes at endpoints and shared intersections.
+ * Convert frontend roads to an API-compatible graph of nodes and edges.
+ *
+ * Builds a node at each unique endpoint position (snapped to 3 decimal places)
+ * so that roads sharing an intersection reuse the same node. Each road becomes
+ * one edge whose `from_node_id` / `to_node_id` are temporary indices that the
+ * caller replaces with real IDs after the bulk-create API call returns.
+ *
+ * @param roads - Frontend road objects to convert
+ * @param worldId - World ID attached to every node and edge
+ * @param districtId - Optional district ID attached to every edge
+ * @returns Object with `nodes` (unique endpoints) and `edges` (one per road)
  */
 function roadsToGraph(
   roads: Road[],
@@ -436,7 +452,13 @@ function roadsToGraph(
 }
 
 /**
- * Convert API road network to frontend roads.
+ * Convert an API road network (nodes + edges) back to frontend Road objects.
+ *
+ * Reconstructs each road's polyline by joining from_node → geometry → to_node.
+ * Edges whose from/to node is missing are silently skipped.
+ *
+ * @param network - API response containing `nodes` and `edges` arrays
+ * @returns Array of frontend Road objects (empty if network has no data)
  */
 function graphToRoads(network: ApiRoadNetwork): Road[] {
   if (!network.nodes.length || !network.edges.length) {

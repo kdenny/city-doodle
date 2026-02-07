@@ -63,8 +63,15 @@ export interface TransitGridOptions {
 
 /**
  * Calculate grid rotation angle based on district centroid.
- * Returns an angle between -15 and +15 degrees from north (in radians).
- * The angle is deterministic based on the centroid position and RNG seed.
+ *
+ * Produces an angle between -15 and +15 degrees from north (in radians).
+ * The result is deterministic for a given centroid position and RNG state,
+ * blending a random base angle with a centroid-derived influence so that
+ * nearby districts get subtly different orientations.
+ *
+ * @param centroid - District centroid used for positional influence
+ * @param rng - Seeded RNG (consumed once per call)
+ * @returns Rotation angle in radians
  */
 function calculateGridRotation(centroid: Point, rng: SeededRandom): number {
   const centroidInfluence = (centroid.x + centroid.y) % 10 / 10;
@@ -114,8 +121,16 @@ function calculateAngleTowardTarget(from: Point, target: Point): number {
 
 /**
  * Calculate transit-oriented grid rotation.
- * When transit_car is low (< 0.5), orients grid toward nearest transit station.
- * When transit_car is high (>= 0.5), uses standard random orientation.
+ *
+ * When `transitCar` is low (< 0.5), blends the grid angle toward the nearest
+ * transit station so that streets lead naturally to transit stops. At
+ * `transitCar` >= 0.5 the result equals {@link calculateGridRotation}.
+ *
+ * @param centroid - District centroid
+ * @param rng - Seeded RNG
+ * @param transitStations - Known transit station positions (may be empty)
+ * @param transitCar - Slider value: 0 = fully transit-oriented, 1 = car-dependent
+ * @returns Rotation angle in radians
  */
 function calculateTransitOrientedGridRotation(
   centroid: Point,
