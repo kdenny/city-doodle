@@ -1445,3 +1445,147 @@ class TestBarrierIslandGeneration:
             assert lagoon.geometry["type"] == "Polygon"
             # Should have positive area
             assert lagoon.properties["area"] > 0
+
+
+class TestGeographicPresets:
+    """Tests for geographic setting presets (CITY-321)."""
+
+    def test_all_settings_have_presets(self):
+        """Every GeographicSetting value should have a preset."""
+        from city_worker.terrain.geographic_presets import GEOGRAPHIC_PRESETS
+
+        expected = [
+            "coastal", "bay_harbor", "river_valley", "lakefront",
+            "inland", "island", "peninsula", "delta",
+        ]
+        for setting in expected:
+            assert setting in GEOGRAPHIC_PRESETS, f"Missing preset for {setting}"
+
+    def test_get_preset_overrides_returns_dict(self):
+        """get_preset_overrides should return a dict of config overrides."""
+        from city_worker.terrain.geographic_presets import get_preset_overrides
+
+        overrides = get_preset_overrides("coastal")
+        assert isinstance(overrides, dict)
+        assert "water_level" in overrides
+
+    def test_get_preset_overrides_unknown_falls_back_to_coastal(self):
+        """Unknown settings should fall back to coastal."""
+        from city_worker.terrain.geographic_presets import get_preset_overrides
+
+        overrides = get_preset_overrides("nonexistent_setting")
+        coastal = get_preset_overrides("coastal")
+        assert overrides == coastal
+
+    def test_presets_produce_valid_terrain_config(self):
+        """All presets should produce a valid TerrainConfig."""
+        from city_worker.terrain.geographic_presets import get_preset_overrides
+
+        for setting in ["coastal", "bay_harbor", "river_valley", "lakefront",
+                        "inland", "island", "peninsula", "delta"]:
+            overrides = get_preset_overrides(setting)
+            overrides["world_seed"] = 42
+            config = TerrainConfig(**overrides)
+            assert config.world_seed == 42
+
+    def test_inland_has_low_water_level(self):
+        """Inland setting should have much lower water level."""
+        from city_worker.terrain.geographic_presets import get_preset_overrides
+
+        inland = get_preset_overrides("inland")
+        coastal = get_preset_overrides("coastal")
+        assert inland["water_level"] < coastal["water_level"]
+
+    def test_island_has_high_water_level(self):
+        """Island setting should have higher water level."""
+        from city_worker.terrain.geographic_presets import get_preset_overrides
+
+        island = get_preset_overrides("island")
+        coastal = get_preset_overrides("coastal")
+        assert island["water_level"] > coastal["water_level"]
+
+    def test_river_valley_disables_beach_and_bay(self):
+        """River valley should have no beaches or bays."""
+        from city_worker.terrain.geographic_presets import get_preset_overrides
+
+        rv = get_preset_overrides("river_valley")
+        assert rv["beach_enabled"] is False
+        assert rv["bay_enabled"] is False
+
+    def test_presets_generate_without_error(self):
+        """Each preset should generate terrain without errors."""
+        from city_worker.terrain.geographic_presets import get_preset_overrides
+
+        for setting in ["coastal", "bay_harbor", "river_valley", "lakefront",
+                        "inland", "island", "peninsula", "delta"]:
+            overrides = get_preset_overrides(setting)
+            overrides["world_seed"] = 42
+            overrides["resolution"] = 16
+            overrides["tile_size"] = 500.0
+            config = TerrainConfig(**overrides)
+            gen = TerrainGenerator(config)
+            result = gen.generate_3x3(0, 0)
+            assert len(result.all_tiles()) == 9
+
+    def test_different_settings_produce_different_terrain(self):
+        """Different geographic settings should produce different terrain."""
+        from city_worker.terrain.geographic_presets import get_preset_overrides
+
+        configs = {}
+        for setting in ["inland", "island"]:
+            overrides = get_preset_overrides(setting)
+            overrides["world_seed"] = 42
+            overrides["resolution"] = 16
+            overrides["tile_size"] = 500.0
+            configs[setting] = TerrainConfig(**overrides)
+
+        gen_inland = TerrainGenerator(configs["inland"])
+        gen_island = TerrainGenerator(configs["island"])
+
+        result_inland = gen_inland.generate_3x3(0, 0)
+        result_island = gen_island.generate_3x3(0, 0)
+
+        # Heightfields should differ due to different water levels / noise params
+        assert result_inland.center.heightfield != result_island.center.heightfield
+
+
+class TestSeedBasedVariety:
+    """Tests for seed-based terrain variety (CITY-325)."""
+
+    def test_apply_seed_variation_returns_dict(self):
+        """apply_seed_variation should return a dict of config overrides."""
+        from city_worker.terrain.geographic_presets import apply_seed_variation
+
+        overrides = apply_seed_variation("coastal", seed=42)
+        assert isinstance(overrides, dict)
+        assert "water_level" in overrides
+
+    def test_seed_variation_is_deterministic(self):
+        """Same seed should produce identical variation."""
+        from city_worker.terrain.geographic_presets import apply_seed_variation
+
+        v1 = apply_seed_variation("coastal", seed=42)
+        v2 = apply_seed_variation("coastal", seed=42)
+        assert v1 == v2
+
+    def test_different_seeds_produce_different_variation(self):
+        """Different seeds should produce different variations."""
+        from city_worker.terrain.geographic_presets import apply_seed_variation
+
+        v1 = apply_seed_variation("coastal", seed=42)
+        v2 = apply_seed_variation("coastal", seed=999)
+        # At least one value should differ
+        assert v1 != v2
+
+    def test_seed_variation_stays_within_bounds(self):
+        """Varied values should stay within sane terrain config bounds."""
+        from city_worker.terrain.geographic_presets import apply_seed_variation
+
+        for seed in range(100):
+            overrides = apply_seed_variation("coastal", seed=seed)
+            assert 0.05 <= overrides["water_level"] <= 0.65
+            config = TerrainConfig(world_seed=seed, **{
+                k: v for k, v in overrides.items()
+                if k in TerrainConfig.__dataclass_fields__
+            })
+            assert config is not None

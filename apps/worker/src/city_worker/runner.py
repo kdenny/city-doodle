@@ -208,7 +208,7 @@ class JobRunner:
         """
         from uuid import UUID
 
-        from city_worker.terrain import TerrainConfig, TerrainGenerator
+        from city_worker.terrain import TerrainConfig, TerrainGenerator, apply_seed_variation
 
         logger.info("Terrain generation job with params: %s", params)
 
@@ -228,13 +228,17 @@ class JobRunner:
         # Extract world settings if provided (from WorldSettings schema)
         world_settings = params.get("world_settings", {})
 
-        # Run terrain generation in thread pool (CPU-bound)
+        # Build terrain config from geographic setting presets + seed variation
         loop = asyncio.get_running_loop()
-        config = TerrainConfig(
-            world_seed=int(world_seed),
-            beach_enabled=world_settings.get("beach_enabled", True),
-            beach_width_multiplier=world_settings.get("beach_width_multiplier", 1.0),
-        )
+        geographic_setting = world_settings.get("geographic_setting", "coastal")
+        config_kwargs = apply_seed_variation(geographic_setting, seed=int(world_seed))
+        config_kwargs["world_seed"] = int(world_seed)
+        # Explicit per-world overrides take precedence over preset
+        if "beach_enabled" in world_settings:
+            config_kwargs["beach_enabled"] = world_settings["beach_enabled"]
+        if "beach_width_multiplier" in world_settings:
+            config_kwargs["beach_width_multiplier"] = world_settings["beach_width_multiplier"]
+        config = TerrainConfig(**config_kwargs)
         generator = TerrainGenerator(config)
 
         result = await loop.run_in_executor(
