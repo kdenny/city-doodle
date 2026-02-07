@@ -3,8 +3,8 @@
 Prevents duplicate segments (same line + from_station + to_station)
 and self-referencing segments (from_station == to_station).
 
-Revision ID: 015
-Revises: 014
+Revision ID: 017
+Revises: 016
 Create Date: 2026-02-06
 
 """
@@ -14,8 +14,8 @@ from collections.abc import Sequence
 from alembic import op
 
 # revision identifiers, used by Alembic.
-revision: str = "015"
-down_revision: str | None = "014"
+revision: str = "017"
+down_revision: str | None = "016"
 branch_labels: str | Sequence[str] | None = None
 depends_on: str | Sequence[str] | None = None
 
