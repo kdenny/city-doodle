@@ -71,6 +71,8 @@ import {
   useRoadNetwork,
   useCreateRoadNodesBulk,
   useCreateRoadEdgesBulk,
+  useUpdateRoadEdge,
+  useDeleteRoadEdge,
 } from "../../api/hooks";
 import type {
   District as ApiDistrict,
@@ -81,6 +83,7 @@ import type {
   RoadNode as ApiRoadNode,
   RoadNodeCreate,
   RoadEdgeCreate,
+  RoadEdgeUpdate,
   RoadClass as ApiRoadClass,
 } from "../../api/types";
 
@@ -540,6 +543,8 @@ export function FeaturesProvider({
 
   const createRoadNodesBulkMutation = useCreateRoadNodesBulk();
   const createRoadEdgesBulkMutation = useCreateRoadEdgesBulk();
+  const updateRoadEdgeMutation = useUpdateRoadEdge();
+  const deleteRoadEdgeMutation = useDeleteRoadEdge();
 
   // Load districts and neighborhoods from API when data is available
   useEffect(() => {
@@ -1046,12 +1051,37 @@ export function FeaturesProvider({
 
   const removeRoad = useCallback(
     (id: string) => {
+      // Find the road for potential rollback
+      const roadToRemove = features.roads.find((r) => r.id === id);
+
+      // Optimistically remove from local state
       updateFeatures((prev) => ({
         ...prev,
         roads: prev.roads.filter((r) => r.id !== id),
       }));
+
+      // Persist to API if worldId is provided (CITY-249)
+      if (worldId && roadToRemove) {
+        deleteRoadEdgeMutation.mutate(
+          { edgeId: id, worldId },
+          {
+            onError: (error) => {
+              // Re-add the road on error
+              updateFeatures((prev) => ({
+                ...prev,
+                roads: [...prev.roads, roadToRemove],
+              }));
+              console.error("Failed to delete road:", error);
+              toast?.addToast(
+                "Failed to delete road. Please try again.",
+                "error"
+              );
+            },
+          }
+        );
+      }
     },
-    [updateFeatures]
+    [worldId, features.roads, updateFeatures, deleteRoadEdgeMutation, toast]
   );
 
   const removePOI = useCallback(
@@ -1233,10 +1263,40 @@ export function FeaturesProvider({
         ),
       }));
 
-      // Note: Roads are not currently persisted to the backend API
-      // When road persistence is added, API calls should be added here
+      // Persist to API if worldId is provided (CITY-249)
+      if (worldId) {
+        const apiUpdate: RoadEdgeUpdate = {};
+        if (updates.name !== undefined) apiUpdate.name = updates.name;
+        if (updates.roadClass !== undefined) apiUpdate.road_class = toApiRoadClass(updates.roadClass);
+        if (updates.line !== undefined) {
+          // Geometry stores intermediate points (excluding endpoints)
+          apiUpdate.geometry = updates.line.points.slice(1, -1).map(p => ({ x: p.x, y: p.y }));
+        }
+
+        if (Object.keys(apiUpdate).length > 0) {
+          updateRoadEdgeMutation.mutate(
+            { edgeId: id, data: apiUpdate, worldId },
+            {
+              onError: (error) => {
+                // Rollback to previous state on error
+                updateFeatures((prev) => ({
+                  ...prev,
+                  roads: prev.roads.map((r) =>
+                    r.id === id ? currentRoad : r
+                  ),
+                }));
+                console.error("Failed to update road:", error);
+                toast?.addToast(
+                  "Failed to update road. Please try again.",
+                  "error"
+                );
+              },
+            }
+          );
+        }
+      }
     },
-    [features.roads, updateFeatures]
+    [worldId, features.roads, updateFeatures, updateRoadEdgeMutation, toast]
   );
 
   const addNeighborhood = useCallback(
