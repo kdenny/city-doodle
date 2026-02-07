@@ -3,6 +3,13 @@ import { render, screen, fireEvent } from "@testing-library/react";
 import { WorldCard } from "./WorldCard";
 import type { World } from "../api/types";
 
+// Mock WorldThumbnail to avoid API calls in unit tests
+vi.mock("./WorldThumbnail", () => ({
+  WorldThumbnail: ({ className }: { className?: string }) => (
+    <div data-testid="world-thumbnail-mock" className={className} />
+  ),
+}));
+
 const mockWorld: World = {
   id: "world-1",
   user_id: "user-1",
