@@ -51,6 +51,9 @@ export function TimelapseView({
     ? growth.changes
     : (propChanges ?? defaultChanges);
 
+  // Show the changelog panel when growth simulation has completed
+  const showChangelog = growth.hasCompleted && growth.changes.length > 0;
+
   // Internal date state for playback
   const [currentDate, setCurrentDate] = useState(initialDate);
   const [isPlaying, setIsPlaying] = useState(false);
@@ -200,7 +203,11 @@ export function TimelapseView({
             Simulate 1 Year of Growth
           </button>
         )}
-        <ChangesPanel changes={changes} />
+        <ChangesPanel
+          changes={changes}
+          isChangelog={showChangelog}
+          yearsSimulated={growth.yearsSimulated}
+        />
       </div>
 
       {/* Bottom controls */}

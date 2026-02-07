@@ -10,6 +10,8 @@ import type { YearChange } from "./ChangesPanel";
 export interface GrowthSimulationState {
   /** Whether growth is currently being simulated */
   isSimulating: boolean;
+  /** Whether a growth simulation has completed (and changelog should be shown) */
+  hasCompleted: boolean;
   /** Growth changes parsed from the job result */
   changes: YearChange[];
   /** Error message if the job failed */
@@ -66,6 +68,7 @@ export function useGrowthSimulation(worldId?: string): GrowthSimulationState {
   const [changes, setChanges] = useState<YearChange[]>([]);
   const [error, setError] = useState<string | null>(null);
   const [yearsSimulated, setYearsSimulated] = useState(0);
+  const [hasCompleted, setHasCompleted] = useState(false);
 
   const queryClient = useQueryClient();
   const createJobMutation = useCreateJob();
@@ -91,6 +94,7 @@ export function useGrowthSimulation(worldId?: string): GrowthSimulationState {
       setYearsSimulated(
         (job.result as Record<string, unknown>).years_simulated as number || 1
       );
+      setHasCompleted(true);
       // Growth modifies districts, roads, and POIs — invalidate their caches
       if (worldId) {
         queryClient.invalidateQueries({ queryKey: queryKeys.worldDistricts(worldId) });
@@ -111,6 +115,7 @@ export function useGrowthSimulation(worldId?: string): GrowthSimulationState {
     if (!worldId) return;
     setError(null);
     setChanges([]);
+    setHasCompleted(false);
 
     createJobMutation.mutate(
       {
@@ -130,6 +135,7 @@ export function useGrowthSimulation(worldId?: string): GrowthSimulationState {
 
   return {
     isSimulating,
+    hasCompleted,
     changes,
     error,
     yearsSimulated,
