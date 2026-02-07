@@ -140,6 +140,15 @@ export function EditLockProvider({ children, worldId }: EditLockProviderProps) {
     setLockConflict(null);
   }, []);
 
+  // Auto-enter edit mode once the sentinel tile is ready
+  useEffect(() => {
+    if (sentinelTileId && !isEditing && !isAcquiring) {
+      requestEditMode();
+    }
+    // Only trigger when sentinelTileId becomes available
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [sentinelTileId]);
+
   // Release lock on unmount
   useEffect(() => {
     return () => {
