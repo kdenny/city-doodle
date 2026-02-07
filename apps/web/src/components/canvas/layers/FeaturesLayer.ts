@@ -1,6 +1,31 @@
 /**
  * Features layer renderer for districts, roads, and POIs.
  *
+ * ## Road Rendering Pipeline (CITY-377 documentation)
+ *
+ * Roads are drawn in the `renderRoads()` method using a two-pass approach:
+ *   Pass 1 — Casings (outlines): drawn first so fills cover their centers
+ *   Pass 2 — Fills (road surface): drawn on top
+ *
+ * Road widths are scaled by `zoomScale = clamp(currentZoom, 0.5, 1.5) * districtScale`,
+ * where `districtScale` is the average district diagonal / 200, clamped to [0.5, 3].
+ * This keeps road widths proportional to the district size.
+ *
+ * Minimum width enforcement (CITY-377): Roads never render below MIN_ROAD_WIDTH (0.8)
+ * for fills or MIN_CASING_WIDTH (1.5) for casings, preventing sub-pixel invisibility
+ * at low zoom or with small districts.
+ *
+ * ### Road style hierarchy (drawn bottom-to-top):
+ *   trail → local → collector → arterial → highway
+ *
+ * Each class has: fill width, fill color, casing width, casing color, minZoom.
+ * LOCAL and COLLECTOR streets have white fills with gray casings (Google Maps style).
+ * Without casings, white roads on the light canvas/district fills are invisible.
+ *
+ * ### Container z-order (bottom-to-top):
+ *   neighborhoods → cityLimits → districts → roads → roadHighlight → bridges →
+ *   interchanges → pois
+ *
  * Renders:
  * - District polygons with type-based colors
  * - Historic district indicators (hatched pattern)
@@ -39,7 +64,12 @@ const DISTRICT_COLORS: Record<DistrictType, number> = {
   airport: 0xe0e0e0, // Light gray
 };
 
-// Road styling by class (Google Maps inspired)
+// Road styling by class (Google Maps inspired).
+//
+// IMPORTANT (CITY-377): All non-trail road classes MUST have casingWidth > 0.
+// Roads without casings are invisible against the light canvas (#f5f5f5) and
+// district fills (e.g., residential = 0xfff3cd at 0.6 alpha), since the road
+// fill color is white (0xffffff). The casing provides the visible gray outline.
 interface RoadStyle {
   width: number;
   color: number;

@@ -1,6 +1,15 @@
 /**
  * Street grid generation algorithm for filling districts with road networks.
  *
+ * ## Pipeline context
+ * This is step 2 of the street data flow (see FeaturesContext.tsx header):
+ *   districtGenerator → **streetGrid** → FeaturesContext (persist) → FeaturesLayer (render)
+ *
+ * Output roads are stored in `district.street_grid` JSONB (serialized in
+ * FeaturesContext.tsx) and also in the road_network graph. On page load, they are
+ * deserialized by `roadsFromApiStreetGrid()` in FeaturesContext.tsx.
+ *
+ * ## Generation algorithm
  * Generates a rotated grid of streets within a polygon boundary,
  * clipped to the district shape. Streets are assigned hierarchy levels:
  * - Perimeter streets (touching boundary) → COLLECTOR class
@@ -14,6 +23,13 @@
  *
  * Jitter is applied to local streets for organic feel (2-6% of spacing),
  * while collectors remain on the clean grid for structural clarity.
+ *
+ * ## Important notes for rendering
+ * - All road endpoints lie on the polygon boundary (clipping intersection points)
+ * - LOCAL roads need visible casings in FeaturesLayer — see CITY-377
+ * - Collector roads are the ones connected across district boundaries (CITY-382)
+ * - Block spacing is in world units: metersToWorldUnits(baseBlockSize * multipliers)
+ *   Typical residential ≈ 1.37 world units; district diameter ≈ 30 world units
  */
 
 import type { Road, Point, DistrictType, RoadClass } from "./types";

@@ -5,6 +5,38 @@
  * added with auto-generated street grids when seeds are placed.
  *
  * When a worldId is provided, districts are persisted to the backend API.
+ *
+ * ## Street Data Flow (CITY-377, CITY-382, CITY-383 documentation)
+ *
+ * ### Generation (district placement)
+ * 1. `generateDistrictGeometry()` creates the district polygon
+ * 2. `generateStreetGrid()` fills the polygon with a rotated grid of H+V streets
+ *    - Each street is clipped to the polygon boundary (endpoints on boundary)
+ *    - Streets get roadClass "local" or "collector" based on hierarchy rules
+ * 3. `generateInterDistrictRoads()` creates arterial/highway links to nearby districts
+ * 4. `generateCrossBoundaryConnections()` (CITY-382) bridges collector streets at
+ *    shared boundaries between adjacent districts
+ * 5. All roads are optimistically added to `featuresState.roads`
+ *
+ * ### Persistence (dual storage)
+ * - **street_grid JSONB**: Serialized to `district.street_grid` field (roads array
+ *   with flattened points, gridAngle, personality). This is the authoritative source
+ *   for district-internal streets.
+ * - **road_network graph**: Roads also saved as nodes+edges via `roadsToGraph()`.
+ *   This graph is used for routing and inter-district roads. IDs differ from
+ *   street_grid (graph uses API-generated UUIDs, street_grid uses client-generated
+ *   temp IDs that get remapped on success).
+ *
+ * ### Loading (page load / refetch)
+ * - **Effect 1** (apiDistricts): Deserializes `street_grid` JSONB back to Road[]
+ *   via `roadsFromApiStreetGrid()`. Also backfills streets for legacy districts
+ *   with null street_grid (CITY-383).
+ * - **Effect 2** (apiRoadNetwork): Loads graph roads via `graphToRoads()`, merges
+ *   with street_grid roads (IDs don't overlap, so both are kept).
+ *
+ * ### Rendering
+ * `FeaturesLayer.renderRoads()` draws all roads with class-based styling.
+ * See FeaturesLayer.ts header for rendering pipeline details.
  */
 
 import {
@@ -33,7 +65,7 @@ import {
   clipAndValidateDistrict,
   type ClipResult,
 } from "./layers/polygonUtils";
-import { generateInterDistrictRoads } from "./layers/interDistrictRoads";
+import { generateInterDistrictRoads, generateCrossBoundaryConnections } from "./layers/interDistrictRoads";
 import {
   districtRequiresArterialAdjacency,
   generateArterialConnections,
@@ -585,6 +617,49 @@ export function FeaturesProvider({
       const loadedDistricts = apiDistricts.map(fromApiDistrict);
       // Restore district-internal roads from persisted street_grid data
       const streetGridRoads = apiDistricts.flatMap(roadsFromApiStreetGrid);
+
+      // CITY-383: Backfill streets for legacy districts that predate the street_grid column.
+      // Districts with null street_grid (created before migration 014) need their grids
+      // regenerated on the fly. We also persist the result so this only happens once.
+      const backfilledRoads: Road[] = [];
+      for (const apiDistrict of apiDistricts) {
+        const districtType = fromApiDistrictType(apiDistrict.type) as District["type"];
+        if (districtType === "park" || districtType === "airport") continue;
+        if (apiDistrict.street_grid != null) continue;
+
+        const polygon = fromGeoJsonGeometry(apiDistrict.geometry);
+        if (polygon.length < 3) continue;
+
+        const centroid = { x: 0, y: 0 };
+        for (const p of polygon) { centroid.x += p.x; centroid.y += p.y; }
+        centroid.x /= polygon.length;
+        centroid.y /= polygon.length;
+
+        const gridResult = regenerateStreetGridForClippedDistrict(
+          polygon,
+          apiDistrict.id,
+          districtType,
+          centroid
+        );
+        backfilledRoads.push(...gridResult.roads);
+
+        // Persist the regenerated street_grid so we don't repeat this on every load
+        const streetGridPayload = {
+          roads: gridResult.roads.map((r) => ({
+            id: r.id,
+            name: r.name,
+            roadClass: r.roadClass,
+            districtId: r.districtId,
+            points: r.line.points.map((p) => ({ x: p.x, y: p.y })),
+          })),
+          gridAngle: gridResult.gridAngle,
+        };
+        updateDistrictMutation.mutate(
+          { districtId: apiDistrict.id, data: { street_grid: streetGridPayload }, worldId },
+          { onError: (err) => console.error(`CITY-383: Failed to backfill street_grid for ${apiDistrict.id}:`, err) }
+        );
+      }
+
       const loadedDistrictIds = new Set(loadedDistricts.map((d) => d.id));
       setFeaturesState((prev) => {
         // Keep districts that are still pending API create (not yet in API response)
@@ -594,7 +669,7 @@ export function FeaturesProvider({
         return {
           ...prev,
           districts: [...loadedDistricts, ...pendingDistricts],
-          roads: [...streetGridRoads, ...prev.roads.filter((r) => {
+          roads: [...streetGridRoads, ...backfilledRoads, ...prev.roads.filter((r) => {
             // Keep roads not belonging to any loaded district (e.g., inter-district roads,
             // or roads from pending districts whose temp IDs won't be in loadedDistrictIds)
             return !r.districtId || !loadedDistrictIds.has(r.districtId);
@@ -810,6 +885,19 @@ export function FeaturesProvider({
 
       // Combine internal roads with inter-district roads
       let allRoads = [...generated.roads, ...interDistrictResult.roads];
+
+      // Connect collector streets across adjacent district boundaries (CITY-382)
+      // This bridges the gap between independently-generated street grids so that
+      // adjacent districts have a connected local road network, not just arterial links.
+      const crossBoundaryRoads = generateCrossBoundaryConnections(
+        generated.district,
+        generated.roads,
+        features.districts,
+        features.roads
+      );
+      if (crossBoundaryRoads.length > 0) {
+        allRoads = [...allRoads, ...crossBoundaryRoads];
+      }
 
       // For districts that require arterial adjacency (CITY-149),
       // check if connected to arterials and generate additional connections if needed

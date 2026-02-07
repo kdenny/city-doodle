@@ -1,16 +1,30 @@
 /**
- * Inter-district road generation (CITY-144, CITY-340)
+ * Inter-district road generation (CITY-144, CITY-340, CITY-382)
  *
- * When a district is placed, automatically generates roads
- * connecting it to nearby districts to form a connected road network.
- * Short connections (<5mi) become arterials; longer ones become highways.
+ * Handles two levels of inter-district road connectivity:
  *
- * Algorithm:
- * 1. Find nearest existing district - always connect
- * 2. Find all districts within 10 miles - connect if not already reachable
- * 3. Prefer downtown districts for connections
- * 4. Route around water features when possible
- * 5. Auto-upgrade to highway for connections >= highwayThreshold
+ * ## 1. Arterial/Highway connections (`generateInterDistrictRoads`)
+ * When a district is placed, automatically generates roads connecting it to
+ * nearby districts to form a connected road network.
+ * - Short connections (<5mi) become arterials; longer ones become highways
+ * - Algorithm: find nearest district (always connect), then connect to districts
+ *   within 10mi prioritizing downtown, route around water when possible
+ *
+ * ## 2. Cross-boundary collector connections (`generateCrossBoundaryConnections`)
+ * CITY-382: Each district generates its own independent street grid with its own
+ * rotation angle and spacing. This means local/collector streets dead-end at
+ * polygon boundaries. This function bridges that gap by finding collector-class
+ * road endpoints that terminate near a shared boundary between adjacent districts
+ * and creating short connector segments.
+ *
+ * ### Known limitations
+ * - LOCAL streets are NOT connected across boundaries (only collectors). Connecting
+ *   locals would create too many connections and the misaligned grids would look
+ *   messy. Collectors provide enough connectivity for the road network.
+ * - Adjacency detection uses vertex-to-vertex distance (approximation). Very thin
+ *   or oddly-shaped district gaps may not be detected.
+ * - Cross-boundary connections are generated at district placement time only — they
+ *   are NOT regenerated when districts are moved or reshaped.
  */
 
 import type { District, Road, Point, RoadClass, WaterFeature } from "./types";
@@ -540,6 +554,161 @@ function createConnectionRoad(
     roadClass,
     line: { points: pathPoints },
   };
+}
+
+/**
+ * Generate short connector roads between collector streets at adjacent district
+ * boundaries (CITY-382).
+ *
+ * When two districts are placed side by side, their internal street grids are
+ * independent — different rotation angles and spacing offsets. This function
+ * finds collector-class road endpoints that terminate near a shared boundary
+ * and creates short connector segments so the street networks link up.
+ *
+ * Algorithm:
+ * 1. For each existing district, check if its polygon boundary is close enough
+ *    to the new district's boundary to be considered "adjacent" (vertex-to-vertex
+ *    distance < maxGap).
+ * 2. Collect deduplicated collector-class road endpoints from both districts.
+ * 3. Build a distance-sorted list of cross-boundary endpoint pairs within maxGap.
+ * 4. Greedily match closest pairs (each endpoint used at most once), capped at
+ *    MAX_CONNECTIONS_PER_PAIR to avoid overcrowding.
+ *
+ * The resulting connectors are short collector-class roads that bridge the gap
+ * between adjacent district polygon boundaries.
+ *
+ * @param newDistrict - The newly placed district
+ * @param newDistrictRoads - Roads generated for the new district (internal grid)
+ * @param existingDistricts - All existing districts to check adjacency against
+ * @param existingRoads - All existing roads (used to find adjacent district endpoints)
+ * @param maxGap - Maximum world-unit distance between endpoints to create a connector
+ *                 (default 5 — generous enough for small polygon gaps)
+ * @returns Array of short connector roads
+ */
+export function generateCrossBoundaryConnections(
+  newDistrict: District,
+  newDistrictRoads: Road[],
+  existingDistricts: District[],
+  existingRoads: Road[],
+  maxGap: number = 5
+): Road[] {
+  const MAX_CONNECTIONS_PER_PAIR = 6;
+  const connectorRoads: Road[] = [];
+
+  // Get deduplicated collector endpoints from the new district
+  const newEndpoints = getCollectorEndpoints(newDistrictRoads, newDistrict.id);
+  if (newEndpoints.length === 0) return connectorRoads;
+
+  for (const existingDistrict of existingDistricts) {
+    // Skip parks/airports — they have no street grid
+    if (existingDistrict.type === "park" || existingDistrict.type === "airport") continue;
+
+    // Quick adjacency check: minimum vertex-to-vertex distance
+    const boundaryDist = minPolygonVertexDistance(
+      newDistrict.polygon.points,
+      existingDistrict.polygon.points
+    );
+    // Use 2x maxGap as adjacency threshold (generous, since vertex-to-vertex
+    // overestimates the actual polygon-to-polygon distance)
+    if (boundaryDist > maxGap * 2) continue;
+
+    // Get deduplicated collector endpoints from the existing district
+    const existingEndpoints = getCollectorEndpoints(
+      existingRoads.filter((r) => r.districtId === existingDistrict.id),
+      existingDistrict.id
+    );
+    if (existingEndpoints.length === 0) continue;
+
+    // Build distance-sorted list of candidate pairs
+    const pairs: Array<{ newIdx: number; existIdx: number; dist: number }> = [];
+    for (let i = 0; i < newEndpoints.length; i++) {
+      for (let j = 0; j < existingEndpoints.length; j++) {
+        const d = distance(newEndpoints[i], existingEndpoints[j]);
+        if (d <= maxGap && d > 0.01) {
+          // d > 0.01 filters out endpoints that are essentially the same point
+          pairs.push({ newIdx: i, existIdx: j, dist: d });
+        }
+      }
+    }
+    pairs.sort((a, b) => a.dist - b.dist);
+
+    // Greedy matching: each endpoint used at most once
+    const usedNew = new Set<number>();
+    const usedExisting = new Set<number>();
+    let connectionsForPair = 0;
+
+    for (const pair of pairs) {
+      if (connectionsForPair >= MAX_CONNECTIONS_PER_PAIR) break;
+      if (usedNew.has(pair.newIdx) || usedExisting.has(pair.existIdx)) continue;
+
+      usedNew.add(pair.newIdx);
+      usedExisting.add(pair.existIdx);
+      connectionsForPair++;
+
+      connectorRoads.push({
+        id: generateId(`connector-${newDistrict.id}-${existingDistrict.id}-${connectionsForPair}`),
+        roadClass: "collector",
+        line: {
+          points: [newEndpoints[pair.newIdx], existingEndpoints[pair.existIdx]],
+        },
+        districtId: newDistrict.id,
+      });
+    }
+  }
+
+  return connectorRoads;
+}
+
+/**
+ * Extract deduplicated collector-class road endpoints.
+ *
+ * Every road in the street grid has exactly 2 points (start, end), both of
+ * which lie on the district polygon boundary (they are polygon-clipping
+ * intersection points). This function collects all unique endpoints from
+ * collector roads belonging to the given district.
+ *
+ * Deduplication uses a 2-decimal precision key to merge endpoints that share
+ * the same grid intersection (e.g., two perpendicular collectors meeting at
+ * a boundary point).
+ */
+function getCollectorEndpoints(roads: Road[], districtId: string): Point[] {
+  const endpoints: Point[] = [];
+  const seen = new Set<string>();
+  const key = (p: Point) => `${p.x.toFixed(2)},${p.y.toFixed(2)}`;
+
+  for (const road of roads) {
+    if (road.roadClass !== "collector") continue;
+    if (road.districtId !== districtId) continue;
+    if (road.line.points.length < 2) continue;
+
+    for (const pt of [road.line.points[0], road.line.points[road.line.points.length - 1]]) {
+      const k = key(pt);
+      if (!seen.has(k)) {
+        seen.add(k);
+        endpoints.push(pt);
+      }
+    }
+  }
+
+  return endpoints;
+}
+
+/**
+ * Minimum vertex-to-vertex distance between two polygons.
+ *
+ * This is an approximation of the true minimum polygon-to-polygon distance
+ * (which would require vertex-to-edge checks). It's sufficient for adjacency
+ * detection when used with a generous threshold multiplier.
+ */
+function minPolygonVertexDistance(poly1: Point[], poly2: Point[]): number {
+  let minDist = Infinity;
+  for (const p1 of poly1) {
+    for (const p2 of poly2) {
+      const d = distance(p1, p2);
+      if (d < minDist) minDist = d;
+    }
+  }
+  return minDist;
 }
 
 /**
