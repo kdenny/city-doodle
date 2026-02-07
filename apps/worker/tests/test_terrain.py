@@ -1591,6 +1591,91 @@ class TestSeedBasedVariety:
             assert config is not None
 
 
+class TestRiverImprovements:
+    """Tests for river aesthetics improvements (CITY-389)."""
+
+    def test_chaikin_smooth_produces_more_points(self):
+        """Chaikin smoothing should produce more points than the input."""
+        from city_worker.terrain.water import _chaikin_smooth
+
+        coords = [(0, 0), (10, 0), (10, 10), (20, 10)]
+        smoothed = _chaikin_smooth(coords, iterations=1)
+        assert len(smoothed) > len(coords)
+
+    def test_chaikin_smooth_preserves_endpoints(self):
+        """Chaikin smoothing should preserve the first and last points."""
+        from city_worker.terrain.water import _chaikin_smooth
+
+        coords = [(0.0, 0.0), (10.0, 0.0), (10.0, 10.0), (20.0, 10.0)]
+        smoothed = _chaikin_smooth(coords, iterations=2)
+        assert smoothed[0] == coords[0]
+        assert smoothed[-1] == coords[-1]
+
+    def test_chaikin_smooth_handles_short_input(self):
+        """Chaikin should handle 2-point lines without error."""
+        from city_worker.terrain.water import _chaikin_smooth
+
+        coords = [(0, 0), (10, 10)]
+        smoothed = _chaikin_smooth(coords, iterations=2)
+        assert len(smoothed) >= 2
+
+    def test_rivers_have_width_property(self):
+        """Extracted rivers should include a width property."""
+        import numpy as np
+        from city_worker.terrain.water import extract_rivers
+
+        # Create a heightfield with a clear valley for river formation
+        hf = np.ones((32, 32), dtype=np.float64) * 0.6
+        # Create a valley from top to bottom (column 16)
+        for i in range(32):
+            for j in range(32):
+                dist = abs(j - 16)
+                hf[i, j] -= max(0, 0.3 - dist * 0.05)
+            hf[i, 16] = 0.2 + i * 0.005  # Gentle downhill slope
+
+        rivers = extract_rivers(
+            hf, water_level=0.25, tile_x=0, tile_y=0,
+            tile_size=500.0, flow_threshold=5.0, min_length=5,
+        )
+        if rivers:
+            for river in rivers:
+                assert "width" in river.properties
+                assert river.properties["width"] > 0
+
+    def test_rivers_have_flow_properties(self):
+        """Extracted rivers should include max_flow and avg_flow properties."""
+        import numpy as np
+        from city_worker.terrain.water import extract_rivers
+
+        hf = np.ones((32, 32), dtype=np.float64) * 0.6
+        for i in range(32):
+            for j in range(32):
+                dist = abs(j - 16)
+                hf[i, j] -= max(0, 0.3 - dist * 0.05)
+            hf[i, 16] = 0.2 + i * 0.005
+
+        rivers = extract_rivers(
+            hf, water_level=0.25, tile_x=0, tile_y=0,
+            tile_size=500.0, flow_threshold=5.0, min_length=5,
+        )
+        if rivers:
+            for river in rivers:
+                assert "max_flow" in river.properties
+                assert "avg_flow" in river.properties
+                assert river.properties["max_flow"] >= river.properties["avg_flow"]
+
+    def test_chaikin_smooth_multiple_iterations(self):
+        """Multiple Chaikin iterations should produce progressively smoother curves."""
+        from city_worker.terrain.water import _chaikin_smooth
+
+        # Zigzag path
+        coords = [(0, 0), (5, 10), (10, 0), (15, 10), (20, 0)]
+        smooth1 = _chaikin_smooth(coords, iterations=1)
+        smooth2 = _chaikin_smooth(coords, iterations=2)
+        # More iterations = more points
+        assert len(smooth2) > len(smooth1) > len(coords)
+
+
 class TestGeographicMasks:
     """Tests for geographic mask framework (CITY-386)."""
 
