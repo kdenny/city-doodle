@@ -46,15 +46,23 @@ export function TransitView({
 
   const handlePlaceSubwayStation = useCallback(() => {
     if (placementContext && subwaySeed) {
+      // Cancel any active line drawing before starting placement
+      if (transitLineDrawingContext?.state.isDrawing) {
+        transitLineDrawingContext.cancelDrawing();
+      }
       placementContext.selectSeed(subwaySeed);
     }
-  }, [placementContext, subwaySeed]);
+  }, [placementContext, subwaySeed, transitLineDrawingContext]);
 
   const handlePlaceRailStation = useCallback(() => {
     if (placementContext && railSeed) {
+      // Cancel any active line drawing before starting placement
+      if (transitLineDrawingContext?.state.isDrawing) {
+        transitLineDrawingContext.cancelDrawing();
+      }
       placementContext.selectSeed(railSeed);
     }
-  }, [placementContext, railSeed]);
+  }, [placementContext, railSeed, transitLineDrawingContext]);
 
   const placingStationType: "subway" | "rail" | null =
     placementContext?.isPlacing && placementContext.selectedSeed?.id === "subway"

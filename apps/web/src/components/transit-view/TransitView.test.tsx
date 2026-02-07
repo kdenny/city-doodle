@@ -111,6 +111,18 @@ describe("TransitView", () => {
     expect(subwayButton.className).not.toContain("bg-blue-100");
     expect(railButton.className).not.toContain("bg-blue-100");
   });
+
+  it("clicking station button while no context does not throw", () => {
+    renderWithProviders(
+      <TransitView>
+        <div>Content</div>
+      </TransitView>
+    );
+    // Without PlacementContext or TransitLineDrawingContext, clicking should be a no-op
+    expect(() => fireEvent.click(screen.getByText("Subway"))).not.toThrow();
+    expect(() => fireEvent.click(screen.getByText("Rail"))).not.toThrow();
+    expect(() => fireEvent.click(screen.getByText("Draw New Line"))).not.toThrow();
+  });
 });
 
 describe("TransitLinesPanel station button highlighting", () => {
