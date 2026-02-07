@@ -343,19 +343,110 @@ function getConnectionPriority(district: District): number {
 }
 
 /**
+ * CITY-384: Find the shared boundary points between two adjacent districts.
+ *
+ * Walks the new district's polygon and collects consecutive runs of points
+ * that lie on or very near the adjacent district's boundary. Returns the
+ * longest run as the shared edge polyline.
+ */
+function findSharedBoundary(
+  newPolygon: Point[],
+  adjacentPolygon: Point[]
+): Point[] {
+  const TOLERANCE = 3; // world units — tight tolerance for boundary proximity
+
+  // For each point in the new polygon, check if it's on the adjacent boundary
+  const onBoundary: boolean[] = newPolygon.map((p) => {
+    for (let j = 0; j < adjacentPolygon.length; j++) {
+      const a = adjacentPolygon[j];
+      const b = adjacentPolygon[(j + 1) % adjacentPolygon.length];
+      if (pointToSegmentDist(p, a, b) < TOLERANCE) {
+        return true;
+      }
+    }
+    return false;
+  });
+
+  // Find the longest consecutive run of boundary points
+  let bestRun: Point[] = [];
+  let currentRun: Point[] = [];
+
+  // Handle wrap-around by iterating twice
+  const n = newPolygon.length;
+  for (let i = 0; i < n * 2; i++) {
+    const idx = i % n;
+    if (onBoundary[idx]) {
+      currentRun.push(newPolygon[idx]);
+    } else {
+      if (currentRun.length > bestRun.length) {
+        bestRun = currentRun;
+      }
+      currentRun = [];
+    }
+  }
+  if (currentRun.length > bestRun.length) {
+    bestRun = currentRun;
+  }
+
+  // Deduplicate if we wrapped around (runs longer than n mean full boundary)
+  if (bestRun.length > n) {
+    bestRun = bestRun.slice(0, n);
+  }
+
+  return bestRun;
+}
+
+/**
+ * Distance from point p to line segment ab.
+ */
+function pointToSegmentDist(p: Point, a: Point, b: Point): number {
+  const dx = b.x - a.x;
+  const dy = b.y - a.y;
+  const lenSq = dx * dx + dy * dy;
+  if (lenSq === 0) return distance(p, a);
+  let t = ((p.x - a.x) * dx + (p.y - a.y) * dy) / lenSq;
+  t = Math.max(0, Math.min(1, t));
+  return distance(p, { x: a.x + t * dx, y: a.y + t * dy });
+}
+
+/**
+ * CITY-384: Generate an arterial road along the shared boundary of adjacent districts.
+ */
+function createSharedBoundaryRoad(
+  newDistrict: District,
+  adjacentDistrict: District,
+): Road | null {
+  const sharedPoints = findSharedBoundary(
+    newDistrict.polygon.points,
+    adjacentDistrict.polygon.points
+  );
+
+  if (sharedPoints.length < 2) return null;
+
+  return {
+    id: generateId(`shared-arterial-${newDistrict.id}-${adjacentDistrict.id}`),
+    name: `${newDistrict.name} - ${adjacentDistrict.name} Blvd`,
+    roadClass: "arterial",
+    line: { points: sharedPoints },
+  };
+}
+
+/**
  * Generate inter-district roads connecting a new district to existing ones.
  *
  * @param newDistrict - The newly placed district
  * @param existingDistricts - All existing districts
  * @param waterFeatures - Water features to route around
  * @param config - Configuration options
+ * @param adjacentDistrictIds - CITY-384: IDs of districts sharing a boundary
  * @returns Generated roads and connected district IDs
  */
 export function generateInterDistrictRoads(
   newDistrict: District,
   existingDistricts: District[],
   waterFeatures: WaterFeature[] = [],
-  config: InterDistrictConfig = {}
+  config: InterDistrictConfig = {},
+  adjacentDistrictIds: string[] = []
 ): InterDistrictRoadsResult {
   const cfg = { ...DEFAULT_CONFIG, ...config };
   const roads: Road[] = [];
@@ -363,6 +454,19 @@ export function generateInterDistrictRoads(
 
   if (existingDistricts.length === 0) {
     return { roads, connectedDistrictIds };
+  }
+
+  // CITY-384: Generate shared-boundary arterials for adjacent districts first.
+  // These replace the standard centroid-to-centroid connections.
+  for (const adjId of adjacentDistrictIds) {
+    const adjDistrict = existingDistricts.find((d) => d.id === adjId);
+    if (!adjDistrict) continue;
+
+    const road = createSharedBoundaryRoad(newDistrict, adjDistrict);
+    if (road) {
+      roads.push(road);
+      connectedDistrictIds.push(adjId);
+    }
   }
 
   // Get centroid of new district
@@ -379,8 +483,8 @@ export function generateInterDistrictRoads(
   // Sort by distance first
   districtInfo.sort((a, b) => a.distance - b.distance);
 
-  // Always connect to the nearest district
-  const nearest = districtInfo[0];
+  // Always connect to the nearest non-adjacent district
+  const nearest = districtInfo.find((d) => !connectedDistrictIds.includes(d.district.id));
   if (nearest) {
     const road = createConnectionRoad(
       newDistrict,
@@ -397,7 +501,7 @@ export function generateInterDistrictRoads(
 
   // Connect to other districts within range, prioritizing downtown
   const withinRange = districtInfo
-    .slice(1) // Skip nearest (already connected)
+    .filter((d) => !connectedDistrictIds.includes(d.district.id))
     .filter((d) => d.distance <= cfg.maxConnectionDistance)
     .sort((a, b) => b.priority - a.priority); // Sort by priority descending
 
