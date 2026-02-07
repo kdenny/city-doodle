@@ -14,60 +14,69 @@ import { generateId } from "../../../utils/idGenerator";
 // ============================================================================
 
 /**
- * POI template: a POI type paired with a display-name pattern.
- * The `namePool` provides a set of plausible names to pick from.
+ * POI template: a POI type with either contextual street-based naming or a
+ * fixed name pool for institutional POIs.
+ *
+ * Contextual templates combine a generated street name with a suffix
+ * (e.g. "Oak St Cafe"). Fixed templates pick from a static pool
+ * (e.g. "Memorial Hospital").
  */
 interface POITemplate {
   type: POIType;
-  namePool: string[];
+  /** Suffixes combined with a street name for contextual naming (CITY-416). */
+  suffixes?: string[];
+  /** Static name pool for institutional POIs that don't use street names. */
+  namePool?: string[];
 }
+
+// Street name prefixes for contextual POI naming (CITY-416)
+const STREET_NAME_PREFIXES = [
+  "Oak", "Elm", "Maple", "Pine", "Cedar", "Birch", "Willow", "Main", "Park",
+  "Lake", "River", "Hill", "Harbor", "Bay", "Bridge", "Mill", "Church",
+  "Market", "Spring", "Meadow", "Forest", "Ridge", "Valley", "Sunset",
+  "Highland", "Grove", "Prospect", "Union", "Franklin", "Liberty",
+];
+
+const STREET_TYPE_SUFFIXES = ["St", "Ave", "Blvd", "Dr", "Ln", "Way", "Rd", "Pl"];
 
 /**
  * Mapping from district type to the set of POI templates that should be
  * auto-generated when that district type is placed.
  *
+ * Templates with `suffixes` use contextual street-name-based naming.
+ * Templates with `namePool` use traditional fixed names (for institutions).
  * District types that should NOT generate POIs (e.g., park, airport) are
  * omitted and will return an empty array.
  */
 const DISTRICT_POI_TEMPLATES: Partial<Record<DistrictType, POITemplate[]>> = {
   hospital: [
     { type: "hospital", namePool: ["General Hospital", "Memorial Hospital", "City Medical Center", "Regional Hospital", "Community Hospital"] },
-    { type: "hospital", namePool: ["Urgent Care Clinic", "Family Health Clinic", "Specialty Clinic", "Outpatient Clinic", "Walk-In Clinic"] },
-    { type: "civic", namePool: ["Medical Office Building", "Health Sciences Library", "Research Pavilion"] },
+    { type: "civic", namePool: ["Medical Office Building", "Health Sciences Library", "Research Pavilion", "Urgent Care Clinic"] },
   ],
   downtown: [
-    { type: "civic", namePool: ["City Hall", "Municipal Building", "Civic Center", "Government Center", "County Courthouse"] },
-    { type: "shopping", namePool: ["Main Street Shops", "Downtown Market", "Central Plaza", "Market Square", "The Galleria"] },
-    { type: "shopping", namePool: ["Downtown Restaurant Row", "Bistro District", "Dining Quarter", "Food Hall", "Culinary Corner"] },
-    { type: "civic", namePool: ["Public Library", "Community Center", "Arts Center", "Cultural Center"] },
+    { type: "civic", namePool: ["City Hall", "Municipal Building", "Civic Center", "County Courthouse"] },
+    { type: "shopping", suffixes: ["Market", "Shops", "Plaza", "Galleria", "Emporium"] },
     { type: "transit", namePool: ["Central Station", "Downtown Transit Hub", "Bus Terminal", "Metro Station"] },
   ],
   university: [
-    { type: "university", namePool: ["Main Campus Hall", "University Hall", "Administration Building", "Academic Center", "Founders Hall"] },
-    { type: "university", namePool: ["Science Building", "Engineering Hall", "Arts & Humanities Building", "Business School", "Law School"] },
-    { type: "civic", namePool: ["University Library", "Campus Library", "Research Library", "Academic Library"] },
-    { type: "civic", namePool: ["Student Union", "Student Center", "Campus Commons", "Recreation Center"] },
+    { type: "university", namePool: ["Main Campus Hall", "University Hall", "Administration Building", "Founders Hall"] },
+    { type: "civic", namePool: ["University Library", "Student Union", "Campus Commons", "Recreation Center"] },
   ],
   industrial: [
-    { type: "industrial", namePool: ["Manufacturing Plant", "Assembly Factory", "Production Facility", "Processing Plant", "Industrial Works"] },
-    { type: "industrial", namePool: ["Distribution Warehouse", "Logistics Center", "Storage Facility", "Freight Terminal", "Shipping Depot"] },
-    { type: "industrial", namePool: ["Industrial Park Office", "Tech Workshop", "Research Lab", "Fabrication Shop"] },
+    { type: "industrial", suffixes: ["Manufacturing", "Assembly Works", "Production Facility", "Processing Plant"] },
+    { type: "industrial", suffixes: ["Warehouse", "Logistics Center", "Freight Terminal", "Storage Depot"] },
   ],
   k12: [
-    { type: "school", namePool: ["Elementary School", "Primary School", "Grade School", "Academy", "Preparatory School"] },
-    { type: "school", namePool: ["Middle School", "Junior High", "Intermediate School"] },
-    { type: "civic", namePool: ["School Library", "Gymnasium", "Athletic Complex", "Performing Arts Center"] },
+    { type: "school", namePool: ["Elementary School", "Primary School", "Middle School", "Academy", "Preparatory School"] },
+    { type: "park", namePool: ["School Playground", "Athletic Field", "Sports Complex"] },
   ],
   residential: [
-    { type: "shopping", namePool: ["Corner Store", "Neighborhood Market", "Mini Mart", "Convenience Store", "Local Grocery"] },
-    { type: "shopping", namePool: ["Coffee Shop", "Neighborhood Cafe", "Bakery", "Deli & Cafe", "Tea House"] },
-    { type: "civic", namePool: ["Community Park", "Pocket Park", "Playground", "Dog Park"] },
+    { type: "park", namePool: ["Community Park", "Pocket Park", "Playground", "Dog Park", "Neighborhood Green"] },
+    { type: "shopping", suffixes: ["Cafe", "Bakery", "Deli", "Coffee House", "Corner Store"] },
   ],
   commercial: [
-    { type: "shopping", namePool: ["Shopping Center", "Retail Plaza", "Commercial Center", "Strip Mall", "Town Center"] },
-    { type: "shopping", namePool: ["Grocery Store", "Department Store", "Outlet Mall", "Marketplace"] },
-    { type: "civic", namePool: ["Office Park", "Business Center", "Professional Building", "Corporate Campus"] },
-    { type: "shopping", namePool: ["Food Court", "Restaurant Row", "Dining District", "Eatery Plaza"] },
+    { type: "shopping", suffixes: ["Shopping Center", "Retail Plaza", "Marketplace", "Town Center"] },
+    { type: "civic", suffixes: ["Office Park", "Business Center", "Professional Building"] },
   ],
 };
 
@@ -196,11 +205,26 @@ function generateSpreadPositions(
 // ============================================================================
 
 /**
+ * Generate a contextual street name like "Oak St" or "Harbor Ave".
+ */
+function generateStreetName(rng: SeededRandom, usedPrefixes: Set<string>): string {
+  const available = STREET_NAME_PREFIXES.filter((p) => !usedPrefixes.has(p));
+  const prefix = available.length > 0 ? rng.pick(available) : rng.pick(STREET_NAME_PREFIXES);
+  usedPrefixes.add(prefix);
+  const type = rng.pick(STREET_TYPE_SUFFIXES);
+  return `${prefix} ${type}`;
+}
+
+/**
  * Auto-generate POIs for a newly placed district.
+ *
+ * Uses contextual street-name-based naming (CITY-416) for commercial POIs
+ * (e.g. "Oak St Cafe") and static name pools for institutional POIs
+ * (e.g. "Memorial Hospital").
  *
  * @param districtType - The type of district being placed
  * @param polygon - The district polygon vertices
- * @param districtName - Name of the district (used as prefix context for POI naming)
+ * @param _districtName - Name of the district (reserved for future use)
  * @returns Array of POI objects ready to be added via addPOI / bulk create
  */
 export function generatePOIsForDistrict(
@@ -234,11 +258,28 @@ export function generatePOIsForDistrict(
   // Generate spread-out positions inside the polygon
   const positions = generateSpreadPositions(polygon, count, rng);
 
-  // Build POI objects
+  // Build POI objects with contextual naming (CITY-416)
+  const usedNames = new Set<string>();
+  const usedStreetPrefixes = new Set<string>();
   const pois: POI[] = [];
   for (let i = 0; i < Math.min(selected.length, positions.length); i++) {
     const template = selected[i];
-    const name = rng.pick(template.namePool);
+
+    let name: string;
+    if (template.suffixes) {
+      // Contextual naming: "[street name] [suffix]"
+      const streetName = generateStreetName(rng, usedStreetPrefixes);
+      const suffix = rng.pick(template.suffixes);
+      name = `${streetName} ${suffix}`;
+    } else if (template.namePool) {
+      // Institutional naming: pick from static pool, avoiding duplicates
+      const available = template.namePool.filter((n) => !usedNames.has(n));
+      if (available.length === 0) continue;
+      name = rng.pick(available);
+    } else {
+      continue;
+    }
+    usedNames.add(name);
 
     pois.push({
       id: generateId("poi"),
