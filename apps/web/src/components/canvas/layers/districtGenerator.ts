@@ -222,6 +222,11 @@ export function seedIdToDistrictType(seedId: string): DistrictType {
     university: "university",
     k12: "k12",
     park: "park",
+    park_pocket: "park",
+    park_neighborhood: "park",
+    park_community: "park",
+    park_regional: "park",
+    park_city: "park",
     airport: "airport",
   };
   return mapping[seedId] ?? "residential";

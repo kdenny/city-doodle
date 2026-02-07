@@ -714,6 +714,34 @@ export class FeaturesLayer {
       if (district.isHistoric) {
         this.renderHistoricHatching(district.polygon.points);
       }
+
+      // CITY-378: Draw park ponds as water features
+      if (district.ponds && district.ponds.length > 0) {
+        for (const pond of district.ponds) {
+          const pondPoints = pond.points;
+          if (pondPoints.length < 3) continue;
+
+          this.districtsGraphics.moveTo(pondPoints[0].x, pondPoints[0].y);
+          for (let i = 1; i < pondPoints.length; i++) {
+            this.districtsGraphics.lineTo(pondPoints[i].x, pondPoints[i].y);
+          }
+          this.districtsGraphics.closePath();
+          this.districtsGraphics.fill({ color: 0x87ceeb, alpha: 0.7 }); // Light blue water
+
+          // Pond outline
+          this.districtsGraphics.setStrokeStyle({
+            width: 0.5,
+            color: 0x4a90d9,
+            alpha: 0.6,
+          });
+          this.districtsGraphics.moveTo(pondPoints[0].x, pondPoints[0].y);
+          for (let i = 1; i < pondPoints.length; i++) {
+            this.districtsGraphics.lineTo(pondPoints[i].x, pondPoints[i].y);
+          }
+          this.districtsGraphics.closePath();
+          this.districtsGraphics.stroke();
+        }
+      }
     }
   }
 

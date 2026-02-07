@@ -12,7 +12,9 @@ import {
   PlacedSeedsProvider,
   usePlacedSeeds,
   type SeedType,
+  PARK_SIZE_CONFIG,
 } from "../palette";
+import { getParkSizeFromSeedId } from "../canvas/layers/parkGenerator";
 import type { DistrictPersonality, Point } from "../canvas/layers/types";
 import { MapCanvasProvider, FeaturesProvider, useFeatures, TerrainProvider, TransitProvider, useTransitOptional, useTransit, TransitLineDrawingProvider } from "../canvas";
 import { EditLockProvider, useEditLockOptional } from "./EditLockContext";
@@ -137,10 +139,17 @@ function PlacementWithSeeds({ children }: { children: ReactNode }) {
       generationSeed?: number,
       fixedSize?: number
     ): Promise<boolean> => {
-      if (seed.category === "district") {
-        // For district seeds, generate actual district geometry
-        // Pass personality settings, generation seed, and optional fixed size
-        const result = addDistrict(position, seed.id, { personality, seed: generationSeed, size: fixedSize });
+      if (seed.category === "district" || seed.category === "park") {
+        // For district and park seeds, generate actual district geometry
+        // Park seeds use park-specific sizing from PARK_SIZE_CONFIG
+        let districtSize = fixedSize;
+        if (seed.category === "park" && !fixedSize) {
+          const parkSize = getParkSizeFromSeedId(seed.id);
+          const sizeConfig = PARK_SIZE_CONFIG[parkSize];
+          // Size is diameter (radius * 2) in world units
+          districtSize = sizeConfig.radiusWorldUnits * 2;
+        }
+        const result = addDistrict(position, seed.id, { personality, seed: generationSeed, size: districtSize });
         if (!result.generated) {
           // District overlapped, in water, or failed — return false to trigger visual error flash
           toast?.addToast(result.error || "Failed to place district", "warning");
@@ -149,7 +158,7 @@ function PlacementWithSeeds({ children }: { children: ReactNode }) {
         if (result.wasClipped) {
           toast?.addToast("District was clipped to avoid water overlap", "info");
         }
-        // Don't add a seed marker for districts - the geometry is enough
+        // Don't add a seed marker for districts/parks - the geometry is enough
       } else if (seed.id === "rail_station" && transitContext) {
         // For rail station seeds, use the transit context to place them
         // This handles validation (must be in district) and auto-connection
