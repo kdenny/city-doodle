@@ -958,6 +958,13 @@ export const MapCanvas = forwardRef<MapCanvasHandle, MapCanvasProps>(
     let dragStartPos = { x: 0, y: 0 };
     const DRAG_THRESHOLD = 5;
 
+    // CITY-302: Station drag state
+    let stationDrag: {
+      stationId: string;
+      stationType: "rail" | "subway";
+      originalPosition: { x: number; y: number };
+    } | null = null;
+
     // Track Shift key state for freehand drawing toggle (via global keyboard events)
     let isShiftHeld = false;
 
@@ -1020,6 +1027,38 @@ export const MapCanvas = forwardRef<MapCanvasHandle, MapCanvasProps>(
         const worldPos = viewport.toWorld(event.global.x, event.global.y);
         viewport.plugins.pause("drag");
         pc.startDragSize({ x: worldPos.x, y: worldPos.y });
+        return;
+      }
+
+      // CITY-302: Start station drag (only when no other tool/mode is active)
+      const isLineDrawingActive = s.transitLineDrawingContext?.state.isDrawing ?? false;
+      const isPlacingActive = s.placementContext?.isPlacing ?? false;
+      if (!isDrawing && !isLineDrawingActive && !isPlacingActive) {
+        const worldPos = viewport.toWorld(event.global.x, event.global.y);
+        if (railStationLayerRef.current) {
+          const railHit = railStationLayerRef.current.hitTest(worldPos.x, worldPos.y);
+          if (railHit) {
+            viewport.plugins.pause("drag");
+            stationDrag = {
+              stationId: railHit.id,
+              stationType: "rail",
+              originalPosition: { x: railHit.position.x, y: railHit.position.y },
+            };
+            return;
+          }
+        }
+        if (subwayStationLayerRef.current) {
+          const subwayHit = subwayStationLayerRef.current.hitTest(worldPos.x, worldPos.y);
+          if (subwayHit) {
+            viewport.plugins.pause("drag");
+            stationDrag = {
+              stationId: subwayHit.id,
+              stationType: "subway",
+              originalPosition: { x: subwayHit.position.x, y: subwayHit.position.y },
+            };
+            return;
+          }
+        }
       }
     };
 
@@ -1058,6 +1097,18 @@ export const MapCanvas = forwardRef<MapCanvasHandle, MapCanvasProps>(
             { x: worldPos.x, y: worldPos.y },
             { isSnapped: false }
           );
+        }
+        return;
+      }
+
+      // CITY-302: Handle station drag movement
+      if (stationDrag) {
+        const sdx = worldPos.x - stationDrag.originalPosition.x;
+        const sdy = worldPos.y - stationDrag.originalPosition.y;
+        if (stationDrag.stationType === "rail" && railStationLayerRef.current) {
+          railStationLayerRef.current.setStationOffset(stationDrag.stationId, sdx, sdy);
+        } else if (stationDrag.stationType === "subway" && subwayStationLayerRef.current) {
+          subwayStationLayerRef.current.setStationOffset(stationDrag.stationId, sdx, sdy);
         }
         return;
       }
@@ -1168,6 +1219,25 @@ export const MapCanvas = forwardRef<MapCanvasHandle, MapCanvasProps>(
         // Re-enable viewport drag
         viewport.plugins.resume("drag");
         return;
+      }
+
+      // CITY-302: Handle station drag completion
+      if (stationDrag && s.transitContext) {
+        const worldPos = viewport.toWorld(event.global.x, event.global.y);
+        if (stationDrag.stationType === "rail" && railStationLayerRef.current) {
+          railStationLayerRef.current.setStationOffset(stationDrag.stationId, 0, 0);
+        } else if (stationDrag.stationType === "subway" && subwayStationLayerRef.current) {
+          subwayStationLayerRef.current.setStationOffset(stationDrag.stationId, 0, 0);
+        }
+        viewport.plugins.resume("drag");
+        if (isDragging) {
+          s.transitContext.moveStation(stationDrag.stationId, stationDrag.stationType, {
+            x: worldPos.x, y: worldPos.y,
+          });
+        }
+        const wasDragging = isDragging;
+        stationDrag = null;
+        if (wasDragging) return;
       }
 
       // CITY-364: Handle drag-to-size completion BEFORE the isDragging guard,
@@ -1298,6 +1368,19 @@ export const MapCanvas = forwardRef<MapCanvasHandle, MapCanvasProps>(
       const isEndpointDragging = s.endpointDragContext?.isDragging ?? false;
       const isDrawing = s.drawingContext?.state.isDrawing ?? false;
       const isLineDrawing = s.transitLineDrawingContext?.state.isDrawing ?? false;
+
+      // CITY-302: Cancel station drag
+      if (stationDrag && event.key === "Escape") {
+        event.preventDefault();
+        if (stationDrag.stationType === "rail" && railStationLayerRef.current) {
+          railStationLayerRef.current.setStationOffset(stationDrag.stationId, 0, 0);
+        } else if (stationDrag.stationType === "subway" && subwayStationLayerRef.current) {
+          subwayStationLayerRef.current.setStationOffset(stationDrag.stationId, 0, 0);
+        }
+        stationDrag = null;
+        viewport.plugins.resume("drag");
+        return;
+      }
 
       // Handle endpoint drag cancellation (CITY-147)
       if (isEndpointDragging && event.key === "Escape") {
