@@ -66,7 +66,7 @@ export function PlacementPalette() {
   const isDistrictSeed = selectedSeed?.category === "district";
 
   return (
-    <div className="bg-white/95 backdrop-blur-sm rounded-lg shadow-lg p-3 w-64">
+    <div className="bg-white/95 backdrop-blur-sm rounded-lg shadow-lg p-3 w-64 max-h-[calc(100vh-6rem)] overflow-y-auto">
       <div className="flex items-center justify-between mb-3">
         <h3 className="text-sm font-semibold text-gray-700">Place</h3>
         {isPlacing && (
