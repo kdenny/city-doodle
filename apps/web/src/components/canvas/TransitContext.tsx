@@ -847,6 +847,7 @@ export function TransitProvider({ children, worldId }: TransitProviderProps) {
 
   /**
    * Delete a transit line and all its segments.
+   * Clears highlightedLineId if the deleted line was highlighted.
    */
   const deleteLineMethod = useCallback(
     async (lineId: string): Promise<boolean> => {
@@ -857,6 +858,12 @@ export function TransitProvider({ children, worldId }: TransitProviderProps) {
 
       try {
         await deleteLineMutation.mutateAsync({ lineId, worldId });
+
+        // Clear stale highlight if the deleted line was highlighted (CITY-291)
+        if (highlightedLineId === lineId) {
+          setHighlightedLineId(null);
+        }
+
         toast?.addToast("Transit line deleted", "success");
         return true;
       } catch (error) {
@@ -865,7 +872,7 @@ export function TransitProvider({ children, worldId }: TransitProviderProps) {
         return false;
       }
     },
-    [worldId, deleteLineMutation, toast]
+    [worldId, deleteLineMutation, highlightedLineId, toast]
   );
 
   /**
@@ -958,6 +965,7 @@ export function TransitProvider({ children, worldId }: TransitProviderProps) {
     createLineManual,
     createLineSegment,
     updateLineMethod,
+    deleteLineMethod,
     lineCount,
     isLoading,
     error,
