@@ -7,6 +7,7 @@
 
 import { useState, useRef, useEffect, useCallback } from "react";
 import type { World } from "../api/types";
+import { WorldThumbnail } from "./WorldThumbnail";
 
 /** Format a date as a relative "time ago" string */
 function formatRelativeTime(dateStr: string): string {
@@ -130,22 +131,8 @@ export function WorldCard({
         if (e.key === "Enter" && !isRenaming) onClick();
       }}
     >
-      {/* Thumbnail placeholder */}
-      <div className="h-36 bg-gray-100 flex items-center justify-center">
-        <svg
-          className="w-16 h-16 text-gray-300"
-          fill="none"
-          viewBox="0 0 24 24"
-          stroke="currentColor"
-          strokeWidth={1}
-        >
-          <path
-            strokeLinecap="round"
-            strokeLinejoin="round"
-            d="M9 20l-5.447-2.724A1 1 0 013 16.382V5.618a1 1 0 011.447-.894L9 7m0 13l6-3m-6 3V7m6 10l4.553 2.276A1 1 0 0021 18.382V7.618a1 1 0 00-.553-.894L15 4m0 13V4m0 0L9 7"
-          />
-        </svg>
-      </div>
+      {/* Thumbnail */}
+      <WorldThumbnail worldId={world.id} className="h-36" />
 
       {/* Card body */}
       <div className="p-3 relative">
