@@ -380,6 +380,7 @@ export class FeaturesLayer {
   private currentZoom: number = 1;
   /** Scale factor derived from average district size. Roads widen for larger districts. */
   private districtScale: number = 1;
+  private _lastRoadLogTime: number = 0; // CITY-377 diagnostic throttle
   /** ID of the currently selected road (null = no selection) */
   private selectedRoadId: string | null = null;
   /** Spatial index for fast road hit testing */
@@ -445,6 +446,18 @@ export class FeaturesLayer {
     this.roadIndex.build(data.roads);
     this.poiIndex.build(data.pois);
     this.districtIndex.build(data.districts);
+
+    // CITY-377 diagnostic: log road stats on data load
+    if (data.roads.length > 0) {
+      const byClass: Record<string, number> = {};
+      for (const r of data.roads) {
+        byClass[r.roadClass] = (byClass[r.roadClass] || 0) + 1;
+      }
+      console.log(
+        `[FeaturesLayer] setData: ${data.districts.length} districts, ${data.roads.length} roads (${JSON.stringify(byClass)}), districtScale=${this.districtScale.toFixed(3)}`
+      );
+    }
+
     this.render();
   }
 
@@ -799,6 +812,17 @@ export class FeaturesLayer {
       return this.currentZoom >= style.minZoom;
     });
 
+    // CITY-377 diagnostic: log render stats (throttled to avoid console spam during zoom)
+    const now = performance.now();
+    if (!this._lastRoadLogTime || now - this._lastRoadLogTime > 2000) {
+      this._lastRoadLogTime = now;
+      const totalPts = visibleRoads.reduce((sum, r) => sum + r.line.points.length, 0);
+      console.log(
+        `[FeaturesLayer] renderRoads: ${roads.length} total, ${visibleRoads.length} visible at zoom=${this.currentZoom.toFixed(2)}, ${totalPts} points, districtScale=${this.districtScale.toFixed(3)}`
+      );
+    }
+    const renderStart = performance.now();
+
     // Scale road widths with zoom (thinner when zoomed out) and district size
     const zoomScale = Math.max(0.5, Math.min(1.5, this.currentZoom)) * this.districtScale;
 
@@ -859,6 +883,12 @@ export class FeaturesLayer {
         }
         this.roadsGraphics.stroke();
       }
+    }
+
+    // CITY-377 diagnostic: log render time
+    const renderEnd = performance.now();
+    if (now === this._lastRoadLogTime) {
+      console.log(`[FeaturesLayer] renderRoads took ${(renderEnd - renderStart).toFixed(1)}ms`);
     }
   }
 
