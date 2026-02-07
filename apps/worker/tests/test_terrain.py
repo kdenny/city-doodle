@@ -1796,3 +1796,72 @@ class TestGeographicMasks:
             gen = TerrainGenerator(config)
             result = gen.generate_3x3(0, 0)
             assert len(result.all_tiles()) == 9
+
+
+class TestInlandMask:
+    """Tests for inland minimal-water mask (CITY-388)."""
+
+    def test_inland_mask_registered(self):
+        """inland_mask should be registered for the 'inland' setting."""
+        from city_worker.terrain.geographic_masks import get_mask, inland_mask
+
+        assert get_mask("inland") is inland_mask
+
+    def test_floor_raises_minimum_height(self):
+        """All heights should be at or above the floor after masking."""
+        import numpy as np
+        from city_worker.terrain.geographic_masks import MaskContext, inland_mask
+
+        hf = np.zeros((16, 16))  # All zeros — worst case
+        ctx = MaskContext(tx=0, ty=0, tile_size=500.0, resolution=16, seed=42)
+        result = inland_mask(hf, ctx)
+        assert result.min() >= 0.12 - 1e-9
+
+    def test_high_values_preserved(self):
+        """Heights near 1.0 should stay near 1.0."""
+        import numpy as np
+        from city_worker.terrain.geographic_masks import MaskContext, inland_mask
+
+        hf = np.ones((16, 16))
+        ctx = MaskContext(tx=0, ty=0, tile_size=500.0, resolution=16, seed=42)
+        result = inland_mask(hf, ctx)
+        assert result.max() <= 1.0
+        assert result.min() > 0.99
+
+    def test_minimal_water_with_inland_water_level(self):
+        """With inland water_level (~0.15), very little terrain should be below water."""
+        import numpy as np
+        from city_worker.terrain.geographic_masks import MaskContext, inland_mask
+
+        rng = np.random.default_rng(42)
+        hf = rng.random((64, 64))  # Uniform [0, 1)
+        ctx = MaskContext(tx=0, ty=0, tile_size=500.0, resolution=64, seed=42)
+        result = inland_mask(hf, ctx)
+        water_level = 0.15
+        water_fraction = (result < water_level).sum() / result.size
+        assert water_fraction < 0.05, f"Water fraction {water_fraction:.2%} too high"
+
+    def test_near_zero_water_with_typical_noise(self):
+        """With realistic noise (mostly 0.3-0.7), water should be negligible."""
+        import numpy as np
+        from city_worker.terrain.geographic_masks import MaskContext, inland_mask
+
+        rng = np.random.default_rng(99)
+        hf = np.clip(rng.normal(0.5, 0.15, (64, 64)), 0.0, 1.0)
+        ctx = MaskContext(tx=0, ty=0, tile_size=500.0, resolution=64, seed=42)
+        result = inland_mask(hf, ctx)
+        water_level = 0.15
+        water_fraction = (result < water_level).sum() / result.size
+        assert water_fraction < 0.005, f"Water fraction {water_fraction:.4%} too high"
+
+    def test_inland_generates_through_full_pipeline(self):
+        """Inland setting should produce valid terrain with minimal water."""
+        config = TerrainConfig(
+            world_seed=42,
+            geographic_setting="inland",
+            resolution=16,
+            tile_size=500.0,
+        )
+        gen = TerrainGenerator(config)
+        result = gen.generate_3x3(0, 0)
+        assert len(result.all_tiles()) == 9
