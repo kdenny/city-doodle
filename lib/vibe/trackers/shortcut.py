@@ -126,7 +126,7 @@ class ShortcutTracker(TrackerBase):
 
         # If labels provided, try to find matching label IDs
         if labels:
-            label_ids = self._get_label_ids(labels)
+            label_ids = self._get_or_create_label_ids(labels)
             if label_ids:
                 payload["labels"] = [{"id": lid} for lid in label_ids]
 
@@ -169,6 +169,11 @@ class ShortcutTracker(TrackerBase):
                 )
             payload["workflow_state_id"] = state_id
 
+        if labels:
+            label_ids = self._get_or_create_label_ids(labels)
+            if label_ids:
+                payload["labels"] = [{"id": lid} for lid in label_ids]
+
         try:
             response = requests.put(
                 f"{SHORTCUT_API_URL}/stories/{story_id}",
@@ -207,6 +212,45 @@ class ShortcutTracker(TrackerBase):
             issues.append("SHORTCUT_API_TOKEN is invalid or expired")
 
         return len(issues) == 0, issues
+
+    def _get_or_create_label_ids(self, label_names: list[str]) -> list[int]:
+        """Resolve label names to IDs, creating any that don't exist."""
+        if not label_names:
+            return []
+        try:
+            response = requests.get(
+                f"{SHORTCUT_API_URL}/labels",
+                headers=self._headers,
+                timeout=30,
+            )
+            response.raise_for_status()
+            name_to_id = {label["name"].lower(): label["id"] for label in response.json()}
+        except Exception:
+            name_to_id = {}
+
+        ids = []
+        for name in label_names:
+            if name.lower() in name_to_id:
+                ids.append(name_to_id[name.lower()])
+            else:
+                new_id = self._create_label(name)
+                if new_id:
+                    ids.append(new_id)
+        return ids
+
+    def _create_label(self, name: str) -> int | None:
+        """Create a new label in Shortcut and return its ID."""
+        try:
+            response = requests.post(
+                f"{SHORTCUT_API_URL}/labels",
+                headers=self._headers,
+                json={"name": name},
+                timeout=30,
+            )
+            response.raise_for_status()
+            return response.json().get("id")
+        except Exception:
+            return None
 
     def _get_label_ids(self, label_names: list[str]) -> list[int]:
         """Resolve label names to Shortcut label IDs."""
