@@ -154,7 +154,7 @@ const DEFAULT_CONFIG: Required<Omit<DistrictGenerationConfig, "scaleSettings" | 
   minSize: 80,
   maxSize: 160,
   polygonPoints: 8,
-  organicFactor: 0.3,
+  organicFactor: 0.15,
   streetSpacing: 30,
   streetClass: "local",
   scaleSettings: DEFAULT_SCALE_SETTINGS,
