@@ -135,15 +135,15 @@ function PlacementWithSeeds({ children }: { children: ReactNode }) {
       personality?: DistrictPersonality,
       generationSeed?: number,
       fixedSize?: number
-    ) => {
+    ): Promise<boolean> => {
       if (seed.category === "district") {
         // For district seeds, generate actual district geometry
         // Pass personality settings, generation seed, and optional fixed size
         const result = addDistrict(position, seed.id, { personality, seed: generationSeed, size: fixedSize });
         if (!result.generated) {
-          // District overlapped, in water, or failed
+          // District overlapped, in water, or failed — return false to trigger visual error flash
           toast?.addToast(result.error || "Failed to place district", "warning");
-          return;
+          return false;
         }
         if (result.wasClipped) {
           toast?.addToast("District was clipped to avoid water overlap", "info");
@@ -155,7 +155,7 @@ function PlacementWithSeeds({ children }: { children: ReactNode }) {
         const station = await transitContext.placeRailStation(position);
         if (!station) {
           toast?.addToast("Rail station must be placed inside a district", "warning");
-          return;
+          return false;
         }
         // Don't add a seed marker for rail stations - the transit layer renders them
       } else if (seed.id === "subway" && transitContext) {
@@ -164,13 +164,14 @@ function PlacementWithSeeds({ children }: { children: ReactNode }) {
         const station = await transitContext.placeSubwayStation(position);
         if (!station) {
           toast?.addToast("Subway station must be placed inside a district", "warning");
-          return;
+          return false;
         }
         // Don't add a seed marker for subway stations - the subway station layer renders them
       } else {
         // For other POI and transit seeds, add them as seed markers
         addSeed(seed, position);
       }
+      return true;
     },
     [addSeed, addDistrict, transitContext, toast]
   );
