@@ -9,7 +9,7 @@
  */
 
 import type { District, Road, Point, DistrictType, RoadClass } from "./types";
-import { generateDistrictName } from "../../../utils/nameGenerator";
+import { generateDistrictName, type NamingContext } from "../../../utils/nameGenerator";
 import { generateId } from "../../../utils/idGenerator";
 import {
   metersToWorldUnits,
@@ -145,9 +145,14 @@ export interface DistrictGenerationConfig {
    * Historic eras produce smaller, tighter blocks; modern eras produce larger blocks.
    */
   eraYear?: number;
+  /**
+   * Naming context for context-aware name generation (CITY-380).
+   * Provides world name, adjacent district names, and nearby water feature names.
+   */
+  namingContext?: NamingContext;
 }
 
-const DEFAULT_CONFIG: Required<Omit<DistrictGenerationConfig, "scaleSettings" | "seed" | "transitStations" | "transitCar" | "eraYear">> & {
+const DEFAULT_CONFIG: Required<Omit<DistrictGenerationConfig, "scaleSettings" | "seed" | "transitStations" | "transitCar" | "eraYear" | "namingContext">> & {
   scaleSettings: ScaleSettings;
 } = {
   size: 120,
@@ -165,7 +170,7 @@ const DEFAULT_CONFIG: Required<Omit<DistrictGenerationConfig, "scaleSettings" | 
  */
 export function getEffectiveDistrictConfig(
   config: DistrictGenerationConfig = {}
-): Required<Omit<DistrictGenerationConfig, "scaleSettings" | "seed" | "transitStations" | "transitCar" | "eraYear">> & {
+): Required<Omit<DistrictGenerationConfig, "scaleSettings" | "seed" | "transitStations" | "transitCar" | "eraYear" | "namingContext">> & {
   scaleSettings: ScaleSettings;
 } {
   const scaleSettings = config.scaleSettings ?? DEFAULT_SCALE_SETTINGS;
@@ -235,9 +240,10 @@ export function seedIdToDistrictType(seedId: string): DistrictType {
 /**
  * Get a display name for a district type.
  * Delegates to the centralized name generator utility.
+ * Passes naming context for context-aware park/airport naming (CITY-380).
  */
-function getDistrictName(type: DistrictType, seed: number): string {
-  return generateDistrictName(type, { seed });
+function getDistrictName(type: DistrictType, seed: number, namingContext?: NamingContext): string {
+  return generateDistrictName(type, { seed }, namingContext);
 }
 
 /**
@@ -406,7 +412,7 @@ export function generateDistrictGeometry(
   const district: District = {
     id: districtId,
     type: districtType,
-    name: getDistrictName(districtType, seed),
+    name: getDistrictName(districtType, seed, config.namingContext),
     polygon: { points: polygonPoints },
     isHistoric,
   };

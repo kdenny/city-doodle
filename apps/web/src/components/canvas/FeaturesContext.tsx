@@ -26,9 +26,11 @@ import {
   wouldOverlap,
   regenerateStreetGridForClippedDistrict,
   regenerateStreetGridWithAngle,
+  seedIdToDistrictType,
   type DistrictGenerationConfig,
   type GeneratedDistrict,
 } from "./layers/districtGenerator";
+import type { NamingContext, NearbyContext } from "../../utils/nameGenerator";
 import {
   clipAndValidateDistrict,
   type ClipResult,
@@ -729,6 +731,68 @@ export function FeaturesProvider({
         }
       }
 
+      // CITY-380: Build naming context for context-aware park/airport names
+      const districtType = seedIdToDistrictType(seedId);
+      let namingContext: NamingContext | undefined;
+
+      if (districtType === "airport" || districtType === "park") {
+        // Find adjacent districts within a search radius
+        const searchRadius = config?.size ? config.size * 0.8 : 50;
+        const adjacentDistrictNames: string[] = [];
+        const adjacentDistrictTypes: NearbyContext[] = [];
+        for (const d of features.districts) {
+          // Use centroid distance as a rough proximity check
+          const cx = d.polygon.points.reduce((s, p) => s + p.x, 0) / d.polygon.points.length;
+          const cy = d.polygon.points.reduce((s, p) => s + p.y, 0) / d.polygon.points.length;
+          const dx = cx - position.x;
+          const dy = cy - position.y;
+          const dist = Math.sqrt(dx * dx + dy * dy);
+          if (dist < searchRadius) {
+            adjacentDistrictNames.push(d.name);
+            if (["residential", "downtown", "commercial", "industrial"].includes(d.type)) {
+              adjacentDistrictTypes.push(d.type as NearbyContext);
+            }
+          }
+        }
+
+        // Find nearby water features with names
+        const waterFeaturesList = terrainContext?.getWaterFeatures() ?? [];
+        const nearbyWaterNames: string[] = [];
+        for (const wf of waterFeaturesList) {
+          if (!wf.name) continue;
+          // Check if water feature is near the placement position
+          const wcx = wf.polygon.points.reduce((s, p) => s + p.x, 0) / wf.polygon.points.length;
+          const wcy = wf.polygon.points.reduce((s, p) => s + p.y, 0) / wf.polygon.points.length;
+          const dx = wcx - position.x;
+          const dy = wcy - position.y;
+          if (Math.sqrt(dx * dx + dy * dy) < searchRadius) {
+            nearbyWaterNames.push(wf.name);
+          }
+        }
+
+        // Also check rivers
+        const rivers = terrainContext?.terrainData?.rivers ?? [];
+        for (const river of rivers) {
+          if (!river.name) continue;
+          // Check if any point of the river is near the placement
+          for (const pt of river.line.points) {
+            const dx = pt.x - position.x;
+            const dy = pt.y - position.y;
+            if (Math.sqrt(dx * dx + dy * dy) < searchRadius) {
+              nearbyWaterNames.push(river.name);
+              break;
+            }
+          }
+        }
+
+        namingContext = {
+          worldName: world?.name,
+          adjacentDistrictNames: adjacentDistrictNames.length > 0 ? adjacentDistrictNames : undefined,
+          nearbyWaterNames: nearbyWaterNames.length > 0 ? nearbyWaterNames : undefined,
+          adjacentDistrictTypes: adjacentDistrictTypes.length > 0 ? adjacentDistrictTypes : undefined,
+        };
+      }
+
       const generationConfig: DistrictGenerationConfig = {
         ...config,
         organicFactor: personality.grid_organic,
@@ -744,6 +808,8 @@ export function FeaturesProvider({
         transitCar: personality.transit_car,
         // Era year affects block sizes and historic flag (CITY-225)
         eraYear: personality.era_year,
+        // CITY-380: Context-aware naming for parks and airports
+        namingContext,
       };
 
       // Generate district geometry
