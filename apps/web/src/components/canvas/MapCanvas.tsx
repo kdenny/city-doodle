@@ -571,6 +571,39 @@ export const MapCanvas = forwardRef<MapCanvasHandle, MapCanvasProps>(
     };
   }, [isReady, onZoomChange]);
 
+  // Update viewport bounds for road culling when viewport moves/zooms
+  useEffect(() => {
+    if (!isReady || !viewportRef.current || !featuresLayerRef.current) return;
+
+    const viewport = viewportRef.current;
+    const featuresLayer = featuresLayerRef.current;
+
+    const updateBounds = () => {
+      // Get visible bounds in world coordinates from pixi-viewport
+      const vb = viewport.getVisibleBounds();
+      featuresLayer.setViewportBounds({
+        minX: vb.x,
+        minY: vb.y,
+        maxX: vb.x + vb.width,
+        maxY: vb.y + vb.height,
+      });
+    };
+
+    // Initial update
+    updateBounds();
+
+    // Listen for viewport changes
+    viewport.on("moved", updateBounds);
+    viewport.on("zoomed-end", updateBounds);
+    viewport.on("wheel-scroll", updateBounds);
+
+    return () => {
+      viewport.off("moved", updateBounds);
+      viewport.off("zoomed-end", updateBounds);
+      viewport.off("wheel-scroll", updateBounds);
+    };
+  }, [isReady]);
+
   // Update features layer when context features change
   useEffect(() => {
     if (!isReady || !featuresLayerRef.current || !featuresContext) return;

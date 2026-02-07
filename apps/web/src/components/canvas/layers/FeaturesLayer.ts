@@ -176,6 +176,8 @@ export class FeaturesLayer {
   private districtScale: number = 1;
   /** ID of the currently selected road (null = no selection) */
   private selectedRoadId: string | null = null;
+  /** Current viewport bounds in world coordinates (null = render all) */
+  private viewportBounds: { minX: number; minY: number; maxX: number; maxY: number } | null = null;
 
   constructor() {
     this.container = new Container();
@@ -260,6 +262,46 @@ export class FeaturesLayer {
     if (this.selectedRoadId !== roadId) {
       this.selectedRoadId = roadId;
       this.renderRoadHighlight();
+    }
+  }
+
+  /**
+   * Update the viewport bounds for culling off-screen roads.
+   * Pads the viewport by 20% to avoid pop-in at edges.
+   * Only re-renders when the viewport has changed significantly.
+   */
+  setViewportBounds(bounds: { minX: number; minY: number; maxX: number; maxY: number } | null): void {
+    if (!bounds) {
+      if (this.viewportBounds) {
+        this.viewportBounds = null;
+        if (this.data) this.renderRoads(this.data.roads);
+      }
+      return;
+    }
+
+    // Pad viewport by 20% on each side to avoid pop-in during panning
+    const padX = (bounds.maxX - bounds.minX) * 0.2;
+    const padY = (bounds.maxY - bounds.minY) * 0.2;
+    const padded = {
+      minX: bounds.minX - padX,
+      minY: bounds.minY - padY,
+      maxX: bounds.maxX + padX,
+      maxY: bounds.maxY + padY,
+    };
+
+    // Skip re-render if the viewport hasn't changed significantly
+    // (new bounds still within the old padded bounds)
+    if (this.viewportBounds &&
+        padded.minX >= this.viewportBounds.minX &&
+        padded.minY >= this.viewportBounds.minY &&
+        padded.maxX <= this.viewportBounds.maxX &&
+        padded.maxY <= this.viewportBounds.maxY) {
+      return;
+    }
+
+    this.viewportBounds = padded;
+    if (this.data) {
+      this.renderRoads(this.data.roads);
     }
   }
 
@@ -534,10 +576,30 @@ export class FeaturesLayer {
       (a, b) => classOrder.indexOf(a.roadClass) - classOrder.indexOf(b.roadClass)
     );
 
-    // Filter roads by zoom level
+    // Filter roads by zoom level and viewport bounds
     const visibleRoads = sortedRoads.filter((road) => {
       const style = ROAD_STYLES[road.roadClass];
-      return this.currentZoom >= style.minZoom;
+      if (this.currentZoom < style.minZoom) return false;
+
+      // Viewport culling: skip roads entirely outside the visible area
+      if (this.viewportBounds && road.line.points.length >= 2) {
+        const bounds = this.viewportBounds;
+        let roadMinX = Infinity, roadMinY = Infinity;
+        let roadMaxX = -Infinity, roadMaxY = -Infinity;
+        for (const p of road.line.points) {
+          if (p.x < roadMinX) roadMinX = p.x;
+          if (p.x > roadMaxX) roadMaxX = p.x;
+          if (p.y < roadMinY) roadMinY = p.y;
+          if (p.y > roadMaxY) roadMaxY = p.y;
+        }
+        // No intersection → skip this road
+        if (roadMaxX < bounds.minX || roadMinX > bounds.maxX ||
+            roadMaxY < bounds.minY || roadMinY > bounds.maxY) {
+          return false;
+        }
+      }
+
+      return true;
     });
 
     // Scale road widths with zoom (thinner when zoomed out) and district size
