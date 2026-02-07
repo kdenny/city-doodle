@@ -297,9 +297,20 @@ function DistrictInspector({
     (e: React.ChangeEvent<HTMLSelectElement>) => {
       const newType = e.target.value as DistrictType;
       setEditedDistrictType(newType);
-      onUpdate?.({ ...district, districtType: newType });
+
+      // CITY-297: Reset density to new type's default when type changes,
+      // unless the user has manually customized the density
+      const oldTypeDefault = DEFAULT_DENSITY_BY_TYPE[district.districtType as DistrictType] ?? 5;
+      const currentDensity = personality.density ?? oldTypeDefault;
+      const userCustomizedDensity = currentDensity !== oldTypeDefault;
+      const newTypeDefault = DEFAULT_DENSITY_BY_TYPE[newType] ?? 5;
+      const newDensity = userCustomizedDensity ? currentDensity : newTypeDefault;
+      const newPersonality = { ...personality, density: newDensity };
+      setPersonality(newPersonality);
+
+      onUpdate?.({ ...district, districtType: newType, personality: newPersonality });
     },
-    [district, onUpdate]
+    [district, onUpdate, personality]
   );
 
   const handleGridAngleChange = useCallback(

@@ -357,6 +357,64 @@ class TestUpdateDistrict:
         assert response.json()["type"] == "commercial"
 
     @pytest.mark.asyncio
+    async def test_update_district_type_applies_new_defaults(self, client: AsyncClient):
+        """CITY-297: Changing district type should update density/max_height to new type defaults."""
+        # Create a residential district (default: density=3.0, max_height=8)
+        create_response = await client.post(
+            f"/worlds/{TEST_WORLD_ID}/districts",
+            json={
+                "world_id": TEST_WORLD_ID,
+                "type": "residential",
+                "geometry": SAMPLE_GEOMETRY,
+            },
+            headers={"X-User-Id": TEST_USER_ID},
+        )
+        assert create_response.status_code == 201
+        data = create_response.json()
+        district_id = data["id"]
+        assert data["density"] == 3.0
+        assert data["max_height"] == 8
+
+        # Change type to downtown (default: density=7.0, max_height=30)
+        response = await client.patch(
+            f"/districts/{district_id}",
+            json={"type": "downtown"},
+            headers={"X-User-Id": TEST_USER_ID},
+        )
+        assert response.status_code == 200
+        data = response.json()
+        assert data["type"] == "downtown"
+        assert data["density"] == 7.0
+        assert data["max_height"] == 30
+
+    @pytest.mark.asyncio
+    async def test_update_district_type_preserves_explicit_density(self, client: AsyncClient):
+        """CITY-297: Changing type with explicit density should keep the provided density."""
+        # Create a residential district
+        create_response = await client.post(
+            f"/worlds/{TEST_WORLD_ID}/districts",
+            json={
+                "world_id": TEST_WORLD_ID,
+                "type": "residential",
+                "geometry": SAMPLE_GEOMETRY,
+            },
+            headers={"X-User-Id": TEST_USER_ID},
+        )
+        district_id = create_response.json()["id"]
+
+        # Change type to downtown but provide explicit density
+        response = await client.patch(
+            f"/districts/{district_id}",
+            json={"type": "downtown", "density": 5.0},
+            headers={"X-User-Id": TEST_USER_ID},
+        )
+        assert response.status_code == 200
+        data = response.json()
+        assert data["type"] == "downtown"
+        assert data["density"] == 5.0  # Explicit value preserved
+        assert data["max_height"] == 30  # Default applied since not explicitly set
+
+    @pytest.mark.asyncio
     async def test_update_district_not_found(self, client: AsyncClient):
         """Update district should return 404 for non-existent district."""
         fake_id = "00000000-0000-0000-0000-000000000000"

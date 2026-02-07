@@ -18,7 +18,8 @@ import {
   ReactNode,
 } from "react";
 import type { District, Neighborhood, CityLimits, Road, POI, FeaturesData, Point, DistrictPersonality, RoadClass } from "./layers";
-import { DEFAULT_DISTRICT_PERSONALITY } from "./layers/types";
+import { DEFAULT_DISTRICT_PERSONALITY, DEFAULT_DENSITY_BY_TYPE } from "./layers/types";
+import type { DistrictType } from "./layers/types";
 import { detectBridges } from "./layers/bridgeDetection";
 import {
   generateDistrictGeometry,
@@ -1163,6 +1164,99 @@ export function FeaturesProvider({
       // Find the current district for rollback
       const currentDistrict = features.districts.find((d) => d.id === id);
       if (!currentDistrict) return;
+
+      // Handle district type changes by updating density defaults and regenerating street grid
+      // (CITY-297: block sizes vary by type, so grid must be regenerated)
+      const typeChanged = updates.type !== undefined && updates.type !== currentDistrict.type;
+      if (typeChanged) {
+        const newType = updates.type as DistrictType;
+        const newDefaultDensity = DEFAULT_DENSITY_BY_TYPE[newType] ?? 5;
+
+        // Check if the user had manually customized density (differs from current type default)
+        const currentTypeDefault = DEFAULT_DENSITY_BY_TYPE[currentDistrict.type as DistrictType] ?? 5;
+        const currentDensity = currentDistrict.personality?.density ?? currentTypeDefault;
+        const userCustomizedDensity = currentDensity !== currentTypeDefault;
+
+        // Only reset density if user hasn't manually customized it
+        const updatedDensity = userCustomizedDensity ? currentDensity : newDefaultDensity;
+        const updatedPersonality: DistrictPersonality = {
+          ...(currentDistrict.personality ?? DEFAULT_DISTRICT_PERSONALITY),
+          ...(updates.personality ?? {}),
+          density: updatedDensity,
+        };
+
+        // Build updated district to regenerate grid with new type
+        const updatedDistrictForGrid: District = {
+          ...currentDistrict,
+          ...updates,
+          type: newType,
+          personality: updatedPersonality,
+        };
+
+        // Regenerate street grid with new type's block sizes
+        const { roads: newRoads, gridAngle: actualAngle } = regenerateStreetGridWithAngle(
+          updatedDistrictForGrid,
+          currentDistrict.gridAngle ?? 0,
+          updatedPersonality.sprawl_compact ?? 0.5
+        );
+
+        // Update district with new type, personality, and regenerated roads
+        updateFeatures((prev) => {
+          const otherRoads = prev.roads.filter((r) => !r.id.startsWith(id));
+          return {
+            ...prev,
+            districts: prev.districts.map((d) =>
+              d.id === id
+                ? { ...d, ...updates, type: newType, personality: updatedPersonality, gridAngle: actualAngle }
+                : d
+            ),
+            roads: [...otherRoads, ...newRoads],
+          };
+        });
+
+        // Persist to API
+        if (worldId && !pendingCreates.current.has(id)) {
+          const streetGridPayload: Record<string, unknown> = {
+            roads: newRoads.map((r) => ({
+              id: r.id,
+              name: r.name,
+              roadClass: r.roadClass,
+              points: r.line.points.map((p) => ({ x: p.x, y: p.y })),
+            })),
+            gridAngle: actualAngle,
+            personality: updatedPersonality,
+          };
+
+          const apiUpdate: Record<string, unknown> = {
+            type: toApiDistrictType(newType),
+            street_grid: streetGridPayload,
+          };
+          if (updates.name !== undefined) apiUpdate.name = updates.name;
+          if (updates.isHistoric !== undefined) apiUpdate.historic = updates.isHistoric;
+
+          updateDistrictMutation.mutate(
+            { districtId: id, data: apiUpdate, worldId },
+            {
+              onError: (error) => {
+                // Rollback to previous state on error
+                updateFeatures((prev) => ({
+                  ...prev,
+                  districts: prev.districts.map((d) =>
+                    d.id === id ? currentDistrict : d
+                  ),
+                  roads: prev.roads.filter((r) => !r.id.startsWith(id)),
+                }));
+                console.error("Failed to update district type:", error);
+                toast?.addToast(
+                  "Failed to update district type. Please try again.",
+                  "error"
+                );
+              },
+            }
+          );
+        }
+        return;
+      }
 
       // Handle gridAngle changes by regenerating street grid
       if (updates.gridAngle !== undefined && updates.gridAngle !== currentDistrict.gridAngle) {
