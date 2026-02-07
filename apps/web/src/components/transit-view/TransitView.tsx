@@ -1,6 +1,8 @@
-import { ReactNode, useCallback, useState } from "react";
+import { ReactNode, useCallback, useMemo, useState } from "react";
+import { useParams } from "react-router-dom";
 import { TransitLinesPanel, TransitLine } from "./TransitLinesPanel";
 import { TransitLineInspector } from "./TransitLineInspector";
+import type { SegmentDisplayData } from "./TransitLineInspector";
 import { useTransitLinesData } from "./useTransitLinesData";
 import { useTransitOptional } from "../canvas/TransitContext";
 import { useTransitLineDrawingOptional } from "../canvas/TransitLineDrawingContext";
@@ -9,6 +11,7 @@ import { usePlacementOptional } from "../palette/PlacementContext";
 import { SEED_TYPES } from "../palette/types";
 import { useViewMode } from "../shell/ViewModeContext";
 import { TransitLinePropertiesDialog } from "../build-view/TransitLinePropertiesDialog";
+import { useDeleteTransitLineSegment } from "../../api/hooks";
 
 interface TransitViewProps {
   children: ReactNode;
@@ -32,6 +35,8 @@ export function TransitView({
   const transitLineDrawingContext = useTransitLineDrawingOptional();
   const placementContext = usePlacementOptional();
   const { setViewMode } = useViewMode();
+  const { worldId } = useParams<{ worldId: string }>();
+  const deleteSegmentMutation = useDeleteTransitLineSegment();
 
   const [selectedLine, setSelectedLine] = useState<TransitLine | null>(null);
   const [isUpdating, setIsUpdating] = useState(false);
@@ -207,6 +212,38 @@ export function TransitView({
     [transitContext, transitLineDrawingContext, placementContext]
   );
 
+  // CITY-367: Compute segment display data for the selected line
+  const selectedLineSegments: SegmentDisplayData[] | undefined = useMemo(() => {
+    if (!selectedLine || !transitContext?.transitNetwork) return undefined;
+    const network = transitContext.transitNetwork;
+    const line = network.lines.find((l) => l.id === selectedLine.id);
+    if (!line || line.segments.length === 0) return undefined;
+
+    return line.segments.map((seg) => {
+      const fromStation = network.stations.find((s) => s.id === seg.from_station_id);
+      const toStation = network.stations.find((s) => s.id === seg.to_station_id);
+      return {
+        id: seg.id,
+        fromStationName: fromStation?.name ?? "Unknown",
+        toStationName: toStation?.name ?? "Unknown",
+        orderInLine: seg.order_in_line,
+      };
+    });
+  }, [selectedLine, transitContext?.transitNetwork]);
+
+  // CITY-367: Delete a segment
+  const handleDeleteSegment = useCallback(
+    (segmentId: string) => {
+      if (!selectedLine) return;
+      deleteSegmentMutation.mutate({
+        segmentId,
+        lineId: selectedLine.id,
+        worldId,
+      });
+    },
+    [selectedLine, deleteSegmentMutation, worldId]
+  );
+
   const handleBackgroundClick = useCallback(() => {
     transitContext?.setHighlightedLineId(null);
   }, [transitContext]);
@@ -249,6 +286,8 @@ export function TransitView({
               onClose={handleCloseInspector}
               isUpdating={isUpdating}
               isExtending={isDrawingLine}
+              segments={selectedLineSegments}
+              onDeleteSegment={handleDeleteSegment}
             />
           </div>
         )}
