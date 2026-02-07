@@ -24,7 +24,6 @@ import {
   pointInPolygon,
   getPolygonCentroid,
   rotatePoint,
-  isPointNearPolygonEdge,
 } from "./geometry";
 
 /**
@@ -162,17 +161,32 @@ function calculateTransitOrientedGridRotation(
 }
 
 /**
- * Check if a road segment is on the perimeter (both endpoints touch the district boundary).
+ * Check if a road segment is a short perimeter segment that runs along the polygon
+ * boundary rather than crossing through the district interior.
+ *
+ * All clipped segments have endpoints on the polygon boundary (they are intersection
+ * points), so we can't use endpoint proximity alone. Instead, check if the segment
+ * is short relative to the district size — short segments near the boundary are
+ * perimeter roads, while long segments that span the district are interior roads.
  */
 function isPerimeterRoad(
   start: Point,
   end: Point,
   polygon: Point[],
-  tolerance: number = 2
+  _tolerance: number = 2
 ): boolean {
-  const startOnBoundary = isPointNearPolygonEdge(start, polygon, tolerance);
-  const endOnBoundary = isPointNearPolygonEdge(end, polygon, tolerance);
-  return startOnBoundary && endOnBoundary;
+  // Compute the segment length
+  const dx = end.x - start.x;
+  const dy = end.y - start.y;
+  const segmentLength = Math.sqrt(dx * dx + dy * dy);
+
+  // Estimate district size from polygon bounds
+  const bounds = getPolygonBounds(polygon);
+  const districtSize = Math.max(bounds.maxX - bounds.minX, bounds.maxY - bounds.minY);
+
+  // A perimeter segment is one that's very short relative to the district
+  // (less than 30% of the district size — it clips a corner rather than crossing through)
+  return segmentLength < districtSize * 0.3;
 }
 
 /**
@@ -271,6 +285,7 @@ export function generateStreetGrid(
       polygon
     );
 
+    let producedSegment = false;
     for (let i = 0; i < intersections.length - 1; i += 2) {
       if (!intersections[i + 1]) continue;
 
@@ -279,7 +294,7 @@ export function generateStreetGrid(
       const midY = (intersections[i].y + intersections[i + 1].y) / 2;
       if (!pointInPolygon(midX, midY, polygon)) continue;
 
-      // CITY-330: Check perimeter using ORIGINAL intersection points (before jitter)
+      // CITY-369/372: Check if this is a short perimeter segment
       let roadClass: RoadClass = "local";
       if (isPerimeterRoad(intersections[i], intersections[i + 1], polygon)) {
         roadClass = "collector";
@@ -312,8 +327,9 @@ export function generateStreetGrid(
         districtId,
       });
       streetIndex++;
+      producedSegment = true;
     }
-    hStreetCount++;
+    if (producedSegment) hStreetCount++;
   }
 
   // Generate vertical streets (in rotated space)
@@ -334,6 +350,7 @@ export function generateStreetGrid(
       polygon
     );
 
+    let producedSegment = false;
     for (let i = 0; i < intersections.length - 1; i += 2) {
       if (!intersections[i + 1]) continue;
 
@@ -371,8 +388,9 @@ export function generateStreetGrid(
         districtId,
       });
       streetIndex++;
+      producedSegment = true;
     }
-    vStreetCount++;
+    if (producedSegment) vStreetCount++;
   }
 
   return { roads, gridAngle: rotationAngle };

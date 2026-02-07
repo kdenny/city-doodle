@@ -73,7 +73,7 @@ const ROAD_STYLES: Record<RoadClass, RoadStyle> = {
     casingWidth: 0.5,
     casingColor: 0xaaaaaa, // Light gray outline
     dashed: false,
-    minZoom: 0.5, // Only at medium+ zoom
+    minZoom: 0.15, // Visible at most zoom levels
   },
   local: {
     width: 2,
@@ -81,7 +81,7 @@ const ROAD_STYLES: Record<RoadClass, RoadStyle> = {
     casingWidth: 0,
     casingColor: 0x000000,
     dashed: false,
-    minZoom: 0.8, // Only at high zoom
+    minZoom: 0.3, // Visible when not extremely zoomed out
   },
   trail: {
     width: 2,
