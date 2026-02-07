@@ -234,11 +234,17 @@ export function generatePOIsForDistrict(
   // Generate spread-out positions inside the polygon
   const positions = generateSpreadPositions(polygon, count, rng);
 
-  // Build POI objects
+  // Build POI objects, tracking used names to avoid duplicates (CITY-414)
+  const usedNames = new Set<string>();
   const pois: POI[] = [];
   for (let i = 0; i < Math.min(selected.length, positions.length); i++) {
     const template = selected[i];
-    const name = rng.pick(template.namePool);
+
+    // Pick an unused name from the pool; fall back to first unused or skip
+    const available = template.namePool.filter((n) => !usedNames.has(n));
+    if (available.length === 0) continue;
+    const name = rng.pick(available);
+    usedNames.add(name);
 
     pois.push({
       id: generateId("poi"),
