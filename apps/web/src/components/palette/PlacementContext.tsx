@@ -16,6 +16,10 @@ interface PlacementState {
   placementPersonality: DistrictPersonality;
   /** Seed for deterministic procedural generation */
   placementSeed: number;
+  /** Drag-to-size: center position where drag started */
+  dragOrigin: { x: number; y: number } | null;
+  /** Drag-to-size: current radius from drag distance */
+  dragSize: number | null;
 }
 
 interface PlacementContextValue extends PlacementState {
@@ -23,13 +27,21 @@ interface PlacementContextValue extends PlacementState {
   startPlacing: () => void;
   cancelPlacing: () => void;
   setPreviewPosition: (position: { x: number; y: number } | null) => void;
-  confirmPlacement: (position: { x: number; y: number }) => void;
+  confirmPlacement: (position: { x: number; y: number }, size?: number) => void;
   /** Update the personality settings for district placement */
   setPlacementPersonality: (personality: DistrictPersonality) => void;
   /** Update the seed for deterministic procedural generation */
   setPlacementSeed: (seed: number) => void;
   /** Generate a new random seed for placement */
   shufflePlacementSeed: () => void;
+  /** Start drag-to-size: record the center position */
+  startDragSize: (origin: { x: number; y: number }) => void;
+  /** Update drag-to-size: set the current size from drag distance */
+  updateDragSize: (size: number) => void;
+  /** Cancel drag-to-size without placing */
+  cancelDragSize: () => void;
+  /** Whether a drag-to-size operation is in progress */
+  isDraggingSize: boolean;
 }
 
 const PlacementContext = createContext<PlacementContextValue | null>(null);
@@ -40,7 +52,8 @@ interface PlacementProviderProps {
     seed: SeedType,
     position: { x: number; y: number },
     personality?: DistrictPersonality,
-    generationSeed?: number
+    generationSeed?: number,
+    fixedSize?: number
   ) => void;
 }
 
@@ -51,6 +64,8 @@ export function PlacementProvider({ children, onPlaceSeed }: PlacementProviderPr
     previewPosition: null,
     placementPersonality: DEFAULT_DISTRICT_PERSONALITY,
     placementSeed: generateRandomSeed(),
+    dragOrigin: null,
+    dragSize: null,
   });
 
   const selectSeed = useCallback((seed: SeedType | null) => {
@@ -62,6 +77,8 @@ export function PlacementProvider({ children, onPlaceSeed }: PlacementProviderPr
       // Reset personality to defaults and generate new seed when selecting a new seed type
       placementPersonality: DEFAULT_DISTRICT_PERSONALITY,
       placementSeed: generateRandomSeed(),
+      dragOrigin: null,
+      dragSize: null,
     }));
   }, []);
 
@@ -79,6 +96,8 @@ export function PlacementProvider({ children, onPlaceSeed }: PlacementProviderPr
       previewPosition: null,
       placementPersonality: DEFAULT_DISTRICT_PERSONALITY,
       placementSeed: generateRandomSeed(),
+      dragOrigin: null,
+      dragSize: null,
     });
   }, []);
 
@@ -110,12 +129,38 @@ export function PlacementProvider({ children, onPlaceSeed }: PlacementProviderPr
     }));
   }, []);
 
+  const startDragSize = useCallback((origin: { x: number; y: number }) => {
+    setState((prev) => ({
+      ...prev,
+      dragOrigin: origin,
+      dragSize: null,
+      previewPosition: origin,
+    }));
+  }, []);
+
+  const updateDragSize = useCallback((size: number) => {
+    setState((prev) => ({
+      ...prev,
+      dragSize: size,
+    }));
+  }, []);
+
+  const cancelDragSize = useCallback(() => {
+    setState((prev) => ({
+      ...prev,
+      dragOrigin: null,
+      dragSize: null,
+    }));
+  }, []);
+
+  const isDraggingSize = state.dragOrigin !== null;
+
   const confirmPlacement = useCallback(
-    (position: { x: number; y: number }) => {
+    (position: { x: number; y: number }, size?: number) => {
       if (state.selectedSeed && onPlaceSeed) {
-        // Pass personality and seed for district seeds
+        // Pass personality, seed, and optional size for district seeds
         if (state.selectedSeed.category === "district") {
-          onPlaceSeed(state.selectedSeed, position, state.placementPersonality, state.placementSeed);
+          onPlaceSeed(state.selectedSeed, position, state.placementPersonality, state.placementSeed, size);
         } else {
           onPlaceSeed(state.selectedSeed, position);
         }
@@ -126,6 +171,8 @@ export function PlacementProvider({ children, onPlaceSeed }: PlacementProviderPr
         ...prev,
         previewPosition: null,
         placementSeed: generateRandomSeed(),
+        dragOrigin: null,
+        dragSize: null,
       }));
     },
     [state.selectedSeed, state.placementPersonality, state.placementSeed, onPlaceSeed]
@@ -141,6 +188,10 @@ export function PlacementProvider({ children, onPlaceSeed }: PlacementProviderPr
     setPlacementPersonality,
     setPlacementSeed,
     shufflePlacementSeed,
+    startDragSize,
+    updateDragSize,
+    cancelDragSize,
+    isDraggingSize,
   };
 
   return (

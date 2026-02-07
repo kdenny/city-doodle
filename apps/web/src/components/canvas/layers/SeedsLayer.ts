@@ -28,6 +28,8 @@ export interface PreviewSeedData {
   category: SeedCategory;
   icon: string;
   position: { x: number; y: number };
+  /** Optional size override for drag-to-size district preview */
+  size?: number;
 }
 
 // Colors for different seed categories
@@ -129,7 +131,7 @@ export class SeedsLayer {
 
     if (category === "district") {
       // For districts, show a polygon preview representing the district area
-      const size = 60; // Half of typical district size for preview
+      const size = preview.size ?? 60; // Use drag size or default
       const numPoints = 8;
       const points: { x: number; y: number }[] = [];
 
