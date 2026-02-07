@@ -4,10 +4,62 @@ from typing import Any
 
 import numpy as np
 from numpy.typing import NDArray
-from shapely.geometry import LineString, MultiPolygon, Polygon
+from shapely import concave_hull
+from shapely.geometry import LineString, MultiPoint, MultiPolygon, Polygon
 from shapely.ops import unary_union
 
 from city_worker.terrain.types import DEFAULT_LAKE_TYPE, LakeType, TerrainFeature
+
+
+def _fractal_perturb_ring(
+    coords: list[tuple[float, float]],
+    amplitude: float,
+    seed: int,
+    iterations: int = 2,
+) -> list[tuple[float, float]]:
+    """Add fractal midpoint-displacement detail to a coordinate ring.
+
+    Inserts new midpoints between consecutive vertices and displaces them
+    perpendicular to the segment, creating natural-looking irregularity.
+    Deterministic via seed.
+
+    Args:
+        coords: Ring coordinates (first == last for closed ring)
+        amplitude: Maximum perpendicular displacement in world units
+        seed: Deterministic seed
+        iterations: Number of subdivision passes (each doubles point count)
+
+    Returns:
+        Perturbed coordinate ring
+    """
+    rng = np.random.default_rng(seed)
+    pts = list(coords)
+
+    for _it in range(iterations):
+        new_pts: list[tuple[float, float]] = []
+        amp = amplitude * (0.5 ** _it)  # halve amplitude each iteration
+
+        for k in range(len(pts) - 1):
+            x0, y0 = pts[k]
+            x1, y1 = pts[k + 1]
+            new_pts.append((x0, y0))
+
+            # Midpoint
+            mx, my = (x0 + x1) / 2, (y0 + y1) / 2
+            # Perpendicular direction
+            dx, dy = x1 - x0, y1 - y0
+            seg_len = (dx * dx + dy * dy) ** 0.5
+            if seg_len < 1e-10:
+                continue
+            nx, ny = -dy / seg_len, dx / seg_len
+            # Random displacement ±amp
+            offset = (rng.random() * 2 - 1) * amp
+            new_pts.append((mx + nx * offset, my + ny * offset))
+
+        new_pts.append(pts[-1])  # close the ring
+        pts = new_pts
+
+    return pts
 
 
 def extract_coastlines(
@@ -17,8 +69,13 @@ def extract_coastlines(
     tile_y: int,
     tile_size: float,
     smoothing_iterations: int = 3,
+    fractal_amplitude: float | None = None,
+    fractal_seed: int | None = None,
 ) -> list[TerrainFeature]:
     """Extract coastline polygons from heightfield.
+
+    Uses concave hull to preserve bays/inlets (CITY-322) and optionally
+    applies fractal midpoint displacement for natural irregularity.
 
     Args:
         heightfield: 2D height array normalized to [0, 1]
@@ -26,12 +83,17 @@ def extract_coastlines(
         tile_x, tile_y: Tile coordinates for world positioning
         tile_size: Size of tile in world units
         smoothing_iterations: Number of smoothing passes
+        fractal_amplitude: Max perpendicular displacement (defaults to cell_size)
+        fractal_seed: Seed for deterministic fractal noise
 
     Returns:
         List of coastline polygon features
     """
     h, w = heightfield.shape
     cell_size = tile_size / w
+
+    if fractal_amplitude is None:
+        fractal_amplitude = cell_size * 0.8
 
     # Create binary land/water mask
     land_mask = heightfield >= water_level
@@ -58,8 +120,12 @@ def extract_coastlines(
     if merged.is_empty:
         return []
 
-    # Smooth coastlines
-    smoothed = merged.simplify(cell_size * 2, preserve_topology=True)
+    # Light simplification (preserve concave detail)
+    smoothed = merged.simplify(cell_size * 1.2, preserve_topology=True)
+
+    # Apply fractal perturbation for natural coastline look
+    if fractal_amplitude > 0 and fractal_seed is not None:
+        smoothed = _apply_fractal_to_geometry(smoothed, fractal_amplitude, fractal_seed)
 
     # Convert to features
     features = []
@@ -70,6 +136,46 @@ def extract_coastlines(
             features.append(_polygon_to_feature(poly, "coastline"))
 
     return features
+
+
+def _apply_fractal_to_geometry(
+    geom: Polygon | MultiPolygon,
+    amplitude: float,
+    seed: int,
+) -> Polygon | MultiPolygon:
+    """Apply fractal perturbation to a polygon or multipolygon."""
+    if isinstance(geom, Polygon):
+        return _apply_fractal_to_polygon(geom, amplitude, seed)
+    elif isinstance(geom, MultiPolygon):
+        polys = []
+        for idx, poly in enumerate(geom.geoms):
+            polys.append(_apply_fractal_to_polygon(poly, amplitude, seed + idx * 997))
+        return MultiPolygon(polys) if polys else geom
+    return geom
+
+
+def _apply_fractal_to_polygon(
+    poly: Polygon,
+    amplitude: float,
+    seed: int,
+) -> Polygon:
+    """Apply fractal perturbation to a single polygon."""
+    try:
+        ext = _fractal_perturb_ring(list(poly.exterior.coords), amplitude, seed)
+        holes = []
+        for idx, interior in enumerate(poly.interiors):
+            hole = _fractal_perturb_ring(list(interior.coords), amplitude * 0.5, seed + idx + 1)
+            holes.append(hole)
+        result = Polygon(ext, holes)
+        if result.is_valid and not result.is_empty:
+            return result
+        # Try fixing with buffer(0)
+        fixed = result.buffer(0)
+        if isinstance(fixed, Polygon) and fixed.is_valid:
+            return fixed
+    except Exception:
+        pass
+    return poly
 
 
 def _flood_fill(
@@ -107,15 +213,13 @@ def _cells_to_polygon(
     cell_size: float,
     resolution: int,
 ) -> Polygon | None:
-    """Convert grid cells to a polygon using marching squares-like approach."""
+    """Convert grid cells to a polygon preserving concave coastline detail.
+
+    Uses Shapely's concave_hull (CITY-322) instead of convex_hull so that
+    bays, inlets, and headlands are retained in the output shape.
+    """
     if len(cells) < 3:
         return None
-
-    # Create a mini-grid for this region (bounds used for potential future expansion)
-    _min_i = min(c[0] for c in cells)
-    _max_i = max(c[0] for c in cells)
-    _min_j = min(c[1] for c in cells)
-    _max_j = max(c[1] for c in cells)
 
     # Build boundary by finding edge cells
     cell_set = set(cells)
@@ -123,33 +227,34 @@ def _cells_to_polygon(
 
     for i, j in cells:
         # Check if this is an edge cell (has non-land neighbor)
-        is_edge = False
         for di, dj in [(-1, 0), (1, 0), (0, -1), (0, 1)]:
             ni, nj = i + di, j + dj
             if (ni, nj) not in cell_set:
-                is_edge = True
+                # Convert to world coordinates
+                world_x = tile_x * tile_size + (j + 0.5) * cell_size
+                world_y = tile_y * tile_size + (i + 0.5) * cell_size
+                boundary_points.append((world_x, world_y))
                 break
 
-        if is_edge:
-            # Convert to world coordinates
-            world_x = tile_x * tile_size + (j + 0.5) * cell_size
-            world_y = tile_y * tile_size + (i + 0.5) * cell_size
-            boundary_points.append((world_x, world_y))
-
-    if len(boundary_points) < 2:
+    if len(boundary_points) < 3:
         return None
 
     try:
-        from shapely.geometry import MultiPoint
-
         mp = MultiPoint(boundary_points)
-        hull = mp.convex_hull
 
+        # concave_hull with ratio=0.3 keeps most concave detail while
+        # avoiding degenerate geometry. ratio=0 is maximally concave,
+        # ratio=1 is the convex hull.
+        hull = concave_hull(mp, ratio=0.3)
+
+        if isinstance(hull, Polygon) and hull.is_valid and not hull.is_empty:
+            return hull
+
+        # Fallback: try convex hull for degenerate cases
+        hull = mp.convex_hull
         if isinstance(hull, Polygon) and hull.is_valid:
             return hull
         elif hasattr(hull, "buffer"):
-            # For thin/linear regions, the convex hull might be a line
-            # Buffer it slightly to create a polygon
             buffered = hull.buffer(cell_size * 0.5)
             if isinstance(buffered, Polygon) and buffered.is_valid:
                 return buffered
