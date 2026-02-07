@@ -1,4 +1,3 @@
-import { Link } from "react-router-dom";
 import { useViewMode, ViewMode } from "./ViewModeContext";
 import { useEditLockOptional } from "./EditLockContext";
 
@@ -16,9 +15,9 @@ export function Header() {
   return (
     <header className="h-12 bg-gray-800 text-white flex items-center px-4 shrink-0 justify-between">
       <div className="flex items-center gap-4">
-        <Link to="/" className="font-bold text-lg">
+        <a href="/" className="font-bold text-lg hover:text-gray-200 transition-colors">
           City Doodle
-        </Link>
+        </a>
         <span className="text-gray-400 text-sm">{viewModeLabel}</span>
         {viewMode === "build" && editLock?.isEditing && (
           <span className="text-xs text-green-400 font-medium">Editing</span>
