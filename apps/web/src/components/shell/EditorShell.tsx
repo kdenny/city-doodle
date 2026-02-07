@@ -216,6 +216,7 @@ function SelectionWithFeatures({ children }: { children: ReactNode }) {
           isHistoric: feature.isHistoric,
           personality: feature.personality,
           gridAngle: feature.gridAngle,
+          fillColor: feature.fillColor,
         });
       } else if (feature.type === "road") {
         updateRoad(feature.id, {

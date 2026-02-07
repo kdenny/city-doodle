@@ -283,6 +283,7 @@ export interface DistrictCreate {
   transit_access?: boolean;
   historic?: boolean;
   street_grid?: Record<string, unknown>;
+  fill_color?: string;
 }
 
 export interface DistrictUpdate {
@@ -294,6 +295,7 @@ export interface DistrictUpdate {
   transit_access?: boolean;
   historic?: boolean;
   street_grid?: Record<string, unknown>;
+  fill_color?: string;
 }
 
 export interface DistrictBulkCreate {
@@ -311,6 +313,7 @@ export interface District {
   transit_access: boolean;
   historic: boolean;
   street_grid?: Record<string, unknown>;
+  fill_color?: string;
   created_at: DateTime;
   updated_at: DateTime;
 }

@@ -1660,6 +1660,7 @@ function hitTestResultToSelectedFeature(hitResult: HitTestResult): SelectedFeatu
         name: district.name,
         districtType: district.type,
         isHistoric: district.isHistoric ?? false,
+        fillColor: district.fillColor,
       };
     }
     case "road": {
