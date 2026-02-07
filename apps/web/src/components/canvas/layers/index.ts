@@ -67,6 +67,12 @@ export type {
   LabelType,
 } from "./types";
 export { DEFAULT_LAYER_VISIBILITY, DEFAULT_DISTRICT_PERSONALITY } from "./types";
+export {
+  findDistrictsCrossedByArterial,
+  validateDiagonalForDistrict,
+  splitGridStreetsAtArterial,
+} from "./diagonalArterialValidator";
+export type { DiagonalValidationResult, GridAdjustmentResult } from "./diagonalArterialValidator";
 export { detectBridges, roadCrossesWater } from "./bridgeDetection";
 export type { BridgeDetectionConfig, BridgeDetectionResult } from "./bridgeDetection";
 export {

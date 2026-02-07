@@ -20,6 +20,11 @@ import type { TransitLineProperties } from "../canvas";
 import type { RailStationData } from "../canvas/layers";
 import { DrawingProvider, type DrawingMode } from "../canvas/DrawingContext";
 import { splitPolygonWithLine, findDistrictAtPoint } from "../canvas/layers/polygonUtils";
+import {
+  findDistrictsCrossedByArterial,
+  validateDiagonalForDistrict,
+  splitGridStreetsAtArterial,
+} from "../canvas/layers/diagonalArterialValidator";
 import { generateNeighborhoodName, generateCityName } from "../../utils/nameGenerator";
 import { generateId } from "../../utils/idGenerator";
 import { ExportView } from "../export-view";
@@ -248,7 +253,7 @@ function SelectionWithFeatures({ children }: { children: ReactNode }) {
  * Handles polygon completion to create neighborhoods, city limits, and split districts.
  */
 function DrawingWithFeatures({ children }: { children: ReactNode }) {
-  const { addNeighborhood, setCityLimits, features, removeDistrict, addDistrictWithGeometry, addRoads } = useFeatures();
+  const { addNeighborhood, setCityLimits, features, removeDistrict, addDistrictWithGeometry, addRoads, removeRoad } = useFeatures();
   const toast = useToastOptional();
 
   const handlePolygonComplete = useCallback(
@@ -290,7 +295,41 @@ function DrawingWithFeatures({ children }: { children: ReactNode }) {
           line: { points },
         };
         addRoads([road]);
-        toast?.addToast("Road created", "info");
+
+        // CITY-159: Detect diagonal arterial crossings through districts
+        const crossedDistricts = findDistrictsCrossedByArterial(points, features.districts);
+        let adjustedCount = 0;
+        const warnings: string[] = [];
+
+        for (const district of crossedDistricts) {
+          const validation = validateDiagonalForDistrict(points, district, features.roads);
+          if (!validation.isDiagonal) continue;
+          if (validation.warning) {
+            warnings.push(validation.warning);
+            continue;
+          }
+
+          // Split grid streets at the diagonal arterial
+          const adjustment = splitGridStreetsAtArterial(district.id, features.roads, points);
+          if (adjustment.removedRoadIds.length > 0) {
+            for (const id of adjustment.removedRoadIds) {
+              removeRoad(id);
+            }
+            addRoads(adjustment.newRoads);
+            adjustedCount++;
+          }
+        }
+
+        if (warnings.length > 0) {
+          toast?.addToast(warnings[0], "warning");
+        } else if (adjustedCount > 0) {
+          toast?.addToast(
+            `Road created — adjusted grid in ${adjustedCount} district${adjustedCount > 1 ? "s" : ""}`,
+            "info"
+          );
+        } else {
+          toast?.addToast("Road created", "info");
+        }
       } else if (mode === "split") {
         // Split mode: points is a line (2 points) that divides a district
         if (points.length < 2) {
@@ -378,7 +417,7 @@ function DrawingWithFeatures({ children }: { children: ReactNode }) {
         toast?.addToast(`Split "${targetDistrict.name}" into two districts`, "info");
       }
     },
-    [addNeighborhood, setCityLimits, features.cityLimits, features.districts, toast, removeDistrict, addDistrictWithGeometry, addRoads]
+    [addNeighborhood, setCityLimits, features.cityLimits, features.districts, features.roads, toast, removeDistrict, addDistrictWithGeometry, addRoads, removeRoad]
   );
 
   return (
