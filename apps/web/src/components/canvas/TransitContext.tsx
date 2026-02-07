@@ -48,6 +48,9 @@ const AUTO_CONNECT_DISTANCE = 200;
 // Distance threshold for detecting co-located cross-type transfer stations
 const TRANSFER_STATION_DISTANCE = 60;
 
+// Minimum distance between stations of the same type to prevent duplicates
+const MINIMUM_STATION_DISTANCE = 30;
+
 // Default colors for rail lines
 const RAIL_LINE_COLORS = [
   "#B22222", // Firebrick Red
@@ -133,6 +136,16 @@ function distance(a: Point, b: Point): number {
   const dx = b.x - a.x;
   const dy = b.y - a.y;
   return Math.sqrt(dx * dx + dy * dy);
+}
+
+/**
+ * CITY-360: Get the next order_in_line value for a line's segments.
+ * Uses Math.max of existing orders instead of segments.length to avoid
+ * collisions when segments have been deleted (leaving gaps in ordering).
+ */
+function nextSegmentOrder(segments: { order_in_line: number }[]): number {
+  if (segments.length === 0) return 0;
+  return Math.max(...segments.map((s) => s.order_in_line)) + 1;
 }
 
 /**
@@ -434,6 +447,15 @@ export function TransitProvider({ children, worldId }: TransitProviderProps) {
         return null;
       }
 
+      // CITY-358: Prevent duplicate station at the same position
+      const tooCloseRail = railStations.find(
+        (s) => distance(position, s.position) < MINIMUM_STATION_DISTANCE
+      );
+      if (tooCloseRail) {
+        toast?.addToast(`Too close to existing station "${tooCloseRail.name}"`, "error");
+        return null;
+      }
+
       // Check for nearby subway station to create a transfer station
       const candidateSubways = subwayStations.filter(
         (s) => distance(position, s.position) <= TRANSFER_STATION_DISTANCE
@@ -532,9 +554,9 @@ export function TransitProvider({ children, worldId }: TransitProviderProps) {
               distance(position, a.position) < distance(position, b.position) ? a : b
             );
 
-            // Get the current segment count for ordering
+            // CITY-360: Use max order instead of length to avoid gaps
             const existingLine = transitNetwork?.lines.find((l) => l.id === lineId);
-            const segmentOrder = existingLine?.segments.length || 0;
+            const segmentOrder = nextSegmentOrder(existingLine?.segments || []);
 
             await createSegment.mutateAsync({
               lineId,
@@ -589,6 +611,15 @@ export function TransitProvider({ children, worldId }: TransitProviderProps) {
       const validation = validateSubwayStationPlacement(position);
       if (!validation.isValid || !validation.districtId) {
         toast?.addToast(validation.error || "Invalid placement location", "error");
+        return null;
+      }
+
+      // CITY-358: Prevent duplicate station at the same position
+      const tooCloseSubway = subwayStations.find(
+        (s) => distance(position, s.position) < MINIMUM_STATION_DISTANCE
+      );
+      if (tooCloseSubway) {
+        toast?.addToast(`Too close to existing station "${tooCloseSubway.name}"`, "error");
         return null;
       }
 
@@ -690,9 +721,9 @@ export function TransitProvider({ children, worldId }: TransitProviderProps) {
               distance(position, a.position) < distance(position, b.position) ? a : b
             );
 
-            // Get the current segment count for ordering
+            // CITY-360: Use max order instead of length to avoid gaps
             const existingLine = transitNetwork?.lines.find((l) => l.id === lineId);
-            const segmentOrder = existingLine?.segments.length || 0;
+            const segmentOrder = nextSegmentOrder(existingLine?.segments || []);
 
             await createSegment.mutateAsync({
               lineId,
@@ -815,9 +846,9 @@ export function TransitProvider({ children, worldId }: TransitProviderProps) {
       }
 
       try {
-        // Get the current segment count for ordering
+        // CITY-360: Use max order instead of length to avoid gaps
         const existingLine = transitNetwork?.lines.find((l) => l.id === lineId);
-        const segmentOrder = existingLine?.segments.length || 0;
+        const segmentOrder = nextSegmentOrder(existingLine?.segments || []);
 
         await createSegment.mutateAsync({
           lineId,
@@ -848,6 +879,12 @@ export function TransitProvider({ children, worldId }: TransitProviderProps) {
     async (lineId: string, updates: { name?: string; color?: string }): Promise<boolean> => {
       if (!worldId) {
         toast?.addToast("Cannot update line: No world selected", "error");
+        return false;
+      }
+
+      // CITY-362: Validate hex color before sending to API
+      if (updates.color && !/^#[0-9A-Fa-f]{6}$/.test(updates.color)) {
+        toast?.addToast("Invalid color format. Use #RRGGBB.", "error");
         return false;
       }
 
