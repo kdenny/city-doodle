@@ -1,6 +1,6 @@
 import { useState } from "react";
 
-export type Tool = "pan" | "draw" | "city-limits" | "split" | "build" | "draw-road" | "transit-line";
+export type Tool = "pan" | "draw" | "city-limits" | "split" | "build" | "draw-road" | "draw-highway" | "transit-line";
 
 interface ToolbarProps {
   activeTool: Tool;
@@ -58,6 +58,17 @@ const tools: { id: Tool; label: string; icon: JSX.Element }[] = [
       <svg className="w-5 h-5" fill="none" stroke="currentColor" viewBox="0 0 24 24">
         {/* Road/path icon */}
         <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M9 20l3-8 3 8M9 20H5l1-4m7 4h4l-1-4M6 16l2-8m8 8l-2-8M8 8l1-4h6l1 4" />
+      </svg>
+    ),
+  },
+  {
+    id: "draw-highway",
+    label: "Draw Highway",
+    icon: (
+      <svg className="w-5 h-5" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+        {/* Highway icon - wide road with lane markings */}
+        <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M6 4v16M18 4v16M12 4v3m0 3v3m0 3v4" />
+        <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={1.5} d="M4 4h16M4 20h16" />
       </svg>
     ),
   },

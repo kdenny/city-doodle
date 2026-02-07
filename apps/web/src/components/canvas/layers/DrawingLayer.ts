@@ -23,6 +23,12 @@ const ROAD_LINE_COLOR = 0x666666;
 const ROAD_LINE_WIDTH = 4;
 const ROAD_VERTEX_COLOR = 0x444444;
 
+// Highway-specific drawing constants
+const HIGHWAY_LINE_COLOR = 0xf9dc5c;
+const HIGHWAY_CASING_COLOR = 0x000000;
+const HIGHWAY_LINE_WIDTH = 8;
+const HIGHWAY_VERTEX_COLOR = 0xd4a843;
+
 interface DrawingState {
   vertices: Point[];
   previewPoint: Point | null;
@@ -78,12 +84,28 @@ export class DrawingLayer {
     if (!isDrawing || vertices.length === 0) return;
 
     const isRoadMode = mode === "road";
-    const lineColor = isRoadMode ? ROAD_LINE_COLOR : LINE_COLOR;
-    const lineWidth = isRoadMode ? ROAD_LINE_WIDTH : LINE_WIDTH;
-    const vertexColor = isRoadMode ? ROAD_VERTEX_COLOR : VERTEX_COLOR;
+    const isHighwayMode = mode === "highway";
+    const isLinearMode = isRoadMode || isHighwayMode;
+    const lineColor = isHighwayMode ? HIGHWAY_LINE_COLOR : isRoadMode ? ROAD_LINE_COLOR : LINE_COLOR;
+    const lineWidth = isHighwayMode ? HIGHWAY_LINE_WIDTH : isRoadMode ? ROAD_LINE_WIDTH : LINE_WIDTH;
+    const vertexColor = isHighwayMode ? HIGHWAY_VERTEX_COLOR : isRoadMode ? ROAD_VERTEX_COLOR : VERTEX_COLOR;
 
     // Draw lines between vertices
     if (vertices.length >= 2) {
+      // Draw black casing for highway mode
+      if (isHighwayMode) {
+        this.graphics.setStrokeStyle({
+          width: lineWidth + 4,
+          color: HIGHWAY_CASING_COLOR,
+        });
+
+        this.graphics.moveTo(vertices[0].x, vertices[0].y);
+        for (let i = 1; i < vertices.length; i++) {
+          this.graphics.lineTo(vertices[i].x, vertices[i].y);
+        }
+        this.graphics.stroke();
+      }
+
       this.graphics.setStrokeStyle({
         width: lineWidth,
         color: lineColor,
@@ -99,7 +121,7 @@ export class DrawingLayer {
     // Freehand mode: skip preview line and vertex dots (too many points)
     if (isFreehandActive) {
       // Just show closing line preview when we have enough points
-      if (vertices.length >= 3 && !isRoadMode) {
+      if (vertices.length >= 3 && !isLinearMode) {
         const lastVertex = vertices[vertices.length - 1];
         const firstVertex = vertices[0];
 
@@ -130,7 +152,7 @@ export class DrawingLayer {
       this.graphics.stroke();
 
       // If near first vertex and can close, show closing preview (not for road mode)
-      if (!isRoadMode && this.isNearFirstVertex(previewPoint) && vertices.length >= 3) {
+      if (!isLinearMode && this.isNearFirstVertex(previewPoint) && vertices.length >= 3) {
         this.graphics.setStrokeStyle({
           width: lineWidth,
           color: lineColor,
@@ -146,7 +168,7 @@ export class DrawingLayer {
     for (let i = 0; i < vertices.length; i++) {
       const vertex = vertices[i];
       const isFirst = i === 0;
-      const showCloseHint = isFirst && vertices.length >= 3 && !isRoadMode;
+      const showCloseHint = isFirst && vertices.length >= 3 && !isLinearMode;
       const radius = showCloseHint ? VERTEX_RADIUS * 1.5 : VERTEX_RADIUS;
 
       // White outline

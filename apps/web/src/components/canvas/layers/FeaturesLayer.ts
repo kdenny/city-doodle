@@ -23,6 +23,7 @@ import type {
   POIType,
   Point,
   WaterCrossingType,
+  Interchange,
 } from "./types";
 
 // District colors by type
@@ -228,6 +229,7 @@ export class FeaturesLayer {
   private roadsGraphics: Graphics;
   private roadHighlightGraphics: Graphics;
   private bridgesGraphics: Graphics;
+  private interchangesGraphics: Graphics;
   private poisGraphics: Graphics;
   private data: FeaturesData | null = null;
   private currentZoom: number = 1;
@@ -273,6 +275,11 @@ export class FeaturesLayer {
     this.bridgesGraphics.label = "bridges";
     this.container.addChild(this.bridgesGraphics);
 
+    // Interchanges on top of bridges
+    this.interchangesGraphics = new Graphics();
+    this.interchangesGraphics.label = "interchanges";
+    this.container.addChild(this.interchangesGraphics);
+
     // POIs on top
     this.poisGraphics = new Graphics();
     this.poisGraphics.label = "pois";
@@ -297,6 +304,7 @@ export class FeaturesLayer {
     this.roadsGraphics.visible = visibility.roads;
     this.roadHighlightGraphics.visible = visibility.roads;
     this.bridgesGraphics.visible = visibility.bridges ?? visibility.roads; // Default to road visibility
+    this.interchangesGraphics.visible = visibility.roads; // Show with roads
     this.poisGraphics.visible = visibility.pois;
   }
 
@@ -361,6 +369,7 @@ export class FeaturesLayer {
     this.renderRoads(this.data.roads);
     this.renderRoadHighlight();
     this.renderBridges(this.data.bridges || []);
+    this.renderInterchanges(this.data.interchanges || []);
     this.renderPOIs(this.data.pois);
   }
 
@@ -846,6 +855,34 @@ export class FeaturesLayer {
           this.bridgesGraphics.lineTo(cx - perpX * 0.8, cy - perpY * 0.8);
           this.bridgesGraphics.stroke();
         }
+      }
+    }
+  }
+
+  private renderInterchanges(interchanges: Interchange[]): void {
+    if (this.interchangesGraphics.clear) {
+      this.interchangesGraphics.clear();
+    }
+
+    for (const ic of interchanges) {
+      const { x, y } = ic.position;
+      const size = 6;
+
+      // Draw diamond marker
+      this.interchangesGraphics.setStrokeStyle({ width: 2, color: 0x000000 });
+      this.interchangesGraphics.moveTo(x, y - size);
+      this.interchangesGraphics.lineTo(x + size, y);
+      this.interchangesGraphics.lineTo(x, y + size);
+      this.interchangesGraphics.lineTo(x - size, y);
+      this.interchangesGraphics.lineTo(x, y - size);
+      this.interchangesGraphics.fill({ color: 0x4caf50 });
+      this.interchangesGraphics.stroke();
+
+      // Cloverleaf gets an additional outer circle
+      if (ic.type === "cloverleaf") {
+        this.interchangesGraphics.setStrokeStyle({ width: 1, color: 0x2e7d32 });
+        this.interchangesGraphics.circle(x, y, size * 1.5);
+        this.interchangesGraphics.stroke();
       }
     }
   }

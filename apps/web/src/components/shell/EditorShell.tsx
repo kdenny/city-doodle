@@ -25,6 +25,7 @@ import {
   validateDiagonalForDistrict,
   splitGridStreetsAtArterial,
 } from "../canvas/layers/diagonalArterialValidator";
+import { detectInterchanges } from "../canvas/layers/interchangeDetection";
 import { generateNeighborhoodName, generateCityName } from "../../utils/nameGenerator";
 import { generateId } from "../../utils/idGenerator";
 import { ExportView } from "../export-view";
@@ -254,7 +255,7 @@ function SelectionWithFeatures({ children }: { children: ReactNode }) {
  * Handles polygon completion to create neighborhoods, city limits, and split districts.
  */
 function DrawingWithFeatures({ children }: { children: ReactNode }) {
-  const { addNeighborhood, setCityLimits, features, removeDistrict, addDistrictWithGeometry, addRoads, removeRoad } = useFeatures();
+  const { addNeighborhood, setCityLimits, features, removeDistrict, addDistrictWithGeometry, addRoads, removeRoad, addInterchanges } = useFeatures();
   const toast = useToastOptional();
 
   const handlePolygonComplete = useCallback(
@@ -330,6 +331,31 @@ function DrawingWithFeatures({ children }: { children: ReactNode }) {
           );
         } else {
           toast?.addToast("Road created", "info");
+        }
+      } else if (mode === "highway") {
+        // Highway mode: create a user-drawn highway and detect interchanges (CITY-150)
+        if (points.length < 2) {
+          toast?.addToast("Highway needs at least 2 points", "warning");
+          return;
+        }
+        const highway = {
+          id: generateId("road"),
+          name: undefined,
+          roadClass: "highway" as const,
+          line: { points },
+        };
+        addRoads([highway]);
+
+        // Detect interchanges where this highway crosses existing roads
+        const interchanges = detectInterchanges(highway, features.roads);
+        if (interchanges.length > 0) {
+          addInterchanges(interchanges);
+          toast?.addToast(
+            `Highway created with ${interchanges.length} interchange${interchanges.length > 1 ? "s" : ""}`,
+            "info"
+          );
+        } else {
+          toast?.addToast("Highway created", "info");
         }
       } else if (mode === "split") {
         // Split mode: points is a line (2 points) that divides a district
@@ -418,7 +444,7 @@ function DrawingWithFeatures({ children }: { children: ReactNode }) {
         toast?.addToast(`Split "${targetDistrict.name}" into two districts`, "info");
       }
     },
-    [addNeighborhood, setCityLimits, features.cityLimits, features.districts, features.roads, toast, removeDistrict, addDistrictWithGeometry, addRoads, removeRoad]
+    [addNeighborhood, setCityLimits, features.cityLimits, features.districts, features.roads, toast, removeDistrict, addDistrictWithGeometry, addRoads, removeRoad, addInterchanges]
   );
 
   return (
