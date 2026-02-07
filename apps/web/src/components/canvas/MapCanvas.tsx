@@ -741,6 +741,7 @@ export const MapCanvas = forwardRef<MapCanvasHandle, MapCanvasProps>(
       previewPoint: drawingContext.state.previewPoint,
       isDrawing: drawingContext.state.isDrawing,
       isFreehandActive: drawingContext.state.isFreehandActive,
+      mode: drawingContext.state.mode,
     });
   }, [
     isReady,
@@ -1133,8 +1134,10 @@ export const MapCanvas = forwardRef<MapCanvasHandle, MapCanvasProps>(
 
       // Handle drawing mode (only if editing)
       if (s.isEditingAllowed && isDrawing && addVertex) {
-        // Check if clicking near first vertex to close the polygon
-        if (canComplete && canComplete() && drawingLayerRef.current?.isNearFirstVertex(worldPos)) {
+        const drawingMode = s.drawingContext?.state.mode;
+        // Check if clicking near first vertex to close the polygon (not for road/split modes)
+        if (drawingMode !== "road" && drawingMode !== "split" &&
+            canComplete && canComplete() && drawingLayerRef.current?.isNearFirstVertex(worldPos)) {
           completeDrawing?.();
           return;
         }

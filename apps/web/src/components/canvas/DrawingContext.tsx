@@ -16,7 +16,7 @@ import {
 import type { Point } from "./layers";
 import { simplifyPath, shouldSamplePoint } from "./pathSimplification";
 
-export type DrawingMode = "neighborhood" | "cityLimits" | "split" | null;
+export type DrawingMode = "neighborhood" | "cityLimits" | "split" | "road" | null;
 
 /** Input mode for drawing: click-to-place or freehand */
 export type DrawingInputMode = "click" | "freehand";
@@ -119,8 +119,8 @@ export function DrawingProvider({ children, onPolygonComplete }: DrawingProvider
   }, []);
 
   const canComplete = useCallback(() => {
-    // Split mode only needs 2 vertices (a line)
-    if (state.mode === "split") {
+    // Split and road modes only need 2 vertices (a line/polyline)
+    if (state.mode === "split" || state.mode === "road") {
       return state.vertices.length >= 2;
     }
     // Other modes need at least 3 vertices for a valid polygon
