@@ -196,6 +196,21 @@ export interface NameGeneratorOptions {
 }
 
 /**
+ * Context for generating names aware of nearby features.
+ * Used by park and airport name generators for realistic naming.
+ */
+export interface NamingContext {
+  /** World/city name (used for airport naming) */
+  worldName?: string;
+  /** Names of adjacent districts */
+  adjacentDistrictNames?: string[];
+  /** Names of nearby water features (lakes, rivers) */
+  nearbyWaterNames?: string[];
+  /** Types of adjacent districts */
+  adjacentDistrictTypes?: NearbyContext[];
+}
+
+/**
  * Generate a random city name.
  */
 export function generateCityName(options: NameGeneratorOptions = {}): string {
@@ -245,11 +260,23 @@ export function generateNeighborhoodName(options: NameGeneratorOptions = {}): st
 
 /**
  * Generate a district name based on district type.
+ *
+ * For parks and airports, delegates to context-aware generators when
+ * a NamingContext is provided (CITY-380).
  */
 export function generateDistrictName(
   districtType: DistrictType,
-  options: NameGeneratorOptions = {}
+  options: NameGeneratorOptions = {},
+  namingContext?: NamingContext
 ): string {
+  // Delegate to context-aware generators for park and airport types
+  if (districtType === "airport") {
+    return generateAirportName(options, namingContext);
+  }
+  if (districtType === "park" && namingContext) {
+    return generateContextAwareParkName(options, namingContext);
+  }
+
   const seed = options.seed ?? getRandomSeed();
   const rng = new SeededRandom(seed);
 
@@ -527,6 +554,99 @@ export function generateParkName(options: NameGeneratorOptions = {}): string {
     const suffixes = ["Park", "Grove", "Gardens"];
     return `${rng.pick(trees)} ${rng.pick(suffixes)}`;
   }
+}
+
+/**
+ * Generate an airport name using the world/city name.
+ *
+ * Real airport naming patterns:
+ * - "{City} International Airport" (LAX, JFK, Dulles)
+ * - "{City} Regional Airport"
+ * - "{City} Municipal Airport"
+ * - "{City}-{Direction} Airport" (e.g., "Chicago-O'Hare")
+ * - "{Notable person} International Airport" (JFK, Reagan)
+ *
+ * When no world name is available, falls back to generic patterns.
+ */
+export function generateAirportName(
+  options: NameGeneratorOptions = {},
+  namingContext?: NamingContext
+): string {
+  const seed = options.seed ?? getRandomSeed();
+  const rng = new SeededRandom(seed);
+  const worldName = namingContext?.worldName;
+
+  if (worldName) {
+    // Use world name for realistic airport naming (80% of the time)
+    if (rng.next() < 0.8) {
+      const pattern = rng.next();
+      if (pattern < 0.45) {
+        return `${worldName} International Airport`;
+      } else if (pattern < 0.65) {
+        return `${worldName} Regional Airport`;
+      } else if (pattern < 0.80) {
+        return `${worldName} Municipal Airport`;
+      } else {
+        // Abbreviated form
+        return `${worldName} Int'l Airport`;
+      }
+    }
+  }
+
+  // Fallback: Memorial/notable person pattern
+  const notableNames = [
+    "Kennedy", "Lincoln", "Reagan", "Marshall", "Grant",
+    "Douglas", "Sherman", "Hamilton", "Monroe", "Jackson",
+  ];
+  const suffixes = ["International Airport", "Regional Airport", "Field", "Airfield"];
+  return `${rng.pick(notableNames)} ${rng.pick(suffixes)}`;
+}
+
+/**
+ * Generate a context-aware park name.
+ *
+ * When nearby context is available, incorporates it into the name:
+ * - Adjacent water feature: "Lakeside Park", "{Water Name} Park"
+ * - Adjacent district: "{District Name} Park", "{District Name} Green"
+ * - No context: falls back to standard park naming patterns
+ */
+export function generateContextAwareParkName(
+  options: NameGeneratorOptions = {},
+  namingContext?: NamingContext
+): string {
+  const seed = options.seed ?? getRandomSeed();
+  const rng = new SeededRandom(seed);
+
+  const waterNames = namingContext?.nearbyWaterNames ?? [];
+  const districtNames = namingContext?.adjacentDistrictNames ?? [];
+
+  // 40% chance to reference a nearby water feature if available
+  if (waterNames.length > 0 && rng.next() < 0.4) {
+    const waterName = rng.pick(waterNames);
+    // Extract the base name (e.g., "Crystal" from "Crystal Lake")
+    const baseName = waterName.split(" ")[0];
+    const pattern = rng.next();
+    if (pattern < 0.4) {
+      return `${baseName} Park`;
+    } else if (pattern < 0.7) {
+      return `${waterName} Park`;
+    } else {
+      const waterPrefixes = ["Lakeside", "Waterfront", "Riverside", "Bayside"];
+      return `${rng.pick(waterPrefixes)} Park`;
+    }
+  }
+
+  // 30% chance to reference an adjacent district if available
+  if (districtNames.length > 0 && rng.next() < 0.3) {
+    const districtName = rng.pick(districtNames);
+    // Extract first word of district name (e.g., "Oak" from "Oak Heights")
+    const baseName = districtName.split(" ")[0];
+    const suffixes = ["Park", "Green", "Commons", "Gardens"];
+    return `${baseName} ${rng.pick(suffixes)}`;
+  }
+
+  // Fall back to the existing park name generator
+  return generateParkName(options);
 }
 
 /**
