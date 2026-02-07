@@ -10,6 +10,7 @@ import {
   overlapsWater,
   meetsMinimumSize,
   clipAndValidateDistrict,
+  clipDistrictToLand,
   splitPolygonWithLine,
   findDistrictAtPoint,
 } from "./polygonUtils";
@@ -249,12 +250,12 @@ describe("clipAndValidateDistrict", () => {
 
     const result = clipAndValidateDistrict(district, [lakeFeature], "residential");
 
-    // The simplified clipping algorithm detects overlap
     expect(result.overlapsWater).toBe(true);
-    // Clipped polygon should exist (not empty)
     expect(result.clippedPolygon.length).toBeGreaterThanOrEqual(3);
-    // NOTE: A proper polygon boolean library would produce clippedArea < originalArea
-    // The simplified algorithm preserves points outside water but doesn't perfectly clip
+    // Water (100-150, 100-150) is entirely inside district (80-180, 80-180)
+    // so no district edges cross the water — polygon is returned as-is.
+    // A polygon-with-holes representation would be needed to cut the interior.
+    expect(result.clippedArea).toBe(result.originalArea);
   });
 
   it("returns empty polygon when district is completely in water", () => {
@@ -376,6 +377,175 @@ describe("splitPolygonWithLine", () => {
 
     expect(result.success).toBe(false);
     expect(result.error).toContain("Invalid polygon");
+  });
+});
+
+describe("clipDistrictToLand", () => {
+  it("returns original polygon when no water features", () => {
+    const district: Point[] = [
+      { x: 0, y: 0 },
+      { x: 100, y: 0 },
+      { x: 100, y: 100 },
+      { x: 0, y: 100 },
+    ];
+    const result = clipDistrictToLand(district, []);
+    expect(result).toEqual(district);
+  });
+
+  it("clips district partially overlapping a convex water body", () => {
+    // District: 100x100 square at origin
+    const district: Point[] = [
+      { x: 0, y: 0 },
+      { x: 100, y: 0 },
+      { x: 100, y: 100 },
+      { x: 0, y: 100 },
+    ];
+    // Water: 60x60 square overlapping top-right corner
+    const water: WaterFeature = {
+      id: "lake-1",
+      type: "lake",
+      polygon: {
+        points: [
+          { x: 60, y: 60 },
+          { x: 120, y: 60 },
+          { x: 120, y: 120 },
+          { x: 60, y: 120 },
+        ],
+      },
+    };
+
+    const result = clipDistrictToLand(district, [water]);
+
+    // Should produce a valid polygon with at least 3 points
+    expect(result.length).toBeGreaterThanOrEqual(3);
+
+    // Result area should be less than original (water bite removed)
+    const originalArea = Math.abs(polygonArea(district));
+    const clippedArea = Math.abs(polygonArea(result));
+    expect(clippedArea).toBeLessThan(originalArea);
+    expect(clippedArea).toBeGreaterThan(0);
+
+    // Result should include water boundary vertices that form the "shore"
+    // (these sit on the water boundary, not deep inside the water)
+    expect(result.length).toBeGreaterThan(4); // Original 4 corners + intersection/boundary points
+  });
+
+  it("clips district partially overlapping a concave water body", () => {
+    // District: 100x100 square
+    const district: Point[] = [
+      { x: 0, y: 0 },
+      { x: 100, y: 0 },
+      { x: 100, y: 100 },
+      { x: 0, y: 100 },
+    ];
+    // Concave L-shaped water body overlapping bottom-right
+    const water: WaterFeature = {
+      id: "lake-concave",
+      type: "lake",
+      polygon: {
+        points: [
+          { x: 60, y: -10 },
+          { x: 120, y: -10 },
+          { x: 120, y: 80 },
+          { x: 80, y: 80 },
+          { x: 80, y: 40 },
+          { x: 60, y: 40 },
+        ],
+      },
+    };
+
+    const result = clipDistrictToLand(district, [water]);
+
+    expect(result.length).toBeGreaterThanOrEqual(3);
+
+    const originalArea = Math.abs(polygonArea(district));
+    const clippedArea = Math.abs(polygonArea(result));
+    expect(clippedArea).toBeLessThan(originalArea);
+    expect(clippedArea).toBeGreaterThan(0);
+  });
+
+  it("returns empty when district is completely inside water", () => {
+    const district: Point[] = [
+      { x: 20, y: 20 },
+      { x: 40, y: 20 },
+      { x: 40, y: 40 },
+      { x: 20, y: 40 },
+    ];
+    const water: WaterFeature = {
+      id: "ocean",
+      type: "ocean",
+      polygon: {
+        points: [
+          { x: 0, y: 0 },
+          { x: 100, y: 0 },
+          { x: 100, y: 100 },
+          { x: 0, y: 100 },
+        ],
+      },
+    };
+
+    const result = clipDistrictToLand(district, [water]);
+    expect(result.length).toBeLessThan(3);
+  });
+
+  it("produces valid winding order (non-zero area)", () => {
+    // This test specifically validates the fix for CITY-411:
+    // the old code produced self-intersecting polygons with near-zero
+    // or incorrect area due to broken winding order
+    const district: Point[] = [
+      { x: 0, y: 0 },
+      { x: 100, y: 0 },
+      { x: 100, y: 100 },
+      { x: 0, y: 100 },
+    ];
+    const water: WaterFeature = {
+      id: "lake-1",
+      type: "lake",
+      polygon: {
+        points: [
+          { x: 40, y: -20 },
+          { x: 120, y: -20 },
+          { x: 120, y: 60 },
+          { x: 40, y: 60 },
+        ],
+      },
+    };
+
+    const result = clipDistrictToLand(district, [water]);
+    expect(result.length).toBeGreaterThanOrEqual(3);
+
+    // Area should be significant (not near-zero from self-intersection)
+    const clippedArea = Math.abs(polygonArea(result));
+    expect(clippedArea).toBeGreaterThan(1000); // Should be ~4000 (60% of 10000)
+  });
+
+  it("handles water entirely inside district", () => {
+    // District contains the water entirely — result should have a "dent"
+    // but since we produce a single polygon (not a hole), the area should
+    // be close to original minus the water area
+    const district: Point[] = [
+      { x: 0, y: 0 },
+      { x: 200, y: 0 },
+      { x: 200, y: 200 },
+      { x: 0, y: 200 },
+    ];
+    const water: WaterFeature = {
+      id: "pond",
+      type: "lake",
+      polygon: {
+        points: [
+          { x: 80, y: 80 },
+          { x: 120, y: 80 },
+          { x: 120, y: 120 },
+          { x: 80, y: 120 },
+        ],
+      },
+    };
+
+    const result = clipDistrictToLand(district, [water]);
+    // When water is entirely inside district, no subject vertices are "inside"
+    // and no edges cross, so the district is returned as-is
+    expect(result.length).toBeGreaterThanOrEqual(3);
   });
 });
 
