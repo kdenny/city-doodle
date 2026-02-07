@@ -584,13 +584,19 @@ export function FeaturesProvider({
     }
   }, [worldId, apiPOIs]);
 
-  // Load roads from API when data is available
+  // Load inter-district roads from road network, merging with street grid roads from districts
   useEffect(() => {
     if (worldId && apiRoadNetwork) {
-      const loadedRoads = graphToRoads(apiRoadNetwork);
+      const networkRoads = graphToRoads(apiRoadNetwork);
+      const networkRoadIds = new Set(networkRoads.map((r) => r.id));
       setFeaturesState((prev) => ({
         ...prev,
-        roads: loadedRoads,
+        roads: [
+          // Keep street grid roads (from districts) that aren't duplicated in the network
+          ...prev.roads.filter((r) => !networkRoadIds.has(r.id)),
+          // Add all roads from the road network graph
+          ...networkRoads,
+        ],
       }));
     }
   }, [worldId, apiRoadNetwork]);
