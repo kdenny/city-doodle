@@ -323,7 +323,7 @@ export function generateMockLabels(
   }
 
   // Generate road labels
-  const roadNames = ["Main St", "Oak Ave", "Highway 101", "Elm Blvd"];
+  const roadNames = ["Main St", "Oak Ave", "I-5", "US-12", "SR 7", "Elm Blvd"];
   for (let i = 0; i < roadNames.length; i++) {
     labels.push({
       id: `road-${i}`,
