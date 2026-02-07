@@ -48,9 +48,12 @@ export function WorldsPage() {
       <div className="min-h-screen bg-gray-50 flex items-center justify-center">
         <div className="text-center">
           <p className="text-red-600 mb-4">Failed to load worlds</p>
-          <Link to="/" className="text-blue-600 hover:underline">
-            Go home
-          </Link>
+          <button
+            onClick={() => window.location.reload()}
+            className="text-blue-600 hover:underline"
+          >
+            Try again
+          </button>
         </div>
       </div>
     );
@@ -122,11 +125,7 @@ export function WorldsPage() {
           </div>
         )}
 
-        <div className="mt-8 text-center">
-          <Link to="/" className="text-gray-600 hover:underline text-sm">
-            ← Back to home
-          </Link>
-        </div>
+
       </div>
 
       {showCreateModal && (
