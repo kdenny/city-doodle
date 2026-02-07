@@ -161,6 +161,18 @@ export const MapCanvas = forwardRef<MapCanvasHandle, MapCanvasProps>(
   // Get endpoint drag context for road endpoint dragging (CITY-147)
   const endpointDragContext = useEndpointDragOptional();
 
+  // CITY-292: Warn before navigating away while actively drawing
+  const isAnyDrawingActive =
+    drawingContext?.state.isDrawing || transitLineDrawingContext?.state.isDrawing;
+  useEffect(() => {
+    if (!isAnyDrawingActive) return;
+    const handleBeforeUnload = (e: BeforeUnloadEvent) => {
+      e.preventDefault();
+    };
+    window.addEventListener("beforeunload", handleBeforeUnload);
+    return () => window.removeEventListener("beforeunload", handleBeforeUnload);
+  }, [isAnyDrawingActive]);
+
   // Ref holding latest values for event handlers, updated every render.
   // This avoids re-registering pointer/keyboard handlers on every state change.
   const eventStateRef = useRef({
@@ -743,6 +755,12 @@ export const MapCanvas = forwardRef<MapCanvasHandle, MapCanvasProps>(
     placementContext?.selectedSeed,
     placementContext?.dragSize,
   ]);
+
+  // Show placement error flash on canvas when district creation fails
+  useEffect(() => {
+    if (!isReady || !seedsLayerRef.current || !placementContext?.placementError) return;
+    seedsLayerRef.current.showPlacementError(placementContext.placementError);
+  }, [isReady, placementContext?.placementError]);
 
   // Update drawing layer when drawing state changes
   useEffect(() => {
