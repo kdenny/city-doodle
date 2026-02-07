@@ -435,17 +435,65 @@ export function generateInterDistrictRoads(
 let highwayCounter = 1;
 
 /**
- * Generate a name for an inter-district road based on its class.
+ * Highway naming convention inspired by US road classification.
+ *
+ * - Long-distance highways get Interstate-style names (I-5, I-90)
+ * - Medium-distance highways get US Route-style names (US-1, US-30)
+ * - Short highways get State Route-style names (SR 7, SR 12)
+ *
+ * Following real-world convention:
+ *   - Odd numbers for predominantly N/S routes
+ *   - Even numbers for predominantly E/W routes
+ */
+
+/** Distance thresholds for highway naming tiers (world units) */
+const INTERSTATE_THRESHOLD = 120; // ~8 miles — long cross-city routes
+const US_ROUTE_THRESHOLD = 75;    // ~5 miles — medium inter-district routes
+
+/**
+ * Pick a route number that is odd for N/S roads and even for E/W roads.
+ */
+function pickRouteNumber(counter: number, isNorthSouth: boolean): number {
+  // Map counter to the appropriate odd/even number
+  // counter 1 → odd=1, even=2; counter 2 → odd=3, even=4; etc.
+  const base = counter * 2;
+  return isNorthSouth ? base - 1 : base;
+}
+
+/**
+ * Determine whether a road runs predominantly North/South based on its endpoints.
+ */
+function isNorthSouthRoute(from: Point, to: Point): boolean {
+  const dx = Math.abs(to.x - from.x);
+  const dy = Math.abs(to.y - from.y);
+  return dy >= dx; // More vertical than horizontal → N/S
+}
+
+/**
+ * Generate a name for an inter-district road based on its class and geometry.
  */
 function generateRoadName(
   roadClass: RoadClass,
   fromDistrict: District,
-  toDistrict: District
+  toDistrict: District,
+  fromCentroid: Point,
+  toCentroid: Point,
+  connectionDistance: number
 ): string {
   if (roadClass === "highway") {
-    const num = highwayCounter++;
-    return `Highway ${num}`;
+    const ns = isNorthSouthRoute(fromCentroid, toCentroid);
+    const num = pickRouteNumber(highwayCounter++, ns);
+
+    if (connectionDistance >= INTERSTATE_THRESHOLD) {
+      return `I-${num}`;
+    }
+    if (connectionDistance >= US_ROUTE_THRESHOLD) {
+      return `US-${num}`;
+    }
+    return `SR ${num}`;
   }
+
+  // Arterials: named boulevards connecting the two districts
   return `${fromDistrict.name} - ${toDistrict.name} Blvd`;
 }
 
@@ -488,7 +536,7 @@ function createConnectionRoad(
 
   return {
     id: generateId(`inter-district-${fromDistrict.id}-${toDistrict.id}`),
-    name: generateRoadName(roadClass, fromDistrict, toDistrict),
+    name: generateRoadName(roadClass, fromDistrict, toDistrict, fromCentroid, toCentroid, connectionDistance),
     roadClass,
     line: { points: pathPoints },
   };
