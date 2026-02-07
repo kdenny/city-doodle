@@ -66,10 +66,9 @@ const DISTRICT_COLORS: Record<DistrictType, number> = {
 
 // Road styling by class (Google Maps inspired).
 //
-// IMPORTANT (CITY-377): All non-trail road classes MUST have casingWidth > 0.
-// Roads without casings are invisible against the light canvas (#f5f5f5) and
-// district fills (e.g., residential = 0xfff3cd at 0.6 alpha), since the road
-// fill color is white (0xffffff). The casing provides the visible gray outline.
+// IMPORTANT (CITY-377, CITY-417): Road fills use gray tones (not white) so they
+// contrast against the light canvas (#f5f5f5) and semi-transparent district fills.
+// Casings (casingWidth > 0) provide additional outline contrast for all non-trail classes.
 interface RoadStyle {
   width: number;
   color: number;
@@ -91,25 +90,25 @@ const ROAD_STYLES: Record<RoadClass, RoadStyle> = {
   },
   arterial: {
     width: 6,
-    color: 0xffffff, // White
+    color: 0xaaaaaa, // Medium gray — visible on all district fills
     casingWidth: 1,
-    casingColor: 0x888888, // Gray outline
+    casingColor: 0x666666, // Dark gray outline
     dashed: false,
     minZoom: 0, // Always visible
   },
   collector: {
     width: 4,
-    color: 0xffffff, // White
+    color: 0xbbbbbb, // Light-medium gray
     casingWidth: 1.5,
-    casingColor: 0x888888, // Medium gray outline - must contrast against district fills
+    casingColor: 0x777777, // Gray outline
     dashed: false,
     minZoom: 0.15, // Visible at most zoom levels
   },
   local: {
     width: 2,
-    color: 0xffffff, // White
+    color: 0xcccccc, // Light gray — subtle but visible on district fills
     casingWidth: 1,
-    casingColor: 0x999999, // Gray outline - must contrast against district fills
+    casingColor: 0x888888, // Gray outline
     dashed: false,
     minZoom: 0.3, // Visible when not extremely zoomed out
   },
