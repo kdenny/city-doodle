@@ -70,16 +70,16 @@ const ROAD_STYLES: Record<RoadClass, RoadStyle> = {
   collector: {
     width: 4,
     color: 0xffffff, // White
-    casingWidth: 1,
-    casingColor: 0xaaaaaa, // Light gray outline
+    casingWidth: 1.5,
+    casingColor: 0x888888, // Medium gray outline - must contrast against district fills
     dashed: false,
     minZoom: 0.15, // Visible at most zoom levels
   },
   local: {
     width: 2,
     color: 0xffffff, // White
-    casingWidth: 0.5,
-    casingColor: 0xcccccc, // Subtle gray outline
+    casingWidth: 1,
+    casingColor: 0x999999, // Gray outline - must contrast against district fills
     dashed: false,
     minZoom: 0.3, // Visible when not extremely zoomed out
   },
@@ -380,6 +380,7 @@ export class FeaturesLayer {
   private currentZoom: number = 1;
   /** Scale factor derived from average district size. Roads widen for larger districts. */
   private districtScale: number = 1;
+  private _lastRoadLogTime: number = 0; // CITY-377 diagnostic throttle
   /** ID of the currently selected road (null = no selection) */
   private selectedRoadId: string | null = null;
   /** Spatial index for fast road hit testing */
@@ -445,6 +446,18 @@ export class FeaturesLayer {
     this.roadIndex.build(data.roads);
     this.poiIndex.build(data.pois);
     this.districtIndex.build(data.districts);
+
+    // CITY-377 diagnostic: log road stats on data load
+    if (data.roads.length > 0) {
+      const byClass: Record<string, number> = {};
+      for (const r of data.roads) {
+        byClass[r.roadClass] = (byClass[r.roadClass] || 0) + 1;
+      }
+      console.log(
+        `[FeaturesLayer] setData: ${data.districts.length} districts, ${data.roads.length} roads (${JSON.stringify(byClass)}), districtScale=${this.districtScale.toFixed(3)}`
+      );
+    }
+
     this.render();
   }
 
@@ -486,7 +499,15 @@ export class FeaturesLayer {
 
   /**
    * Compute a road width scale factor from the average district diameter.
-   * The base road widths were designed for districts ~200px across.
+   *
+   * CITY-377: The reference diameter must match the actual world-unit coordinate
+   * space districts use. Districts are typically ~30 world units across (diagonal).
+   * A reference of 40 means roads render at full defined width for ~40-unit districts
+   * and scale down slightly for smaller ones. The clamp [0.5, 3] prevents extremes.
+   *
+   * Previous value of 200 was designed for pixel-space distances, not world units,
+   * which caused districtScale=0.5 for typical districts — halving all road widths
+   * and making local/collector streets invisible.
    */
   private computeDistrictScale(districts: District[]): number {
     if (districts.length === 0) return 1;
@@ -506,7 +527,7 @@ export class FeaturesLayer {
     }
 
     const avgDiameter = totalDiameter / districts.length;
-    const referenceDiameter = 200;
+    const referenceDiameter = 40;
     // Clamp between 0.5x and 3x to avoid extreme values
     return Math.max(0.5, Math.min(3, avgDiameter / referenceDiameter));
   }
@@ -784,11 +805,23 @@ export class FeaturesLayer {
       (a, b) => classOrder.indexOf(a.roadClass) - classOrder.indexOf(b.roadClass)
     );
 
-    // Filter roads by zoom level
+    // Filter roads by zoom level (skip roads with unknown class to prevent crash)
     const visibleRoads = sortedRoads.filter((road) => {
       const style = ROAD_STYLES[road.roadClass];
+      if (!style) return false;
       return this.currentZoom >= style.minZoom;
     });
+
+    // CITY-377 diagnostic: log render stats (throttled to avoid console spam during zoom)
+    const now = performance.now();
+    if (!this._lastRoadLogTime || now - this._lastRoadLogTime > 2000) {
+      this._lastRoadLogTime = now;
+      const totalPts = visibleRoads.reduce((sum, r) => sum + r.line.points.length, 0);
+      console.log(
+        `[FeaturesLayer] renderRoads: ${roads.length} total, ${visibleRoads.length} visible at zoom=${this.currentZoom.toFixed(2)}, ${totalPts} points, districtScale=${this.districtScale.toFixed(3)}`
+      );
+    }
+    const renderStart = performance.now();
 
     // Scale road widths with zoom (thinner when zoomed out) and district size
     const zoomScale = Math.max(0.5, Math.min(1.5, this.currentZoom)) * this.districtScale;
@@ -850,6 +883,12 @@ export class FeaturesLayer {
         }
         this.roadsGraphics.stroke();
       }
+    }
+
+    // CITY-377 diagnostic: log render time
+    const renderEnd = performance.now();
+    if (now === this._lastRoadLogTime) {
+      console.log(`[FeaturesLayer] renderRoads took ${(renderEnd - renderStart).toFixed(1)}ms`);
     }
   }
 
