@@ -5,7 +5,7 @@
  * at plausible, spread-out locations. The user can delete or move them afterward.
  */
 
-import type { Point, POI, POIType, DistrictType } from "./types";
+import type { Point, POI, POIType, DistrictType, Road } from "./types";
 import { pointInPolygon, getPolygonBounds } from "./polygonUtils";
 import { generateId } from "../../../utils/idGenerator";
 
@@ -135,20 +135,57 @@ const MIN_POI_SPACING = 1.5;
 const EDGE_INSET_FRACTION = 0.15;
 
 /**
+ * Distance from a point to the nearest point on a line segment.
+ */
+function pointToSegmentDistance(point: Point, a: Point, b: Point): number {
+  const dx = b.x - a.x;
+  const dy = b.y - a.y;
+  const lenSq = dx * dx + dy * dy;
+  if (lenSq === 0) {
+    const ex = point.x - a.x;
+    const ey = point.y - a.y;
+    return Math.sqrt(ex * ex + ey * ey);
+  }
+  let t = ((point.x - a.x) * dx + (point.y - a.y) * dy) / lenSq;
+  t = Math.max(0, Math.min(1, t));
+  const projX = a.x + t * dx;
+  const projY = a.y + t * dy;
+  return Math.sqrt((point.x - projX) ** 2 + (point.y - projY) ** 2);
+}
+
+/**
+ * Minimum distance from a point to any road segment.
+ */
+function distanceToNearestRoad(point: Point, roads: Road[]): number {
+  let minDist = Infinity;
+  for (const road of roads) {
+    const pts = road.line.points;
+    for (let i = 0; i < pts.length - 1; i++) {
+      const dist = pointToSegmentDistance(point, pts[i], pts[i + 1]);
+      if (dist < minDist) minDist = dist;
+    }
+  }
+  return minDist;
+}
+
+/**
  * Generate candidate positions inside a polygon that are well-spread-out.
  *
  * Uses rejection sampling: pick random points inside the bounding box,
  * keep those that pass point-in-polygon and minimum-spacing checks.
+ * When roads are provided, prefers road-adjacent positions (CITY-406).
  *
  * @param polygon - Polygon vertices
  * @param count - Number of positions to generate
  * @param rng - Seeded random instance
+ * @param roads - Optional roads to bias placement toward
  * @returns Array of points inside the polygon
  */
 function generateSpreadPositions(
   polygon: Point[],
   count: number,
-  rng: SeededRandom
+  rng: SeededRandom,
+  roads?: Road[]
 ): Point[] {
   const bounds = getPolygonBounds(polygon);
   const width = bounds.maxX - bounds.minX;
@@ -162,30 +199,60 @@ function generateSpreadPositions(
   const sampleMinY = bounds.minY + insetY;
   const sampleMaxY = bounds.maxY - insetY;
 
+  // Filter to non-trail roads with at least 2 points for proximity checks
+  const validRoads = roads?.filter((r) => r.roadClass !== "trail" && r.line.points.length >= 2) ?? [];
+
   const positions: Point[] = [];
   const maxAttempts = count * 50; // Generous limit to avoid infinite loops
   let attempts = 0;
 
+  // When roads are available, generate extra candidates and pick the best
+  // (closest to a road) from each batch. This biases POIs toward streets
+  // without requiring them to be exactly on a road.
+  const batchSize = validRoads.length > 0 ? 5 : 1;
+
   while (positions.length < count && attempts < maxAttempts) {
-    attempts++;
+    const batch: Point[] = [];
 
-    const candidate: Point = {
-      x: sampleMinX + rng.next() * (sampleMaxX - sampleMinX),
-      y: sampleMinY + rng.next() * (sampleMaxY - sampleMinY),
-    };
+    for (let b = 0; b < batchSize && attempts < maxAttempts; b++) {
+      attempts++;
 
-    // Must be inside the polygon
-    if (!pointInPolygon(candidate, polygon)) continue;
+      const candidate: Point = {
+        x: sampleMinX + rng.next() * (sampleMaxX - sampleMinX),
+        y: sampleMinY + rng.next() * (sampleMaxY - sampleMinY),
+      };
 
-    // Must be far enough from all existing positions
-    const tooClose = positions.some((existing) => {
-      const dx = candidate.x - existing.x;
-      const dy = candidate.y - existing.y;
-      return Math.sqrt(dx * dx + dy * dy) < MIN_POI_SPACING;
-    });
-    if (tooClose) continue;
+      // Must be inside the polygon
+      if (!pointInPolygon(candidate, polygon)) continue;
 
-    positions.push(candidate);
+      // Must be far enough from all existing positions
+      const tooClose = positions.some((existing) => {
+        const dx = candidate.x - existing.x;
+        const dy = candidate.y - existing.y;
+        return Math.sqrt(dx * dx + dy * dy) < MIN_POI_SPACING;
+      });
+      if (tooClose) continue;
+
+      batch.push(candidate);
+    }
+
+    if (batch.length === 0) continue;
+
+    if (validRoads.length > 0 && batch.length > 1) {
+      // Pick the candidate closest to a road
+      let bestCandidate = batch[0];
+      let bestDist = distanceToNearestRoad(batch[0], validRoads);
+      for (let i = 1; i < batch.length; i++) {
+        const dist = distanceToNearestRoad(batch[i], validRoads);
+        if (dist < bestDist) {
+          bestDist = dist;
+          bestCandidate = batch[i];
+        }
+      }
+      positions.push(bestCandidate);
+    } else {
+      positions.push(batch[0]);
+    }
   }
 
   return positions;
@@ -201,12 +268,14 @@ function generateSpreadPositions(
  * @param districtType - The type of district being placed
  * @param polygon - The district polygon vertices
  * @param districtName - Name of the district (used as prefix context for POI naming)
+ * @param roads - Optional roads within/near the district; POIs prefer road-adjacent locations (CITY-406)
  * @returns Array of POI objects ready to be added via addPOI / bulk create
  */
 export function generatePOIsForDistrict(
   districtType: DistrictType,
   polygon: Point[],
-  _districtName: string
+  _districtName: string,
+  roads?: Road[]
 ): POI[] {
   const templates = DISTRICT_POI_TEMPLATES[districtType];
   if (!templates || templates.length === 0) return [];
@@ -231,8 +300,8 @@ export function generatePOIsForDistrict(
   const shuffled = rng.shuffle(templates);
   const selected = shuffled.slice(0, count);
 
-  // Generate spread-out positions inside the polygon
-  const positions = generateSpreadPositions(polygon, count, rng);
+  // Generate spread-out positions inside the polygon, preferring road-adjacent spots
+  const positions = generateSpreadPositions(polygon, count, rng, roads);
 
   // Build POI objects
   const pois: POI[] = [];
