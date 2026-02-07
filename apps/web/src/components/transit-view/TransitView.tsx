@@ -154,6 +154,57 @@ export function TransitView({
     [transitContext]
   );
 
+  // CITY-363: Extend an existing line from its terminus
+  const handleExtendLine = useCallback(
+    (lineId: string) => {
+      if (!transitContext || !transitLineDrawingContext) return;
+
+      const network = transitContext.transitNetwork;
+      if (!network) return;
+
+      const line = network.lines.find((l) => l.id === lineId);
+      if (!line || line.segments.length === 0) return;
+
+      // Find terminus stations (stations that appear in only one segment endpoint)
+      const stationOccurrences = new Map<string, number>();
+      for (const seg of line.segments) {
+        stationOccurrences.set(seg.from_station_id, (stationOccurrences.get(seg.from_station_id) || 0) + 1);
+        stationOccurrences.set(seg.to_station_id, (stationOccurrences.get(seg.to_station_id) || 0) + 1);
+      }
+
+      // A terminus appears in exactly 1 segment endpoint
+      const terminusIds = Array.from(stationOccurrences.entries())
+        .filter(([, count]) => count === 1)
+        .map(([id]) => id);
+
+      if (terminusIds.length === 0) return;
+
+      // Use the last terminus (end of line) — find the station with the highest order segment
+      const lastSegment = line.segments.reduce((a, b) =>
+        a.order_in_line > b.order_in_line ? a : b
+      );
+      const lastTerminusId = terminusIds.includes(lastSegment.to_station_id)
+        ? lastSegment.to_station_id
+        : terminusIds[terminusIds.length - 1];
+
+      // Find the station data for rendering
+      const allStations = [...transitContext.railStations, ...transitContext.subwayStations];
+      const terminus = allStations.find((s) => s.id === lastTerminusId);
+      if (!terminus) return;
+
+      // Cancel any active placement
+      placementContext?.cancelPlacing();
+
+      // Start extension mode
+      transitLineDrawingContext.extendLine(lineId, terminus, {
+        name: line.name,
+        color: line.color,
+        type: line.line_type,
+      });
+    },
+    [transitContext, transitLineDrawingContext, placementContext]
+  );
+
   const handleBackgroundClick = useCallback(() => {
     transitContext?.setHighlightedLineId(null);
   }, [transitContext]);
@@ -192,8 +243,10 @@ export function TransitView({
               line={selectedLine}
               onUpdate={handleUpdateLine}
               onDelete={handleDeleteLine}
+              onExtend={handleExtendLine}
               onClose={handleCloseInspector}
               isUpdating={isUpdating}
+              isExtending={isDrawingLine}
             />
           </div>
         )}
