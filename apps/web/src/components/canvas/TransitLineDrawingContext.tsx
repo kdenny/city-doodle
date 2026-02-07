@@ -16,6 +16,7 @@ import {
   useContext,
   useState,
   useCallback,
+  useRef,
   ReactNode,
 } from "react";
 import type { RailStationData } from "./layers";
@@ -52,7 +53,7 @@ interface TransitLineDrawingContextValue {
   /** Start transit line drawing mode */
   startDrawing: () => void;
   /** Select a station (first click sets start, subsequent clicks create segments) */
-  selectStation: (station: RailStationData) => void;
+  selectStation: (station: RailStationData) => Promise<void>;
   /** Update preview position (mouse move) */
   setPreviewPosition: (position: { x: number; y: number } | null) => void;
   /** Set hovered station (for highlighting) */
@@ -97,13 +98,15 @@ const TransitLineDrawingContext = createContext<TransitLineDrawingContextValue |
 
 interface TransitLineDrawingProviderProps {
   children: ReactNode;
-  /** Callback when a segment is created (station A -> station B) */
+  /** Callback when a segment is created (station A -> station B).
+   *  Returns the line ID (existing or newly created) so the drawing
+   *  context can track which line subsequent segments belong to. */
   onSegmentCreate?: (
     fromStation: RailStationData,
     toStation: RailStationData,
     lineProperties: TransitLineProperties,
     lineId: string | null
-  ) => void;
+  ) => Promise<string | null> | void;
   /** Callback when line drawing is completed */
   onLineComplete?: (
     stations: RailStationData[],
@@ -121,6 +124,8 @@ export function TransitLineDrawingProvider({
   existingLineCount = 0,
 }: TransitLineDrawingProviderProps) {
   const [state, setState] = useState<TransitLineDrawingState>(INITIAL_STATE);
+  const stateRef = useRef(state);
+  stateRef.current = state;
 
   const startDrawing = useCallback(() => {
     // Generate default properties
@@ -144,36 +149,45 @@ export function TransitLineDrawingProvider({
   }, [existingLineCount]);
 
   const selectStation = useCallback(
-    (station: RailStationData) => {
-      setState((prev) => {
-        if (!prev.isDrawing) return prev;
+    async (station: RailStationData) => {
+      const current = stateRef.current;
+      if (!current.isDrawing) return;
 
-        // If no first station yet, this is the first click
-        if (!prev.firstStation) {
-          return {
-            ...prev,
-            firstStation: station,
-            connectedStations: [station],
-          };
-        }
-
-        // Can't connect to the same station
-        if (station.id === prev.firstStation.id) {
-          return prev;
-        }
-
-        // Create segment from firstStation to this station
-        if (prev.lineProperties && onSegmentCreate) {
-          onSegmentCreate(prev.firstStation, station, prev.lineProperties, prev.lineId);
-        }
-
-        // Move to next station
-        return {
+      // If no first station yet, this is the first click
+      if (!current.firstStation) {
+        setState((prev) => ({
           ...prev,
           firstStation: station,
-          connectedStations: [...prev.connectedStations, station],
-        };
-      });
+          connectedStations: [station],
+        }));
+        return;
+      }
+
+      // Can't connect to the same station
+      if (station.id === current.firstStation.id) return;
+
+      // Capture values before updating state
+      const fromStation = current.firstStation;
+      const { lineProperties, lineId } = current;
+
+      // Update state: move to next station
+      setState((prev) => ({
+        ...prev,
+        firstStation: station,
+        connectedStations: [...prev.connectedStations, station],
+      }));
+
+      // Create segment (side effect outside of setState updater)
+      if (lineProperties && onSegmentCreate) {
+        try {
+          const returnedLineId = await onSegmentCreate(fromStation, station, lineProperties, lineId);
+          if (returnedLineId) {
+            setState((s) => ({ ...s, lineId: returnedLineId }));
+          }
+        } catch (err) {
+          console.error("Failed to create transit line segment:", err);
+        }
+      }
     },
     [onSegmentCreate]
   );
