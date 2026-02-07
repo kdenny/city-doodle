@@ -17,6 +17,7 @@ export { generateMockTerrain } from "./mockTerrain";
 export {
   generateDistrictGeometry,
   wouldOverlap,
+  clipDistrictAgainstExisting,
   seedIdToDistrictType,
   metersToWorldUnits,
   worldUnitsToMeters,
@@ -26,6 +27,7 @@ export {
 } from "./districtGenerator";
 export type {
   DistrictGenerationConfig,
+  DistrictClipResult,
   GeneratedDistrict,
 } from "./districtGenerator";
 export {
