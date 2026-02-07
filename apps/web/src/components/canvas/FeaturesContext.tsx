@@ -23,7 +23,7 @@ import type { DistrictType } from "./layers/types";
 import { detectBridges } from "./layers/bridgeDetection";
 import {
   generateDistrictGeometry,
-  wouldOverlap,
+  clipDistrictAgainstExisting,
   regenerateStreetGridForClippedDistrict,
   regenerateStreetGridWithAngle,
   seedIdToDistrictType,
@@ -46,6 +46,19 @@ import { generateAirportFeaturesForDistrict } from "./layers/airportGenerator";
 import { useTerrainOptional } from "./TerrainContext";
 import { useTransitOptional } from "./TransitContext";
 import { useToastOptional } from "../../contexts";
+
+/** CITY-384: Distance from a point to a line segment. */
+function pointToSegmentDistance(p: Point, a: Point, b: Point): number {
+  const dx = b.x - a.x;
+  const dy = b.y - a.y;
+  const lenSq = dx * dx + dy * dy;
+  if (lenSq === 0) return Math.sqrt((p.x - a.x) ** 2 + (p.y - a.y) ** 2);
+  let t = ((p.x - a.x) * dx + (p.y - a.y) * dy) / lenSq;
+  t = Math.max(0, Math.min(1, t));
+  const cx = a.x + t * dx;
+  const cy = a.y + t * dy;
+  return Math.sqrt((p.x - cx) ** 2 + (p.y - cy) ** 2);
+}
 
 /**
  * Extended config that includes personality settings for the district.
@@ -818,13 +831,82 @@ export function FeaturesProvider({
       // Add personality to the generated district
       generated.district.personality = personality;
 
-      // Check for overlap with existing districts
-      if (wouldOverlap(generated.district.polygon.points, features.districts)) {
-        return {
-          generated: null,
-          wasClipped: false,
-          error: "District would overlap with existing district",
-        };
+      // CITY-384: Clip against existing districts instead of rejecting overlap
+      let adjacentDistrictIds: string[] = [];
+      const districtClipResult = clipDistrictAgainstExisting(
+        generated.district.polygon.points,
+        features.districts,
+      );
+
+      if (districtClipResult.wasClipped) {
+        if (districtClipResult.tooSmall || districtClipResult.clippedPolygon.length < 3) {
+          return {
+            generated: null,
+            wasClipped: true,
+            error: "Not enough space for a new district here",
+          };
+        }
+
+        // Apply the clipped polygon
+        generated.district.polygon.points = districtClipResult.clippedPolygon;
+        adjacentDistrictIds = districtClipResult.adjacentDistrictIds;
+
+        // Determine grid angle from adjacent districts for continuity
+        let adjacentGridAngle: number | undefined;
+        if (adjacentDistrictIds.length > 0) {
+          // Pick the grid angle from the neighbor with the longest shared boundary
+          let bestNeighborAngle: number | undefined;
+          let longestSharedEdge = 0;
+
+          for (const adjId of adjacentDistrictIds) {
+            const adjDistrict = features.districts.find((d) => d.id === adjId);
+            if (!adjDistrict || adjDistrict.gridAngle === undefined) continue;
+
+            // Estimate shared boundary length: count clipped polygon points
+            // that are close to the adjacent district's boundary
+            const adjPoints = adjDistrict.polygon.points;
+            let sharedLength = 0;
+            for (let i = 0; i < districtClipResult.clippedPolygon.length; i++) {
+              const p = districtClipResult.clippedPolygon[i];
+              // Check if this point is near any edge of the adjacent district
+              for (let j = 0; j < adjPoints.length; j++) {
+                const a = adjPoints[j];
+                const b = adjPoints[(j + 1) % adjPoints.length];
+                const dist = pointToSegmentDistance(p, a, b);
+                if (dist < 2) { // Within 2 world units = on the boundary
+                  // Approximate: count segment length between consecutive shared points
+                  const next = districtClipResult.clippedPolygon[(i + 1) % districtClipResult.clippedPolygon.length];
+                  const dx = next.x - p.x;
+                  const dy = next.y - p.y;
+                  sharedLength += Math.sqrt(dx * dx + dy * dy);
+                  break;
+                }
+              }
+            }
+
+            if (sharedLength > longestSharedEdge) {
+              longestSharedEdge = sharedLength;
+              bestNeighborAngle = adjDistrict.gridAngle;
+            }
+          }
+
+          adjacentGridAngle = bestNeighborAngle;
+        }
+
+        // Regenerate street grid for the clipped polygon with aligned grid angle
+        const clippedGridResult = regenerateStreetGridForClippedDistrict(
+          districtClipResult.clippedPolygon,
+          generated.district.id,
+          generated.district.type,
+          position,
+          personality.sprawl_compact,
+          adjacentGridAngle ?? generated.district.gridAngle,
+          transitStations.length > 0
+            ? { transitStations, transitCar: personality.transit_car }
+            : undefined
+        );
+        generated.roads = clippedGridResult.roads;
+        generated.district.gridAngle = clippedGridResult.gridAngle;
       }
 
       // Check for water overlap and clip if necessary
