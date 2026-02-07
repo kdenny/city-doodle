@@ -191,6 +191,7 @@ interface TransitContextValue {
   removeSubwayStation: (stationId: string) => Promise<void>;
   /** Rename a station (rail or subway) */
   renameStation: (stationId: string, newName: string) => Promise<boolean>;
+  moveStation: (stationId: string, stationType: "rail" | "subway", position: Point) => Promise<boolean>;
   /** Get nearby rail stations that could be auto-connected */
   getNearbyStations: (position: Point, excludeId?: string) => RailStationData[];
   /** Get nearby subway stations that could be auto-connected */
@@ -835,6 +836,33 @@ export function TransitProvider({ children, worldId }: TransitProviderProps) {
     [worldId, updateStation, toast]
   );
 
+  const moveStation = useCallback(
+    async (stationId: string, stationType: "rail" | "subway", position: Point): Promise<boolean> => {
+      if (!worldId) {
+        toast?.addToast("Cannot move station: No world selected", "error");
+        return false;
+      }
+      const validation = validateStationPlacement(position, stationType);
+      if (!validation.isValid || !validation.districtId) {
+        toast?.addToast(validation.error || "Station must be placed inside a district", "error");
+        return false;
+      }
+      try {
+        await updateStation.mutateAsync({
+          stationId,
+          data: { position_x: position.x, position_y: position.y, district_id: validation.districtId },
+          worldId,
+        });
+        return true;
+      } catch (error) {
+        console.error("Failed to move station:", error);
+        toast?.addToast("Failed to move station", "error");
+        return false;
+      }
+    },
+    [worldId, updateStation, validateStationPlacement, toast]
+  );
+
   /**
    * Create a new transit line manually (for manual line drawing).
    */
@@ -1026,6 +1054,7 @@ export function TransitProvider({ children, worldId }: TransitProviderProps) {
     placeSubwayStation,
     removeSubwayStation,
     renameStation,
+    moveStation,
     getNearbySubwayStations,
     // Raw network data for panels
     transitNetwork: transitNetworkValue,
@@ -1056,6 +1085,7 @@ export function TransitProvider({ children, worldId }: TransitProviderProps) {
     placeSubwayStation,
     removeSubwayStation,
     renameStation,
+    moveStation,
     getNearbySubwayStations,
     transitNetworkValue,
     highlightedLineId,
