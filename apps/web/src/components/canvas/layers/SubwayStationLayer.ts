@@ -433,6 +433,13 @@ export class SubwayStationLayer {
     this.container.visible = visible;
   }
 
+  setStationOffset(stationId: string, dx: number, dy: number): void {
+    const container = this.stationGraphics.get(stationId);
+    if (container) {
+      container.position.set(dx, dy);
+    }
+  }
+
   /**
    * Hit test to check if a world position is within a station marker.
    * Returns the station data if hit, null otherwise.
