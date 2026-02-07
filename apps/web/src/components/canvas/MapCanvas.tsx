@@ -56,6 +56,7 @@ import { useViewModeOptional } from "../shell/ViewModeContext";
 import type { District, Road, POI, CityLimits } from "./layers";
 import type { GeographicSetting } from "../../api/types";
 import { TILE_SIZE, WORLD_TILES, WORLD_SIZE } from "../../utils/worldConstants";
+import { getEffectiveDistrictConfig } from "./layers/districtGenerator";
 
 interface MapCanvasProps {
   className?: string;
@@ -726,12 +727,28 @@ export const MapCanvas = forwardRef<MapCanvasHandle, MapCanvasProps>(
       placementContext.previewPosition &&
       placementContext.selectedSeed
     ) {
+      // Compute preview size: use drag size if dragging, otherwise compute
+      // the real effective district size from scale settings so the preview
+      // matches what generateDistrictGeometry will actually produce.
+      let previewSize = placementContext.dragSize ?? undefined;
+      if (!previewSize && placementContext.selectedSeed.category === "district") {
+        const personality = placementContext.placementPersonality;
+        const effectiveCfg = getEffectiveDistrictConfig({
+          scaleSettings: {
+            blockSizeMeters: 100,
+            districtSizeMeters: 3200,
+            sprawlCompact: personality?.sprawl_compact ?? 0.5,
+          },
+        });
+        previewSize = effectiveCfg.size;
+      }
+
       seedsLayerRef.current.setPreview({
         seedId: placementContext.selectedSeed.id,
         category: placementContext.selectedSeed.category,
         icon: placementContext.selectedSeed.icon,
         position: placementContext.previewPosition,
-        size: placementContext.dragSize ?? undefined,
+        size: previewSize,
       });
     } else {
       seedsLayerRef.current.setPreview(null);
@@ -742,6 +759,7 @@ export const MapCanvas = forwardRef<MapCanvasHandle, MapCanvasProps>(
     placementContext?.previewPosition,
     placementContext?.selectedSeed,
     placementContext?.dragSize,
+    placementContext?.placementPersonality,
   ]);
 
   // Update drawing layer when drawing state changes
