@@ -1,7 +1,7 @@
 /**
  * Auto-generate POIs matching district type on district placement (CITY-345).
  *
- * When a district is placed, generates 2-5 appropriate POIs inside the polygon
+ * When a district is placed, generates 1-3 appropriate POIs inside the polygon
  * at plausible, spread-out locations. The user can delete or move them afterward.
  */
 
@@ -32,42 +32,32 @@ interface POITemplate {
 const DISTRICT_POI_TEMPLATES: Partial<Record<DistrictType, POITemplate[]>> = {
   hospital: [
     { type: "hospital", namePool: ["General Hospital", "Memorial Hospital", "City Medical Center", "Regional Hospital", "Community Hospital"] },
-    { type: "hospital", namePool: ["Urgent Care Clinic", "Family Health Clinic", "Specialty Clinic", "Outpatient Clinic", "Walk-In Clinic"] },
-    { type: "civic", namePool: ["Medical Office Building", "Health Sciences Library", "Research Pavilion"] },
+    { type: "civic", namePool: ["Medical Office Building", "Health Sciences Library", "Research Pavilion", "Urgent Care Clinic"] },
   ],
   downtown: [
-    { type: "civic", namePool: ["City Hall", "Municipal Building", "Civic Center", "Government Center", "County Courthouse"] },
-    { type: "shopping", namePool: ["Main Street Shops", "Downtown Market", "Central Plaza", "Market Square", "The Galleria"] },
-    { type: "shopping", namePool: ["Downtown Restaurant Row", "Bistro District", "Dining Quarter", "Food Hall", "Culinary Corner"] },
-    { type: "civic", namePool: ["Public Library", "Community Center", "Arts Center", "Cultural Center"] },
+    { type: "civic", namePool: ["City Hall", "Municipal Building", "Civic Center", "County Courthouse"] },
+    { type: "shopping", namePool: ["Main Street Shops", "Downtown Market", "Central Plaza", "The Galleria"] },
     { type: "transit", namePool: ["Central Station", "Downtown Transit Hub", "Bus Terminal", "Metro Station"] },
   ],
   university: [
-    { type: "university", namePool: ["Main Campus Hall", "University Hall", "Administration Building", "Academic Center", "Founders Hall"] },
-    { type: "university", namePool: ["Science Building", "Engineering Hall", "Arts & Humanities Building", "Business School", "Law School"] },
-    { type: "civic", namePool: ["University Library", "Campus Library", "Research Library", "Academic Library"] },
-    { type: "civic", namePool: ["Student Union", "Student Center", "Campus Commons", "Recreation Center"] },
+    { type: "university", namePool: ["Main Campus Hall", "University Hall", "Administration Building", "Founders Hall"] },
+    { type: "civic", namePool: ["University Library", "Student Union", "Campus Commons", "Recreation Center"] },
   ],
   industrial: [
-    { type: "industrial", namePool: ["Manufacturing Plant", "Assembly Factory", "Production Facility", "Processing Plant", "Industrial Works"] },
-    { type: "industrial", namePool: ["Distribution Warehouse", "Logistics Center", "Storage Facility", "Freight Terminal", "Shipping Depot"] },
-    { type: "industrial", namePool: ["Industrial Park Office", "Tech Workshop", "Research Lab", "Fabrication Shop"] },
+    { type: "industrial", namePool: ["Manufacturing Plant", "Assembly Factory", "Production Facility", "Processing Plant"] },
+    { type: "industrial", namePool: ["Distribution Warehouse", "Logistics Center", "Freight Terminal", "Shipping Depot"] },
   ],
   k12: [
-    { type: "school", namePool: ["Elementary School", "Primary School", "Grade School", "Academy", "Preparatory School"] },
-    { type: "school", namePool: ["Middle School", "Junior High", "Intermediate School"] },
-    { type: "civic", namePool: ["School Library", "Gymnasium", "Athletic Complex", "Performing Arts Center"] },
+    { type: "school", namePool: ["Elementary School", "Primary School", "Middle School", "Academy", "Preparatory School"] },
+    { type: "park", namePool: ["School Playground", "Athletic Field", "Sports Complex"] },
   ],
   residential: [
-    { type: "shopping", namePool: ["Corner Store", "Neighborhood Market", "Mini Mart", "Convenience Store", "Local Grocery"] },
-    { type: "shopping", namePool: ["Coffee Shop", "Neighborhood Cafe", "Bakery", "Deli & Cafe", "Tea House"] },
-    { type: "civic", namePool: ["Community Park", "Pocket Park", "Playground", "Dog Park"] },
+    { type: "park", namePool: ["Community Park", "Pocket Park", "Playground", "Dog Park", "Neighborhood Green"] },
+    { type: "shopping", namePool: ["Corner Store", "Neighborhood Cafe", "Bakery", "Mini Mart"] },
   ],
   commercial: [
-    { type: "shopping", namePool: ["Shopping Center", "Retail Plaza", "Commercial Center", "Strip Mall", "Town Center"] },
-    { type: "shopping", namePool: ["Grocery Store", "Department Store", "Outlet Mall", "Marketplace"] },
+    { type: "shopping", namePool: ["Shopping Center", "Retail Plaza", "Town Center", "Marketplace"] },
     { type: "civic", namePool: ["Office Park", "Business Center", "Professional Building", "Corporate Campus"] },
-    { type: "shopping", namePool: ["Food Court", "Restaurant Row", "Dining District", "Eatery Plaza"] },
   ],
 };
 
@@ -76,13 +66,13 @@ const DISTRICT_POI_TEMPLATES: Partial<Record<DistrictType, POITemplate[]>> = {
  * Range [min, max] -- actual count is randomly selected within this range.
  */
 const POI_COUNT_RANGE: Partial<Record<DistrictType, [number, number]>> = {
-  hospital: [2, 3],
-  downtown: [3, 5],
-  university: [3, 4],
-  industrial: [2, 3],
-  k12: [2, 3],
-  residential: [2, 3],
-  commercial: [3, 4],
+  hospital: [1, 2],
+  downtown: [2, 3],
+  university: [1, 2],
+  industrial: [1, 2],
+  k12: [1, 2],
+  residential: [1, 2],
+  commercial: [2, 3],
 };
 
 // ============================================================================
