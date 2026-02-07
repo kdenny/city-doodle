@@ -277,6 +277,20 @@ function DrawingWithFeatures({ children }: { children: ReactNode }) {
           established: new Date().getFullYear(),
         };
         setCityLimits(cityLimits);
+      } else if (mode === "road") {
+        // Road mode: create a user-drawn road from the polyline points (CITY-253)
+        if (points.length < 2) {
+          toast?.addToast("Road needs at least 2 points", "warning");
+          return;
+        }
+        const road = {
+          id: generateId("road"),
+          name: undefined,
+          roadClass: "arterial" as const,
+          line: { points },
+        };
+        addRoads([road]);
+        toast?.addToast("Road created", "info");
       } else if (mode === "split") {
         // Split mode: points is a line (2 points) that divides a district
         if (points.length < 2) {

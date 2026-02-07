@@ -18,12 +18,19 @@ const LINE_WIDTH = 2;
 const PREVIEW_ALPHA = 0.5;
 const CLOSE_DISTANCE = 20; // Distance to snap to first vertex to close
 
+// Road-specific drawing constants
+const ROAD_LINE_COLOR = 0x666666;
+const ROAD_LINE_WIDTH = 4;
+const ROAD_VERTEX_COLOR = 0x444444;
+
 interface DrawingState {
   vertices: Point[];
   previewPoint: Point | null;
   isDrawing: boolean;
   /** Whether freehand drawing is actively happening (mouse held down) */
   isFreehandActive?: boolean;
+  /** Current drawing mode (affects rendering style) */
+  mode?: string | null;
 }
 
 export class DrawingLayer {
@@ -67,14 +74,19 @@ export class DrawingLayer {
   private render(): void {
     this.graphics.clear();
 
-    const { vertices, previewPoint, isDrawing, isFreehandActive } = this.state;
+    const { vertices, previewPoint, isDrawing, isFreehandActive, mode } = this.state;
     if (!isDrawing || vertices.length === 0) return;
+
+    const isRoadMode = mode === "road";
+    const lineColor = isRoadMode ? ROAD_LINE_COLOR : LINE_COLOR;
+    const lineWidth = isRoadMode ? ROAD_LINE_WIDTH : LINE_WIDTH;
+    const vertexColor = isRoadMode ? ROAD_VERTEX_COLOR : VERTEX_COLOR;
 
     // Draw lines between vertices
     if (vertices.length >= 2) {
       this.graphics.setStrokeStyle({
-        width: LINE_WIDTH,
-        color: LINE_COLOR,
+        width: lineWidth,
+        color: lineColor,
       });
 
       this.graphics.moveTo(vertices[0].x, vertices[0].y);
@@ -87,13 +99,13 @@ export class DrawingLayer {
     // Freehand mode: skip preview line and vertex dots (too many points)
     if (isFreehandActive) {
       // Just show closing line preview when we have enough points
-      if (vertices.length >= 3) {
+      if (vertices.length >= 3 && !isRoadMode) {
         const lastVertex = vertices[vertices.length - 1];
         const firstVertex = vertices[0];
 
         this.graphics.setStrokeStyle({
-          width: LINE_WIDTH,
-          color: LINE_COLOR,
+          width: lineWidth,
+          color: lineColor,
           alpha: PREVIEW_ALPHA * 0.5,
         });
 
@@ -108,8 +120,8 @@ export class DrawingLayer {
       const lastVertex = vertices[vertices.length - 1];
 
       this.graphics.setStrokeStyle({
-        width: LINE_WIDTH,
-        color: LINE_COLOR,
+        width: lineWidth,
+        color: lineColor,
         alpha: PREVIEW_ALPHA,
       });
 
@@ -117,11 +129,11 @@ export class DrawingLayer {
       this.graphics.lineTo(previewPoint.x, previewPoint.y);
       this.graphics.stroke();
 
-      // If near first vertex and can close, show closing preview
-      if (this.isNearFirstVertex(previewPoint) && vertices.length >= 3) {
+      // If near first vertex and can close, show closing preview (not for road mode)
+      if (!isRoadMode && this.isNearFirstVertex(previewPoint) && vertices.length >= 3) {
         this.graphics.setStrokeStyle({
-          width: LINE_WIDTH,
-          color: LINE_COLOR,
+          width: lineWidth,
+          color: lineColor,
           alpha: PREVIEW_ALPHA * 0.5,
         });
 
@@ -134,17 +146,18 @@ export class DrawingLayer {
     for (let i = 0; i < vertices.length; i++) {
       const vertex = vertices[i];
       const isFirst = i === 0;
-      const radius = isFirst && vertices.length >= 3 ? VERTEX_RADIUS * 1.5 : VERTEX_RADIUS;
+      const showCloseHint = isFirst && vertices.length >= 3 && !isRoadMode;
+      const radius = showCloseHint ? VERTEX_RADIUS * 1.5 : VERTEX_RADIUS;
 
       // White outline
       this.graphics.setStrokeStyle({ width: 2, color: 0xffffff });
       this.graphics.circle(vertex.x, vertex.y, radius);
-      this.graphics.fill({ color: VERTEX_COLOR });
+      this.graphics.fill({ color: vertexColor });
       this.graphics.stroke();
 
-      // Highlight first vertex when we have enough to close
-      if (isFirst && vertices.length >= 3) {
-        this.graphics.setStrokeStyle({ width: 1, color: VERTEX_COLOR, alpha: 0.5 });
+      // Highlight first vertex when we have enough to close (not for road mode)
+      if (showCloseHint) {
+        this.graphics.setStrokeStyle({ width: 1, color: vertexColor, alpha: 0.5 });
         this.graphics.circle(vertex.x, vertex.y, CLOSE_DISTANCE);
         this.graphics.stroke();
       }
