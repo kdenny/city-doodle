@@ -21,10 +21,24 @@ const defaultVisibility: LayerVisibility = {
 };
 
 describe("LayerControls", () => {
-  it("renders all layer checkboxes", () => {
+  function expandPanel() {
+    // Panel starts collapsed; click the toggle to expand it
+    fireEvent.click(screen.getByTitle("Show layers"));
+  }
+
+  it("renders collapsed by default with toggle button", () => {
     render(
       <LayerControls visibility={defaultVisibility} onChange={vi.fn()} />
     );
+    expect(screen.getByTitle("Show layers")).toBeInTheDocument();
+    expect(screen.queryByText("Layers")).not.toBeInTheDocument();
+  });
+
+  it("renders all layer checkboxes when expanded", () => {
+    render(
+      <LayerControls visibility={defaultVisibility} onChange={vi.fn()} />
+    );
+    expandPanel();
     expect(screen.getByLabelText("Water")).toBeInTheDocument();
     expect(screen.getByLabelText("Coastlines")).toBeInTheDocument();
     expect(screen.getByLabelText("Rivers")).toBeInTheDocument();
@@ -41,6 +55,7 @@ describe("LayerControls", () => {
     render(
       <LayerControls visibility={defaultVisibility} onChange={vi.fn()} />
     );
+    expandPanel();
     expect(screen.getByLabelText("Water")).toBeChecked();
     expect(screen.getByLabelText("Grid")).toBeChecked();
   });
@@ -52,6 +67,7 @@ describe("LayerControls", () => {
       grid: false,
     };
     render(<LayerControls visibility={visibility} onChange={vi.fn()} />);
+    expandPanel();
     expect(screen.getByLabelText("Water")).not.toBeChecked();
     expect(screen.getByLabelText("Grid")).not.toBeChecked();
   });
@@ -59,6 +75,7 @@ describe("LayerControls", () => {
   it("calls onChange with toggled layer when checkbox clicked", () => {
     const onChange = vi.fn();
     render(<LayerControls visibility={defaultVisibility} onChange={onChange} />);
+    expandPanel();
 
     fireEvent.click(screen.getByLabelText("Water"));
 
@@ -75,6 +92,7 @@ describe("LayerControls", () => {
     };
     const onChange = vi.fn();
     render(<LayerControls visibility={visibility} onChange={onChange} />);
+    expandPanel();
 
     fireEvent.click(screen.getByLabelText("Rivers"));
 
@@ -84,10 +102,23 @@ describe("LayerControls", () => {
     });
   });
 
-  it("renders the Layers heading", () => {
+  it("renders the Layers heading when expanded", () => {
     render(
       <LayerControls visibility={defaultVisibility} onChange={vi.fn()} />
     );
+    expandPanel();
     expect(screen.getByText("Layers")).toBeInTheDocument();
+  });
+
+  it("collapses when hide button is clicked", () => {
+    render(
+      <LayerControls visibility={defaultVisibility} onChange={vi.fn()} />
+    );
+    expandPanel();
+    expect(screen.getByText("Layers")).toBeInTheDocument();
+
+    fireEvent.click(screen.getByTitle("Hide layers"));
+    expect(screen.queryByText("Layers")).not.toBeInTheDocument();
+    expect(screen.getByTitle("Show layers")).toBeInTheDocument();
   });
 });

@@ -11,41 +11,28 @@ interface TransitLinesPanelProps {
   lines: TransitLine[];
   onLineClick?: (line: TransitLine) => void;
   isLoading?: boolean;
-  /** ID of the currently highlighted line */
   highlightedLineId?: string | null;
+  onSwitchToBuild?: () => void;
 }
 
-/**
- * Get icon for line type.
- */
 function getLineTypeIcon(lineType: "subway" | "rail"): string {
   return lineType === "subway" ? "🚇" : "🚂";
 }
 
-export function TransitLinesPanel({ lines, onLineClick, isLoading, highlightedLineId }: TransitLinesPanelProps) {
+export function TransitLinesPanel({
+  lines,
+  onLineClick,
+  isLoading,
+  highlightedLineId,
+  onSwitchToBuild,
+}: TransitLinesPanelProps) {
   const totalStations = lines.reduce((sum, line) => sum + line.stations, 0);
   const totalMiles = lines.reduce((sum, line) => sum + line.miles, 0);
-
-  // Empty state
-  if (!isLoading && lines.length === 0) {
-    return (
-      <div className="bg-white rounded-lg shadow-lg p-4 w-64">
-        <h3 className="text-sm font-semibold text-gray-900 mb-3">Transit Lines</h3>
-        <div className="py-8 text-center">
-          <div className="text-3xl mb-2">🚇</div>
-          <p className="text-sm text-gray-500">No transit lines yet</p>
-          <p className="text-xs text-gray-400 mt-1">
-            Place subway or rail stations to create lines
-          </p>
-        </div>
-      </div>
-    );
-  }
 
   // Loading state
   if (isLoading) {
     return (
-      <div className="bg-white rounded-lg shadow-lg p-4 w-64">
+      <div className="p-4">
         <h3 className="text-sm font-semibold text-gray-900 mb-3">Transit Lines</h3>
         <div className="py-8 text-center">
           <div className="animate-spin w-6 h-6 border-2 border-gray-300 border-t-gray-600 rounded-full mx-auto" />
@@ -55,12 +42,44 @@ export function TransitLinesPanel({ lines, onLineClick, isLoading, highlightedLi
     );
   }
 
+  // Empty state
+  if (lines.length === 0) {
+    return (
+      <div className="p-4">
+        <h3 className="text-sm font-semibold text-gray-900 mb-3">Transit Lines</h3>
+        <div className="py-8 text-center">
+          <div className="text-3xl mb-2">🚇</div>
+          <p className="text-sm text-gray-500">No transit lines yet</p>
+          <p className="text-xs text-gray-400 mt-1 mb-4">
+            Place subway or rail stations in Build mode to create lines
+          </p>
+          {onSwitchToBuild && (
+            <button
+              onClick={onSwitchToBuild}
+              className="px-4 py-2 text-sm bg-blue-600 text-white rounded-md hover:bg-blue-700 transition-colors"
+            >
+              Switch to Build Mode
+            </button>
+          )}
+        </div>
+      </div>
+    );
+  }
+
   return (
-    <div className="bg-white rounded-lg shadow-lg p-4 w-64">
-      <h3 className="text-sm font-semibold text-gray-900 mb-3">Transit Lines</h3>
+    <div className="p-4">
+      {/* Header with summary stats */}
+      <div className="mb-3">
+        <h3 className="text-sm font-semibold text-gray-900">Transit Lines</h3>
+        <div className="flex gap-3 mt-1">
+          <span className="text-xs text-gray-500">{lines.length} lines</span>
+          <span className="text-xs text-gray-500">{totalStations} stations</span>
+          <span className="text-xs text-gray-500">{totalMiles.toFixed(1)} mi</span>
+        </div>
+      </div>
 
       {/* Lines list */}
-      <div className="space-y-2 mb-4">
+      <div className="space-y-1">
         {lines.map((line) => {
           const isHighlighted = highlightedLineId === line.id;
           return (
@@ -80,15 +99,22 @@ export function TransitLinesPanel({ lines, onLineClick, isLoading, highlightedLi
                 style={{ backgroundColor: line.color }}
               />
               <div className="flex-1 min-w-0">
-                <div className={`text-sm font-medium truncate flex items-center gap-1 ${
-                  isHighlighted ? "text-blue-900" : "text-gray-900"
-                }`}>
-                  <span className="text-xs" title={line.lineType === "subway" ? "Subway" : "Rail"}>
+                <div
+                  className={`text-sm font-medium truncate flex items-center gap-1 ${
+                    isHighlighted ? "text-blue-900" : "text-gray-900"
+                  }`}
+                >
+                  <span
+                    className="text-xs"
+                    title={line.lineType === "subway" ? "Subway" : "Rail"}
+                  >
                     {getLineTypeIcon(line.lineType)}
                   </span>
                   {line.name}
                 </div>
-                <div className={`text-xs ${isHighlighted ? "text-blue-600" : "text-gray-500"}`}>
+                <div
+                  className={`text-xs ${isHighlighted ? "text-blue-600" : "text-gray-500"}`}
+                >
                   {line.stations} stations · {line.miles.toFixed(1)} mi
                 </div>
               </div>
@@ -97,17 +123,15 @@ export function TransitLinesPanel({ lines, onLineClick, isLoading, highlightedLi
         })}
       </div>
 
-      {/* Totals */}
-      <div className="border-t pt-3 space-y-1">
-        <div className="flex justify-between text-sm">
-          <span className="text-gray-500">Total Stations</span>
-          <span className="font-medium text-gray-900">{totalStations}</span>
-        </div>
-        <div className="flex justify-between text-sm">
-          <span className="text-gray-500">Miles of Track</span>
-          <span className="font-medium text-gray-900">{totalMiles.toFixed(1)}</span>
-        </div>
-      </div>
+      {/* Add more lines hint */}
+      {onSwitchToBuild && (
+        <button
+          onClick={onSwitchToBuild}
+          className="w-full mt-3 p-2 text-xs text-gray-400 hover:text-gray-600 hover:bg-gray-50 rounded transition-colors text-center"
+        >
+          + Add lines in Build Mode
+        </button>
+      )}
     </div>
   );
 }

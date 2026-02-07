@@ -82,7 +82,7 @@ export function TransitLineInspector({
   const lineTypeLabel = line.lineType === "subway" ? "Subway Line" : "Rail Line";
 
   return (
-    <div className="bg-white rounded-lg shadow-lg p-4 w-72">
+    <div className="p-4">
       {/* Header */}
       <div className="flex items-center justify-between mb-4">
         <h3 className="text-sm font-semibold text-gray-900">Edit Transit Line</h3>

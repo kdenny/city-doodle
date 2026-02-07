@@ -2,15 +2,20 @@ import { render, screen, fireEvent } from "@testing-library/react";
 import { describe, it, expect, vi } from "vitest";
 import { TransitView } from "./TransitView";
 import { TransitLine } from "./TransitLinesPanel";
+import { ViewModeProvider } from "../shell/ViewModeContext";
 
 const mockLines: TransitLine[] = [
   { id: "red", name: "Red Line", color: "#DC2626", stations: 10, miles: 5.5, lineType: "subway" },
   { id: "blue", name: "Blue Line", color: "#2563EB", stations: 8, miles: 4.2, lineType: "rail" },
 ];
 
+function renderWithProviders(ui: React.ReactElement) {
+  return render(<ViewModeProvider>{ui}</ViewModeProvider>);
+}
+
 describe("TransitView", () => {
   it("renders children", () => {
-    render(
+    renderWithProviders(
       <TransitView>
         <div data-testid="content">Map Content</div>
       </TransitView>
@@ -19,7 +24,7 @@ describe("TransitView", () => {
   });
 
   it("renders transit lines panel", () => {
-    render(
+    renderWithProviders(
       <TransitView lines={mockLines}>
         <div>Content</div>
       </TransitView>
@@ -28,7 +33,7 @@ describe("TransitView", () => {
   });
 
   it("displays transit line names", () => {
-    render(
+    renderWithProviders(
       <TransitView lines={mockLines}>
         <div>Content</div>
       </TransitView>
@@ -38,7 +43,7 @@ describe("TransitView", () => {
   });
 
   it("displays station and mile counts", () => {
-    render(
+    renderWithProviders(
       <TransitView lines={mockLines}>
         <div>Content</div>
       </TransitView>
@@ -47,21 +52,20 @@ describe("TransitView", () => {
     expect(screen.getByText("8 stations · 4.2 mi")).toBeInTheDocument();
   });
 
-  it("displays total statistics", () => {
-    render(
+  it("displays summary statistics in header", () => {
+    renderWithProviders(
       <TransitView lines={mockLines}>
         <div>Content</div>
       </TransitView>
     );
-    expect(screen.getByText("Total Stations")).toBeInTheDocument();
-    expect(screen.getByText("18")).toBeInTheDocument(); // 10 + 8
-    expect(screen.getByText("Miles of Track")).toBeInTheDocument();
-    expect(screen.getByText("9.7")).toBeInTheDocument(); // 5.5 + 4.2
+    expect(screen.getByText("2 lines")).toBeInTheDocument();
+    expect(screen.getByText("18 stations")).toBeInTheDocument();
+    expect(screen.getByText("9.7 mi")).toBeInTheDocument();
   });
 
   it("calls onLineClick when a line is clicked", () => {
     const onLineClick = vi.fn();
-    render(
+    renderWithProviders(
       <TransitView lines={mockLines} onLineClick={onLineClick}>
         <div>Content</div>
       </TransitView>
@@ -72,7 +76,7 @@ describe("TransitView", () => {
   });
 
   it("does not render build tools", () => {
-    render(
+    renderWithProviders(
       <TransitView>
         <div>Content</div>
       </TransitView>
@@ -81,5 +85,14 @@ describe("TransitView", () => {
     expect(screen.queryByLabelText("Pan")).not.toBeInTheDocument();
     expect(screen.queryByLabelText("Zone")).not.toBeInTheDocument();
     expect(screen.queryByLabelText("Build")).not.toBeInTheDocument();
+  });
+
+  it("shows switch to build mode button in empty state", () => {
+    renderWithProviders(
+      <TransitView>
+        <div>Content</div>
+      </TransitView>
+    );
+    expect(screen.getByText("Switch to Build Mode")).toBeInTheDocument();
   });
 });
