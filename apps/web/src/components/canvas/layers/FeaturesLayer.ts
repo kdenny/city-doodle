@@ -167,12 +167,15 @@ export class FeaturesLayer {
   private cityLimitsGraphics: Graphics;
   private districtsGraphics: Graphics;
   private roadsGraphics: Graphics;
+  private roadHighlightGraphics: Graphics;
   private bridgesGraphics: Graphics;
   private poisGraphics: Graphics;
   private data: FeaturesData | null = null;
   private currentZoom: number = 1;
   /** Scale factor derived from average district size. Roads widen for larger districts. */
   private districtScale: number = 1;
+  /** ID of the currently selected road (null = no selection) */
+  private selectedRoadId: string | null = null;
 
   constructor() {
     this.container = new Container();
@@ -198,6 +201,11 @@ export class FeaturesLayer {
     this.roadsGraphics = new Graphics();
     this.roadsGraphics.label = "roads";
     this.container.addChild(this.roadsGraphics);
+
+    // Road selection highlight (above roads, below bridges)
+    this.roadHighlightGraphics = new Graphics();
+    this.roadHighlightGraphics.label = "roadHighlight";
+    this.container.addChild(this.roadHighlightGraphics);
 
     // Bridges render on top of roads (they're elevated)
     this.bridgesGraphics = new Graphics();
@@ -225,6 +233,7 @@ export class FeaturesLayer {
     this.cityLimitsGraphics.visible = visibility.cityLimits ?? true;
     this.districtsGraphics.visible = visibility.districts;
     this.roadsGraphics.visible = visibility.roads;
+    this.roadHighlightGraphics.visible = visibility.roads;
     this.bridgesGraphics.visible = visibility.bridges ?? visibility.roads; // Default to road visibility
     this.poisGraphics.visible = visibility.pois;
   }
@@ -239,7 +248,18 @@ export class FeaturesLayer {
       // Re-render roads when zoom changes (for visibility filtering)
       if (this.data) {
         this.renderRoads(this.data.roads);
+        this.renderRoadHighlight();
       }
+    }
+  }
+
+  /**
+   * Set the selected road ID for visual highlighting.
+   */
+  setSelectedRoadId(roadId: string | null): void {
+    if (this.selectedRoadId !== roadId) {
+      this.selectedRoadId = roadId;
+      this.renderRoadHighlight();
     }
   }
 
@@ -277,6 +297,7 @@ export class FeaturesLayer {
     this.renderCityLimits(this.data.cityLimits);
     this.renderDistricts(this.data.districts);
     this.renderRoads(this.data.roads);
+    this.renderRoadHighlight();
     this.renderBridges(this.data.bridges || []);
     this.renderPOIs(this.data.pois);
   }
@@ -576,6 +597,54 @@ export class FeaturesLayer {
         this.roadsGraphics.stroke();
       }
     }
+  }
+
+  /**
+   * Render a highlight glow around the selected road.
+   */
+  private renderRoadHighlight(): void {
+    if (this.roadHighlightGraphics.clear) {
+      this.roadHighlightGraphics.clear();
+    }
+
+    if (!this.selectedRoadId || !this.data) return;
+
+    const road = this.data.roads.find((r) => r.id === this.selectedRoadId);
+    if (!road || road.line.points.length < 2) return;
+
+    const style = ROAD_STYLES[road.roadClass];
+    const zoomScale =
+      Math.max(0.5, Math.min(1.5, this.currentZoom)) * this.districtScale;
+    const scaledWidth = style.width * zoomScale;
+    const points = road.line.points;
+
+    // Outer glow (wide, semi-transparent cyan)
+    this.roadHighlightGraphics.setStrokeStyle({
+      width: scaledWidth + 10,
+      color: 0x00bfff,
+      alpha: 0.35,
+      cap: "round",
+      join: "round",
+    });
+    this.roadHighlightGraphics.moveTo(points[0].x, points[0].y);
+    for (let i = 1; i < points.length; i++) {
+      this.roadHighlightGraphics.lineTo(points[i].x, points[i].y);
+    }
+    this.roadHighlightGraphics.stroke();
+
+    // Inner highlight (bright cyan outline)
+    this.roadHighlightGraphics.setStrokeStyle({
+      width: scaledWidth + 4,
+      color: 0x00bfff,
+      alpha: 0.7,
+      cap: "round",
+      join: "round",
+    });
+    this.roadHighlightGraphics.moveTo(points[0].x, points[0].y);
+    for (let i = 1; i < points.length; i++) {
+      this.roadHighlightGraphics.lineTo(points[i].x, points[i].y);
+    }
+    this.roadHighlightGraphics.stroke();
   }
 
   /**
