@@ -708,6 +708,7 @@ export const MapCanvas = forwardRef<MapCanvasHandle, MapCanvasProps>(
         category: placementContext.selectedSeed.category,
         icon: placementContext.selectedSeed.icon,
         position: placementContext.previewPosition,
+        size: placementContext.dragSize ?? undefined,
       });
     } else {
       seedsLayerRef.current.setPreview(null);
@@ -717,6 +718,7 @@ export const MapCanvas = forwardRef<MapCanvasHandle, MapCanvasProps>(
     placementContext?.isPlacing,
     placementContext?.previewPosition,
     placementContext?.selectedSeed,
+    placementContext?.dragSize,
   ]);
 
   // Update drawing layer when drawing state changes
@@ -948,7 +950,16 @@ export const MapCanvas = forwardRef<MapCanvasHandle, MapCanvasProps>(
             endpointHit.endpointIndex,
             endpointHit.position
           );
+          return;
         }
+      }
+
+      // CITY-333: Start drag-to-size for district placement
+      const pc = s.placementContext;
+      if (pc?.isPlacing && pc.selectedSeed?.category === "district") {
+        const worldPos = viewport.toWorld(event.global.x, event.global.y);
+        viewport.plugins.pause("drag");
+        pc.startDragSize({ x: worldPos.x, y: worldPos.y });
       }
     };
 
@@ -1001,12 +1012,24 @@ export const MapCanvas = forwardRef<MapCanvasHandle, MapCanvasProps>(
         }
       }
 
-      const isPlacing = s.placementContext?.isPlacing ?? false;
-      const setPreviewPosition = s.placementContext?.setPreviewPosition;
+      const pc = s.placementContext;
+      const isPlacing = pc?.isPlacing ?? false;
+
+      // CITY-333: Update drag size during district drag-to-size
+      if (pc?.isDraggingSize && pc.dragOrigin) {
+        const dx = worldPos.x - pc.dragOrigin.x;
+        const dy = worldPos.y - pc.dragOrigin.y;
+        const distance = Math.sqrt(dx * dx + dy * dy);
+        // Clamp to min 30, max 300 world units
+        const size = Math.max(30, Math.min(300, distance));
+        pc.updateDragSize(size);
+        // Don't update preview position during drag - keep it at the drag origin
+        return;
+      }
 
       // Update preview position if placing seeds
-      if (isPlacing && setPreviewPosition) {
-        setPreviewPosition({ x: worldPos.x, y: worldPos.y });
+      if (isPlacing && pc?.setPreviewPosition) {
+        pc.setPreviewPosition({ x: worldPos.x, y: worldPos.y });
       }
 
       const isFreehandActive = s.drawingContext?.state.isFreehandActive ?? false;
@@ -1133,10 +1156,25 @@ export const MapCanvas = forwardRef<MapCanvasHandle, MapCanvasProps>(
         return;
       }
 
-      const isPlacing = s.placementContext?.isPlacing ?? false;
-      const confirmPlacement = s.placementContext?.confirmPlacement;
+      const pc = s.placementContext;
+      const isPlacing = pc?.isPlacing ?? false;
+      const confirmPlacement = pc?.confirmPlacement;
 
-      // Handle seed placement mode (only if editing)
+      // CITY-333: Complete drag-to-size district placement
+      if (s.isEditingAllowed && pc?.isDraggingSize && pc.dragOrigin && confirmPlacement) {
+        viewport.plugins.resume("drag");
+        const size = pc.dragSize;
+        if (size && size >= 30) {
+          // Place at the drag origin with the dragged size
+          confirmPlacement(pc.dragOrigin, size);
+        } else {
+          // Drag was too small, cancel
+          pc.cancelDragSize();
+        }
+        return;
+      }
+
+      // Handle seed placement mode (only if editing) - non-district or click placement
       if (s.isEditingAllowed && isPlacing && confirmPlacement) {
         confirmPlacement({ x: worldPos.x, y: worldPos.y });
         return;

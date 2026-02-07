@@ -187,10 +187,12 @@ export function getEffectiveDistrictConfig(
     sprawlCompact
   );
 
+  // When an explicit size is provided (e.g. drag-to-size), use it directly
+  const baseSize = config.size ?? effectiveDistrictSize;
   return {
-    size: config.size ?? effectiveDistrictSize,
-    minSize: config.minSize ?? effectiveDistrictSize * 0.7,
-    maxSize: config.maxSize ?? effectiveDistrictSize * 1.3,
+    size: baseSize,
+    minSize: config.size ? baseSize : (config.minSize ?? effectiveDistrictSize * 0.7),
+    maxSize: config.size ? baseSize : (config.maxSize ?? effectiveDistrictSize * 1.3),
     polygonPoints: config.polygonPoints ?? DEFAULT_CONFIG.polygonPoints,
     organicFactor: config.organicFactor ?? DEFAULT_CONFIG.organicFactor,
     streetSpacing: config.streetSpacing ?? effectiveStreetSpacing * 0.5, // ~50% of block for streets
