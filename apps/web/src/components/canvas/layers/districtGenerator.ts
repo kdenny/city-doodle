@@ -775,6 +775,7 @@ function generateStreetGrid(
         id: generateId(`${districtId}-street-h-${streetIndex}`),
         roadClass,
         line: { points: [startPoint, endPoint] },
+        districtId,
       });
       streetIndex++;
     }
@@ -841,6 +842,7 @@ function generateStreetGrid(
         id: generateId(`${districtId}-street-v-${streetIndex}`),
         roadClass,
         line: { points: [startPoint, endPoint] },
+        districtId,
       });
       streetIndex++;
     }

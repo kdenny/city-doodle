@@ -17,7 +17,7 @@ import {
   useRef,
   ReactNode,
 } from "react";
-import type { District, Neighborhood, CityLimits, Road, POI, FeaturesData, Point, DistrictPersonality, RoadClass } from "./layers";
+import type { District, Neighborhood, CityLimits, Road, POI, FeaturesData, Point, DistrictPersonality, RoadClass, Interchange } from "./layers";
 import { DEFAULT_DISTRICT_PERSONALITY, DEFAULT_DENSITY_BY_TYPE } from "./layers/types";
 import type { DistrictType } from "./layers/types";
 import { detectBridges } from "./layers/bridgeDetection";
@@ -123,6 +123,8 @@ interface FeaturesContextValue {
   addPOI: (poi: POI) => void;
   /** Add roads */
   addRoads: (roads: Road[]) => void;
+  /** Add interchanges (auto-detected at highway-road crossings) */
+  addInterchanges: (interchanges: Interchange[]) => void;
   /** Remove a district by ID */
   removeDistrict: (id: string) => void;
   /** Remove a road by ID */
@@ -303,6 +305,7 @@ function roadsFromApiStreetGrid(apiDistrict: ApiDistrict): Road[] {
         y: p.y,
       })),
     },
+    districtId: (r.districtId as string | undefined) || apiDistrict.id,
   }));
 }
 
@@ -465,6 +468,7 @@ function graphToRoads(network: ApiRoadNetwork): Road[] {
       name: edge.name,
       roadClass: fromApiRoadClass(edge.road_class),
       line: { points },
+      districtId: edge.district_id || undefined,
     });
   }
 
@@ -553,12 +557,13 @@ export function FeaturesProvider({
       const loadedDistricts = apiDistricts.map(fromApiDistrict);
       // Restore district-internal roads from persisted street_grid data
       const streetGridRoads = apiDistricts.flatMap(roadsFromApiStreetGrid);
+      const loadedDistrictIds = new Set(loadedDistricts.map((d) => d.id));
       setFeaturesState((prev) => ({
         ...prev,
         districts: loadedDistricts,
         roads: [...streetGridRoads, ...prev.roads.filter((r) => {
           // Keep roads not belonging to any loaded district (e.g., inter-district roads from road network)
-          return !loadedDistricts.some((d) => r.id.startsWith(d.id));
+          return !r.districtId || !loadedDistrictIds.has(r.districtId);
         })],
       }));
     }
@@ -807,6 +812,7 @@ export function FeaturesProvider({
             id: r.id,
             name: r.name,
             roadClass: r.roadClass,
+            districtId: r.districtId,
             points: r.line.points.map((p) => ({ x: p.x, y: p.y })),
           })),
           gridAngle: generated.district.gridAngle,
@@ -844,12 +850,13 @@ export function FeaturesProvider({
                 districts: prev.districts.map((d) =>
                   d.id === tempId ? { ...d, id: apiDistrict.id } : d
                 ),
-                // Update road IDs that reference the district temp ID
                 roads: prev.roads.map((r) => {
-                  // Only update roads that belong to this district
                   if (!districtRoadIds.has(r.id)) return r;
-                  // Replace temp ID references with real district ID
-                  return { ...r, id: r.id.replace(tempId, apiDistrict.id) };
+                  // Safely replace temp ID prefix in road ID and update districtId
+                  const newId = r.id.startsWith(tempId)
+                    ? apiDistrict.id + r.id.slice(tempId.length)
+                    : r.id;
+                  return { ...r, id: newId, districtId: apiDistrict.id };
                 }),
               }));
 
@@ -1016,6 +1023,16 @@ export function FeaturesProvider({
     [updateFeatures]
   );
 
+  const addInterchanges = useCallback(
+    (interchanges: Interchange[]) => {
+      updateFeatures((prev) => ({
+        ...prev,
+        interchanges: [...(prev.interchanges || []), ...interchanges],
+      }));
+    },
+    [updateFeatures]
+  );
+
   const removeDistrict = useCallback(
     (id: string) => {
       // Find the district first
@@ -1024,11 +1041,10 @@ export function FeaturesProvider({
 
       // Optimistically remove from local state
       updateFeatures((prev) => {
-        const districtPrefix = id;
         return {
           ...prev,
           districts: prev.districts.filter((d) => d.id !== id),
-          roads: prev.roads.filter((r) => !r.id.startsWith(districtPrefix)),
+          roads: prev.roads.filter((r) => r.districtId !== id),
         };
       });
 
@@ -1268,8 +1284,7 @@ export function FeaturesProvider({
 
         // Update district with new gridAngle and replace its roads
         updateFeatures((prev) => {
-          // Remove old roads belonging to this district (road IDs start with district ID)
-          const otherRoads = prev.roads.filter((r) => !r.id.startsWith(id));
+          const otherRoads = prev.roads.filter((r) => r.districtId !== id);
           return {
             ...prev,
             districts: prev.districts.map((d) =>
@@ -1288,6 +1303,7 @@ export function FeaturesProvider({
                 id: r.id,
                 name: r.name,
                 roadClass: r.roadClass,
+                districtId: r.districtId,
                 points: r.line.points.map((p) => ({ x: p.x, y: p.y })),
               })),
               gridAngle: actualAngle,
@@ -1573,6 +1589,7 @@ export function FeaturesProvider({
     addDistrictWithGeometry,
     addPOI,
     addRoads,
+    addInterchanges,
     removeDistrict,
     removeRoad,
     removePOI,
@@ -1595,6 +1612,7 @@ export function FeaturesProvider({
     addDistrictWithGeometry,
     addPOI,
     addRoads,
+    addInterchanges,
     removeDistrict,
     removeRoad,
     removePOI,

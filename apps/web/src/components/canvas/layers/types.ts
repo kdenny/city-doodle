@@ -181,6 +181,8 @@ export interface Road {
   name?: string;
   roadClass: RoadClass;
   line: Line;
+  /** The district this road belongs to, if any. Used for ownership association. */
+  districtId?: string;
 }
 
 /**
@@ -252,6 +254,25 @@ export interface CityLimits {
   established?: number;
 }
 
+/** Interchange type classifications */
+export type InterchangeType = "diamond" | "cloverleaf" | "partial_clover";
+
+/**
+ * A highway interchange connecting a highway to an arterial road.
+ * Auto-generated where user-drawn highways cross existing arterials.
+ */
+export interface Interchange {
+  id: string;
+  /** Interchange type (diamond is default) */
+  type: InterchangeType;
+  /** Position of the interchange (intersection point) */
+  position: Point;
+  /** ID of the highway */
+  highwayId: string;
+  /** ID of the connected arterial/collector road */
+  connectedRoadId: string;
+}
+
 export interface FeaturesData {
   districts: District[];
   roads: Road[];
@@ -259,6 +280,8 @@ export interface FeaturesData {
   neighborhoods: Neighborhood[];
   /** Bridges where roads cross water features (auto-generated) */
   bridges: Bridge[];
+  /** Highway interchanges (auto-generated at highway-arterial crossings) */
+  interchanges?: Interchange[];
   /** City limits boundary (only one per world) */
   cityLimits?: CityLimits;
 }
