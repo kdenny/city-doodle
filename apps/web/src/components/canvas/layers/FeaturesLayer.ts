@@ -70,7 +70,7 @@ const ROAD_STYLES: Record<RoadClass, RoadStyle> = {
   collector: {
     width: 4,
     color: 0xffffff, // White
-    casingWidth: 0.5,
+    casingWidth: 1,
     casingColor: 0xaaaaaa, // Light gray outline
     dashed: false,
     minZoom: 0.15, // Visible at most zoom levels
@@ -78,8 +78,8 @@ const ROAD_STYLES: Record<RoadClass, RoadStyle> = {
   local: {
     width: 2,
     color: 0xffffff, // White
-    casingWidth: 0,
-    casingColor: 0x000000,
+    casingWidth: 0.5,
+    casingColor: 0xcccccc, // Subtle gray outline
     dashed: false,
     minZoom: 0.3, // Visible when not extremely zoomed out
   },
@@ -765,6 +765,10 @@ export class FeaturesLayer {
     // Scale road widths with zoom (thinner when zoomed out) and district size
     const zoomScale = Math.max(0.5, Math.min(1.5, this.currentZoom)) * this.districtScale;
 
+    // CITY-377: Enforce minimum widths so streets never become sub-pixel invisible
+    const MIN_ROAD_WIDTH = 0.8;
+    const MIN_CASING_WIDTH = 1.5;
+
     // Draw road casings first (outlines) - only for roads that have casings
     for (const road of visibleRoads) {
       const style = ROAD_STYLES[road.roadClass];
@@ -773,8 +777,8 @@ export class FeaturesLayer {
       if (points.length < 2) continue;
       if (style.casingWidth <= 0) continue;
 
-      const scaledWidth = style.width * zoomScale;
-      const casingWidth = scaledWidth + style.casingWidth * 2;
+      const scaledWidth = Math.max(MIN_ROAD_WIDTH, style.width * zoomScale);
+      const casingWidth = Math.max(MIN_CASING_WIDTH, scaledWidth + style.casingWidth * 2);
 
       // Draw casing (outline)
       this.roadsGraphics.setStrokeStyle({
@@ -798,7 +802,7 @@ export class FeaturesLayer {
 
       if (points.length < 2) continue;
 
-      const scaledWidth = style.width * zoomScale;
+      const scaledWidth = Math.max(MIN_ROAD_WIDTH, style.width * zoomScale);
 
       if (style.dashed) {
         // Draw dashed line for trails
