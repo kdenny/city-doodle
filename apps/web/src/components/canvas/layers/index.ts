@@ -60,6 +60,8 @@ export type {
   POIType,
   Bridge,
   WaterCrossingType,
+  Interchange,
+  InterchangeType,
   FeaturesData,
   LabelData,
   LabelConfig,
@@ -73,6 +75,7 @@ export {
   splitGridStreetsAtArterial,
 } from "./diagonalArterialValidator";
 export type { DiagonalValidationResult, GridAdjustmentResult } from "./diagonalArterialValidator";
+export { detectInterchanges } from "./interchangeDetection";
 export { detectBridges, roadCrossesWater } from "./bridgeDetection";
 export type { BridgeDetectionConfig, BridgeDetectionResult } from "./bridgeDetection";
 export {

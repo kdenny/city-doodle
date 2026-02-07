@@ -128,6 +128,8 @@ export function BuildView({
     } else if (activeTool === "draw-road") {
       // Start road drawing mode (CITY-253)
       drawingContext.startDrawing("road");
+    } else if (activeTool === "draw-highway") {
+      drawingContext.startDrawing("highway");
     } else {
       // Cancel drawing when switching away from draw tools
       if (drawingContext.state.isDrawing) {
@@ -141,7 +143,7 @@ export function BuildView({
     if (!drawingContext) return;
 
     // If we were drawing and now we're not (polygon completed), switch to pan
-    const isDrawingTool = activeTool === "draw" || activeTool === "city-limits" || activeTool === "split" || activeTool === "draw-road";
+    const isDrawingTool = activeTool === "draw" || activeTool === "city-limits" || activeTool === "split" || activeTool === "draw-road" || activeTool === "draw-highway";
     if (isDrawingTool && !drawingContext.state.isDrawing && drawingContext.state.mode === null) {
       setActiveTool("pan");
     }
@@ -274,13 +276,13 @@ export function BuildView({
       {drawingContext?.state.isDrawing && (
         <div className="absolute bottom-4 left-1/2 -translate-x-1/2">
           <div className="bg-white/90 backdrop-blur-sm rounded-lg shadow-lg px-4 py-2 text-sm text-gray-700">
-            {drawingContext.state.mode === "road" ? (
+            {drawingContext.state.mode === "road" || drawingContext.state.mode === "highway" ? (
               <div className="flex items-center gap-3">
                 <span>
                   {drawingContext.state.vertices.length === 0 ? (
-                    <>Click to place the start of the road</>
+                    <>Click to place the start of the {drawingContext.state.mode === "highway" ? "highway" : "road"}</>
                   ) : (
-                    <>Click to add road points • Press <kbd className="px-1.5 py-0.5 bg-gray-100 rounded text-xs font-mono">Enter</kbd> to finish</>
+                    <>Click to add {drawingContext.state.mode === "highway" ? "highway" : "road"} points • Press <kbd className="px-1.5 py-0.5 bg-gray-100 rounded text-xs font-mono">Enter</kbd> to finish</>
                   )}
                 </span>
                 <span className="text-gray-400">|</span>

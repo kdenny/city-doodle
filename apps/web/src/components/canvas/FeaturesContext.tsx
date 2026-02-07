@@ -17,7 +17,7 @@ import {
   useRef,
   ReactNode,
 } from "react";
-import type { District, Neighborhood, CityLimits, Road, POI, FeaturesData, Point, DistrictPersonality, RoadClass } from "./layers";
+import type { District, Neighborhood, CityLimits, Road, POI, FeaturesData, Point, DistrictPersonality, RoadClass, Interchange } from "./layers";
 import { DEFAULT_DISTRICT_PERSONALITY, DEFAULT_DENSITY_BY_TYPE } from "./layers/types";
 import type { DistrictType } from "./layers/types";
 import { detectBridges } from "./layers/bridgeDetection";
@@ -123,6 +123,8 @@ interface FeaturesContextValue {
   addPOI: (poi: POI) => void;
   /** Add roads */
   addRoads: (roads: Road[]) => void;
+  /** Add interchanges (auto-detected at highway-road crossings) */
+  addInterchanges: (interchanges: Interchange[]) => void;
   /** Remove a district by ID */
   removeDistrict: (id: string) => void;
   /** Remove a road by ID */
@@ -1016,6 +1018,16 @@ export function FeaturesProvider({
     [updateFeatures]
   );
 
+  const addInterchanges = useCallback(
+    (interchanges: Interchange[]) => {
+      updateFeatures((prev) => ({
+        ...prev,
+        interchanges: [...(prev.interchanges || []), ...interchanges],
+      }));
+    },
+    [updateFeatures]
+  );
+
   const removeDistrict = useCallback(
     (id: string) => {
       // Find the district first
@@ -1573,6 +1585,7 @@ export function FeaturesProvider({
     addDistrictWithGeometry,
     addPOI,
     addRoads,
+    addInterchanges,
     removeDistrict,
     removeRoad,
     removePOI,
@@ -1595,6 +1608,7 @@ export function FeaturesProvider({
     addDistrictWithGeometry,
     addPOI,
     addRoads,
+    addInterchanges,
     removeDistrict,
     removeRoad,
     removePOI,
