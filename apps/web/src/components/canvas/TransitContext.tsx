@@ -45,6 +45,9 @@ import { useToastOptional } from "../../contexts";
 // Auto-connection distance for nearby stations (in world units)
 const AUTO_CONNECT_DISTANCE = 200;
 
+// Distance threshold for detecting co-located cross-type transfer stations
+const TRANSFER_STATION_DISTANCE = 60;
+
 // Default colors for rail lines
 const RAIL_LINE_COLORS = [
   "#B22222", // Firebrick Red
@@ -409,17 +412,31 @@ export function TransitProvider({ children, worldId }: TransitProviderProps) {
         return null;
       }
 
-      // Count existing stations in this district for naming
-      const districtStations = railStations.filter((s) => {
-        // Check if station is in the same district by position check
-        const districtValidation = validateRailStationPlacement(s.position);
-        return districtValidation.districtId === validation.districtId;
-      });
-
-      const stationName = generateStationName(
-        validation.districtName || "Rail",
-        districtStations.length
+      // Check for nearby subway station to create a transfer station
+      const candidateSubways = subwayStations.filter(
+        (s) => distance(position, s.position) <= TRANSFER_STATION_DISTANCE
       );
+      const nearbySubway = candidateSubways.length > 0
+        ? candidateSubways.reduce((a, b) =>
+            distance(position, a.position) < distance(position, b.position) ? a : b
+          )
+        : undefined;
+
+      let stationName: string;
+      if (nearbySubway) {
+        // Use the same name as the nearby subway station for transfer pairing
+        stationName = nearbySubway.name;
+      } else {
+        // Count existing stations in this district for naming
+        const districtStations = railStations.filter((s) => {
+          const districtValidation = validateRailStationPlacement(s.position);
+          return districtValidation.districtId === validation.districtId;
+        });
+        stationName = generateStationName(
+          validation.districtName || "Rail",
+          districtStations.length
+        );
+      }
 
       try {
         // Create the station
@@ -435,7 +452,11 @@ export function TransitProvider({ children, worldId }: TransitProviderProps) {
           },
         });
 
-        toast?.addToast(`Created ${stationName}`, "success");
+        if (nearbySubway) {
+          toast?.addToast(`Created transfer station "${stationName}" (rail ↔ subway)`, "success");
+        } else {
+          toast?.addToast(`Created ${stationName}`, "success");
+        }
 
         // Auto-connect to nearby stations
         const nearbyStations = getNearbyStations(position);
@@ -519,6 +540,7 @@ export function TransitProvider({ children, worldId }: TransitProviderProps) {
       worldId,
       validateRailStationPlacement,
       railStations,
+      subwayStations,
       getNearbyStations,
       transitNetwork,
       createStation,
@@ -547,16 +569,31 @@ export function TransitProvider({ children, worldId }: TransitProviderProps) {
         return null;
       }
 
-      // Count existing subway stations in this district for naming
-      const districtStations = subwayStations.filter((s) => {
-        const districtValidation = validateSubwayStationPlacement(s.position);
-        return districtValidation.districtId === validation.districtId;
-      });
-
-      const stationName = generateStationName(
-        validation.districtName || "Metro",
-        districtStations.length
+      // Check for nearby rail station to create a transfer station
+      const candidateRails = railStations.filter(
+        (s) => distance(position, s.position) <= TRANSFER_STATION_DISTANCE
       );
+      const nearbyRail = candidateRails.length > 0
+        ? candidateRails.reduce((a, b) =>
+            distance(position, a.position) < distance(position, b.position) ? a : b
+          )
+        : undefined;
+
+      let stationName: string;
+      if (nearbyRail) {
+        // Use the same name as the nearby rail station for transfer pairing
+        stationName = nearbyRail.name;
+      } else {
+        // Count existing subway stations in this district for naming
+        const districtStations = subwayStations.filter((s) => {
+          const districtValidation = validateSubwayStationPlacement(s.position);
+          return districtValidation.districtId === validation.districtId;
+        });
+        stationName = generateStationName(
+          validation.districtName || "Metro",
+          districtStations.length
+        );
+      }
 
       try {
         // Create the station
@@ -572,7 +609,11 @@ export function TransitProvider({ children, worldId }: TransitProviderProps) {
           },
         });
 
-        toast?.addToast(`Created ${stationName}`, "success");
+        if (nearbyRail) {
+          toast?.addToast(`Created transfer station "${stationName}" (subway ↔ rail)`, "success");
+        } else {
+          toast?.addToast(`Created ${stationName}`, "success");
+        }
 
         // Auto-connect to nearby subway stations
         const nearbyStations = getNearbySubwayStations(position);
@@ -655,6 +696,7 @@ export function TransitProvider({ children, worldId }: TransitProviderProps) {
     [
       worldId,
       validateSubwayStationPlacement,
+      railStations,
       subwayStations,
       getNearbySubwayStations,
       transitNetwork,
