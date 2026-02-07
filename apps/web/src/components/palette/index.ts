@@ -7,4 +7,4 @@ export {
 } from "./PlacedSeedsContext";
 export type { PlacedSeed } from "./PlacedSeedsContext";
 export type { SeedType, SeedCategory } from "./types";
-export { SEED_TYPES, SEED_CATEGORIES, getSeedsByCategory } from "./types";
+export { SEED_TYPES, SEED_CATEGORIES, getSeedsByCategory, PARK_SIZE_CONFIG } from "./types";
