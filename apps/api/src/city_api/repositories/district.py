@@ -144,7 +144,19 @@ async def update_district(
         return None
 
     if district_update.type is not None:
-        district.type = district_update.type.value  # Pass string value for PostgreSQL enum
+        new_type_value = district_update.type.value
+        type_changed = new_type_value != district.type
+        district.type = new_type_value  # Pass string value for PostgreSQL enum
+
+        # CITY-297: When type changes, apply new type's default density/max_height
+        # unless the update explicitly provides new values
+        if type_changed:
+            new_defaults = DISTRICT_TYPE_DEFAULTS.get(new_type_value, {})
+            if district_update.density is None:
+                district.density = new_defaults.get("density", 1.0)
+            if district_update.max_height is None:
+                district.max_height = new_defaults.get("max_height", 4)
+
     if district_update.name is not None:
         district.name = district_update.name
     if district_update.geometry is not None:
