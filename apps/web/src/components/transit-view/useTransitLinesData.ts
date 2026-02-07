@@ -48,6 +48,17 @@ function calculateSegmentLength(
 }
 
 /**
+ * Detect if a line forms a circular/loop route.
+ * A line is circular when the last segment's to_station connects back to the first segment's from_station.
+ */
+function isCircularLine(line: TransitLineWithSegments): boolean {
+  if (line.segments.length < 2) return false;
+
+  const sorted = [...line.segments].sort((a, b) => a.order_in_line - b.order_in_line);
+  return sorted[sorted.length - 1].to_station_id === sorted[0].from_station_id;
+}
+
+/**
  * Count unique stations on a line from its segments.
  */
 function countStationsOnLine(line: TransitLineWithSegments): number {
@@ -80,8 +91,8 @@ function transformLine(
     color: line.color || "#666666",
     stations: countStationsOnLine(line),
     miles: worldUnitsToMiles(totalWorldUnits),
-    // Additional metadata for future use
     lineType: line.line_type,
+    isCircular: isCircularLine(line),
   };
 }
 

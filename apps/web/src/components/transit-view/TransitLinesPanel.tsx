@@ -5,6 +5,7 @@ export interface TransitLine {
   stations: number;
   miles: number;
   lineType: "subway" | "rail";
+  isCircular?: boolean;
 }
 
 interface TransitLinesPanelProps {
@@ -180,6 +181,9 @@ export function TransitLinesPanel({
                     {getLineTypeIcon(line.lineType)}
                   </span>
                   {line.name}
+                  {line.isCircular && (
+                    <span className="text-xs text-gray-400" title="Circular route">↻</span>
+                  )}
                 </div>
                 <div
                   className={`text-xs ${isHighlighted ? "text-blue-600" : "text-gray-500"}`}

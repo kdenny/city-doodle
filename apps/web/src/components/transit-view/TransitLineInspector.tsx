@@ -26,6 +26,7 @@ interface TransitLineInspectorProps {
     lineType: "subway" | "rail";
     stations: number;
     miles: number;
+    isCircular?: boolean;
   };
   /** Callback when the line is updated */
   onUpdate: (lineId: string, updates: { name?: string; color?: string }) => Promise<void>;
@@ -164,6 +165,13 @@ export function TransitLineInspector({
           <span>{line.stations} stations</span>
           <span>{line.miles.toFixed(1)} miles</span>
         </div>
+        {line.isCircular && (
+          <div className="mt-1">
+            <span className="inline-flex items-center gap-1 px-2 py-0.5 rounded-full text-xs font-medium bg-purple-100 text-purple-700">
+              ↻ Circular route
+            </span>
+          </div>
+        )}
       </div>
 
       {/* Action buttons */}
@@ -184,8 +192,8 @@ export function TransitLineInspector({
         </button>
       </div>
 
-      {/* CITY-363: Extend line button */}
-      {onExtend && line.stations >= 2 && (
+      {/* CITY-363: Extend line button (hidden for circular lines) */}
+      {onExtend && line.stations >= 2 && !line.isCircular && (
         <button
           onClick={() => onExtend(line.id)}
           disabled={isUpdating || isExtending}
