@@ -1078,8 +1078,9 @@ export const MapCanvas = forwardRef<MapCanvasHandle, MapCanvasProps>(
       if (isLineDrawing && s.transitContext) {
         s.transitLineDrawingContext?.setPreviewPosition?.({ x: worldPos.x, y: worldPos.y });
 
-        // Find station being hovered (snap distance)
-        const STATION_HOVER_THRESHOLD = 30;
+        // Find station being hovered (snap distance, scaled by zoom)
+        const currentZoom = viewportRef.current?.scale.x ?? 1;
+        const STATION_HOVER_THRESHOLD = 30 / Math.max(0.2, currentZoom);
         let hoveredStation: RailStationData | null = null;
         for (const station of s.transitContext.railStations) {
           const sdx = worldPos.x - station.position.x;
@@ -1162,8 +1163,9 @@ export const MapCanvas = forwardRef<MapCanvasHandle, MapCanvasProps>(
 
       // Handle transit line drawing mode (only if editing)
       if (s.isEditingAllowed && isLineDrawing && selectStation && s.transitContext) {
-        // Find the station being clicked (snap to station)
-        const STATION_CLICK_THRESHOLD = 30;
+        // Find the station being clicked (snap to station, scaled by zoom)
+        const clickZoom = viewportRef.current?.scale.x ?? 1;
+        const STATION_CLICK_THRESHOLD = 30 / Math.max(0.2, clickZoom);
         let clickedStation: RailStationData | null = null;
         for (const station of s.transitContext.railStations) {
           const sdx = worldPos.x - station.position.x;

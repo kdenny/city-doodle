@@ -476,11 +476,16 @@ function TransitLineDrawingWithTransit({ children }: { children: ReactNode }) {
     // Drawing context resets its own lineId on complete
   }, []);
 
+  const existingLineNames = transitContext.transitNetwork?.lines.map((l) => l.name) ?? [];
+  const existingLineColors = transitContext.transitNetwork?.lines.map((l) => l.color) ?? [];
+
   return (
     <TransitLineDrawingProvider
       onSegmentCreate={handleSegmentCreate}
       onLineComplete={handleLineComplete}
       existingLineCount={transitContext.lineCount}
+      existingLineNames={existingLineNames}
+      existingLineColors={existingLineColors}
     >
       {children}
     </TransitLineDrawingProvider>
