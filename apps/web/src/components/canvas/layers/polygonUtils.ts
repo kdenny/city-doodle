@@ -278,51 +278,210 @@ export function clipDistrictToLand(
 }
 
 /**
+ * Trace a path along the water polygon boundary between two edges.
+ * Returns intermediate water boundary vertices (not including the
+ * intersection points themselves, which are handled by the caller).
+ * Picks the path whose vertices lie inside the subject polygon,
+ * which traces the "shore" correctly.
+ */
+function traceWaterBoundary(
+  region: Point[],
+  entryEdge: number,
+  exitEdge: number,
+  subject: Point[]
+): Point[] {
+  const m = region.length;
+
+  // Forward path (following region vertex order):
+  // from vertex (entryEdge+1) to vertex exitEdge, inclusive
+  const fwd: Point[] = [];
+  {
+    let idx = (entryEdge + 1) % m;
+    const stop = (exitEdge + 1) % m;
+    let safety = 0;
+    while (idx !== stop && safety < m) {
+      fwd.push(region[idx]);
+      idx = (idx + 1) % m;
+      safety++;
+    }
+  }
+
+  // Backward path (against region vertex order):
+  // from vertex entryEdge to vertex (exitEdge+1), inclusive
+  const bwd: Point[] = [];
+  {
+    let idx = entryEdge;
+    let safety = 0;
+    while (safety <= m) {
+      bwd.push(region[idx]);
+      if (idx === (exitEdge + 1) % m) break;
+      idx = (idx - 1 + m) % m;
+      safety++;
+    }
+  }
+
+  // Pick the path whose vertices are inside the subject polygon.
+  // The correct shore path traces the water boundary that's inside
+  // the district, not the path that goes outside.
+  const fwdInside = fwd.filter(p => pointInPolygon(p, subject)).length;
+  const bwdInside = bwd.filter(p => pointInPolygon(p, subject)).length;
+
+  if (fwdInside !== bwdInside) {
+    return fwdInside > bwdInside ? fwd : bwd;
+  }
+
+  // Tie-break: shorter path
+  return fwd.length <= bwd.length ? fwd : bwd;
+}
+
+/**
  * Clip a polygon to keep only the part outside a region.
- * This is the complement of Sutherland-Hodgman.
+ * Walks the subject boundary, and when entering the water region,
+ * traces along the water boundary to the exit point to maintain
+ * valid polygon winding order.
  */
 function clipPolygonOutsideRegion(
   subject: Point[],
   region: Point[]
 ): Point[] {
-  // Find all points that are outside the region
-  const outsidePoints: Point[] = [];
-  const intersectionPoints: { point: Point; index: number }[] = [];
+  const n = subject.length;
+  const m = region.length;
 
-  // Collect points and intersections
-  for (let i = 0; i < subject.length; i++) {
-    const current = subject[i];
-    const next = subject[(i + 1) % subject.length];
-    const currentInside = pointInPolygon(current, region);
-    const nextInside = pointInPolygon(next, region);
+  // Classify each subject vertex as inside/outside the water region
+  const isInside: boolean[] = subject.map(p => pointInPolygon(p, region));
 
-    if (!currentInside) {
-      outsidePoints.push(current);
+  // If all outside, no clipping needed
+  if (!isInside.includes(true)) return [...subject];
+  // If all inside, polygon is completely submerged
+  if (!isInside.includes(false)) return [];
+
+  // Find all intersections between subject edges and region edges.
+  // A single subject edge may cross the region boundary multiple times
+  // (possible with concave water polygons).
+  interface Crossing {
+    point: Point;
+    subjectEdge: number;
+    regionEdge: number;
+    tSubject: number;
+    isEntry: boolean;
+  }
+
+  const crossingsByEdge: Map<number, Crossing[]> = new Map();
+
+  for (let i = 0; i < n; i++) {
+    const nextI = (i + 1) % n;
+    const p1 = subject[i], p2 = subject[nextI];
+
+    // Find ALL intersections on this subject edge
+    const edgeHits: { point: Point; regionEdge: number; t: number }[] = [];
+
+    for (let j = 0; j < m; j++) {
+      const r1 = region[j], r2 = region[(j + 1) % m];
+      const inter = lineIntersection(p1, p2, r1, r2);
+      if (inter) {
+        const dx = p2.x - p1.x, dy = p2.y - p1.y;
+        const len2 = dx * dx + dy * dy;
+        const t = len2 > 1e-10
+          ? ((inter.x - p1.x) * dx + (inter.y - p1.y) * dy) / len2
+          : 0;
+        edgeHits.push({
+          point: inter,
+          regionEdge: j,
+          t: Math.max(0, Math.min(1, t)),
+        });
+      }
     }
 
-    // Check for intersection with region boundary
-    if (currentInside !== nextInside) {
-      for (let j = 0; j < region.length; j++) {
-        const r1 = region[j];
-        const r2 = region[(j + 1) % region.length];
-        const intersection = lineIntersection(current, next, r1, r2);
-        if (intersection) {
-          intersectionPoints.push({ point: intersection, index: i });
-          outsidePoints.push(intersection);
-          break;
+    if (edgeHits.length === 0) continue;
+
+    // Sort by parameter along edge
+    edgeHits.sort((a, b) => a.t - b.t);
+
+    // Determine entry/exit for each crossing by toggling from the start vertex state
+    let currentlyInside = isInside[i];
+    const edgeCrossings: Crossing[] = [];
+    for (const hit of edgeHits) {
+      edgeCrossings.push({
+        point: hit.point,
+        subjectEdge: i,
+        regionEdge: hit.regionEdge,
+        tSubject: hit.t,
+        isEntry: !currentlyInside,
+      });
+      currentlyInside = !currentlyInside;
+    }
+
+    crossingsByEdge.set(i, edgeCrossings);
+  }
+
+  // Count total crossings
+  let totalCrossings = 0;
+  for (const [, edgeCrossings] of crossingsByEdge) {
+    totalCrossings += edgeCrossings.length;
+  }
+
+  if (totalCrossings < 2 || totalCrossings % 2 !== 0) {
+    // Odd number of crossings (numerical edge case) — fall back to outside points only
+    const outside = subject.filter((_, i) => !isInside[i]);
+    return outside.length >= 3 ? outside : [];
+  }
+
+  // Build result by walking the subject boundary starting from an outside vertex.
+  // When entering water, trace along the water boundary to the exit point.
+  const result: Point[] = [];
+  let inWater = false;
+  let entryRegionEdge = -1;
+
+  const startVertex = isInside.indexOf(false);
+
+  for (let step = 0; step < n; step++) {
+    const i = (startVertex + step) % n;
+
+    if (!inWater) {
+      result.push(subject[i]);
+    }
+
+    // Process crossings on edge from vertex i to vertex (i+1)%n
+    const edgeCrossings = crossingsByEdge.get(i);
+    if (!edgeCrossings) continue;
+
+    for (const crossing of edgeCrossings) {
+      if (crossing.isEntry) {
+        result.push(crossing.point);
+        entryRegionEdge = crossing.regionEdge;
+        inWater = true;
+      } else {
+        if (inWater && entryRegionEdge >= 0) {
+          const waterPath = traceWaterBoundary(
+            region, entryRegionEdge, crossing.regionEdge, subject
+          );
+          result.push(...waterPath);
         }
+        result.push(crossing.point);
+        inWater = false;
+        entryRegionEdge = -1;
       }
     }
   }
 
-  // If no points are outside, the whole polygon is inside water
-  if (outsidePoints.length < 3) {
-    return [];
+  // Deduplicate consecutive near-identical points
+  if (result.length === 0) return [];
+  const clean: Point[] = [result[0]];
+  for (let i = 1; i < result.length; i++) {
+    const prev = clean[clean.length - 1];
+    if (Math.abs(result[i].x - prev.x) > 0.0001 || Math.abs(result[i].y - prev.y) > 0.0001) {
+      clean.push(result[i]);
+    }
+  }
+  // Check first/last for duplicate
+  if (clean.length > 1) {
+    const first = clean[0], last = clean[clean.length - 1];
+    if (Math.abs(first.x - last.x) < 0.0001 && Math.abs(first.y - last.y) < 0.0001) {
+      clean.pop();
+    }
   }
 
-  // Reconstruct the polygon from outside points
-  // This is simplified - for complex shapes we'd need proper polygon boolean ops
-  return outsidePoints;
+  return clean.length >= 3 ? clean : [];
 }
 
 /**
