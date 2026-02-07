@@ -17,6 +17,11 @@ const HANDLE_ACTIVE_COLOR = 0x1565c0; // Darker blue when dragging
 const HANDLE_STROKE_COLOR = 0xffffff;
 const HANDLE_STROKE_WIDTH = 2;
 
+// Intermediate vertex handle styling (CITY-255)
+const VERTEX_HANDLE_RADIUS = 5;
+const VERTEX_HANDLE_HIT_RADIUS = 10;
+const VERTEX_HANDLE_COLOR = 0x7e57c2; // Purple for intermediate vertices
+
 // Ghost line styling (shown during drag)
 const GHOST_LINE_COLOR = 0x2196f3;
 const GHOST_LINE_WIDTH = 3;
@@ -138,8 +143,9 @@ export class RoadEndpointLayer {
   }
 
   /**
-   * Hit test for endpoint handles.
-   * Returns the endpoint hit, or null if no endpoint was hit.
+   * Hit test for vertex handles (CITY-255).
+   * Checks all vertices (endpoints and intermediate) of the selected road.
+   * Returns the vertex hit, or null if no vertex was hit.
    */
   hitTest(worldX: number, worldY: number): EndpointHitResult | null {
     if (!this.selectedRoad) return null;
@@ -147,29 +153,34 @@ export class RoadEndpointLayer {
     const points = this.selectedRoad.line.points;
     if (points.length < 2) return null;
 
-    // Check start endpoint
-    const startDist = Math.sqrt(
-      (worldX - points[0].x) ** 2 + (worldY - points[0].y) ** 2
-    );
-    if (startDist <= HANDLE_HIT_RADIUS) {
-      return {
-        road: this.selectedRoad,
-        endpointIndex: 0,
-        position: points[0],
-      };
+    const endIndex = points.length - 1;
+
+    // Check endpoints first (larger hit radius, higher priority)
+    for (const idx of [0, endIndex]) {
+      const dist = Math.sqrt(
+        (worldX - points[idx].x) ** 2 + (worldY - points[idx].y) ** 2
+      );
+      if (dist <= HANDLE_HIT_RADIUS) {
+        return {
+          road: this.selectedRoad,
+          endpointIndex: idx,
+          position: points[idx],
+        };
+      }
     }
 
-    // Check end endpoint
-    const endIndex = points.length - 1;
-    const endDist = Math.sqrt(
-      (worldX - points[endIndex].x) ** 2 + (worldY - points[endIndex].y) ** 2
-    );
-    if (endDist <= HANDLE_HIT_RADIUS) {
-      return {
-        road: this.selectedRoad,
-        endpointIndex: endIndex,
-        position: points[endIndex],
-      };
+    // Check intermediate vertices (CITY-255)
+    for (let i = 1; i < endIndex; i++) {
+      const dist = Math.sqrt(
+        (worldX - points[i].x) ** 2 + (worldY - points[i].y) ** 2
+      );
+      if (dist <= VERTEX_HANDLE_HIT_RADIUS) {
+        return {
+          road: this.selectedRoad,
+          endpointIndex: i,
+          position: points[i],
+        };
+      }
     }
 
     return null;
@@ -196,11 +207,48 @@ export class RoadEndpointLayer {
     const points = this.selectedRoad.line.points;
     if (points.length < 2) return;
 
-    // Render start endpoint handle
-    this.renderHandle(points[0], 0);
+    // Render intermediate vertex handles first (below endpoints) (CITY-255)
+    const endIndex = points.length - 1;
+    for (let i = 1; i < endIndex; i++) {
+      this.renderVertexHandle(points[i], i);
+    }
 
-    // Render end endpoint handle
-    this.renderHandle(points[points.length - 1], points.length - 1);
+    // Render endpoint handles on top
+    this.renderHandle(points[0], 0);
+    this.renderHandle(points[endIndex], endIndex);
+  }
+
+  /**
+   * Render a small diamond handle for an intermediate vertex (CITY-255).
+   */
+  private renderVertexHandle(position: Point, index: number): void {
+    const isDragging =
+      this.dragPreview?.endpointIndex === index &&
+      this.dragPreview?.roadId === this.selectedRoad?.id;
+    const isHovered = this.hoveredEndpoint === index;
+
+    let fillColor = VERTEX_HANDLE_COLOR;
+    if (isDragging) {
+      fillColor = HANDLE_ACTIVE_COLOR;
+    } else if (isHovered) {
+      fillColor = HANDLE_HOVER_COLOR;
+    }
+
+    const r = VERTEX_HANDLE_RADIUS;
+
+    // Draw diamond shape
+    this.handlesGraphics.setStrokeStyle({
+      width: HANDLE_STROKE_WIDTH,
+      color: HANDLE_STROKE_COLOR,
+    });
+
+    this.handlesGraphics.moveTo(position.x, position.y - r);
+    this.handlesGraphics.lineTo(position.x + r, position.y);
+    this.handlesGraphics.lineTo(position.x, position.y + r);
+    this.handlesGraphics.lineTo(position.x - r, position.y);
+    this.handlesGraphics.closePath();
+    this.handlesGraphics.fill({ color: fillColor });
+    this.handlesGraphics.stroke();
   }
 
   private renderHandle(position: Point, index: number): void {

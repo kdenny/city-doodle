@@ -114,6 +114,52 @@ describe("RoadEndpointLayer", () => {
       expect(endResult).not.toBeNull();
       expect(endResult!.endpointIndex).toBe(3);
     });
+
+    it("detects hit on intermediate vertices (CITY-255)", () => {
+      layer.setSelectedRoad(multiPointRoad);
+
+      // Test intermediate vertex at (50, 25)
+      const result1 = layer.hitTest(50, 25);
+      expect(result1).not.toBeNull();
+      expect(result1!.endpointIndex).toBe(1);
+      expect(result1!.position).toEqual({ x: 50, y: 25 });
+
+      // Test intermediate vertex at (100, 50)
+      const result2 = layer.hitTest(100, 50);
+      expect(result2).not.toBeNull();
+      expect(result2!.endpointIndex).toBe(2);
+      expect(result2!.position).toEqual({ x: 100, y: 50 });
+    });
+
+    it("prioritizes endpoints over intermediate vertices when overlapping", () => {
+      // Create a road where endpoint and intermediate vertex are close
+      const closeRoad: Road = {
+        id: "road-close",
+        roadClass: "local",
+        line: {
+          points: [
+            { x: 0, y: 0 },
+            { x: 5, y: 0 }, // Very close to start endpoint
+            { x: 100, y: 0 },
+          ],
+        },
+      };
+      layer.setSelectedRoad(closeRoad);
+
+      // Hit test near both start endpoint and first intermediate vertex
+      const result = layer.hitTest(3, 0);
+      expect(result).not.toBeNull();
+      // Should return the endpoint (index 0) not the intermediate vertex (index 1)
+      expect(result!.endpointIndex).toBe(0);
+    });
+
+    it("isNearHandle detects intermediate vertices", () => {
+      layer.setSelectedRoad(multiPointRoad);
+      // Intermediate vertex at (50, 25)
+      expect(layer.isNearHandle(50, 25)).toBe(true);
+      // Point far from any vertex
+      expect(layer.isNearHandle(75, 0)).toBe(false);
+    });
   });
 
   describe("isNearHandle", () => {
