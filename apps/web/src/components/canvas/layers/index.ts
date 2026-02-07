@@ -92,4 +92,5 @@ export type {
   ConnectionCandidate,
   ArterialGenerationResult,
 } from "./poiArterialValidator";
+export { generatePOIsForDistrict } from "./poiAutoGenerator";
 
