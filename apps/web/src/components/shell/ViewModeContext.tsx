@@ -41,3 +41,7 @@ export function useViewMode() {
   }
   return context;
 }
+
+export function useViewModeOptional(): ViewModeContextValue | null {
+  return useContext(ViewModeContext);
+}
