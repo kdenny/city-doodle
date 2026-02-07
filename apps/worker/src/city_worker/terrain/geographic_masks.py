@@ -303,6 +303,76 @@ def river_valley_mask(
     return heightfield - depression
 
 
+def bay_harbor_mask(
+    heightfield: NDArray[np.float64], ctx: MaskContext
+) -> NDArray[np.float64]:
+    """Concave bay indentation mask for bay/harbor worlds (CITY-392).
+
+    Creates a protected natural harbor by:
+      1. Applying a directional gradient so one side is ocean, the
+         other is land (the coastline).
+      2. Carving a U-shaped bay depression into the land side so
+         water wraps around three sides of the city center.
+
+    The ocean direction is seed-deterministic.
+    """
+    res = ctx.resolution
+    ts = ctx.tile_size
+    cx, cy = ts * 0.5, ts * 0.5
+
+    # Seed-based ocean direction
+    ocean_dir = _seeded_hash(ctx.seed, 30) * 2.0 * math.pi
+    cos_d, sin_d = math.cos(ocean_dir), math.sin(ocean_dir)
+
+    # Build world-coordinate grids
+    step = ts / res
+    xs = ctx.tx * ts + np.arange(res, dtype=np.float64) * step
+    ys = ctx.ty * ts + np.arange(res, dtype=np.float64) * step
+    xx, yy = np.meshgrid(xs, ys)
+    dx, dy = xx - cx, yy - cy
+
+    # Rotated coordinates: u = toward ocean, v = along coast
+    u = dx * cos_d + dy * sin_d
+    v = -dx * sin_d + dy * cos_d
+
+    # ── Step 1: Directional gradient ──
+    # Bias heights so the ocean side is lower and land side is higher.
+    # This creates a clear coastline running roughly through the center.
+    grad_scale = ts * 1.5
+    gradient = np.clip(0.5 - u / grad_scale * 0.4, 0.3, 1.0)
+    result = heightfield * gradient
+
+    # ── Step 2: Bay carve ──
+    # Semi-elliptical depression opening toward the ocean.
+    bay_depth = ts * 0.40   # How far the bay extends into the land
+    bay_half_w = ts * 0.30  # Half-width of the bay opening
+    bay_max_dep = 0.30      # Maximum height depression inside the bay
+
+    # Width narrows linearly from opening (u ≈ 0) to back (u = -bay_depth)
+    t_bay = np.clip((u + bay_depth) / bay_depth, 0.0, 1.0)
+    width_at_u = bay_half_w * t_bay
+
+    # Inside the bay region?
+    in_bay_u = (u > -bay_depth) & (u < ts * 0.05)
+    in_bay_v = np.abs(v) < width_at_u
+    in_bay = in_bay_u & in_bay_v
+
+    # Smooth depression: strongest at center of bay, fading at walls
+    safe_width = np.maximum(width_at_u, 1e-10)
+    v_norm = np.where(
+        width_at_u > 1e-10,
+        np.abs(v) / safe_width,
+        np.ones_like(v),
+    )
+    depression = np.where(
+        in_bay,
+        bay_max_dep * (1.0 - _smoothstep(v_norm)) * t_bay,
+        0.0,
+    )
+
+    return result - depression
+
+
 def delta_mask(
     heightfield: NDArray[np.float64], ctx: MaskContext
 ) -> NDArray[np.float64]:
@@ -417,7 +487,7 @@ def delta_mask(
 
 _MASK_REGISTRY: dict[str, MaskFn] = {
     "coastal": identity_mask,
-    "bay_harbor": identity_mask,
+    "bay_harbor": bay_harbor_mask,
     "river_valley": river_valley_mask,
     "lakefront": identity_mask,
     "inland": identity_mask,

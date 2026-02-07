@@ -2065,6 +2065,90 @@ class TestRiverValleyMask:
         assert len(result.all_tiles()) == 9
 
 
+class TestBayHarborMask:
+    """Tests for bay/harbor concave indentation mask (CITY-392)."""
+
+    def test_bay_harbor_mask_registered(self):
+        """bay_harbor_mask should be registered for 'bay_harbor' setting."""
+        from city_worker.terrain.geographic_masks import bay_harbor_mask, get_mask
+
+        assert get_mask("bay_harbor") is bay_harbor_mask
+
+    def test_center_has_mixed_land_and_water(self):
+        """The center tile should have both high and low values (land + bay)."""
+        import numpy as np
+        from city_worker.terrain.geographic_masks import MaskContext, bay_harbor_mask
+
+        hf = np.full((32, 32), 0.6)
+        ctx = MaskContext(tx=0, ty=0, tile_size=500.0, resolution=32, seed=42)
+        result = bay_harbor_mask(hf, ctx)
+        # Should have range — both high (land) and low (bay) areas
+        assert result.max() - result.min() > 0.15, (
+            f"Range {result.max() - result.min():.3f} too narrow"
+        )
+
+    def test_directional_gradient_exists(self):
+        """One side should have higher terrain than the other (coast gradient)."""
+        import numpy as np
+        from city_worker.terrain.geographic_masks import MaskContext, bay_harbor_mask
+
+        hf = np.full((32, 32), 0.6)
+        ctx = MaskContext(tx=0, ty=0, tile_size=500.0, resolution=32, seed=42)
+        result = bay_harbor_mask(hf, ctx)
+        # Compare left half vs right half — one should be higher
+        left = result[:, :16].mean()
+        right = result[:, 16:].mean()
+        assert abs(left - right) > 0.02, (
+            f"No gradient detected: left={left:.3f} right={right:.3f}"
+        )
+
+    def test_bay_creates_depression(self):
+        """The bay should create a depression below the surrounding land."""
+        import numpy as np
+        from city_worker.terrain.geographic_masks import MaskContext, bay_harbor_mask
+
+        hf = np.full((32, 32), 0.6)
+        ctx = MaskContext(tx=0, ty=0, tile_size=500.0, resolution=32, seed=42)
+        result = bay_harbor_mask(hf, ctx)
+        # The minimum value should be noticeably lower than the maximum
+        assert result.min() < result.max() - 0.1
+
+    def test_mask_is_deterministic(self):
+        """Same seed should produce identical masks."""
+        import numpy as np
+        from city_worker.terrain.geographic_masks import MaskContext, bay_harbor_mask
+
+        hf = np.full((16, 16), 0.6)
+        ctx = MaskContext(tx=0, ty=0, tile_size=500.0, resolution=16, seed=42)
+        r1 = bay_harbor_mask(hf, ctx)
+        r2 = bay_harbor_mask(hf, ctx)
+        np.testing.assert_array_equal(r1, r2)
+
+    def test_different_seeds_produce_different_bays(self):
+        """Different seeds should create differently oriented bays."""
+        import numpy as np
+        from city_worker.terrain.geographic_masks import MaskContext, bay_harbor_mask
+
+        hf = np.full((32, 32), 0.6)
+        ctx1 = MaskContext(tx=0, ty=0, tile_size=500.0, resolution=32, seed=42)
+        ctx2 = MaskContext(tx=0, ty=0, tile_size=500.0, resolution=32, seed=999)
+        r1 = bay_harbor_mask(hf, ctx1)
+        r2 = bay_harbor_mask(hf, ctx2)
+        assert not np.array_equal(r1, r2)
+
+    def test_bay_harbor_generates_through_full_pipeline(self):
+        """Bay/harbor setting should produce valid terrain through generator."""
+        config = TerrainConfig(
+            world_seed=42,
+            geographic_setting="bay_harbor",
+            resolution=16,
+            tile_size=500.0,
+        )
+        gen = TerrainGenerator(config)
+        result = gen.generate_3x3(0, 0)
+        assert len(result.all_tiles()) == 9
+
+
 class TestDeltaMask:
     """Tests for delta fan-shaped river mouth mask (CITY-393)."""
 
