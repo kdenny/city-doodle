@@ -154,6 +154,65 @@ const CITY_LIMITS_STYLE = {
 };
 
 /**
+ * Grid-based spatial index for O(1) road proximity lookups.
+ * Divides the world into cells and maps each cell to the roads that
+ * pass through it (including a buffer for hit-testing tolerance).
+ */
+class RoadSpatialIndex {
+  private cellSize: number;
+  private grid: Map<string, Road[]> = new Map();
+
+  constructor(cellSize: number = 50) {
+    this.cellSize = cellSize;
+  }
+
+  /** Build index from a list of roads. */
+  build(roads: Road[]): void {
+    this.grid.clear();
+    const buffer = ROAD_HIT_DISTANCE;
+
+    for (const road of roads) {
+      const points = road.line.points;
+      if (points.length < 2) continue;
+
+      // For each segment, find all cells it could touch (with buffer)
+      for (let i = 0; i < points.length - 1; i++) {
+        const x1 = Math.min(points[i].x, points[i + 1].x) - buffer;
+        const y1 = Math.min(points[i].y, points[i + 1].y) - buffer;
+        const x2 = Math.max(points[i].x, points[i + 1].x) + buffer;
+        const y2 = Math.max(points[i].y, points[i + 1].y) + buffer;
+
+        const minCellX = Math.floor(x1 / this.cellSize);
+        const minCellY = Math.floor(y1 / this.cellSize);
+        const maxCellX = Math.floor(x2 / this.cellSize);
+        const maxCellY = Math.floor(y2 / this.cellSize);
+
+        for (let cx = minCellX; cx <= maxCellX; cx++) {
+          for (let cy = minCellY; cy <= maxCellY; cy++) {
+            const key = `${cx},${cy}`;
+            let bucket = this.grid.get(key);
+            if (!bucket) {
+              bucket = [];
+              this.grid.set(key, bucket);
+            }
+            // Avoid duplicate road entries in the same cell
+            if (bucket[bucket.length - 1] !== road) {
+              bucket.push(road);
+            }
+          }
+        }
+      }
+    }
+  }
+
+  /** Get candidate roads near a world coordinate. */
+  getCandidates(x: number, y: number): Road[] {
+    const key = `${Math.floor(x / this.cellSize)},${Math.floor(y / this.cellSize)}`;
+    return this.grid.get(key) || [];
+  }
+}
+
+/**
  * Result of a hit test on the features layer.
  */
 export interface HitTestResult {
@@ -176,6 +235,8 @@ export class FeaturesLayer {
   private districtScale: number = 1;
   /** ID of the currently selected road (null = no selection) */
   private selectedRoadId: string | null = null;
+  /** Spatial index for fast road hit testing */
+  private roadIndex: RoadSpatialIndex = new RoadSpatialIndex();
 
   constructor() {
     this.container = new Container();
@@ -225,6 +286,7 @@ export class FeaturesLayer {
   setData(data: FeaturesData): void {
     this.data = data;
     this.districtScale = this.computeDistrictScale(data.districts);
+    this.roadIndex.build(data.roads);
     this.render();
   }
 
@@ -834,9 +896,10 @@ export class FeaturesLayer {
       }
     }
 
-    // Check roads next
+    // Check roads next (using spatial index for O(1) lookup)
     if (this.roadsGraphics.visible) {
-      for (const road of this.data.roads) {
+      const candidates = this.roadIndex.getCandidates(worldX, worldY);
+      for (const road of candidates) {
         if (this.hitTestRoad(road, worldX, worldY)) {
           return { type: "road", feature: road };
         }
