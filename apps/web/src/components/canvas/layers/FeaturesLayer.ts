@@ -8,12 +8,15 @@
  *   Pass 2 — Fills (road surface): drawn on top
  *
  * Road widths are scaled by `zoomScale = clamp(currentZoom, 0.5, 1.5) * districtScale`,
- * where `districtScale` is the average district diagonal / 200, clamped to [0.5, 3].
+ * where `districtScale` is the average district diagonal / 40, clamped to [0.5, 3].
  * This keeps road widths proportional to the district size.
  *
- * Minimum width enforcement (CITY-377): Roads never render below MIN_ROAD_WIDTH (0.8)
- * for fills or MIN_CASING_WIDTH (1.5) for casings, preventing sub-pixel invisibility
- * at low zoom or with small districts.
+ * CITY-377: The reference diameter for districtScale is 40 (world units), matching
+ * typical district sizes (~30 world units diagonal). The previous value of 200
+ * was for pixel-space and caused districtScale=0.5 for all normal districts,
+ * halving road widths to invisibility. Minimum width enforcement ensures roads
+ * never render below MIN_ROAD_WIDTH (0.8) for fills or MIN_CASING_WIDTH (1.5)
+ * for casings.
  *
  * ### Road style hierarchy (drawn bottom-to-top):
  *   trail → local → collector → arterial → highway
@@ -100,16 +103,16 @@ const ROAD_STYLES: Record<RoadClass, RoadStyle> = {
   collector: {
     width: 4,
     color: 0xffffff, // White
-    casingWidth: 1,
-    casingColor: 0xaaaaaa, // Light gray outline
+    casingWidth: 1.5,
+    casingColor: 0x888888, // Medium gray outline - must contrast against district fills
     dashed: false,
     minZoom: 0.15, // Visible at most zoom levels
   },
   local: {
     width: 2,
     color: 0xffffff, // White
-    casingWidth: 0.5,
-    casingColor: 0xcccccc, // Subtle gray outline
+    casingWidth: 1,
+    casingColor: 0x999999, // Gray outline - must contrast against district fills
     dashed: false,
     minZoom: 0.3, // Visible when not extremely zoomed out
   },
@@ -516,7 +519,15 @@ export class FeaturesLayer {
 
   /**
    * Compute a road width scale factor from the average district diameter.
-   * The base road widths were designed for districts ~200px across.
+   *
+   * CITY-377: The reference diameter must match the actual world-unit coordinate
+   * space districts use. Districts are typically ~30 world units across (diagonal).
+   * A reference of 40 means roads render at full defined width for ~40-unit districts
+   * and scale down slightly for smaller ones. The clamp [0.5, 3] prevents extremes.
+   *
+   * Previous value of 200 was designed for pixel-space distances, not world units,
+   * which caused districtScale=0.5 for typical districts — halving all road widths
+   * and making local/collector streets invisible.
    */
   private computeDistrictScale(districts: District[]): number {
     if (districts.length === 0) return 1;
@@ -536,7 +547,7 @@ export class FeaturesLayer {
     }
 
     const avgDiameter = totalDiameter / districts.length;
-    const referenceDiameter = 200;
+    const referenceDiameter = 40;
     // Clamp between 0.5x and 3x to avoid extreme values
     return Math.max(0.5, Math.min(3, avgDiameter / referenceDiameter));
   }
@@ -786,9 +797,10 @@ export class FeaturesLayer {
       (a, b) => classOrder.indexOf(a.roadClass) - classOrder.indexOf(b.roadClass)
     );
 
-    // Filter roads by zoom level
+    // Filter roads by zoom level (skip roads with unknown class to prevent crash)
     const visibleRoads = sortedRoads.filter((road) => {
       const style = ROAD_STYLES[road.roadClass];
+      if (!style) return false;
       return this.currentZoom >= style.minZoom;
     });
 
