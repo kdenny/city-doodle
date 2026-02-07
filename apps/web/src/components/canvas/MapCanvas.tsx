@@ -52,6 +52,7 @@ import { usePlacementOptional, usePlacedSeedsOptional } from "../palette";
 import { useSelectionContextOptional } from "../build-view/SelectionContext";
 import type { SelectedFeature } from "../build-view/SelectionContext";
 import { useEditLockOptional } from "../shell/EditLockContext";
+import { useViewModeOptional } from "../shell/ViewModeContext";
 import type { District, Road, POI, CityLimits } from "./layers";
 import type { GeographicSetting } from "../../api/types";
 import { TILE_SIZE, WORLD_TILES, WORLD_SIZE } from "../../utils/worldConstants";
@@ -136,6 +137,17 @@ export const MapCanvas = forwardRef<MapCanvasHandle, MapCanvasProps>(
   // Get edit lock context - when not editing, block mutating interactions
   const editLockContext = useEditLockOptional();
   const isEditingAllowed = editLockContext?.isEditing ?? true;
+
+  // Get view mode to auto-enable subway tunnels in transit view
+  const viewModeContext = useViewModeOptional();
+  const viewMode = viewModeContext?.viewMode ?? "build";
+
+  // Auto-enable subway tunnel visibility in transit view
+  useEffect(() => {
+    if (!subwayStationLayerRef.current) return;
+    const shouldShowTunnels = viewMode === "transit" || layerVisibility.subwayTunnels;
+    subwayStationLayerRef.current.setTunnelsVisible(shouldShowTunnels);
+  }, [viewMode, layerVisibility.subwayTunnels, isReady]);
 
   // Ref to setTerrainData for use in init effect (avoids stale closure)
   const setTerrainDataRef = useRef(terrainContext?.setTerrainData);
