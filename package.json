@@ -21,7 +21,5 @@
   "devDependencies": {
     "@playwright/test": "^1.42.0"
   },
-  "dependencies": {
-    "polygon-clipping": "^0.15.7"
-  }
+  "dependencies": {}
 }
