@@ -116,7 +116,7 @@ describe("TransitLineDrawingContext", () => {
       expect(result.current.state.connectedStations[0]).toEqual(mockStationA);
     });
 
-    it("should call onSegmentCreate when connecting two stations", () => {
+    it("should call onSegmentCreate when connecting two stations", async () => {
       const onSegmentCreate = vi.fn();
       const { result } = renderHook(() => useTransitLineDrawing(), {
         wrapper: createWrapper({ onSegmentCreate }),
@@ -130,8 +130,8 @@ describe("TransitLineDrawingContext", () => {
         result.current.selectStation(mockStationA);
       });
 
-      act(() => {
-        result.current.selectStation(mockStationB);
+      await act(async () => {
+        await result.current.selectStation(mockStationB);
       });
 
       expect(onSegmentCreate).toHaveBeenCalledTimes(1);

@@ -394,7 +394,6 @@ function DrawingWithFeatures({ children }: { children: ReactNode }) {
  */
 function TransitLineDrawingWithTransit({ children }: { children: ReactNode }) {
   const transitContext = useTransit();
-  const [currentLineId, setCurrentLineId] = useState<string | null>(null);
 
   const handleSegmentCreate = useCallback(
     async (
@@ -402,9 +401,9 @@ function TransitLineDrawingWithTransit({ children }: { children: ReactNode }) {
       toStation: RailStationData,
       lineProperties: TransitLineProperties,
       lineId: string | null
-    ) => {
+    ): Promise<string | null> => {
       // If no line exists yet, create one
-      let actualLineId = lineId || currentLineId;
+      let actualLineId = lineId;
       if (!actualLineId) {
         const newLine = await transitContext.createLine({
           name: lineProperties.name,
@@ -413,10 +412,9 @@ function TransitLineDrawingWithTransit({ children }: { children: ReactNode }) {
         });
         if (newLine) {
           actualLineId = newLine.id;
-          setCurrentLineId(newLine.id);
         } else {
           console.error("Failed to create transit line");
-          return;
+          return null;
         }
       }
 
@@ -428,13 +426,15 @@ function TransitLineDrawingWithTransit({ children }: { children: ReactNode }) {
         toStation.id,
         isUnderground
       );
+
+      // Return the line ID so the drawing context can track it
+      return actualLineId;
     },
-    [transitContext, currentLineId]
+    [transitContext]
   );
 
   const handleLineComplete = useCallback(() => {
-    // Reset the current line ID when drawing is complete
-    setCurrentLineId(null);
+    // Drawing context resets its own lineId on complete
   }, []);
 
   return (
