@@ -574,20 +574,30 @@ export function FeaturesProvider({
   const deleteRoadEdgeMutation = useDeleteRoadEdge();
 
   // Load districts and neighborhoods from API when data is available
+  // CITY-365: Preserve optimistically added districts that are still pending API confirmation,
+  // so rapid sequential placement doesn't cause districts to flicker/vanish when query refetch
+  // overwrites local state.
   useEffect(() => {
     if (worldId && apiDistricts) {
       const loadedDistricts = apiDistricts.map(fromApiDistrict);
       // Restore district-internal roads from persisted street_grid data
       const streetGridRoads = apiDistricts.flatMap(roadsFromApiStreetGrid);
       const loadedDistrictIds = new Set(loadedDistricts.map((d) => d.id));
-      setFeaturesState((prev) => ({
-        ...prev,
-        districts: loadedDistricts,
-        roads: [...streetGridRoads, ...prev.roads.filter((r) => {
-          // Keep roads not belonging to any loaded district (e.g., inter-district roads from road network)
-          return !r.districtId || !loadedDistrictIds.has(r.districtId);
-        })],
-      }));
+      setFeaturesState((prev) => {
+        // Keep districts that are still pending API create (not yet in API response)
+        const pendingDistricts = prev.districts.filter(
+          (d) => pendingCreates.current.has(d.id)
+        );
+        return {
+          ...prev,
+          districts: [...loadedDistricts, ...pendingDistricts],
+          roads: [...streetGridRoads, ...prev.roads.filter((r) => {
+            // Keep roads not belonging to any loaded district (e.g., inter-district roads,
+            // or roads from pending districts whose temp IDs won't be in loadedDistrictIds)
+            return !r.districtId || !loadedDistrictIds.has(r.districtId);
+          })],
+        };
+      });
     }
   }, [worldId, apiDistricts]);
 
