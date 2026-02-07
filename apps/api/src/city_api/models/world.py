@@ -4,7 +4,7 @@ import uuid
 from datetime import datetime
 from typing import TYPE_CHECKING
 
-from sqlalchemy import DateTime, ForeignKey, Integer, String, Uuid, func
+from sqlalchemy import DateTime, ForeignKey, Index, Integer, String, Uuid, func
 from sqlalchemy.orm import Mapped, mapped_column, relationship
 
 from city_api.database import Base, JSONVariant
@@ -60,3 +60,5 @@ class World(Base):
     pois: Mapped[list["POI"]] = relationship(
         "POI", back_populates="world", cascade="all, delete-orphan"
     )
+
+    __table_args__ = (Index("ix_worlds_user_id", "user_id"),)
