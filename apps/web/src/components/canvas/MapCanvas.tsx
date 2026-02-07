@@ -105,6 +105,15 @@ export const MapCanvas = forwardRef<MapCanvasHandle, MapCanvasProps>(
     DEFAULT_LAYER_VISIBILITY
   );
 
+  // CITY-376: Hover tooltip state for stations
+  const [hoveredStationTooltip, setHoveredStationTooltip] = useState<{
+    name: string;
+    stationType: "rail" | "subway";
+    lines: { name: string; color: string }[];
+    screenX: number;
+    screenY: number;
+  } | null>(null);
+
   // Try to get the context (may be null if not wrapped in provider)
   const canvasContext = useContext(MapCanvasContextInternal);
 
@@ -185,6 +194,8 @@ export const MapCanvas = forwardRef<MapCanvasHandle, MapCanvasProps>(
     featuresContext,
     onFeatureSelect,
     isEditingAllowed,
+    viewMode,
+    setHoveredStationTooltip,
     snapEngine: null as SnapEngine | null,
   });
 
@@ -211,6 +222,8 @@ export const MapCanvas = forwardRef<MapCanvasHandle, MapCanvasProps>(
     featuresContext,
     onFeatureSelect,
     isEditingAllowed,
+    viewMode,
+    setHoveredStationTooltip,
     snapEngine,
   };
 
@@ -1189,6 +1202,49 @@ export const MapCanvas = forwardRef<MapCanvasHandle, MapCanvasProps>(
 
         s.transitLineDrawingContext?.setHoveredStation?.(hoveredStation);
       }
+
+      // CITY-376: Station hover tooltip (transit view, non-drawing mode)
+      if (s.viewMode === "transit" && !isLineDrawing) {
+        let tooltipStation: { id: string; name: string; stationType: "rail" | "subway" } | null = null;
+
+        if (railStationLayerRef.current) {
+          const railHit = railStationLayerRef.current.hitTest(worldPos.x, worldPos.y);
+          if (railHit) {
+            tooltipStation = { id: railHit.id, name: railHit.name, stationType: "rail" };
+          }
+        }
+        if (!tooltipStation && subwayStationLayerRef.current) {
+          const subwayHit = subwayStationLayerRef.current.hitTest(worldPos.x, worldPos.y);
+          if (subwayHit) {
+            tooltipStation = { id: subwayHit.id, name: subwayHit.name, stationType: "subway" };
+          }
+        }
+
+        if (tooltipStation) {
+          // Look up lines served by this station
+          const stationLines: { name: string; color: string }[] = [];
+          const network = s.transitContext?.transitNetwork;
+          if (network) {
+            for (const line of network.lines) {
+              if (line.segments.some((seg) => seg.from_station_id === tooltipStation!.id || seg.to_station_id === tooltipStation!.id)) {
+                stationLines.push({ name: line.name, color: line.color });
+              }
+            }
+          }
+          s.setHoveredStationTooltip({
+            name: tooltipStation.name,
+            stationType: tooltipStation.stationType,
+            lines: stationLines,
+            screenX: event.global.x,
+            screenY: event.global.y,
+          });
+        } else {
+          s.setHoveredStationTooltip(null);
+        }
+      } else if (s.viewMode !== "transit") {
+        // Clear tooltip when not in transit view
+        s.setHoveredStationTooltip(null);
+      }
     };
 
     const handlePointerUp = (event: { global: { x: number; y: number } }) => {
@@ -1334,6 +1390,8 @@ export const MapCanvas = forwardRef<MapCanvasHandle, MapCanvasProps>(
       }
 
       // Handle feature selection (default mode - always allowed)
+      // CITY-376: Clear hover tooltip on click
+      s.setHoveredStationTooltip(null);
       if (s.onFeatureSelect) {
         // Check rail stations first (on top)
         if (railStationLayerRef.current) {
@@ -1469,6 +1527,36 @@ export const MapCanvas = forwardRef<MapCanvasHandle, MapCanvasProps>(
           visibility={layerVisibility}
           onChange={handleVisibilityChange}
         />
+      )}
+      {/* CITY-376: Station hover tooltip */}
+      {hoveredStationTooltip && (
+        <div
+          className="absolute pointer-events-none z-50"
+          style={{
+            left: hoveredStationTooltip.screenX + 12,
+            top: hoveredStationTooltip.screenY - 8,
+          }}
+        >
+          <div className="bg-gray-900 text-white text-xs rounded-md px-3 py-2 shadow-lg max-w-48">
+            <div className="font-medium">{hoveredStationTooltip.name}</div>
+            <div className="text-gray-400 text-[10px] mt-0.5">
+              {hoveredStationTooltip.stationType === "subway" ? "Subway" : "Rail"} Station
+            </div>
+            {hoveredStationTooltip.lines.length > 0 && (
+              <div className="mt-1 pt-1 border-t border-gray-700 space-y-0.5">
+                {hoveredStationTooltip.lines.map((line) => (
+                  <div key={line.name} className="flex items-center gap-1.5">
+                    <div
+                      className="w-2 h-2 rounded-full shrink-0"
+                      style={{ backgroundColor: line.color }}
+                    />
+                    <span className="text-gray-300">{line.name}</span>
+                  </div>
+                ))}
+              </div>
+            )}
+          </div>
+        </div>
       )}
     </div>
   );
