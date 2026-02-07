@@ -20,11 +20,29 @@ Individual mask implementations are added by follow-up tickets:
 
 from __future__ import annotations
 
+import math
 from dataclasses import dataclass
 from typing import Callable
 
 import numpy as np
 from numpy.typing import NDArray
+
+
+# ── Helpers ──────────────────────────────────────────────────────
+
+
+def _seeded_hash(seed: int, index: int) -> float:
+    """Deterministic float in [0, 1) from *seed* + *index*."""
+    h = ((seed * 2654435761) ^ (index * 340573321)) & 0xFFFFFFFF
+    h = ((h >> 16) ^ h) * 0x45D9F3B & 0xFFFFFFFF
+    h = ((h >> 16) ^ h) & 0xFFFFFFFF
+    return h / 0xFFFFFFFF
+
+
+def _smoothstep(t: NDArray[np.float64]) -> NDArray[np.float64]:
+    """Hermite smoothstep: 3t^2 - 2t^3, clamped to [0, 1]."""
+    t = np.clip(t, 0.0, 1.0)
+    return t * t * (3.0 - 2.0 * t)
 
 
 @dataclass(frozen=True)
@@ -65,12 +83,87 @@ def identity_mask(
     return heightfield
 
 
+def river_valley_mask(
+    heightfield: NDArray[np.float64], ctx: MaskContext
+) -> NDArray[np.float64]:
+    """Meandering valley channel mask for river-valley worlds (CITY-391).
+
+    Carves a deliberate river valley through the terrain.  The valley
+    has a meandering centerline, a narrow deep river channel, and
+    wider valley slopes on either side.  Direction and meander phase
+    are seed-deterministic.
+
+    The mask *subtracts* height near the river rather than multiplying,
+    so terrain far from the river keeps its full noise-derived variation
+    while the valley itself is depressed below the water level.
+    """
+    res = ctx.resolution
+    ts = ctx.tile_size
+
+    # World center
+    cx = ts * 0.5
+    cy = ts * 0.5
+
+    # Seed-based river direction (0 to π — half circle is sufficient)
+    direction = _seeded_hash(ctx.seed, 20) * math.pi
+
+    # Meander parameters
+    meander_amp = ts * 0.15
+    meander_freq = 2.0 * math.pi / (ts * 2.0)
+    meander_phase = _seeded_hash(ctx.seed, 21) * 2.0 * math.pi
+    # Second harmonic for more natural meanders
+    meander_amp2 = ts * 0.06
+    meander_freq2 = meander_freq * 2.3
+    meander_phase2 = _seeded_hash(ctx.seed, 22) * 2.0 * math.pi
+
+    # Valley geometry
+    river_half_w = ts * 0.03    # River channel half-width
+    valley_half_w = ts * 0.25   # Full valley half-width
+    max_depression = 0.4        # Max height reduction at river bottom
+
+    # Build world-coordinate grids
+    step = ts / res
+    xs = ctx.tx * ts + np.arange(res, dtype=np.float64) * step
+    ys = ctx.ty * ts + np.arange(res, dtype=np.float64) * step
+    xx, yy = np.meshgrid(xs, ys)
+
+    dx = xx - cx
+    dy = yy - cy
+
+    # Rotate to river-aligned coordinates
+    cos_d, sin_d = math.cos(direction), math.sin(direction)
+    u = dx * cos_d + dy * sin_d    # Along river
+    v = -dx * sin_d + dy * cos_d   # Perpendicular
+
+    # Meandering centerline offset
+    meander = (
+        meander_amp * np.sin(u * meander_freq + meander_phase)
+        + meander_amp2 * np.sin(u * meander_freq2 + meander_phase2)
+    )
+
+    # Perpendicular distance from the meandering centerline
+    dist = np.abs(v - meander)
+
+    # Valley profile: two-zone cross-section
+    #   1. River channel (dist < river_half_w): full depression
+    #   2. Valley walls (river_half_w < dist < valley_half_w): smooth rise
+    #   3. Beyond valley: no change
+    t = np.clip(
+        (dist - river_half_w) / np.maximum(valley_half_w - river_half_w, 1e-10),
+        0.0,
+        1.0,
+    )
+    depression = max_depression * (1.0 - _smoothstep(t))
+
+    return heightfield - depression
+
+
 # ── Mask registry ────────────────────────────────────────────────
 
 _MASK_REGISTRY: dict[str, MaskFn] = {
     "coastal": identity_mask,
     "bay_harbor": identity_mask,
-    "river_valley": identity_mask,
+    "river_valley": river_valley_mask,
     "lakefront": identity_mask,
     "inland": identity_mask,
     "island": identity_mask,
