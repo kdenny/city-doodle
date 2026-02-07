@@ -65,6 +65,25 @@ def identity_mask(
     return heightfield
 
 
+def inland_mask(
+    heightfield: NDArray[np.float64], ctx: MaskContext
+) -> NDArray[np.float64]:
+    """Height-floor mask for inland worlds (CITY-388).
+
+    Compresses the height range upward so almost all terrain sits
+    above the water level.  With the inland preset's water_level of
+    ~0.15, the floor of 0.12 means only the deepest noise valleys
+    (original height < ~0.034) produce any water at all — resulting
+    in only scattered tiny ponds and creeks, never major rivers or
+    large lakes.
+
+    Mapping: h -> floor + h * (1 - floor)
+      [0, 1] -> [0.12, 1.0]
+    """
+    floor = 0.12
+    return floor + heightfield * (1.0 - floor)
+
+
 # ── Mask registry ────────────────────────────────────────────────
 
 _MASK_REGISTRY: dict[str, MaskFn] = {
@@ -72,7 +91,7 @@ _MASK_REGISTRY: dict[str, MaskFn] = {
     "bay_harbor": identity_mask,
     "river_valley": identity_mask,
     "lakefront": identity_mask,
-    "inland": identity_mask,
+    "inland": inland_mask,
     "island": identity_mask,
     "peninsula": identity_mask,
     "delta": identity_mask,
