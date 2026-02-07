@@ -71,6 +71,7 @@ function fractalCoast(
     const dx = b.x - a.x;
     const dy = b.y - a.y;
     const len = Math.sqrt(dx * dx + dy * dy);
+    if (len === 0) { result.push(a); continue; }
     // Displace perpendicular to the segment
     const nx = -dy / len;
     const ny = dx / len;
