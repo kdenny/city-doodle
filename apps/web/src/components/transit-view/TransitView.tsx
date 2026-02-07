@@ -12,7 +12,7 @@ import { SEED_TYPES } from "../palette/types";
 import { useViewMode } from "../shell/ViewModeContext";
 import { TransitLinePropertiesDialog } from "../build-view/TransitLinePropertiesDialog";
 import type { RailStationData } from "../canvas/layers";
-import { useDeleteTransitLineSegment } from "../../api/hooks";
+import { useDeleteTransitLineSegment, useDeleteTransitStation } from "../../api/hooks";
 
 interface TransitViewProps {
   children: ReactNode;
@@ -38,6 +38,7 @@ export function TransitView({
   const { setViewMode } = useViewMode();
   const { worldId } = useParams<{ worldId: string }>();
   const deleteSegmentMutation = useDeleteTransitLineSegment();
+  const deleteStationMutation = useDeleteTransitStation();
 
   const [selectedLine, setSelectedLine] = useState<TransitLine | null>(null);
   const [isUpdating, setIsUpdating] = useState(false);
@@ -155,18 +156,6 @@ export function TransitView({
     [transitContext]
   );
 
-  const handleDeleteLine = useCallback(
-    async (lineId: string) => {
-      if (!transitContext?.deleteLine) return;
-      const success = await transitContext.deleteLine(lineId);
-      if (success) {
-        setSelectedLine(null);
-        transitContext.setHighlightedLineId(null);
-      }
-    },
-    [transitContext]
-  );
-
   // CITY-363: Extend an existing line from its terminus
   // CITY-368: Show terminus choice when a line has 2 termini
   const handleExtendLine = useCallback(
@@ -265,6 +254,8 @@ export function TransitView({
       const toStation = network.stations.find((s) => s.id === seg.to_station_id);
       return {
         id: seg.id,
+        fromStationId: seg.from_station_id,
+        toStationId: seg.to_station_id,
         fromStationName: fromStation?.name ?? "Unknown",
         toStationName: toStation?.name ?? "Unknown",
         orderInLine: seg.order_in_line,
@@ -272,17 +263,99 @@ export function TransitView({
     });
   }, [selectedLine, transitContext?.transitNetwork]);
 
-  // CITY-367: Delete a segment
-  const handleDeleteSegment = useCallback(
-    (segmentId: string) => {
-      if (!selectedLine) return;
-      deleteSegmentMutation.mutate({
-        segmentId,
-        lineId: selectedLine.id,
-        worldId,
-      });
+  // Compute station IDs that appear in OTHER lines' segments (won't be orphaned)
+  const stationIdsUsedByOtherLines: Set<string> = useMemo(() => {
+    if (!selectedLine || !transitContext?.transitNetwork) return new Set();
+    const network = transitContext.transitNetwork;
+    const ids = new Set<string>();
+    for (const line of network.lines) {
+      if (line.id === selectedLine.id) continue;
+      for (const seg of line.segments) {
+        ids.add(seg.from_station_id);
+        ids.add(seg.to_station_id);
+      }
+    }
+    return ids;
+  }, [selectedLine, transitContext?.transitNetwork]);
+
+  // Delete a station by ID
+  const deleteStation = useCallback(
+    (stationId: string) => {
+      if (!worldId) return;
+      deleteStationMutation.mutate({ stationId, worldId });
     },
-    [selectedLine, deleteSegmentMutation, worldId]
+    [deleteStationMutation, worldId]
+  );
+
+  // CITY-367: Delete a segment (with optional orphan cleanup)
+  const handleDeleteSegment = useCallback(
+    (segmentId: string, deleteOrphanedStations: boolean) => {
+      if (!selectedLine || !selectedLineSegments) return;
+
+      // If deleting orphans, find which stations will be orphaned
+      let stationIdsToDelete: string[] = [];
+      if (deleteOrphanedStations) {
+        const seg = selectedLineSegments.find((s) => s.id === segmentId);
+        if (seg) {
+          for (const stationId of [seg.fromStationId, seg.toStationId]) {
+            if (stationIdsUsedByOtherLines.has(stationId)) continue;
+            const otherRefs = selectedLineSegments.filter(
+              (s) =>
+                s.id !== segmentId &&
+                (s.fromStationId === stationId || s.toStationId === stationId)
+            );
+            if (otherRefs.length === 0) {
+              stationIdsToDelete.push(stationId);
+            }
+          }
+        }
+      }
+
+      // Delete the segment first
+      deleteSegmentMutation.mutate(
+        { segmentId, lineId: selectedLine.id, worldId },
+        {
+          onSuccess: () => {
+            // Then delete orphaned stations
+            for (const stationId of stationIdsToDelete) {
+              deleteStation(stationId);
+            }
+          },
+        }
+      );
+    },
+    [selectedLine, selectedLineSegments, stationIdsUsedByOtherLines, deleteSegmentMutation, worldId, deleteStation]
+  );
+
+  // Delete the entire line (with optional orphan station cleanup)
+  const handleDeleteLine = useCallback(
+    async (lineId: string, deleteOrphanedStations: boolean) => {
+      if (!transitContext?.deleteLine) return;
+
+      // Collect station IDs to delete before the line is removed
+      let stationIdsToDelete: string[] = [];
+      if (deleteOrphanedStations && selectedLineSegments) {
+        const stationMap = new Map<string, boolean>();
+        for (const seg of selectedLineSegments) {
+          stationMap.set(seg.fromStationId, true);
+          stationMap.set(seg.toStationId, true);
+        }
+        stationIdsToDelete = Array.from(stationMap.keys()).filter(
+          (id) => !stationIdsUsedByOtherLines.has(id)
+        );
+      }
+
+      const success = await transitContext.deleteLine(lineId);
+      if (success) {
+        setSelectedLine(null);
+        transitContext.setHighlightedLineId(null);
+        // Delete orphaned stations after line deletion
+        for (const stationId of stationIdsToDelete) {
+          deleteStation(stationId);
+        }
+      }
+    },
+    [transitContext, selectedLineSegments, stationIdsUsedByOtherLines, deleteStation]
   );
 
   const handleBackgroundClick = useCallback(() => {
@@ -329,6 +402,7 @@ export function TransitView({
               isExtending={isDrawingLine}
               segments={selectedLineSegments}
               onDeleteSegment={handleDeleteSegment}
+              stationIdsUsedByOtherLines={stationIdsUsedByOtherLines}
             />
           </div>
         )}

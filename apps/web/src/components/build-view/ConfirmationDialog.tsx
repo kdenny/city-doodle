@@ -4,7 +4,7 @@
  * Displays a modal with a message and confirm/cancel buttons.
  */
 
-import { useCallback, useEffect, useRef } from "react";
+import { useCallback, useEffect, useRef, type ReactNode } from "react";
 
 export interface ConfirmationDialogProps {
   /** Whether the dialog is visible */
@@ -25,6 +25,8 @@ export interface ConfirmationDialogProps {
   onConfirm: () => void;
   /** Callback when user cancels or closes */
   onCancel: () => void;
+  /** Optional extra content rendered between details and buttons (e.g. checkboxes) */
+  children?: ReactNode;
 }
 
 export function ConfirmationDialog({
@@ -37,6 +39,7 @@ export function ConfirmationDialog({
   variant = "info",
   onConfirm,
   onCancel,
+  children,
 }: ConfirmationDialogProps) {
   const dialogRef = useRef<HTMLDivElement>(null);
 
@@ -137,6 +140,9 @@ export function ConfirmationDialog({
               ))}
             </ul>
           )}
+
+          {/* Extra content (e.g. checkboxes) */}
+          {children}
 
           {/* Buttons */}
           <div className="flex gap-3 justify-end">
