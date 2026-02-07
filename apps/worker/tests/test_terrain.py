@@ -1589,3 +1589,210 @@ class TestSeedBasedVariety:
                 if k in TerrainConfig.__dataclass_fields__
             })
             assert config is not None
+
+
+class TestGeographicMasks:
+    """Tests for geographic mask framework (CITY-386)."""
+
+    def test_identity_mask_returns_unchanged(self):
+        """identity_mask should return the heightfield unchanged."""
+        import numpy as np
+        from city_worker.terrain.geographic_masks import MaskContext, identity_mask
+
+        hf = np.random.default_rng(42).random((16, 16))
+        ctx = MaskContext(tx=0, ty=0, tile_size=500.0, resolution=16, seed=42)
+        result = identity_mask(hf, ctx)
+        np.testing.assert_array_equal(result, hf)
+
+    def test_all_settings_have_registered_masks(self):
+        """Every geographic setting should have a mask in the registry."""
+        from city_worker.terrain.geographic_masks import get_mask, identity_mask
+
+        settings = [
+            "coastal", "bay_harbor", "river_valley", "lakefront",
+            "inland", "island", "peninsula", "delta",
+        ]
+        for setting in settings:
+            mask = get_mask(setting)
+            assert mask is not None, f"No mask registered for {setting}"
+
+    def test_unknown_setting_returns_identity(self):
+        """Unknown settings should fall back to identity_mask."""
+        from city_worker.terrain.geographic_masks import get_mask, identity_mask
+
+        mask = get_mask("nonexistent_setting")
+        assert mask is identity_mask
+
+    def test_register_mask_replaces_existing(self):
+        """register_mask should replace the existing mask for a setting."""
+        import numpy as np
+        from city_worker.terrain.geographic_masks import (
+            MaskContext,
+            get_mask,
+            identity_mask,
+            register_mask,
+        )
+
+        def custom_mask(hf, ctx):
+            return hf * 0.5
+
+        register_mask("coastal", custom_mask)
+        try:
+            assert get_mask("coastal") is custom_mask
+        finally:
+            # Restore original
+            register_mask("coastal", identity_mask)
+
+    def test_apply_geographic_mask_clamps_output(self):
+        """apply_geographic_mask should clamp results to [0, 1]."""
+        import numpy as np
+        from city_worker.terrain.geographic_masks import (
+            apply_geographic_mask,
+            identity_mask,
+            register_mask,
+        )
+
+        def overflow_mask(hf, ctx):
+            return hf + 1.0  # Push all values above 1
+
+        register_mask("_test_overflow", overflow_mask)
+        try:
+            hf = np.full((16, 16), 0.8)
+            result = apply_geographic_mask(
+                hf, "_test_overflow", tx=0, ty=0,
+                tile_size=500.0, resolution=16, seed=42,
+            )
+            assert result.max() <= 1.0
+            assert result.min() >= 0.0
+        finally:
+            # Clean up
+            from city_worker.terrain.geographic_masks import _MASK_REGISTRY
+            _MASK_REGISTRY.pop("_test_overflow", None)
+
+    def test_apply_geographic_mask_clamps_negative(self):
+        """apply_geographic_mask should clamp negative values to 0."""
+        import numpy as np
+        from city_worker.terrain.geographic_masks import (
+            apply_geographic_mask,
+            register_mask,
+        )
+
+        def underflow_mask(hf, ctx):
+            return hf - 1.0  # Push all values below 0
+
+        register_mask("_test_underflow", underflow_mask)
+        try:
+            hf = np.full((16, 16), 0.2)
+            result = apply_geographic_mask(
+                hf, "_test_underflow", tx=0, ty=0,
+                tile_size=500.0, resolution=16, seed=42,
+            )
+            assert result.min() >= 0.0
+        finally:
+            from city_worker.terrain.geographic_masks import _MASK_REGISTRY
+            _MASK_REGISTRY.pop("_test_underflow", None)
+
+    def test_mask_context_has_correct_fields(self):
+        """MaskContext should expose all expected fields."""
+        from city_worker.terrain.geographic_masks import MaskContext
+
+        ctx = MaskContext(tx=3, ty=-2, tile_size=80467.2, resolution=128, seed=12345)
+        assert ctx.tx == 3
+        assert ctx.ty == -2
+        assert ctx.tile_size == 80467.2
+        assert ctx.resolution == 128
+        assert ctx.seed == 12345
+
+    def test_mask_context_is_frozen(self):
+        """MaskContext should be immutable."""
+        from city_worker.terrain.geographic_masks import MaskContext
+
+        ctx = MaskContext(tx=0, ty=0, tile_size=500.0, resolution=16, seed=42)
+        with pytest.raises(AttributeError):
+            ctx.tx = 1  # type: ignore[misc]
+
+    def test_custom_mask_receives_correct_context(self):
+        """A custom mask should receive the correct MaskContext values."""
+        import numpy as np
+        from city_worker.terrain.geographic_masks import (
+            apply_geographic_mask,
+            register_mask,
+        )
+
+        captured_ctx = {}
+
+        def spy_mask(hf, ctx):
+            captured_ctx["tx"] = ctx.tx
+            captured_ctx["ty"] = ctx.ty
+            captured_ctx["tile_size"] = ctx.tile_size
+            captured_ctx["resolution"] = ctx.resolution
+            captured_ctx["seed"] = ctx.seed
+            return hf
+
+        register_mask("_test_spy", spy_mask)
+        try:
+            hf = np.zeros((16, 16))
+            apply_geographic_mask(
+                hf, "_test_spy", tx=5, ty=-3,
+                tile_size=1000.0, resolution=16, seed=99,
+            )
+            assert captured_ctx["tx"] == 5
+            assert captured_ctx["ty"] == -3
+            assert captured_ctx["tile_size"] == 1000.0
+            assert captured_ctx["resolution"] == 16
+            assert captured_ctx["seed"] == 99
+        finally:
+            from city_worker.terrain.geographic_masks import _MASK_REGISTRY
+            _MASK_REGISTRY.pop("_test_spy", None)
+
+    def test_terrain_config_accepts_geographic_setting(self):
+        """TerrainConfig should accept the geographic_setting field."""
+        config = TerrainConfig(world_seed=42, geographic_setting="island")
+        assert config.geographic_setting == "island"
+
+    def test_terrain_config_default_geographic_setting(self):
+        """TerrainConfig should default to 'coastal'."""
+        config = TerrainConfig(world_seed=42)
+        assert config.geographic_setting == "coastal"
+
+    def test_generator_applies_mask_in_pipeline(self):
+        """TerrainGenerator should apply the geographic mask during generation."""
+        import numpy as np
+        from city_worker.terrain.geographic_masks import register_mask, identity_mask
+
+        mask_called = {"count": 0}
+
+        def counting_mask(hf, ctx):
+            mask_called["count"] += 1
+            return hf
+
+        register_mask("_test_counting", counting_mask)
+        try:
+            config = TerrainConfig(
+                world_seed=42,
+                geographic_setting="_test_counting",
+                resolution=16,
+                tile_size=500.0,
+            )
+            gen = TerrainGenerator(config)
+            gen.generate_3x3(0, 0)
+            # Should be called once per tile (9 tiles in 3x3)
+            assert mask_called["count"] == 9
+        finally:
+            register_mask("_test_counting", identity_mask)
+            from city_worker.terrain.geographic_masks import _MASK_REGISTRY
+            _MASK_REGISTRY.pop("_test_counting", None)
+
+    def test_all_presets_generate_with_mask_pipeline(self):
+        """All geographic settings should generate terrain through the mask pipeline."""
+        for setting in ["coastal", "bay_harbor", "river_valley", "lakefront",
+                        "inland", "island", "peninsula", "delta"]:
+            config = TerrainConfig(
+                world_seed=42,
+                geographic_setting=setting,
+                resolution=16,
+                tile_size=500.0,
+            )
+            gen = TerrainGenerator(config)
+            result = gen.generate_3x3(0, 0)
+            assert len(result.all_tiles()) == 9

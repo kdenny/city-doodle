@@ -6,6 +6,7 @@ from typing import Any
 import numpy as np
 
 from city_worker.terrain.bays import BayConfig, extract_bays
+from city_worker.terrain.geographic_masks import apply_geographic_mask
 from city_worker.terrain.noise import apply_erosion, generate_heightfield
 from city_worker.terrain.types import (
     TerrainConfig,
@@ -85,6 +86,17 @@ class TerrainGenerator:
             persistence=cfg.height_persistence,
             lacunarity=cfg.height_lacunarity,
             scale=cfg.height_scale,
+        )
+
+        # Apply geographic mask to shape terrain per world type (CITY-386)
+        heightfield = apply_geographic_mask(
+            heightfield=heightfield,
+            geographic_setting=cfg.geographic_setting,
+            tx=tx,
+            ty=ty,
+            tile_size=cfg.tile_size,
+            resolution=cfg.resolution,
+            seed=cfg.world_seed,
         )
 
         # Apply erosion for more realistic features
