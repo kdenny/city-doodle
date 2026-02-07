@@ -9,6 +9,7 @@ import { usePlacementOptional } from "../palette/PlacementContext";
 import { SEED_TYPES } from "../palette/types";
 import { useViewMode } from "../shell/ViewModeContext";
 import { TransitLinePropertiesDialog } from "../build-view/TransitLinePropertiesDialog";
+import type { RailStationData } from "../canvas/layers";
 
 interface TransitViewProps {
   children: ReactNode;
@@ -36,6 +37,13 @@ export function TransitView({
   const [selectedLine, setSelectedLine] = useState<TransitLine | null>(null);
   const [isUpdating, setIsUpdating] = useState(false);
   const [showLinePropertiesDialog, setShowLinePropertiesDialog] = useState(false);
+  const [terminusChoices, setTerminusChoices] = useState<{
+    lineId: string;
+    lineName: string;
+    lineColor: string;
+    lineType: "subway" | "rail";
+    termini: RailStationData[];
+  } | null>(null);
 
   const networkLines = useTransitLinesData(transitContext?.transitNetwork);
   const lines = propLines ?? networkLines;
@@ -155,6 +163,7 @@ export function TransitView({
   );
 
   // CITY-363: Extend an existing line from its terminus
+  // CITY-368: Show terminus choice when a line has 2 termini
   const handleExtendLine = useCallback(
     (lineId: string) => {
       if (!transitContext || !transitLineDrawingContext) return;
@@ -179,7 +188,30 @@ export function TransitView({
 
       if (terminusIds.length === 0) return;
 
-      // Use the last terminus (end of line) — find the station with the highest order segment
+      // Find the station data for rendering (filter by line type to prevent mixing)
+      const stationPool = line.line_type === "subway"
+        ? transitContext.subwayStations
+        : transitContext.railStations;
+
+      if (terminusIds.length >= 2) {
+        // CITY-368: Two termini — show picker
+        const terminiStations = terminusIds
+          .map((id) => stationPool.find((s) => s.id === id))
+          .filter((s): s is RailStationData => s != null);
+
+        if (terminiStations.length >= 2) {
+          setTerminusChoices({
+            lineId,
+            lineName: line.name,
+            lineColor: line.color,
+            lineType: line.line_type,
+            termini: terminiStations,
+          });
+          return;
+        }
+      }
+
+      // Single terminus — extend immediately (original behavior)
       const lastSegment = line.segments.reduce((a, b) =>
         a.order_in_line > b.order_in_line ? a : b
       );
@@ -187,17 +219,10 @@ export function TransitView({
         ? lastSegment.to_station_id
         : terminusIds[terminusIds.length - 1];
 
-      // Find the station data for rendering (filter by line type to prevent mixing)
-      const stationPool = line.line_type === "subway"
-        ? transitContext.subwayStations
-        : transitContext.railStations;
       const terminus = stationPool.find((s) => s.id === lastTerminusId);
       if (!terminus) return;
 
-      // Cancel any active placement
       placementContext?.cancelPlacing();
-
-      // Start extension mode
       transitLineDrawingContext.extendLine(lineId, terminus, {
         name: line.name,
         color: line.color,
@@ -205,6 +230,22 @@ export function TransitView({
       });
     },
     [transitContext, transitLineDrawingContext, placementContext]
+  );
+
+  // CITY-368: Handle terminus selection from the picker
+  const handleTerminusChoice = useCallback(
+    (station: RailStationData) => {
+      if (!terminusChoices || !transitLineDrawingContext) return;
+
+      placementContext?.cancelPlacing();
+      transitLineDrawingContext.extendLine(terminusChoices.lineId, station, {
+        name: terminusChoices.lineName,
+        color: terminusChoices.lineColor,
+        type: terminusChoices.lineType,
+      });
+      setTerminusChoices(null);
+    },
+    [terminusChoices, transitLineDrawingContext, placementContext]
   );
 
   const handleBackgroundClick = useCallback(() => {
@@ -317,6 +358,39 @@ export function TransitView({
         onConfirm={handleLinePropertiesConfirm}
         onCancel={handleLinePropertiesCancel}
       />
+
+      {/* CITY-368: Terminus choice picker */}
+      {terminusChoices && (
+        <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/30">
+          <div className="bg-white rounded-lg shadow-xl p-4 max-w-xs w-full mx-4">
+            <h3 className="text-sm font-semibold text-gray-900 mb-1">Extend from which end?</h3>
+            <p className="text-xs text-gray-500 mb-3">
+              Choose a terminus station to extend from
+            </p>
+            <div className="space-y-2">
+              {terminusChoices.termini.map((station) => (
+                <button
+                  key={station.id}
+                  onClick={() => handleTerminusChoice(station)}
+                  className="w-full flex items-center gap-2 p-2 text-sm text-left rounded-md border border-gray-200 hover:bg-gray-50 transition-colors"
+                >
+                  <div
+                    className="w-3 h-3 rounded-full shrink-0"
+                    style={{ backgroundColor: terminusChoices.lineColor }}
+                  />
+                  {station.name}
+                </button>
+              ))}
+            </div>
+            <button
+              onClick={() => setTerminusChoices(null)}
+              className="w-full mt-3 px-3 py-1.5 text-xs text-gray-500 hover:text-gray-700 transition-colors"
+            >
+              Cancel
+            </button>
+          </div>
+        </div>
+      )}
     </div>
   );
 }
