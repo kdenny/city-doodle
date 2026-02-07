@@ -31,6 +31,7 @@ import {
   useDeleteTransitStation,
   useDeleteTransitLine,
   useUpdateTransitLine,
+  useUpdateTransitStation,
 } from "../../api/hooks";
 import type {
   TransitStation,
@@ -175,6 +176,8 @@ interface TransitContextValue {
   removeRailStation: (stationId: string) => Promise<void>;
   /** Remove a subway station */
   removeSubwayStation: (stationId: string) => Promise<void>;
+  /** Rename a station (rail or subway) */
+  renameStation: (stationId: string, newName: string) => Promise<boolean>;
   /** Get nearby rail stations that could be auto-connected */
   getNearbyStations: (position: Point, excludeId?: string) => RailStationData[];
   /** Get nearby subway stations that could be auto-connected */
@@ -234,6 +237,7 @@ export function TransitProvider({ children, worldId }: TransitProviderProps) {
   const deleteStation = useDeleteTransitStation();
   const deleteLineMutation = useDeleteTransitLine();
   const updateLine = useUpdateTransitLine();
+  const updateStation = useUpdateTransitStation();
 
   // Sync API data to local state for rendering
   useEffect(() => {
@@ -768,6 +772,39 @@ export function TransitProvider({ children, worldId }: TransitProviderProps) {
   );
 
   /**
+   * CITY-359: Rename a station (rail or subway).
+   */
+  const renameStation = useCallback(
+    async (stationId: string, newName: string): Promise<boolean> => {
+      if (!worldId) {
+        toast?.addToast("Cannot rename station: No world selected", "error");
+        return false;
+      }
+
+      const trimmed = newName.trim();
+      if (!trimmed) {
+        toast?.addToast("Station name cannot be empty", "error");
+        return false;
+      }
+
+      try {
+        await updateStation.mutateAsync({
+          stationId,
+          data: { name: trimmed },
+          worldId,
+        });
+        toast?.addToast(`Station renamed to "${trimmed}"`, "success");
+        return true;
+      } catch (error) {
+        console.error("Failed to rename station:", error);
+        toast?.addToast("Failed to rename station", "error");
+        return false;
+      }
+    },
+    [worldId, updateStation, toast]
+  );
+
+  /**
    * Create a new transit line manually (for manual line drawing).
    */
   const createLineManual = useCallback(
@@ -951,6 +988,7 @@ export function TransitProvider({ children, worldId }: TransitProviderProps) {
     validateSubwayStationPlacement,
     placeSubwayStation,
     removeSubwayStation,
+    renameStation,
     getNearbySubwayStations,
     // Raw network data for panels
     transitNetwork: transitNetworkValue,
@@ -980,6 +1018,7 @@ export function TransitProvider({ children, worldId }: TransitProviderProps) {
     validateSubwayStationPlacement,
     placeSubwayStation,
     removeSubwayStation,
+    renameStation,
     getNearbySubwayStations,
     transitNetworkValue,
     highlightedLineId,

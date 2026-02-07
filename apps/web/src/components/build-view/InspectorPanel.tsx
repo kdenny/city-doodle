@@ -191,10 +191,10 @@ export function InspectorPanel({
         <NeighborhoodInspector neighborhood={selection} onUpdate={readOnly ? undefined : onUpdate} onDelete={readOnly ? undefined : onDelete} readOnly={readOnly} />
       )}
       {selection.type === "rail_station" && (
-        <RailStationInspector station={selection} onDelete={readOnly ? undefined : onDelete} />
+        <RailStationInspector station={selection} onUpdate={readOnly ? undefined : onUpdate} onDelete={readOnly ? undefined : onDelete} readOnly={readOnly} />
       )}
       {selection.type === "subway_station" && (
-        <SubwayStationInspector station={selection} onDelete={readOnly ? undefined : onDelete} />
+        <SubwayStationInspector station={selection} onUpdate={readOnly ? undefined : onUpdate} onDelete={readOnly ? undefined : onDelete} readOnly={readOnly} />
       )}
     </div>
   );
@@ -787,10 +787,23 @@ function NeighborhoodInspector({ neighborhood, onUpdate, onDelete, readOnly }: N
 
 interface RailStationInspectorProps {
   station: SelectedRailStation;
+  onUpdate?: (feature: SelectedFeature) => void;
   onDelete?: (feature: SelectedFeature) => void;
+  readOnly?: boolean;
 }
 
-function RailStationInspector({ station, onDelete }: RailStationInspectorProps) {
+function RailStationInspector({ station, onUpdate, onDelete, readOnly }: RailStationInspectorProps) {
+  const [editedName, setEditedName] = useState(station.name);
+
+  const handleNameChange = useCallback(
+    (e: React.ChangeEvent<HTMLInputElement>) => {
+      const newName = e.target.value;
+      setEditedName(newName);
+      onUpdate?.({ ...station, name: newName });
+    },
+    [station, onUpdate]
+  );
+
   return (
     <div className="space-y-3">
       {/* Type badge */}
@@ -803,12 +816,21 @@ function RailStationInspector({ station, onDelete }: RailStationInspectorProps) 
         )}
       </div>
 
-      {/* Name display */}
+      {/* Name field */}
       <div>
         <label className="block text-xs font-medium text-gray-600 mb-1">
           Name
         </label>
-        <p className="text-sm text-gray-700">{station.name}</p>
+        {onUpdate && !readOnly ? (
+          <input
+            type="text"
+            value={editedName}
+            onChange={handleNameChange}
+            className="w-full px-2 py-1 text-sm border border-gray-300 rounded focus:outline-none focus:ring-1 focus:ring-blue-500"
+          />
+        ) : (
+          <p className="text-sm text-gray-700">{station.name}</p>
+        )}
       </div>
 
       {/* Line color indicator */}
@@ -837,10 +859,23 @@ function RailStationInspector({ station, onDelete }: RailStationInspectorProps) 
 
 interface SubwayStationInspectorProps {
   station: SelectedSubwayStation;
+  onUpdate?: (feature: SelectedFeature) => void;
   onDelete?: (feature: SelectedFeature) => void;
+  readOnly?: boolean;
 }
 
-function SubwayStationInspector({ station, onDelete }: SubwayStationInspectorProps) {
+function SubwayStationInspector({ station, onUpdate, onDelete, readOnly }: SubwayStationInspectorProps) {
+  const [editedName, setEditedName] = useState(station.name);
+
+  const handleNameChange = useCallback(
+    (e: React.ChangeEvent<HTMLInputElement>) => {
+      const newName = e.target.value;
+      setEditedName(newName);
+      onUpdate?.({ ...station, name: newName });
+    },
+    [station, onUpdate]
+  );
+
   return (
     <div className="space-y-3">
       {/* Type badge */}
@@ -853,12 +888,21 @@ function SubwayStationInspector({ station, onDelete }: SubwayStationInspectorPro
         )}
       </div>
 
-      {/* Name display */}
+      {/* Name field */}
       <div>
         <label className="block text-xs font-medium text-gray-600 mb-1">
           Name
         </label>
-        <p className="text-sm text-gray-700">{station.name}</p>
+        {onUpdate && !readOnly ? (
+          <input
+            type="text"
+            value={editedName}
+            onChange={handleNameChange}
+            className="w-full px-2 py-1 text-sm border border-gray-300 rounded focus:outline-none focus:ring-1 focus:ring-blue-500"
+          />
+        ) : (
+          <p className="text-sm text-gray-700">{station.name}</p>
+        )}
       </div>
 
       {/* Delete button */}

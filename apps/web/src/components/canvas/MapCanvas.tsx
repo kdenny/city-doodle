@@ -1325,6 +1325,10 @@ export const MapCanvas = forwardRef<MapCanvasHandle, MapCanvasProps>(
         } else if (event.key === "Enter") {
           event.preventDefault();
           s.transitLineDrawingContext?.completeDrawing?.();
+        } else if (event.key === "z" && (event.ctrlKey || event.metaKey)) {
+          // CITY-361: Ctrl/Cmd+Z to undo last connection
+          event.preventDefault();
+          s.transitLineDrawingContext?.undoLastConnection?.();
         }
         return;
       }
