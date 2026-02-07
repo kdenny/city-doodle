@@ -494,7 +494,7 @@ export const MapCanvas = forwardRef<MapCanvasHandle, MapCanvasProps>(
         gridContainerRef.current = null;
       }
     };
-  }, [seed]);
+  }, [seed, geographicSetting]);
 
   // Update visibility when state changes (after initial mount)
   useEffect(() => {
