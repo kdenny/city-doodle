@@ -19,8 +19,8 @@
  *   trail → local → collector → arterial → highway
  *
  * Each class has: fill width, fill color, casing width, casing color, minZoom.
- * LOCAL and COLLECTOR streets have white fills with gray casings (Google Maps style).
- * Without casings, white roads on the light canvas/district fills are invisible.
+ * LOCAL and COLLECTOR streets have light gray fills with darker gray casings.
+ * Gray fills ensure visibility against the light canvas and district fills.
  *
  * ### Container z-order (bottom-to-top):
  *   neighborhoods → cityLimits → districts → roads → roadHighlight → bridges →
@@ -67,9 +67,9 @@ const DISTRICT_COLORS: Record<DistrictType, number> = {
 // Road styling by class (Google Maps inspired).
 //
 // IMPORTANT (CITY-377): All non-trail road classes MUST have casingWidth > 0.
-// Roads without casings are invisible against the light canvas (#f5f5f5) and
-// district fills (e.g., residential = 0xfff3cd at 0.6 alpha), since the road
-// fill color is white (0xffffff). The casing provides the visible gray outline.
+// Local/collector roads use light gray fills (CITY-417) so they're visible
+// against the light canvas (#f5f5f5) and district fills. Casings provide
+// additional contrast and the characteristic outlined road appearance.
 interface RoadStyle {
   width: number;
   color: number;
@@ -99,17 +99,17 @@ const ROAD_STYLES: Record<RoadClass, RoadStyle> = {
   },
   collector: {
     width: 4,
-    color: 0xffffff, // White
+    color: 0xcccccc, // Light gray — visible against light district fills and canvas
     casingWidth: 1.5,
-    casingColor: 0x888888, // Medium gray outline - must contrast against district fills
+    casingColor: 0x888888, // Medium gray outline
     dashed: false,
     minZoom: 0.15, // Visible at most zoom levels
   },
   local: {
     width: 2,
-    color: 0xffffff, // White
+    color: 0xd5d5d5, // Lighter gray — subtle hierarchy below collector
     casingWidth: 1,
-    casingColor: 0x999999, // Gray outline - must contrast against district fills
+    casingColor: 0x999999, // Gray outline
     dashed: false,
     minZoom: 0.3, // Visible when not extremely zoomed out
   },
