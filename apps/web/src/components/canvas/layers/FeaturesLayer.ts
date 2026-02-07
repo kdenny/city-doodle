@@ -228,6 +228,137 @@ class RoadSpatialIndex {
 }
 
 /**
+ * Grid-based spatial index for O(1) POI proximity lookups.
+ *
+ * Each POI is inserted into every cell that its hit-circle
+ * ({@link POI_HIT_RADIUS}) overlaps. Rebuild via {@link build} whenever the
+ * POI set changes.
+ *
+ * Complexity: O(P) to build; O(1) per query.
+ */
+class POISpatialIndex {
+  private cellSize: number;
+  private grid: Map<string, POI[]> = new Map();
+
+  constructor(cellSize: number = 50) {
+    this.cellSize = cellSize;
+  }
+
+  /**
+   * Rebuild the index from scratch for the given POI set.
+   * @param pois - Full list of POIs to index
+   */
+  build(pois: POI[]): void {
+    this.grid.clear();
+    const buffer = POI_HIT_RADIUS;
+
+    for (const poi of pois) {
+      const x = poi.position.x;
+      const y = poi.position.y;
+
+      const minCellX = Math.floor((x - buffer) / this.cellSize);
+      const minCellY = Math.floor((y - buffer) / this.cellSize);
+      const maxCellX = Math.floor((x + buffer) / this.cellSize);
+      const maxCellY = Math.floor((y + buffer) / this.cellSize);
+
+      for (let cx = minCellX; cx <= maxCellX; cx++) {
+        for (let cy = minCellY; cy <= maxCellY; cy++) {
+          const key = `${cx},${cy}`;
+          let bucket = this.grid.get(key);
+          if (!bucket) {
+            bucket = [];
+            this.grid.set(key, bucket);
+          }
+          bucket.push(poi);
+        }
+      }
+    }
+  }
+
+  /**
+   * Return candidate POIs that may be near the given world coordinate.
+   * The caller must still do precise distance checks against each candidate.
+   * @param x - World X coordinate
+   * @param y - World Y coordinate
+   * @returns POIs in the same cell (may include false positives, never false negatives)
+   */
+  getCandidates(x: number, y: number): POI[] {
+    const key = `${Math.floor(x / this.cellSize)},${Math.floor(y / this.cellSize)}`;
+    return this.grid.get(key) || [];
+  }
+}
+
+/**
+ * Grid-based spatial index for O(1) district candidate lookups.
+ *
+ * Each district is inserted into every cell that its axis-aligned bounding box
+ * overlaps. A query returns only districts whose bounding box covers the
+ * queried cell, drastically reducing the number of expensive point-in-polygon
+ * tests. Rebuild via {@link build} whenever the district set changes.
+ *
+ * Complexity: O(D) to build (proportional to total bounding-box area); O(1) per query.
+ */
+class DistrictSpatialIndex {
+  private cellSize: number;
+  private grid: Map<string, District[]> = new Map();
+
+  constructor(cellSize: number = 100) {
+    this.cellSize = cellSize;
+  }
+
+  /**
+   * Rebuild the index from scratch for the given district set.
+   * @param districts - Full list of districts to index
+   */
+  build(districts: District[]): void {
+    this.grid.clear();
+
+    for (const district of districts) {
+      const points = district.polygon.points;
+      if (points.length < 3) continue;
+
+      // Compute axis-aligned bounding box
+      let minX = Infinity, maxX = -Infinity, minY = Infinity, maxY = -Infinity;
+      for (const p of points) {
+        if (p.x < minX) minX = p.x;
+        if (p.x > maxX) maxX = p.x;
+        if (p.y < minY) minY = p.y;
+        if (p.y > maxY) maxY = p.y;
+      }
+
+      const minCellX = Math.floor(minX / this.cellSize);
+      const minCellY = Math.floor(minY / this.cellSize);
+      const maxCellX = Math.floor(maxX / this.cellSize);
+      const maxCellY = Math.floor(maxY / this.cellSize);
+
+      for (let cx = minCellX; cx <= maxCellX; cx++) {
+        for (let cy = minCellY; cy <= maxCellY; cy++) {
+          const key = `${cx},${cy}`;
+          let bucket = this.grid.get(key);
+          if (!bucket) {
+            bucket = [];
+            this.grid.set(key, bucket);
+          }
+          bucket.push(district);
+        }
+      }
+    }
+  }
+
+  /**
+   * Return candidate districts that may contain the given world coordinate.
+   * The caller must still do precise point-in-polygon checks.
+   * @param x - World X coordinate
+   * @param y - World Y coordinate
+   * @returns Districts whose bounding box covers this cell
+   */
+  getCandidates(x: number, y: number): District[] {
+    const key = `${Math.floor(x / this.cellSize)},${Math.floor(y / this.cellSize)}`;
+    return this.grid.get(key) || [];
+  }
+}
+
+/**
  * Result of a hit test on the features layer.
  */
 export interface HitTestResult {
@@ -253,6 +384,10 @@ export class FeaturesLayer {
   private selectedRoadId: string | null = null;
   /** Spatial index for fast road hit testing */
   private roadIndex: RoadSpatialIndex = new RoadSpatialIndex();
+  /** Spatial index for fast POI hit testing */
+  private poiIndex: POISpatialIndex = new POISpatialIndex();
+  /** Spatial index for fast district hit testing */
+  private districtIndex: DistrictSpatialIndex = new DistrictSpatialIndex();
 
   constructor() {
     this.container = new Container();
@@ -308,6 +443,8 @@ export class FeaturesLayer {
     this.data = data;
     this.districtScale = this.computeDistrictScale(data.districts);
     this.roadIndex.build(data.roads);
+    this.poiIndex.build(data.pois);
+    this.districtIndex.build(data.districts);
     this.render();
   }
 
@@ -938,9 +1075,10 @@ export class FeaturesLayer {
   hitTest(worldX: number, worldY: number): HitTestResult | null {
     if (!this.data) return null;
 
-    // Check POIs first (they're on top)
+    // Check POIs first (they're on top, using spatial index for O(1) lookup)
     if (this.poisGraphics.visible) {
-      for (const poi of this.data.pois) {
+      const poiCandidates = this.poiIndex.getCandidates(worldX, worldY);
+      for (const poi of poiCandidates) {
         if (this.hitTestPOI(poi, worldX, worldY)) {
           return { type: "poi", feature: poi };
         }
@@ -949,17 +1087,18 @@ export class FeaturesLayer {
 
     // Check roads next (using spatial index for O(1) lookup)
     if (this.roadsGraphics.visible) {
-      const candidates = this.roadIndex.getCandidates(worldX, worldY);
-      for (const road of candidates) {
+      const roadCandidates = this.roadIndex.getCandidates(worldX, worldY);
+      for (const road of roadCandidates) {
         if (this.hitTestRoad(road, worldX, worldY)) {
           return { type: "road", feature: road };
         }
       }
     }
 
-    // Check districts
+    // Check districts (using spatial index for O(1) candidate lookup)
     if (this.districtsGraphics.visible) {
-      for (const district of this.data.districts) {
+      const districtCandidates = this.districtIndex.getCandidates(worldX, worldY);
+      for (const district of districtCandidates) {
         if (this.hitTestDistrict(district, worldX, worldY)) {
           return { type: "district", feature: district };
         }
