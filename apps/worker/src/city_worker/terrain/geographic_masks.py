@@ -20,11 +20,48 @@ Individual mask implementations are added by follow-up tickets:
 
 from __future__ import annotations
 
+import math
 from dataclasses import dataclass
 from typing import Callable
 
 import numpy as np
 from numpy.typing import NDArray
+
+
+# ── Helpers ──────────────────────────────────────────────────────
+
+
+def _seeded_hash(seed: int, index: int) -> float:
+    """Deterministic float in [0, 1) from *seed* + *index*."""
+    h = ((seed * 2654435761) ^ (index * 340573321)) & 0xFFFFFFFF
+    h = ((h >> 16) ^ h) * 0x45D9F3B & 0xFFFFFFFF
+    h = ((h >> 16) ^ h) & 0xFFFFFFFF
+    return h / 0xFFFFFFFF
+
+
+def _smoothstep(t: NDArray[np.float64]) -> NDArray[np.float64]:
+    """Hermite smoothstep: 3t^2 - 2t^3, clamped to [0, 1]."""
+    t = np.clip(t, 0.0, 1.0)
+    return t * t * (3.0 - 2.0 * t)
+
+
+def _angle_noise(
+    angles: NDArray[np.float64], seed: int, octaves: int = 4
+) -> NDArray[np.float64]:
+    """Deterministic noise keyed on angle for organic boundary perturbation.
+
+    Returns values roughly in [-1, 1].
+    """
+    result = np.zeros_like(angles)
+    amplitude = 1.0
+    total_amp = 0.0
+    for i in range(octaves):
+        phase = _seeded_hash(seed, i + 100) * 2.0 * math.pi
+        freq = float(i + 2)
+        result += amplitude * np.sin(angles * freq + phase)
+        total_amp += amplitude
+        amplitude *= 0.5
+    return result / total_amp
 
 
 @dataclass(frozen=True)
@@ -65,6 +102,77 @@ def identity_mask(
     return heightfield
 
 
+def peninsula_mask(
+    heightfield: NDArray[np.float64], ctx: MaskContext
+) -> NDArray[np.float64]:
+    """Directional land-protrusion mask for peninsula worlds (CITY-390).
+
+    Creates a finger of land jutting into water.  The peninsula axis
+    direction is seed-deterministic.  The landmass is wide at the
+    "mainland" end and tapers toward the tip, with water on both sides
+    and at the tip.
+    """
+    res = ctx.resolution
+    ts = ctx.tile_size
+
+    # World center (middle of tile 0,0)
+    cx = ts * 0.5
+    cy = ts * 0.5
+
+    # Seed-based direction the peninsula points toward
+    direction = _seeded_hash(ctx.seed, 10) * 2.0 * math.pi
+
+    # Peninsula geometry (in rotated coordinates along the axis)
+    mainland_u = -ts * 0.8   # Where the mainland starts (behind center)
+    tip_u = ts * 1.0         # Where the tip ends (past center)
+    base_half_w = ts * 0.9   # Half-width at mainland
+    tip_half_w = ts * 0.12   # Half-width at tip
+    tip_falloff = ts * 0.25  # Falloff distance beyond the tip
+
+    # Build world-coordinate grids
+    step = ts / res
+    xs = ctx.tx * ts + np.arange(res, dtype=np.float64) * step
+    ys = ctx.ty * ts + np.arange(res, dtype=np.float64) * step
+    xx, yy = np.meshgrid(xs, ys)
+
+    dx = xx - cx
+    dy = yy - cy
+
+    # Rotate into peninsula-aligned coordinate system
+    cos_d, sin_d = math.cos(direction), math.sin(direction)
+    u = dx * cos_d + dy * sin_d    # Along axis (mainland → tip)
+    v = -dx * sin_d + dy * cos_d   # Perpendicular
+
+    # Interpolate half-width along the axis
+    t_along = np.clip((u - mainland_u) / (tip_u - mainland_u), 0.0, 1.0)
+    half_width = base_half_w + (tip_half_w - base_half_w) * t_along
+
+    # Perpendicular falloff: 1.0 on axis, drops to 0 at edges
+    v_norm = np.abs(v) / np.maximum(half_width, 1e-10)
+    perp_mask = 1.0 - _smoothstep(v_norm)
+
+    # Along-axis falloff: land from mainland to tip, then fall off
+    along_mask = np.ones_like(u)
+    # Beyond the tip: smooth falloff
+    beyond_tip = u > tip_u
+    along_mask[beyond_tip] = 1.0 - _smoothstep(
+        (u[beyond_tip] - tip_u) / tip_falloff
+    ).astype(np.float64)
+    # Behind mainland: always land (continent continues)
+    # (along_mask already 1.0 there — no change needed)
+
+    # Combine
+    mask = perp_mask * along_mask
+
+    # Noise perturbation for organic coastline
+    angles = np.arctan2(dy, dx)
+    noise = _angle_noise(angles, ctx.seed + 500)
+    mask = mask + noise * 0.04
+    mask = np.clip(mask, 0.0, 1.0)
+
+    return heightfield * mask
+
+
 # ── Mask registry ────────────────────────────────────────────────
 
 _MASK_REGISTRY: dict[str, MaskFn] = {
@@ -74,7 +182,7 @@ _MASK_REGISTRY: dict[str, MaskFn] = {
     "lakefront": identity_mask,
     "inland": identity_mask,
     "island": identity_mask,
-    "peninsula": identity_mask,
+    "peninsula": peninsula_mask,
     "delta": identity_mask,
 }
 

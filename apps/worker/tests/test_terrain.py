@@ -1796,3 +1796,89 @@ class TestGeographicMasks:
             gen = TerrainGenerator(config)
             result = gen.generate_3x3(0, 0)
             assert len(result.all_tiles()) == 9
+
+
+class TestPeninsulaMask:
+    """Tests for peninsula directional mask (CITY-390)."""
+
+    def test_peninsula_mask_registered(self):
+        """peninsula_mask should be registered for 'peninsula' setting."""
+        from city_worker.terrain.geographic_masks import get_mask, peninsula_mask
+
+        assert get_mask("peninsula") is peninsula_mask
+
+    def test_center_tile_has_land(self):
+        """The center tile should have significant land area."""
+        import numpy as np
+        from city_worker.terrain.geographic_masks import MaskContext, peninsula_mask
+
+        hf = np.full((32, 32), 0.7)
+        ctx = MaskContext(tx=0, ty=0, tile_size=500.0, resolution=32, seed=42)
+        result = peninsula_mask(hf, ctx)
+        # Some portion of center should be land
+        land_fraction = (result > 0.3).sum() / result.size
+        assert land_fraction > 0.2, f"Land fraction {land_fraction:.2%} too low"
+
+    def test_far_tile_is_ocean(self):
+        """A tile far from the peninsula should be mostly ocean."""
+        import numpy as np
+        from city_worker.terrain.geographic_masks import MaskContext, peninsula_mask
+
+        hf = np.full((32, 32), 0.7)
+        # Far perpendicular to any axis
+        ctx = MaskContext(tx=5, ty=5, tile_size=500.0, resolution=32, seed=42)
+        result = peninsula_mask(hf, ctx)
+        assert result.mean() < 0.15, f"Far tile mean {result.mean()} too high"
+
+    def test_mask_is_deterministic(self):
+        """Same seed should produce identical masks."""
+        import numpy as np
+        from city_worker.terrain.geographic_masks import MaskContext, peninsula_mask
+
+        hf = np.full((16, 16), 0.6)
+        ctx = MaskContext(tx=0, ty=0, tile_size=500.0, resolution=16, seed=42)
+        r1 = peninsula_mask(hf, ctx)
+        r2 = peninsula_mask(hf, ctx)
+        np.testing.assert_array_equal(r1, r2)
+
+    def test_different_seeds_produce_different_directions(self):
+        """Different seeds should create differently oriented peninsulas."""
+        import numpy as np
+        from city_worker.terrain.geographic_masks import MaskContext, peninsula_mask
+
+        hf = np.full((32, 32), 0.7)
+        ctx1 = MaskContext(tx=0, ty=0, tile_size=500.0, resolution=32, seed=42)
+        ctx2 = MaskContext(tx=0, ty=0, tile_size=500.0, resolution=32, seed=999)
+        r1 = peninsula_mask(hf, ctx1)
+        r2 = peninsula_mask(hf, ctx2)
+        assert not np.array_equal(r1, r2)
+
+    def test_peninsula_is_elongated(self):
+        """The peninsula mask should not be radially symmetric."""
+        import numpy as np
+        from city_worker.terrain.geographic_masks import MaskContext, peninsula_mask
+
+        hf = np.full((32, 32), 0.7)
+        ctx = MaskContext(tx=0, ty=0, tile_size=500.0, resolution=32, seed=42)
+        result = peninsula_mask(hf, ctx)
+        # Compare quadrants — at least two should differ significantly
+        q1 = result[:16, :16].mean()
+        q2 = result[:16, 16:].mean()
+        q3 = result[16:, :16].mean()
+        q4 = result[16:, 16:].mean()
+        quadrants = [q1, q2, q3, q4]
+        assert max(quadrants) - min(quadrants) > 0.1, (
+            f"Quadrants too uniform: {quadrants}"
+        )
+
+    def test_peninsula_generates_through_full_pipeline(self):
+        """Peninsula setting should produce valid terrain through the generator."""
+        config = TerrainConfig(
+            world_seed=42,
+            geographic_setting="peninsula",
+            resolution=16,
+            tile_size=500.0,
+        )
+        gen = TerrainGenerator(config)
+        result = gen.generate_3x3(0, 0)
+        assert len(result.all_tiles()) == 9
