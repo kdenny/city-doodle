@@ -87,12 +87,14 @@ describe("TransitView", () => {
     expect(screen.queryByLabelText("Build")).not.toBeInTheDocument();
   });
 
-  it("shows switch to build mode button in empty state", () => {
+  it("shows station placement buttons in empty state", () => {
     renderWithProviders(
       <TransitView>
         <div>Content</div>
       </TransitView>
     );
-    expect(screen.getByText("Switch to Build Mode")).toBeInTheDocument();
+    expect(screen.getByText("Subway")).toBeInTheDocument();
+    expect(screen.getByText("Rail")).toBeInTheDocument();
+    expect(screen.getByText("Draw New Line")).toBeInTheDocument();
   });
 });

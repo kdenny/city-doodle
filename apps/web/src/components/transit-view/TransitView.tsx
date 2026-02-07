@@ -3,7 +3,12 @@ import { TransitLinesPanel, TransitLine } from "./TransitLinesPanel";
 import { TransitLineInspector } from "./TransitLineInspector";
 import { useTransitLinesData } from "./useTransitLinesData";
 import { useTransitOptional } from "../canvas/TransitContext";
+import { useTransitLineDrawingOptional } from "../canvas/TransitLineDrawingContext";
+import type { TransitLineProperties } from "../canvas/TransitLineDrawingContext";
+import { usePlacementOptional } from "../palette/PlacementContext";
+import { SEED_TYPES } from "../palette/types";
 import { useViewMode } from "../shell/ViewModeContext";
+import { TransitLinePropertiesDialog } from "../build-view/TransitLinePropertiesDialog";
 
 interface TransitViewProps {
   children: ReactNode;
@@ -24,13 +29,66 @@ export function TransitView({
   onLineClick,
 }: TransitViewProps) {
   const transitContext = useTransitOptional();
+  const transitLineDrawingContext = useTransitLineDrawingOptional();
+  const placementContext = usePlacementOptional();
   const { setViewMode } = useViewMode();
 
   const [selectedLine, setSelectedLine] = useState<TransitLine | null>(null);
   const [isUpdating, setIsUpdating] = useState(false);
+  const [showLinePropertiesDialog, setShowLinePropertiesDialog] = useState(false);
 
   const networkLines = useTransitLinesData(transitContext?.transitNetwork);
   const lines = propLines ?? networkLines;
+
+  // Station placement via PlacementContext
+  const subwaySeed = SEED_TYPES.find((s) => s.id === "subway") ?? null;
+  const railSeed = SEED_TYPES.find((s) => s.id === "rail_station") ?? null;
+
+  const handlePlaceSubwayStation = useCallback(() => {
+    if (placementContext && subwaySeed) {
+      placementContext.selectSeed(subwaySeed);
+    }
+  }, [placementContext, subwaySeed]);
+
+  const handlePlaceRailStation = useCallback(() => {
+    if (placementContext && railSeed) {
+      placementContext.selectSeed(railSeed);
+    }
+  }, [placementContext, railSeed]);
+
+  const isPlacingStation =
+    placementContext?.isPlacing &&
+    (placementContext.selectedSeed?.id === "subway" ||
+      placementContext.selectedSeed?.id === "rail_station");
+
+  // Line drawing via TransitLineDrawingContext
+  const handleDrawNewLine = useCallback(() => {
+    if (transitLineDrawingContext?.state.isDrawing) {
+      // Already drawing - complete the current line
+      transitLineDrawingContext.completeDrawing();
+      return;
+    }
+    setShowLinePropertiesDialog(true);
+  }, [transitLineDrawingContext]);
+
+  const handleLinePropertiesConfirm = useCallback(
+    (properties: TransitLineProperties) => {
+      setShowLinePropertiesDialog(false);
+      if (transitLineDrawingContext) {
+        // Cancel any active station placement
+        placementContext?.cancelPlacing();
+        transitLineDrawingContext.setLineProperties(properties);
+        transitLineDrawingContext.startDrawing();
+      }
+    },
+    [transitLineDrawingContext, placementContext]
+  );
+
+  const handleLinePropertiesCancel = useCallback(() => {
+    setShowLinePropertiesDialog(false);
+  }, []);
+
+  const isDrawingLine = transitLineDrawingContext?.state.isDrawing ?? false;
 
   const handleLineClick = useCallback(
     (line: TransitLine) => {
@@ -108,6 +166,11 @@ export function TransitView({
             isLoading={transitContext?.isLoading ?? false}
             highlightedLineId={transitContext?.highlightedLineId ?? null}
             onSwitchToBuild={handleSwitchToBuild}
+            onPlaceSubwayStation={handlePlaceSubwayStation}
+            onPlaceRailStation={handlePlaceRailStation}
+            onDrawNewLine={handleDrawNewLine}
+            isPlacingStation={isPlacingStation}
+            isDrawingLine={isDrawingLine}
           />
         </div>
 
@@ -130,7 +193,54 @@ export function TransitView({
         <div className="absolute inset-0 transit-view-overlay">
           {children}
         </div>
+
+        {/* Placement mode indicator */}
+        {isPlacingStation && (
+          <div className="absolute top-4 left-4 z-10 bg-blue-600 text-white px-4 py-2 rounded-lg shadow-lg flex items-center gap-2">
+            <span className="text-lg">
+              {placementContext?.selectedSeed?.id === "subway" ? "🚇" : "🚂"}
+            </span>
+            <span className="text-sm font-medium">
+              Click on a district to place{" "}
+              {placementContext?.selectedSeed?.id === "subway"
+                ? "subway"
+                : "rail"}{" "}
+              station
+            </span>
+            <button
+              onClick={() => placementContext?.cancelPlacing()}
+              className="ml-2 text-blue-200 hover:text-white text-xs"
+            >
+              Cancel (Esc)
+            </button>
+          </div>
+        )}
+
+        {/* Drawing mode indicator */}
+        {isDrawingLine && (
+          <div className="absolute top-4 left-4 z-10 bg-blue-600 text-white px-4 py-2 rounded-lg shadow-lg flex items-center gap-2">
+            <span className="text-sm font-medium">
+              Click stations to draw line. Press Enter to finish.
+            </span>
+            <button
+              onClick={() => transitLineDrawingContext?.cancelDrawing()}
+              className="ml-2 text-blue-200 hover:text-white text-xs"
+            >
+              Cancel (Esc)
+            </button>
+          </div>
+        )}
       </div>
+
+      {/* Transit line properties dialog */}
+      <TransitLinePropertiesDialog
+        isOpen={showLinePropertiesDialog}
+        initialProperties={
+          transitLineDrawingContext?.state.lineProperties || undefined
+        }
+        onConfirm={handleLinePropertiesConfirm}
+        onCancel={handleLinePropertiesCancel}
+      />
     </div>
   );
 }
