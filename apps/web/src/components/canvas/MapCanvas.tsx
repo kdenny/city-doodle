@@ -1327,6 +1327,9 @@ export const MapCanvas = forwardRef<MapCanvasHandle, MapCanvasProps>(
           s.transitLineDrawingContext?.completeDrawing?.();
         } else if (event.key === "z" && (event.ctrlKey || event.metaKey)) {
           // CITY-361: Ctrl/Cmd+Z to undo last connection
+          // Skip if user is typing in an input (let browser handle text undo)
+          const tag = (document.activeElement as HTMLElement)?.tagName;
+          if (tag === "INPUT" || tag === "TEXTAREA") return;
           event.preventDefault();
           s.transitLineDrawingContext?.undoLastConnection?.();
         }

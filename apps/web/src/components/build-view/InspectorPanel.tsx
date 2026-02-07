@@ -4,7 +4,7 @@
  * Shows properties of the selected district, road, or POI and allows editing.
  */
 
-import { useState, useCallback, useMemo } from "react";
+import { useState, useCallback, useEffect, useMemo } from "react";
 import { CollapsiblePersonalitySliders } from "./PersonalitySliders";
 import type { DistrictPersonality, RoadClass, DistrictType } from "../canvas/layers/types";
 import { DEFAULT_DISTRICT_PERSONALITY, DEFAULT_DENSITY_BY_TYPE } from "../canvas/layers/types";
@@ -795,6 +795,11 @@ interface RailStationInspectorProps {
 function RailStationInspector({ station, onUpdate, onDelete, readOnly }: RailStationInspectorProps) {
   const [editedName, setEditedName] = useState(station.name);
 
+  // Reset name when a different station is selected
+  useEffect(() => {
+    setEditedName(station.name);
+  }, [station.id, station.name]);
+
   const handleNameChange = useCallback(
     (e: React.ChangeEvent<HTMLInputElement>) => {
       const newName = e.target.value;
@@ -866,6 +871,11 @@ interface SubwayStationInspectorProps {
 
 function SubwayStationInspector({ station, onUpdate, onDelete, readOnly }: SubwayStationInspectorProps) {
   const [editedName, setEditedName] = useState(station.name);
+
+  // Reset name when a different station is selected
+  useEffect(() => {
+    setEditedName(station.name);
+  }, [station.id, station.name]);
 
   const handleNameChange = useCallback(
     (e: React.ChangeEvent<HTMLInputElement>) => {
