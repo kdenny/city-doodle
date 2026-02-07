@@ -99,7 +99,8 @@ class TerrainGenerator:
         # Extract water features
         features: list[TerrainFeature] = []
 
-        # Coastlines (land polygons)
+        # Coastlines (land polygons) with fractal detail (CITY-322)
+        coastline_seed = abs(cfg.world_seed ^ (tx * 6271 + ty * 6277))
         coastlines = extract_coastlines(
             heightfield=heightfield,
             water_level=cfg.water_level,
@@ -107,6 +108,7 @@ class TerrainGenerator:
             tile_y=ty,
             tile_size=cfg.tile_size,
             smoothing_iterations=cfg.coastline_smoothing,
+            fractal_seed=coastline_seed,
         )
         features.extend(coastlines)
 

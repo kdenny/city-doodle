@@ -273,6 +273,89 @@ class TestWaterFeatures:
         assert len(features) > 0
         assert features[0].type == "coastline"
 
+    def test_fractal_coastline_adds_detail(self):
+        """Fractal perturbation should add more points to coastline polygons."""
+        import numpy as np
+
+        heightfield = np.zeros((32, 32))
+        heightfield[8:24, 8:24] = 0.6
+
+        # Without fractal
+        features_plain = extract_coastlines(
+            heightfield=heightfield,
+            water_level=0.35,
+            tile_x=0,
+            tile_y=0,
+            tile_size=1000.0,
+        )
+
+        # With fractal
+        features_fractal = extract_coastlines(
+            heightfield=heightfield,
+            water_level=0.35,
+            tile_x=0,
+            tile_y=0,
+            tile_size=1000.0,
+            fractal_seed=42,
+        )
+
+        assert len(features_plain) > 0
+        assert len(features_fractal) > 0
+
+        # Fractal version should have more coordinate points
+        plain_pts = len(features_plain[0].geometry["coordinates"][0])
+        fractal_pts = len(features_fractal[0].geometry["coordinates"][0])
+        assert fractal_pts > plain_pts
+
+    def test_fractal_coastline_deterministic(self):
+        """Same fractal seed should produce identical coastlines."""
+        import numpy as np
+
+        heightfield = np.zeros((32, 32))
+        heightfield[8:24, 8:24] = 0.6
+
+        f1 = extract_coastlines(
+            heightfield=heightfield,
+            water_level=0.35,
+            tile_x=0, tile_y=0,
+            tile_size=1000.0,
+            fractal_seed=42,
+        )
+        f2 = extract_coastlines(
+            heightfield=heightfield,
+            water_level=0.35,
+            tile_x=0, tile_y=0,
+            tile_size=1000.0,
+            fractal_seed=42,
+        )
+
+        coords1 = f1[0].geometry["coordinates"][0]
+        coords2 = f2[0].geometry["coordinates"][0]
+        assert coords1 == coords2
+
+    def test_concave_coastline_preserves_bay(self):
+        """Concave hull should preserve bay-like indentations."""
+        import numpy as np
+
+        # Create L-shaped land mass (has concavity)
+        heightfield = np.zeros((32, 32))
+        heightfield[4:28, 4:16] = 0.6   # vertical bar
+        heightfield[16:28, 4:28] = 0.6  # horizontal bar
+
+        features = extract_coastlines(
+            heightfield=heightfield,
+            water_level=0.35,
+            tile_x=0,
+            tile_y=0,
+            tile_size=1000.0,
+        )
+
+        assert len(features) > 0
+        poly_coords = features[0].geometry["coordinates"][0]
+        # The polygon should NOT be a simple rectangle (convex hull would be)
+        # An L-shape should have at least 5-6 unique vertices
+        assert len(poly_coords) >= 5
+
     def test_flow_accumulation(self):
         """Flow accumulation should concentrate in valleys."""
         import numpy as np
