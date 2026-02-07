@@ -70,16 +70,16 @@ const ROAD_STYLES: Record<RoadClass, RoadStyle> = {
   collector: {
     width: 4,
     color: 0xffffff, // White
-    casingWidth: 1,
-    casingColor: 0xaaaaaa, // Light gray outline
+    casingWidth: 1.5,
+    casingColor: 0x888888, // Medium gray outline - must contrast against district fills
     dashed: false,
     minZoom: 0.15, // Visible at most zoom levels
   },
   local: {
     width: 2,
     color: 0xffffff, // White
-    casingWidth: 0.5,
-    casingColor: 0xcccccc, // Subtle gray outline
+    casingWidth: 1,
+    casingColor: 0x999999, // Gray outline - must contrast against district fills
     dashed: false,
     minZoom: 0.3, // Visible when not extremely zoomed out
   },
@@ -486,7 +486,15 @@ export class FeaturesLayer {
 
   /**
    * Compute a road width scale factor from the average district diameter.
-   * The base road widths were designed for districts ~200px across.
+   *
+   * CITY-377: The reference diameter must match the actual world-unit coordinate
+   * space districts use. Districts are typically ~30 world units across (diagonal).
+   * A reference of 40 means roads render at full defined width for ~40-unit districts
+   * and scale down slightly for smaller ones. The clamp [0.5, 3] prevents extremes.
+   *
+   * Previous value of 200 was designed for pixel-space distances, not world units,
+   * which caused districtScale=0.5 for typical districts — halving all road widths
+   * and making local/collector streets invisible.
    */
   private computeDistrictScale(districts: District[]): number {
     if (districts.length === 0) return 1;
@@ -506,7 +514,7 @@ export class FeaturesLayer {
     }
 
     const avgDiameter = totalDiameter / districts.length;
-    const referenceDiameter = 200;
+    const referenceDiameter = 40;
     // Clamp between 0.5x and 3x to avoid extreme values
     return Math.max(0.5, Math.min(3, avgDiameter / referenceDiameter));
   }
@@ -784,9 +792,10 @@ export class FeaturesLayer {
       (a, b) => classOrder.indexOf(a.roadClass) - classOrder.indexOf(b.roadClass)
     );
 
-    // Filter roads by zoom level
+    // Filter roads by zoom level (skip roads with unknown class to prevent crash)
     const visibleRoads = sortedRoads.filter((road) => {
       const style = ROAD_STYLES[road.roadClass];
+      if (!style) return false;
       return this.currentZoom >= style.minZoom;
     });
 
