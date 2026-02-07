@@ -1,7 +1,7 @@
 import { render, screen, fireEvent } from "@testing-library/react";
 import { describe, it, expect, vi } from "vitest";
 import { TransitView } from "./TransitView";
-import { TransitLine } from "./TransitLinesPanel";
+import { TransitLinesPanel, TransitLine } from "./TransitLinesPanel";
 import { ViewModeProvider } from "../shell/ViewModeContext";
 
 const mockLines: TransitLine[] = [
@@ -96,5 +96,70 @@ describe("TransitView", () => {
     expect(screen.getByText("Subway")).toBeInTheDocument();
     expect(screen.getByText("Rail")).toBeInTheDocument();
     expect(screen.getByText("Draw New Line")).toBeInTheDocument();
+  });
+
+  it("does not highlight both buttons when no placement context is active", () => {
+    renderWithProviders(
+      <TransitView lines={mockLines}>
+        <div>Content</div>
+      </TransitView>
+    );
+    const subwayButton = screen.getByText("Subway").closest("button")!;
+    const railButton = screen.getByText("Rail").closest("button")!;
+    expect(subwayButton.className).toContain("bg-gray-100");
+    expect(railButton.className).toContain("bg-gray-100");
+    expect(subwayButton.className).not.toContain("bg-blue-100");
+    expect(railButton.className).not.toContain("bg-blue-100");
+  });
+});
+
+describe("TransitLinesPanel station button highlighting", () => {
+  it("highlights only subway button when placing subway", () => {
+    render(
+      <TransitLinesPanel
+        lines={mockLines}
+        placingStationType="subway"
+        onPlaceSubwayStation={() => {}}
+        onPlaceRailStation={() => {}}
+      />
+    );
+    const subwayButton = screen.getByText("Subway").closest("button")!;
+    const railButton = screen.getByText("Rail").closest("button")!;
+    expect(subwayButton.className).toContain("bg-blue-100");
+    expect(railButton.className).toContain("bg-gray-100");
+    expect(railButton.className).not.toContain("bg-blue-100");
+  });
+
+  it("highlights only rail button when placing rail", () => {
+    render(
+      <TransitLinesPanel
+        lines={mockLines}
+        placingStationType="rail"
+        onPlaceSubwayStation={() => {}}
+        onPlaceRailStation={() => {}}
+      />
+    );
+    const subwayButton = screen.getByText("Subway").closest("button")!;
+    const railButton = screen.getByText("Rail").closest("button")!;
+    expect(railButton.className).toContain("bg-blue-100");
+    expect(subwayButton.className).toContain("bg-gray-100");
+    expect(subwayButton.className).not.toContain("bg-blue-100");
+  });
+
+  it("highlights neither button when placingStationType is null", () => {
+    render(
+      <TransitLinesPanel
+        lines={mockLines}
+        placingStationType={null}
+        onPlaceSubwayStation={() => {}}
+        onPlaceRailStation={() => {}}
+      />
+    );
+    const subwayButton = screen.getByText("Subway").closest("button")!;
+    const railButton = screen.getByText("Rail").closest("button")!;
+    expect(subwayButton.className).toContain("bg-gray-100");
+    expect(railButton.className).toContain("bg-gray-100");
+    expect(subwayButton.className).not.toContain("bg-blue-100");
+    expect(railButton.className).not.toContain("bg-blue-100");
   });
 });

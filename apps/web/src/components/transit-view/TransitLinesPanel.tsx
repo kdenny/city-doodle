@@ -16,7 +16,7 @@ interface TransitLinesPanelProps {
   onPlaceSubwayStation?: () => void;
   onPlaceRailStation?: () => void;
   onDrawNewLine?: () => void;
-  isPlacingStation?: boolean;
+  placingStationType?: "subway" | "rail" | null;
   isDrawingLine?: boolean;
 }
 
@@ -28,13 +28,13 @@ function StationPlacementButtons({
   onPlaceSubwayStation,
   onPlaceRailStation,
   onDrawNewLine,
-  isPlacingStation,
+  placingStationType,
   isDrawingLine,
 }: {
   onPlaceSubwayStation?: () => void;
   onPlaceRailStation?: () => void;
   onDrawNewLine?: () => void;
-  isPlacingStation?: boolean;
+  placingStationType?: "subway" | "rail" | null;
   isDrawingLine?: boolean;
 }) {
   return (
@@ -45,7 +45,7 @@ function StationPlacementButtons({
           <button
             onClick={onPlaceSubwayStation}
             className={`flex-1 flex items-center justify-center gap-1.5 px-3 py-2 text-sm rounded-md transition-colors ${
-              isPlacingStation
+              placingStationType === "subway"
                 ? "bg-blue-100 text-blue-700 border border-blue-300"
                 : "bg-gray-100 text-gray-700 hover:bg-gray-200"
             }`}
@@ -58,7 +58,7 @@ function StationPlacementButtons({
           <button
             onClick={onPlaceRailStation}
             className={`flex-1 flex items-center justify-center gap-1.5 px-3 py-2 text-sm rounded-md transition-colors ${
-              isPlacingStation
+              placingStationType === "rail"
                 ? "bg-blue-100 text-blue-700 border border-blue-300"
                 : "bg-gray-100 text-gray-700 hover:bg-gray-200"
             }`}
@@ -93,7 +93,7 @@ export function TransitLinesPanel({
   onPlaceSubwayStation,
   onPlaceRailStation,
   onDrawNewLine,
-  isPlacingStation,
+  placingStationType,
   isDrawingLine,
 }: TransitLinesPanelProps) {
   const totalStations = lines.reduce((sum, line) => sum + line.stations, 0);
@@ -128,7 +128,7 @@ export function TransitLinesPanel({
           onPlaceSubwayStation={onPlaceSubwayStation}
           onPlaceRailStation={onPlaceRailStation}
           onDrawNewLine={onDrawNewLine}
-          isPlacingStation={isPlacingStation}
+          placingStationType={placingStationType}
           isDrawingLine={isDrawingLine}
         />
       </div>
@@ -198,7 +198,7 @@ export function TransitLinesPanel({
           onPlaceSubwayStation={onPlaceSubwayStation}
           onPlaceRailStation={onPlaceRailStation}
           onDrawNewLine={onDrawNewLine}
-          isPlacingStation={isPlacingStation}
+          placingStationType={placingStationType}
           isDrawingLine={isDrawingLine}
         />
       </div>
