@@ -71,6 +71,28 @@ const SUBWAY_LINE_COLORS = [
 ];
 
 /**
+ * Find the first unused color from a palette, given existing line colors.
+ * Falls back to cycling with an offset if all colors are taken.
+ */
+function nextUnusedColor(palette: string[], usedColors: Set<string>): string {
+  for (const color of palette) {
+    if (!usedColors.has(color)) return color;
+  }
+  // All colors used; cycle from the start (unavoidable with more lines than colors)
+  return palette[usedColors.size % palette.length];
+}
+
+/**
+ * Find the smallest N where "{prefix} {N}" is not already taken.
+ */
+function nextUnusedName(prefix: string, usedNames: Set<string>): string {
+  for (let n = 1; ; n++) {
+    const name = `${prefix} ${n}`;
+    if (!usedNames.has(name)) return name;
+  }
+}
+
+/**
  * Result of a station placement validation.
  */
 export interface StationValidation {
@@ -486,16 +508,17 @@ export function TransitProvider({ children, worldId }: TransitProviderProps) {
 
           // If no existing line, create a new one
           if (!lineId) {
-            const lineIndex =
-              (transitNetwork?.lines.filter((l) => l.line_type === "rail").length || 0) %
-              RAIL_LINE_COLORS.length;
-            const lineColor = RAIL_LINE_COLORS[lineIndex];
+            const existingRailLines = transitNetwork?.lines.filter((l) => l.line_type === "rail") || [];
+            const usedColors = new Set(existingRailLines.map((l) => l.color));
+            const usedNames = new Set(existingRailLines.map((l) => l.name));
+            const lineColor = nextUnusedColor(RAIL_LINE_COLORS, usedColors);
+            const lineName = nextUnusedName("Rail Line", usedNames);
 
             const line = await createLine.mutateAsync({
               worldId,
               data: {
                 line_type: "rail",
-                name: `Rail Line ${(transitNetwork?.lines.filter((l) => l.line_type === "rail").length || 0) + 1}`,
+                name: lineName,
                 color: lineColor,
                 is_auto_generated: true,
               },
@@ -643,16 +666,17 @@ export function TransitProvider({ children, worldId }: TransitProviderProps) {
 
           // If no existing line, create a new one
           if (!lineId) {
-            const lineIndex =
-              (transitNetwork?.lines.filter((l) => l.line_type === "subway").length || 0) %
-              SUBWAY_LINE_COLORS.length;
-            const lineColor = SUBWAY_LINE_COLORS[lineIndex];
+            const existingSubwayLines = transitNetwork?.lines.filter((l) => l.line_type === "subway") || [];
+            const usedColors = new Set(existingSubwayLines.map((l) => l.color));
+            const usedNames = new Set(existingSubwayLines.map((l) => l.name));
+            const lineColor = nextUnusedColor(SUBWAY_LINE_COLORS, usedColors);
+            const lineName = nextUnusedName("Subway Line", usedNames);
 
             const line = await createLine.mutateAsync({
               worldId,
               data: {
                 line_type: "subway",
-                name: `Subway Line ${(transitNetwork?.lines.filter((l) => l.line_type === "subway").length || 0) + 1}`,
+                name: lineName,
                 color: lineColor,
                 is_auto_generated: true,
               },

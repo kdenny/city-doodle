@@ -157,9 +157,13 @@ export function BuildView({
         setShowLinePropertiesDialog(true);
       }
     } else {
-      // Cancel transit line drawing when switching away
+      // Cancel transit line drawing when switching away from transit-line tool
       if (transitLineDrawingContext.state.isDrawing) {
         transitLineDrawingContext.cancelDrawing();
+      }
+      // Also close the properties dialog if it's open (CITY-284)
+      if (showLinePropertiesDialog) {
+        setShowLinePropertiesDialog(false);
       }
     }
   }, [activeTool, transitLineDrawingContext, showLinePropertiesDialog]);

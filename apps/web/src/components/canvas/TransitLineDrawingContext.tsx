@@ -115,24 +115,41 @@ interface TransitLineDrawingProviderProps {
   ) => void;
   /** Number of existing lines (for auto-naming) */
   existingLineCount?: number;
+  /** Names of existing lines (to avoid collisions) */
+  existingLineNames?: string[];
+  /** Colors of existing lines (to avoid collisions) */
+  existingLineColors?: string[];
 }
 
 export function TransitLineDrawingProvider({
   children,
   onSegmentCreate,
   onLineComplete,
-  existingLineCount = 0,
+  existingLineNames = [],
+  existingLineColors = [],
 }: TransitLineDrawingProviderProps) {
   const [state, setState] = useState<TransitLineDrawingState>(INITIAL_STATE);
   const stateRef = useRef(state);
   stateRef.current = state;
 
   const startDrawing = useCallback(() => {
-    // Generate default properties
-    const colorIndex = existingLineCount % DEFAULT_LINE_COLORS.length;
+    // Find first unused color and name to avoid collisions after deletions
+    const usedColors = new Set(existingLineColors);
+    let color = DEFAULT_LINE_COLORS[0];
+    for (const c of DEFAULT_LINE_COLORS) {
+      if (!usedColors.has(c)) { color = c; break; }
+    }
+
+    const usedNames = new Set(existingLineNames);
+    let name = `Line 1`;
+    for (let n = 1; ; n++) {
+      const candidate = `Line ${n}`;
+      if (!usedNames.has(candidate)) { name = candidate; break; }
+    }
+
     const defaultProperties: TransitLineProperties = {
-      name: `Line ${existingLineCount + 1}`,
-      color: DEFAULT_LINE_COLORS[colorIndex],
+      name,
+      color,
       type: "rail",
     };
 
@@ -146,7 +163,7 @@ export function TransitLineDrawingProvider({
       hoveredStation: null,
       awaitingProperties: false,
     });
-  }, [existingLineCount]);
+  }, [existingLineColors, existingLineNames]);
 
   const selectStation = useCallback(
     async (station: RailStationData) => {
