@@ -18,6 +18,7 @@ import {
   useCallback,
   useEffect,
   useMemo,
+  useRef,
   ReactNode,
 } from "react";
 import type { Point } from "./layers";
@@ -836,17 +837,21 @@ export function TransitProvider({ children, worldId }: TransitProviderProps) {
     [worldId, updateStation, toast]
   );
 
+  const pendingMoveRef = useRef<string | null>(null);
   const moveStation = useCallback(
     async (stationId: string, stationType: "rail" | "subway", position: Point): Promise<boolean> => {
       if (!worldId) {
         toast?.addToast("Cannot move station: No world selected", "error");
         return false;
       }
+      // Prevent concurrent moves of the same station
+      if (pendingMoveRef.current === stationId) return false;
       const validation = validateStationPlacement(position, stationType);
       if (!validation.isValid || !validation.districtId) {
         toast?.addToast(validation.error || "Station must be placed inside a district", "error");
         return false;
       }
+      pendingMoveRef.current = stationId;
       try {
         await updateStation.mutateAsync({
           stationId,
@@ -858,6 +863,8 @@ export function TransitProvider({ children, worldId }: TransitProviderProps) {
         console.error("Failed to move station:", error);
         toast?.addToast("Failed to move station", "error");
         return false;
+      } finally {
+        pendingMoveRef.current = null;
       }
     },
     [worldId, updateStation, validateStationPlacement, toast]
