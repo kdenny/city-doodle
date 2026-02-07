@@ -1162,22 +1162,31 @@ export const MapCanvas = forwardRef<MapCanvasHandle, MapCanvasProps>(
       const isLineDrawing = s.transitLineDrawingContext?.state.isDrawing ?? false;
 
       // Update preview for transit line drawing
-      if (isLineDrawing && s.transitContext) {
+      // CITY-373: Check both rail and subway stations for hover
+      if (isLineDrawing) {
         s.transitLineDrawingContext?.setPreviewPosition?.({ x: worldPos.x, y: worldPos.y });
 
-        // Find station being hovered (snap distance, scaled by zoom)
-        const currentZoom = viewportRef.current?.scale.x ?? 1;
-        const STATION_HOVER_THRESHOLD = 30 / Math.max(0.2, currentZoom);
         let hoveredStation: RailStationData | null = null;
-        for (const station of s.transitContext.railStations) {
-          const sdx = worldPos.x - station.position.x;
-          const sdy = worldPos.y - station.position.y;
-          const dist = Math.sqrt(sdx * sdx + sdy * sdy);
-          if (dist < STATION_HOVER_THRESHOLD) {
-            hoveredStation = station;
-            break;
+
+        // Check rail stations via layer hitTest
+        if (railStationLayerRef.current) {
+          hoveredStation = railStationLayerRef.current.hitTest(worldPos.x, worldPos.y);
+        }
+
+        // Check subway stations via layer hitTest
+        if (!hoveredStation && subwayStationLayerRef.current) {
+          const subwayHit = subwayStationLayerRef.current.hitTest(worldPos.x, worldPos.y);
+          if (subwayHit) {
+            hoveredStation = {
+              id: subwayHit.id,
+              name: subwayHit.name,
+              position: subwayHit.position,
+              isTerminus: subwayHit.isTerminus,
+              isHub: subwayHit.isHub,
+            };
           }
         }
+
         s.transitLineDrawingContext?.setHoveredStation?.(hoveredStation);
       }
     };
@@ -1285,18 +1294,26 @@ export const MapCanvas = forwardRef<MapCanvasHandle, MapCanvasProps>(
       const selectStation = s.transitLineDrawingContext?.selectStation;
 
       // Handle transit line drawing mode (only if editing)
-      if (s.isEditingAllowed && isLineDrawing && selectStation && s.transitContext) {
-        // Find the station being clicked (snap to station, scaled by zoom)
-        const clickZoom = viewportRef.current?.scale.x ?? 1;
-        const STATION_CLICK_THRESHOLD = 30 / Math.max(0.2, clickZoom);
+      // CITY-373: Use layer hitTest for both rail AND subway stations
+      if (s.isEditingAllowed && isLineDrawing && selectStation) {
         let clickedStation: RailStationData | null = null;
-        for (const station of s.transitContext.railStations) {
-          const sdx = worldPos.x - station.position.x;
-          const sdy = worldPos.y - station.position.y;
-          const dist = Math.sqrt(sdx * sdx + sdy * sdy);
-          if (dist < STATION_CLICK_THRESHOLD) {
-            clickedStation = station;
-            break;
+
+        // Check rail stations via layer hitTest
+        if (railStationLayerRef.current) {
+          clickedStation = railStationLayerRef.current.hitTest(worldPos.x, worldPos.y);
+        }
+
+        // Check subway stations via layer hitTest
+        if (!clickedStation && subwayStationLayerRef.current) {
+          const subwayHit = subwayStationLayerRef.current.hitTest(worldPos.x, worldPos.y);
+          if (subwayHit) {
+            clickedStation = {
+              id: subwayHit.id,
+              name: subwayHit.name,
+              position: subwayHit.position,
+              isTerminus: subwayHit.isTerminus,
+              isHub: subwayHit.isHub,
+            };
           }
         }
 
