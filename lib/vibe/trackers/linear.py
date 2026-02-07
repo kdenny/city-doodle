@@ -160,7 +160,7 @@ class LinearTracker(TrackerBase):
         if self._team_id:
             input_obj["teamId"] = self._team_id
         if labels:
-            label_ids = self._get_label_ids(self._team_id, labels)
+            label_ids = self._get_or_create_label_ids(self._team_id, labels)
             if label_ids:
                 input_obj["labelIds"] = label_ids
 
@@ -199,6 +199,15 @@ class LinearTracker(TrackerBase):
                     "Check state name in Linear (e.g. Done, Canceled, In Progress)."
                 )
             input_obj["stateId"] = state_id
+
+        if labels:
+            issue = issue if status else self.get_ticket(ticket_id)
+            if not issue:
+                raise RuntimeError(f"Ticket not found: {ticket_id}")
+            team_id = (issue.raw.get("team") or {}).get("id") or self._team_id
+            label_ids = self._get_or_create_label_ids(team_id, labels)
+            if label_ids:
+                input_obj["labelIds"] = label_ids
 
         mutation = """
         mutation UpdateIssue($id: String!, $input: IssueUpdateInput!) {
@@ -258,6 +267,52 @@ class LinearTracker(TrackerBase):
             issues.append("LINEAR_API_KEY is invalid or expired")
 
         return len(issues) == 0, issues
+
+    def _get_or_create_label_ids(self, team_id: str | None, label_names: list[str]) -> list[str]:
+        """Resolve label names to IDs, creating any that don't exist."""
+        if not team_id or not label_names:
+            return []
+        # Build name->id map for existing labels
+        query = """
+        query TeamLabels($teamId: String!) {
+            team(id: $teamId) {
+                labels { nodes { id name } }
+            }
+        }
+        """
+        try:
+            result = self._execute_query(query, {"teamId": team_id})
+            nodes = result.get("data", {}).get("team", {}).get("labels", {}).get("nodes", [])
+            name_to_id = {n.get("name", ""): n["id"] for n in nodes if n.get("id")}
+        except Exception:
+            name_to_id = {}
+
+        ids = []
+        for name in label_names:
+            if name in name_to_id:
+                ids.append(name_to_id[name])
+            else:
+                new_id = self._create_label(team_id, name)
+                if new_id:
+                    ids.append(new_id)
+        return ids
+
+    def _create_label(self, team_id: str, name: str) -> str | None:
+        """Create a new label in Linear and return its ID."""
+        mutation = """
+        mutation CreateLabel($input: IssueLabelCreateInput!) {
+            issueLabelCreate(input: $input) {
+                success
+                issueLabel { id name }
+            }
+        }
+        """
+        try:
+            result = self._execute_query(mutation, {"input": {"name": name, "teamId": team_id}})
+            label = result.get("data", {}).get("issueLabelCreate", {}).get("issueLabel")
+            return label.get("id") if label else None
+        except Exception:
+            return None
 
     def _get_label_ids(self, team_id: str | None, label_names: list[str]) -> list[str]:
         """Resolve label names to Linear label IDs for the team."""
