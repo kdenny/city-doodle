@@ -17,6 +17,7 @@ import type {
   Road,
   POI,
   Bridge,
+  Interchange,
   LayerVisibility,
   DistrictType,
   RoadClass,
@@ -140,6 +141,83 @@ const POI_HIT_RADIUS = 12;
 // Hit test distance for roads (in world coordinates)
 const ROAD_HIT_DISTANCE = 8;
 
+/**
+ * Grid-based spatial index for O(1) average-case road hit testing.
+ * Divides world space into fixed-size cells and maps each cell to the
+ * roads whose bounding boxes intersect it. Query returns only roads
+ * in cells near the test point, avoiding a full linear scan.
+ */
+class RoadSpatialIndex {
+  private cellSize: number;
+  private cells = new Map<string, Road[]>();
+
+  constructor(cellSize: number = 50) {
+    this.cellSize = cellSize;
+  }
+
+  /** Rebuild the index from a new set of roads. */
+  rebuild(roads: Road[]): void {
+    this.cells.clear();
+    for (const road of roads) {
+      const points = road.line.points;
+      if (points.length < 2) continue;
+
+      // Compute bounding box of all road segments
+      let minX = Infinity, maxX = -Infinity, minY = Infinity, maxY = -Infinity;
+      for (const p of points) {
+        if (p.x < minX) minX = p.x;
+        if (p.x > maxX) maxX = p.x;
+        if (p.y < minY) minY = p.y;
+        if (p.y > maxY) maxY = p.y;
+      }
+
+      // Insert road reference into every cell its bounding box touches
+      const startCx = Math.floor(minX / this.cellSize);
+      const endCx = Math.floor(maxX / this.cellSize);
+      const startCy = Math.floor(minY / this.cellSize);
+      const endCy = Math.floor(maxY / this.cellSize);
+
+      for (let cx = startCx; cx <= endCx; cx++) {
+        for (let cy = startCy; cy <= endCy; cy++) {
+          const key = `${cx},${cy}`;
+          let bucket = this.cells.get(key);
+          if (!bucket) {
+            bucket = [];
+            this.cells.set(key, bucket);
+          }
+          bucket.push(road);
+        }
+      }
+    }
+  }
+
+  /** Return candidate roads near (x, y) within the given radius. */
+  query(x: number, y: number, radius: number): Road[] {
+    const startCx = Math.floor((x - radius) / this.cellSize);
+    const endCx = Math.floor((x + radius) / this.cellSize);
+    const startCy = Math.floor((y - radius) / this.cellSize);
+    const endCy = Math.floor((y + radius) / this.cellSize);
+
+    const seen = new Set<Road>();
+    const results: Road[] = [];
+
+    for (let cx = startCx; cx <= endCx; cx++) {
+      for (let cy = startCy; cy <= endCy; cy++) {
+        const bucket = this.cells.get(`${cx},${cy}`);
+        if (!bucket) continue;
+        for (const road of bucket) {
+          if (!seen.has(road)) {
+            seen.add(road);
+            results.push(road);
+          }
+        }
+      }
+    }
+
+    return results;
+  }
+}
+
 // Default neighborhood colors (used when no custom color is set)
 const DEFAULT_NEIGHBORHOOD_COLOR = 0x4a90d9; // Blue
 
@@ -152,65 +230,6 @@ const CITY_LIMITS_STYLE = {
   dashLength: 16,
   gapLength: 8,
 };
-
-/**
- * Grid-based spatial index for O(1) road proximity lookups.
- * Divides the world into cells and maps each cell to the roads that
- * pass through it (including a buffer for hit-testing tolerance).
- */
-class RoadSpatialIndex {
-  private cellSize: number;
-  private grid: Map<string, Road[]> = new Map();
-
-  constructor(cellSize: number = 50) {
-    this.cellSize = cellSize;
-  }
-
-  /** Build index from a list of roads. */
-  build(roads: Road[]): void {
-    this.grid.clear();
-    const buffer = ROAD_HIT_DISTANCE;
-
-    for (const road of roads) {
-      const points = road.line.points;
-      if (points.length < 2) continue;
-
-      // For each segment, find all cells it could touch (with buffer)
-      for (let i = 0; i < points.length - 1; i++) {
-        const x1 = Math.min(points[i].x, points[i + 1].x) - buffer;
-        const y1 = Math.min(points[i].y, points[i + 1].y) - buffer;
-        const x2 = Math.max(points[i].x, points[i + 1].x) + buffer;
-        const y2 = Math.max(points[i].y, points[i + 1].y) + buffer;
-
-        const minCellX = Math.floor(x1 / this.cellSize);
-        const minCellY = Math.floor(y1 / this.cellSize);
-        const maxCellX = Math.floor(x2 / this.cellSize);
-        const maxCellY = Math.floor(y2 / this.cellSize);
-
-        for (let cx = minCellX; cx <= maxCellX; cx++) {
-          for (let cy = minCellY; cy <= maxCellY; cy++) {
-            const key = `${cx},${cy}`;
-            let bucket = this.grid.get(key);
-            if (!bucket) {
-              bucket = [];
-              this.grid.set(key, bucket);
-            }
-            // Avoid duplicate road entries in the same cell
-            if (bucket[bucket.length - 1] !== road) {
-              bucket.push(road);
-            }
-          }
-        }
-      }
-    }
-  }
-
-  /** Get candidate roads near a world coordinate. */
-  getCandidates(x: number, y: number): Road[] {
-    const key = `${Math.floor(x / this.cellSize)},${Math.floor(y / this.cellSize)}`;
-    return this.grid.get(key) || [];
-  }
-}
 
 /**
  * Result of a hit test on the features layer.
@@ -228,6 +247,7 @@ export class FeaturesLayer {
   private roadsGraphics: Graphics;
   private roadHighlightGraphics: Graphics;
   private bridgesGraphics: Graphics;
+  private interchangesGraphics: Graphics;
   private poisGraphics: Graphics;
   private data: FeaturesData | null = null;
   private currentZoom: number = 1;
@@ -235,8 +255,10 @@ export class FeaturesLayer {
   private districtScale: number = 1;
   /** ID of the currently selected road (null = no selection) */
   private selectedRoadId: string | null = null;
-  /** Spatial index for fast road hit testing */
-  private roadIndex: RoadSpatialIndex = new RoadSpatialIndex();
+  /** Spatial index for efficient road hit testing (rebuilt on data change) */
+  private roadIndex = new RoadSpatialIndex();
+  /** Current viewport bounds in world coordinates (null = not set, render all) */
+  private viewportBounds: { minX: number; maxX: number; minY: number; maxY: number } | null = null;
 
   constructor() {
     this.container = new Container();
@@ -273,6 +295,11 @@ export class FeaturesLayer {
     this.bridgesGraphics.label = "bridges";
     this.container.addChild(this.bridgesGraphics);
 
+    // Interchanges render above bridges
+    this.interchangesGraphics = new Graphics();
+    this.interchangesGraphics.label = "interchanges";
+    this.container.addChild(this.interchangesGraphics);
+
     // POIs on top
     this.poisGraphics = new Graphics();
     this.poisGraphics.label = "pois";
@@ -286,7 +313,7 @@ export class FeaturesLayer {
   setData(data: FeaturesData): void {
     this.data = data;
     this.districtScale = this.computeDistrictScale(data.districts);
-    this.roadIndex.build(data.roads);
+    this.roadIndex.rebuild(data.roads);
     this.render();
   }
 
@@ -312,6 +339,21 @@ export class FeaturesLayer {
         this.renderRoads(this.data.roads);
         this.renderRoadHighlight();
       }
+    }
+  }
+
+  /**
+   * Set the visible viewport bounds in world coordinates.
+   * Roads outside these bounds are skipped during rendering for performance.
+   *
+   * @param bounds - Visible area, or null to render all roads
+   */
+  setViewportBounds(bounds: { minX: number; maxX: number; minY: number; maxY: number } | null): void {
+    this.viewportBounds = bounds;
+    // Re-render roads with new viewport bounds
+    if (this.data) {
+      this.renderRoads(this.data.roads);
+      this.renderBridges(this.data.bridges);
     }
   }
 
@@ -361,6 +403,7 @@ export class FeaturesLayer {
     this.renderRoads(this.data.roads);
     this.renderRoadHighlight();
     this.renderBridges(this.data.bridges || []);
+    this.renderInterchanges(this.data.interchanges || []);
     this.renderPOIs(this.data.pois);
   }
 
@@ -596,10 +639,26 @@ export class FeaturesLayer {
       (a, b) => classOrder.indexOf(a.roadClass) - classOrder.indexOf(b.roadClass)
     );
 
-    // Filter roads by zoom level
+    // Filter roads by zoom level and viewport bounds
+    const vp = this.viewportBounds;
     const visibleRoads = sortedRoads.filter((road) => {
       const style = ROAD_STYLES[road.roadClass];
-      return this.currentZoom >= style.minZoom;
+      if (this.currentZoom < style.minZoom) return false;
+
+      // Viewport culling: skip roads entirely outside visible area
+      if (vp) {
+        const pts = road.line.points;
+        let allOutside = true;
+        for (const p of pts) {
+          if (p.x >= vp.minX && p.x <= vp.maxX && p.y >= vp.minY && p.y <= vp.maxY) {
+            allOutside = false;
+            break;
+          }
+        }
+        if (allOutside) return false;
+      }
+
+      return true;
     });
 
     // Scale road widths with zoom (thinner when zoomed out) and district size
@@ -850,6 +909,42 @@ export class FeaturesLayer {
     }
   }
 
+  /**
+   * Render interchange markers at highway-road crossing points.
+   * Drawn as green diamond markers at each interchange position.
+   */
+  private renderInterchanges(interchanges: Interchange[]): void {
+    if (this.interchangesGraphics.clear) {
+      this.interchangesGraphics.clear();
+    }
+
+    if (interchanges.length === 0) return;
+
+    const markerSize = 8;
+    const markerColor = 0x2ecc71; // Green
+
+    for (const interchange of interchanges) {
+      const { x, y } = interchange.position;
+
+      // Draw diamond shape
+      this.interchangesGraphics.moveTo(x, y - markerSize);
+      this.interchangesGraphics.lineTo(x + markerSize, y);
+      this.interchangesGraphics.lineTo(x, y + markerSize);
+      this.interchangesGraphics.lineTo(x - markerSize, y);
+      this.interchangesGraphics.closePath();
+      this.interchangesGraphics.fill({ color: markerColor, alpha: 0.8 });
+
+      // Draw outline
+      this.interchangesGraphics.setStrokeStyle({ width: 2, color: 0xffffff });
+      this.interchangesGraphics.moveTo(x, y - markerSize);
+      this.interchangesGraphics.lineTo(x + markerSize, y);
+      this.interchangesGraphics.lineTo(x, y + markerSize);
+      this.interchangesGraphics.lineTo(x - markerSize, y);
+      this.interchangesGraphics.closePath();
+      this.interchangesGraphics.stroke();
+    }
+  }
+
   private renderPOIs(pois: POI[]): void {
     if (this.poisGraphics.clear) {
       this.poisGraphics.clear();
@@ -896,10 +991,10 @@ export class FeaturesLayer {
       }
     }
 
-    // Check roads next (using spatial index for O(1) lookup)
+    // Check roads next (spatial index narrows candidates from O(n) to O(k) where k << n)
     if (this.roadsGraphics.visible) {
-      const candidates = this.roadIndex.getCandidates(worldX, worldY);
-      for (const road of candidates) {
+      const candidateRoads = this.roadIndex.query(worldX, worldY, ROAD_HIT_DISTANCE);
+      for (const road of candidateRoads) {
         if (this.hitTestRoad(road, worldX, worldY)) {
           return { type: "road", feature: road };
         }
