@@ -346,6 +346,7 @@ function fromApiDistrict(apiDistrict: ApiDistrict): District {
     gridAngle: typeof streetGrid?.gridAngle === "number" ? streetGrid.gridAngle : undefined,
     personality: streetGrid?.personality as District["personality"] | undefined,
     ponds,
+    fillColor: apiDistrict.fill_color ?? undefined,
   };
 }
 
@@ -1739,6 +1740,7 @@ export function FeaturesProvider({
         if (updates.name !== undefined) apiUpdate.name = updates.name;
         if (updates.isHistoric !== undefined) apiUpdate.historic = updates.isHistoric;
         if (updates.type !== undefined) apiUpdate.type = toApiDistrictType(updates.type);
+        if (updates.fillColor !== undefined) apiUpdate.fill_color = updates.fillColor || null;
 
         // Only call API if there are fields to update
         if (Object.keys(apiUpdate).length > 0) {

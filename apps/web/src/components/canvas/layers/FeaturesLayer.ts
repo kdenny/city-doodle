@@ -734,7 +734,12 @@ export class FeaturesLayer {
     }
 
     for (const district of districts) {
-      const color = DISTRICT_COLORS[district.type] ?? 0xcccccc;
+      // CITY-408: Use custom fill color if set, otherwise use type default
+      let color = DISTRICT_COLORS[district.type] ?? 0xcccccc;
+      if (district.fillColor) {
+        const parsed = parseInt(district.fillColor.replace("#", ""), 16);
+        if (!isNaN(parsed)) color = parsed;
+      }
       const points = district.polygon.points;
 
       if (points.length < 3) continue;
