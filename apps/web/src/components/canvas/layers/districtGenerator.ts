@@ -663,7 +663,9 @@ export function regenerateStreetGridForClippedDistrict(
   position: { x: number; y: number },
   sprawlCompact: number = 0.5,
   gridAngle?: number,
-  transitOptions?: { transitStations?: Point[]; transitCar?: number }
+  transitOptions?: { transitStations?: Point[]; transitCar?: number },
+  /** CITY-384: Grid origin from adjacent district for street alignment */
+  adjacentGridOrigin?: Point
 ): { roads: Road[]; gridAngle: number } {
   // Don't generate streets for parks or airports
   if (districtType === "park" || districtType === "airport") {
@@ -692,7 +694,8 @@ export function regenerateStreetGridForClippedDistrict(
     rng,
     districtType,
     gridAngle,
-    transitOptions
+    transitOptions,
+    adjacentGridOrigin
   );
 }
 

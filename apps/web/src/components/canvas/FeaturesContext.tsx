@@ -851,11 +851,13 @@ export function FeaturesProvider({
         generated.district.polygon.points = districtClipResult.clippedPolygon;
         adjacentDistrictIds = districtClipResult.adjacentDistrictIds;
 
-        // Determine grid angle from adjacent districts for continuity
+        // Determine grid angle and origin from adjacent districts for continuity
         let adjacentGridAngle: number | undefined;
+        let adjacentGridOrigin: Point | undefined;
         if (adjacentDistrictIds.length > 0) {
           // Pick the grid angle from the neighbor with the longest shared boundary
           let bestNeighborAngle: number | undefined;
+          let bestNeighborPoints: Point[] | undefined;
           let longestSharedEdge = 0;
 
           for (const adjId of adjacentDistrictIds) {
@@ -887,13 +889,22 @@ export function FeaturesProvider({
             if (sharedLength > longestSharedEdge) {
               longestSharedEdge = sharedLength;
               bestNeighborAngle = adjDistrict.gridAngle;
+              bestNeighborPoints = adjPoints;
             }
           }
 
           adjacentGridAngle = bestNeighborAngle;
+
+          // CITY-384: Use the adjacent district's centroid as grid origin so both
+          // districts share the same rotation center and their grid lines align.
+          if (bestNeighborPoints && bestNeighborPoints.length > 0) {
+            let cx = 0, cy = 0;
+            for (const p of bestNeighborPoints) { cx += p.x; cy += p.y; }
+            adjacentGridOrigin = { x: cx / bestNeighborPoints.length, y: cy / bestNeighborPoints.length };
+          }
         }
 
-        // Regenerate street grid for the clipped polygon with aligned grid angle
+        // Regenerate street grid for the clipped polygon with aligned grid angle and origin
         const clippedGridResult = regenerateStreetGridForClippedDistrict(
           districtClipResult.clippedPolygon,
           generated.district.id,
@@ -903,7 +914,8 @@ export function FeaturesProvider({
           adjacentGridAngle ?? generated.district.gridAngle,
           transitStations.length > 0
             ? { transitStations, transitCar: personality.transit_car }
-            : undefined
+            : undefined,
+          adjacentGridOrigin
         );
         generated.roads = clippedGridResult.roads;
         generated.district.gridAngle = clippedGridResult.gridAngle;
@@ -961,11 +973,13 @@ export function FeaturesProvider({
       const tempId = generated.district.id;
 
       // Generate inter-district roads connecting to existing districts (CITY-144)
+      // CITY-384: Pass adjacent district IDs so shared-boundary arterials are generated
       const interDistrictResult = generateInterDistrictRoads(
         generated.district,
         features.districts,
         waterFeatures,
-        { roadClass: "arterial", avoidWater: true }
+        { roadClass: "arterial", avoidWater: true },
+        adjacentDistrictIds
       );
 
       // Combine internal roads with inter-district roads
