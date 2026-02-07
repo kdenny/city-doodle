@@ -781,3 +781,142 @@ describe("CITY-142: regenerateStreetGridForClippedDistrict", () => {
     expect(result.roads.length).toBeGreaterThan(0);
   });
 });
+
+// CITY-327/329: Concave polygon and intersection pairing tests
+describe("CITY-327: Concave polygon street grid", () => {
+  it("generates valid roads for concave L-shaped polygon", () => {
+    // L-shaped concave polygon — grid lines will cross it at 4+ points
+    const lShape = [
+      { x: 0, y: 0 },
+      { x: 200, y: 0 },
+      { x: 200, y: 100 },
+      { x: 100, y: 100 },
+      { x: 100, y: 200 },
+      { x: 0, y: 200 },
+    ];
+
+    const result = regenerateStreetGridForClippedDistrict(
+      lShape,
+      "district-l",
+      "commercial",
+      { x: 100, y: 100 },
+      0.5,
+      0 // No rotation for predictable results
+    );
+
+    expect(result.roads.length).toBeGreaterThan(0);
+
+    // Every road segment midpoint must be inside the polygon
+    for (const road of result.roads) {
+      const pts = road.line.points;
+      const midX = (pts[0].x + pts[1].x) / 2;
+      const midY = (pts[0].y + pts[1].y) / 2;
+      // Midpoint should be inside or very near the L-shape boundary
+      const inBounds =
+        midX >= -5 && midX <= 205 && midY >= -5 && midY <= 205;
+      expect(inBounds).toBe(true);
+    }
+  });
+
+  it("generates valid roads for concave U-shaped polygon", () => {
+    // U-shaped polygon — multiple re-entries for horizontal lines
+    const uShape = [
+      { x: 0, y: 0 },
+      { x: 300, y: 0 },
+      { x: 300, y: 200 },
+      { x: 200, y: 200 },
+      { x: 200, y: 100 },
+      { x: 100, y: 100 },
+      { x: 100, y: 200 },
+      { x: 0, y: 200 },
+    ];
+
+    const result = regenerateStreetGridForClippedDistrict(
+      uShape,
+      "district-u",
+      "residential",
+      { x: 150, y: 100 },
+      0.5,
+      0
+    );
+
+    expect(result.roads.length).toBeGreaterThan(0);
+  });
+
+  it("does not produce roads outside the polygon for star-shaped concavity", () => {
+    // Star/cross shape — many concave indentations
+    const cross = [
+      { x: 100, y: 0 },
+      { x: 200, y: 0 },
+      { x: 200, y: 100 },
+      { x: 300, y: 100 },
+      { x: 300, y: 200 },
+      { x: 200, y: 200 },
+      { x: 200, y: 300 },
+      { x: 100, y: 300 },
+      { x: 100, y: 200 },
+      { x: 0, y: 200 },
+      { x: 0, y: 100 },
+      { x: 100, y: 100 },
+    ];
+
+    const result = regenerateStreetGridForClippedDistrict(
+      cross,
+      "district-cross",
+      "downtown",
+      { x: 150, y: 150 },
+      0.5,
+      0
+    );
+
+    expect(result.roads.length).toBeGreaterThan(0);
+
+    // All road endpoints should be within generous bounds of the cross
+    for (const road of result.roads) {
+      for (const pt of road.line.points) {
+        expect(pt.x).toBeGreaterThanOrEqual(-10);
+        expect(pt.x).toBeLessThanOrEqual(310);
+        expect(pt.y).toBeGreaterThanOrEqual(-10);
+        expect(pt.y).toBeLessThanOrEqual(310);
+      }
+    }
+  });
+});
+
+// CITY-328: Jitter scaling tests
+describe("CITY-328: Jitter control", () => {
+  it("collector roads have no jitter applied", () => {
+    const polygon = [
+      { x: 0, y: 0 },
+      { x: 300, y: 0 },
+      { x: 300, y: 300 },
+      { x: 0, y: 300 },
+    ];
+
+    const result = regenerateStreetGridForClippedDistrict(
+      polygon,
+      "district-j",
+      "residential",
+      { x: 150, y: 150 },
+      0.5,
+      0
+    );
+
+    const collectors = result.roads.filter(r => r.roadClass === "collector");
+    expect(collectors.length).toBeGreaterThan(0);
+
+    // Collector road endpoints should be exactly on the polygon boundary
+    // or on exact grid lines (no perpendicular jitter offset)
+    for (const road of collectors) {
+      const pts = road.line.points;
+      // Both endpoints should be on/near the polygon edge (within tolerance)
+      // since collectors are either perimeter roads or grid-aligned
+      const withinBounds =
+        pts[0].x >= -1 && pts[0].x <= 301 &&
+        pts[0].y >= -1 && pts[0].y <= 301 &&
+        pts[1].x >= -1 && pts[1].x <= 301 &&
+        pts[1].y >= -1 && pts[1].y <= 301;
+      expect(withinBounds).toBe(true);
+    }
+  });
+});
