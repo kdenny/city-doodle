@@ -56,10 +56,13 @@ export function TransitView({
     }
   }, [placementContext, railSeed]);
 
-  const isPlacingStation =
-    placementContext?.isPlacing &&
-    (placementContext.selectedSeed?.id === "subway" ||
-      placementContext.selectedSeed?.id === "rail_station");
+  const placingStationType: "subway" | "rail" | null =
+    placementContext?.isPlacing && placementContext.selectedSeed?.id === "subway"
+      ? "subway"
+      : placementContext?.isPlacing &&
+          placementContext.selectedSeed?.id === "rail_station"
+        ? "rail"
+        : null;
 
   // Line drawing via TransitLineDrawingContext
   const handleDrawNewLine = useCallback(() => {
@@ -169,7 +172,7 @@ export function TransitView({
             onPlaceSubwayStation={handlePlaceSubwayStation}
             onPlaceRailStation={handlePlaceRailStation}
             onDrawNewLine={handleDrawNewLine}
-            isPlacingStation={isPlacingStation}
+            placingStationType={placingStationType}
             isDrawingLine={isDrawingLine}
           />
         </div>
@@ -195,17 +198,14 @@ export function TransitView({
         </div>
 
         {/* Placement mode indicator */}
-        {isPlacingStation && (
+        {placingStationType && (
           <div className="absolute top-4 left-4 z-10 bg-blue-600 text-white px-4 py-2 rounded-lg shadow-lg flex items-center gap-2">
             <span className="text-lg">
-              {placementContext?.selectedSeed?.id === "subway" ? "🚇" : "🚂"}
+              {placingStationType === "subway" ? "🚇" : "🚂"}
             </span>
             <span className="text-sm font-medium">
               Click on a district to place{" "}
-              {placementContext?.selectedSeed?.id === "subway"
-                ? "subway"
-                : "rail"}{" "}
-              station
+              {placingStationType === "subway" ? "subway" : "rail"} station
             </span>
             <button
               onClick={() => placementContext?.cancelPlacing()}
