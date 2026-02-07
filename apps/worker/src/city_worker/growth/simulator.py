@@ -118,10 +118,12 @@ class GrowthSimulator:
             # 1. Infill development
             self._infill_district(district, changelog)
 
-            # 2. Expansion at edges (constrained by other districts and water)
+            # 2. Expansion at edges (constrained by other districts and water,
+            #    biased toward road corridors)
             other_districts = [d for d in districts if d["id"] != district["id"]]
             expanded = self._expand_district(
-                district, other_districts, water_regions, changelog,
+                district, other_districts, water_regions,
+                road_nodes, changelog,
             )
 
             # 3. New roads in expanded area
@@ -170,12 +172,14 @@ class GrowthSimulator:
         district: dict,
         other_districts: list[dict],
         water_regions: list[dict] | None,
+        road_nodes: list[dict],
         changelog: GrowthChangelog,
     ) -> bool:
         """Expand district geometry outward. Returns True if expanded.
 
         Constrains expansion so points don't enter other districts (CITY-310)
-        or water regions (CITY-309).
+        or water regions (CITY-309). Biases expansion toward road corridors
+        so growth follows transportation infrastructure (CITY-316).
         """
         geometry = district.get("geometry")
         if not geometry or not isinstance(geometry, dict):
@@ -213,8 +217,15 @@ class GrowthSimulator:
                     if wr_ring:
                         water_rings.append(wr_ring)
 
-        # Expand each point outward from centroid
-        expansion = self.config.expansion_rate
+        # Corridor-biased expansion: vertices near roads expand faster
+        # Road proximity radius — how close a vertex needs to be to a road node
+        road_proximity = 1000  # meters
+        # Boost factor for vertices near roads (2.5x normal expansion)
+        corridor_boost = 2.5
+        # Reduction for vertices far from roads (0.4x normal expansion)
+        off_corridor_factor = 0.4
+
+        base_expansion = self.config.expansion_rate
         new_ring = []
         points_constrained = 0
         for p in ring:
@@ -223,6 +234,22 @@ class GrowthSimulator:
                 continue
             dx = p[0] - cx
             dy = p[1] - cy
+
+            # Check proximity to road nodes for corridor bias
+            near_road = False
+            for node in road_nodes:
+                pos = node.get("position", {})
+                nx, ny = pos.get("x", 0), pos.get("y", 0)
+                if math.hypot(p[0] - nx, p[1] - ny) < road_proximity:
+                    near_road = True
+                    break
+
+            # Apply corridor-biased expansion rate
+            if near_road:
+                expansion = base_expansion * corridor_boost
+            else:
+                expansion = base_expansion * off_corridor_factor
+
             new_x = p[0] + dx * expansion
             new_y = p[1] + dy * expansion
 
@@ -263,7 +290,7 @@ class GrowthSimulator:
             entity_type="district",
             entity_id=str(district["id"]),
             details={
-                "expansion_rate": expansion,
+                "expansion_rate": base_expansion,
                 "points_constrained": points_constrained,
             },
         ))
