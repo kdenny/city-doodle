@@ -72,6 +72,12 @@ interface TransitLineDrawingContextValue {
   isStationConnected: (stationId: string) => boolean;
   /** Check if drawing can be completed (has at least one segment) */
   canComplete: () => boolean;
+  /** CITY-363: Extend an existing line from a terminus station */
+  extendLine: (
+    lineId: string,
+    terminus: RailStationData,
+    properties: TransitLineProperties
+  ) => void;
 }
 
 const DEFAULT_LINE_COLORS = [
@@ -262,6 +268,27 @@ export function TransitLineDrawingProvider({
     setState(INITIAL_STATE);
   }, []);
 
+  /**
+   * CITY-363: Start extending an existing line from a terminus station.
+   * Pre-populates the drawing state with the existing line's ID and properties,
+   * so new segments are added to the existing line rather than creating a new one.
+   */
+  const extendLine = useCallback(
+    (lineId: string, terminus: RailStationData, properties: TransitLineProperties) => {
+      setState({
+        isDrawing: true,
+        firstStation: terminus,
+        connectedStations: [terminus],
+        lineId,
+        lineProperties: properties,
+        previewPosition: null,
+        hoveredStation: null,
+        awaitingProperties: false,
+      });
+    },
+    []
+  );
+
   const undoLastConnection = useCallback(() => {
     setState((prev) => {
       if (!prev.isDrawing || prev.connectedStations.length <= 1) return prev;
@@ -294,6 +321,7 @@ export function TransitLineDrawingProvider({
     setLineId,
     completeDrawing,
     cancelDrawing,
+    extendLine,
     undoLastConnection,
     isStationConnected,
     canComplete,

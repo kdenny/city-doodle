@@ -31,18 +31,24 @@ interface TransitLineInspectorProps {
   onUpdate: (lineId: string, updates: { name?: string; color?: string }) => Promise<void>;
   /** Callback when the line is deleted */
   onDelete?: (lineId: string) => Promise<void>;
+  /** CITY-363: Callback to extend the line from a terminus */
+  onExtend?: (lineId: string) => void;
   /** Callback to close the inspector */
   onClose: () => void;
   /** Whether an update is in progress */
   isUpdating?: boolean;
+  /** Whether line extension is currently in progress */
+  isExtending?: boolean;
 }
 
 export function TransitLineInspector({
   line,
   onUpdate,
   onDelete,
+  onExtend,
   onClose,
   isUpdating = false,
+  isExtending = false,
 }: TransitLineInspectorProps) {
   const [name, setName] = useState(line.name);
   const [color, setColor] = useState(line.color);
@@ -178,11 +184,22 @@ export function TransitLineInspector({
         </button>
       </div>
 
+      {/* CITY-363: Extend line button */}
+      {onExtend && line.stations >= 2 && (
+        <button
+          onClick={() => onExtend(line.id)}
+          disabled={isUpdating || isExtending}
+          className="w-full mt-2 px-3 py-2 text-sm text-white bg-green-600 rounded-md hover:bg-green-700 disabled:opacity-50 disabled:cursor-not-allowed transition-colors"
+        >
+          {isExtending ? "Extending..." : "Extend Line"}
+        </button>
+      )}
+
       {/* Delete button */}
       {onDelete && (
         <button
           onClick={() => onDelete(line.id)}
-          disabled={isUpdating}
+          disabled={isUpdating || isExtending}
           className="w-full mt-2 px-3 py-1.5 text-sm text-red-600 border border-red-300 rounded hover:bg-red-50 disabled:opacity-50 disabled:cursor-not-allowed transition-colors"
         >
           Delete Line
