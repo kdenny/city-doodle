@@ -8,6 +8,12 @@ import { useState, useCallback, useEffect, useRef } from "react";
 import type { TransitLineProperties } from "../canvas/TransitLineDrawingContext";
 import type { LineType } from "../../api/types";
 
+// CITY-362: Validate hex color format (#RRGGBB)
+const HEX_COLOR_RE = /^#[0-9A-Fa-f]{6}$/;
+function isValidHexColor(value: string): boolean {
+  return HEX_COLOR_RE.test(value);
+}
+
 // Predefined color palette for transit lines
 const LINE_COLORS = [
   { name: "Red", value: "#B22222" },
@@ -46,6 +52,7 @@ export function TransitLinePropertiesDialog({
   const [color, setColor] = useState(initialProperties?.color || LINE_COLORS[0].value);
   const [lineType, setLineType] = useState<LineType>(initialProperties?.type || "rail");
   const [customColor, setCustomColor] = useState("");
+  const [colorError, setColorError] = useState("");
   const nameInputRef = useRef<HTMLInputElement>(null);
 
   // Reset form when dialog opens
@@ -74,9 +81,16 @@ export function TransitLinePropertiesDialog({
   }, [isOpen]);
 
   const handleConfirm = useCallback(() => {
+    // CITY-362: Validate hex color before confirming
+    const finalColor = customColor || color;
+    if (!isValidHexColor(finalColor)) {
+      setColorError("Invalid color format. Use #RRGGBB (e.g. #FF6600).");
+      return;
+    }
+    setColorError("");
     onConfirm({
       name: name.trim() || "Unnamed Line",
-      color: customColor || color,
+      color: finalColor,
       type: lineType,
     });
   }, [name, color, customColor, lineType, onConfirm]);
@@ -168,6 +182,7 @@ export function TransitLinePropertiesDialog({
                 onClick={() => {
                   setColor(c.value);
                   setCustomColor("");
+                  setColorError("");
                 }}
                 className={`w-8 h-8 rounded-full border-2 transition-all ${
                   color === c.value && !customColor
@@ -188,13 +203,19 @@ export function TransitLinePropertiesDialog({
               id="custom-color"
               type="color"
               value={customColor || color}
-              onChange={(e) => setCustomColor(e.target.value)}
+              onChange={(e) => {
+                setCustomColor(e.target.value);
+                setColorError("");
+              }}
               className="w-8 h-8 rounded cursor-pointer border border-gray-300"
             />
             {customColor && (
               <span className="text-sm text-gray-500">{customColor}</span>
             )}
           </div>
+          {colorError && (
+            <p className="text-xs text-red-600 mt-1">{colorError}</p>
+          )}
         </div>
 
         {/* Preview */}
