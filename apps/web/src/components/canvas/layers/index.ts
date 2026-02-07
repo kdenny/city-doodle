@@ -60,6 +60,8 @@ export type {
   POIType,
   Bridge,
   WaterCrossingType,
+  Interchange,
+  InterchangeType,
   FeaturesData,
   LabelData,
   LabelConfig,
@@ -89,3 +91,4 @@ export type {
   ConnectionCandidate,
   ArterialGenerationResult,
 } from "./poiArterialValidator";
+
