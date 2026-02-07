@@ -130,14 +130,17 @@ export class SeedsLayer {
     this.previewGraphics = new Graphics();
 
     if (category === "district") {
-      // For districts, show a polygon preview representing the district area
-      const size = preview.size ?? 60; // Use drag size or default
+      // For districts, show a polygon preview representing the district area.
+      // `size` is the district diameter (matching generateDistrictGeometry),
+      // so we use size/2 as the base radius (matching generateOrganicPolygon).
+      const size = preview.size ?? 34; // Use drag size or default effective size
+      const baseRadius = size / 2;
       const numPoints = 8;
       const points: { x: number; y: number }[] = [];
 
       for (let i = 0; i < numPoints; i++) {
         const angle = (i / numPoints) * Math.PI * 2;
-        const radius = size * (0.85 + Math.sin(angle * 3) * 0.15); // Slight variation
+        const radius = baseRadius * (0.85 + Math.sin(angle * 3) * 0.15); // Slight variation
         points.push({
           x: position.x + Math.cos(angle) * radius,
           y: position.y + Math.sin(angle) * radius,
@@ -171,17 +174,17 @@ export class SeedsLayer {
       this.previewGraphics.lineTo(position.x, position.y + crossSize);
       this.previewGraphics.stroke();
 
-      // Draw preview street grid lines
+      // Draw preview street grid lines within the polygon area
       this.previewGraphics.setStrokeStyle({ width: 1, color: 0xaaaaaa, alpha: 0.3 });
-      const gridSpacing = 20;
-      for (let offset = -size + gridSpacing; offset < size; offset += gridSpacing) {
+      const gridSpacing = Math.max(6, baseRadius / 3); // Scale grid to district size
+      for (let offset = -baseRadius + gridSpacing; offset < baseRadius; offset += gridSpacing) {
         // Horizontal lines
-        this.previewGraphics.moveTo(position.x - size * 0.7, position.y + offset);
-        this.previewGraphics.lineTo(position.x + size * 0.7, position.y + offset);
+        this.previewGraphics.moveTo(position.x - baseRadius * 0.7, position.y + offset);
+        this.previewGraphics.lineTo(position.x + baseRadius * 0.7, position.y + offset);
         this.previewGraphics.stroke();
         // Vertical lines
-        this.previewGraphics.moveTo(position.x + offset, position.y - size * 0.7);
-        this.previewGraphics.lineTo(position.x + offset, position.y + size * 0.7);
+        this.previewGraphics.moveTo(position.x + offset, position.y - baseRadius * 0.7);
+        this.previewGraphics.lineTo(position.x + offset, position.y + baseRadius * 0.7);
         this.previewGraphics.stroke();
       }
     } else {
