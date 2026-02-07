@@ -114,6 +114,14 @@ export const MapCanvas = forwardRef<MapCanvasHandle, MapCanvasProps>(
     screenY: number;
   } | null>(null);
 
+  // CITY-405: Hover tooltip state for POIs
+  const [hoveredPoiTooltip, setHoveredPoiTooltip] = useState<{
+    name: string;
+    poiType: string;
+    screenX: number;
+    screenY: number;
+  } | null>(null);
+
   // Try to get the context (may be null if not wrapped in provider)
   const canvasContext = useContext(MapCanvasContextInternal);
 
@@ -202,6 +210,7 @@ export const MapCanvas = forwardRef<MapCanvasHandle, MapCanvasProps>(
     isEditingAllowed,
     viewMode,
     setHoveredStationTooltip,
+    setHoveredPoiTooltip,
     snapEngine: null as SnapEngine | null,
   });
 
@@ -230,6 +239,7 @@ export const MapCanvas = forwardRef<MapCanvasHandle, MapCanvasProps>(
     isEditingAllowed,
     viewMode,
     setHoveredStationTooltip,
+    setHoveredPoiTooltip,
     snapEngine,
   };
 
@@ -1255,6 +1265,25 @@ export const MapCanvas = forwardRef<MapCanvasHandle, MapCanvasProps>(
         // Clear tooltip when not in transit view
         s.setHoveredStationTooltip(null);
       }
+
+      // CITY-405: POI hover tooltip (all view modes)
+      if (featuresLayerRef.current) {
+        const hitResult = featuresLayerRef.current.hitTest(worldPos.x, worldPos.y);
+        if (hitResult && hitResult.type === "poi") {
+          const poi = hitResult.feature as { name: string; type: string };
+          const container = containerRef.current;
+          const maxX = (container?.clientWidth ?? 800) - 200;
+          const maxY = (container?.clientHeight ?? 600) - 60;
+          s.setHoveredPoiTooltip({
+            name: poi.name,
+            poiType: poi.type,
+            screenX: Math.min(event.global.x + 12, maxX),
+            screenY: Math.max(Math.min(event.global.y - 8, maxY), 4),
+          });
+        } else {
+          s.setHoveredPoiTooltip(null);
+        }
+      }
     };
 
     const handlePointerUp = async (event: { global: { x: number; y: number } }) => {
@@ -1593,6 +1622,23 @@ export const MapCanvas = forwardRef<MapCanvasHandle, MapCanvasProps>(
                 ))}
               </div>
             )}
+          </div>
+        </div>
+      )}
+      {/* CITY-405: POI hover tooltip */}
+      {hoveredPoiTooltip && !hoveredStationTooltip && (
+        <div
+          className="absolute pointer-events-none z-50"
+          style={{
+            left: hoveredPoiTooltip.screenX + 12,
+            top: hoveredPoiTooltip.screenY - 8,
+          }}
+        >
+          <div className="bg-gray-900 text-white text-xs rounded-md px-3 py-2 shadow-lg max-w-48">
+            <div className="font-medium">{hoveredPoiTooltip.name}</div>
+            <div className="text-gray-400 text-[10px] mt-0.5 capitalize">
+              {hoveredPoiTooltip.poiType}
+            </div>
           </div>
         </div>
       )}
