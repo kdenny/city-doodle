@@ -1177,7 +1177,7 @@ export const MapCanvas = forwardRef<MapCanvasHandle, MapCanvasProps>(
       if (s.isEditingAllowed && isDrawing && addVertex) {
         const drawingMode = s.drawingContext?.state.mode;
         // Check if clicking near first vertex to close the polygon (not for road/split modes)
-        if (drawingMode !== "road" && drawingMode !== "highway" && drawingMode !== "split" &&
+        if (drawingMode !== "road" && drawingMode !== "split" &&
             canComplete && canComplete() && drawingLayerRef.current?.isNearFirstVertex(worldPos)) {
           completeDrawing?.();
           return;

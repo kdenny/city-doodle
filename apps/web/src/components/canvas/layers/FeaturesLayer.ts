@@ -645,17 +645,17 @@ export class FeaturesLayer {
       const style = ROAD_STYLES[road.roadClass];
       if (this.currentZoom < style.minZoom) return false;
 
-      // Viewport culling: skip roads entirely outside visible area
+      // Viewport culling: skip roads whose bounding box doesn't intersect viewport
       if (vp) {
         const pts = road.line.points;
-        let allOutside = true;
+        let rMinX = Infinity, rMaxX = -Infinity, rMinY = Infinity, rMaxY = -Infinity;
         for (const p of pts) {
-          if (p.x >= vp.minX && p.x <= vp.maxX && p.y >= vp.minY && p.y <= vp.maxY) {
-            allOutside = false;
-            break;
-          }
+          if (p.x < rMinX) rMinX = p.x;
+          if (p.x > rMaxX) rMaxX = p.x;
+          if (p.y < rMinY) rMinY = p.y;
+          if (p.y > rMaxY) rMaxY = p.y;
         }
-        if (allOutside) return false;
+        if (rMaxX < vp.minX || rMinX > vp.maxX || rMaxY < vp.minY || rMinY > vp.maxY) return false;
       }
 
       return true;
@@ -1369,3 +1369,4 @@ class SeededRandom {
     return min + this.next() * (max - min);
   }
 }
+
