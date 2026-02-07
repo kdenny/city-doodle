@@ -1170,6 +1170,23 @@ export const MapCanvas = forwardRef<MapCanvasHandle, MapCanvasProps>(
         return;
       }
 
+      // CITY-364: Handle drag-to-size completion BEFORE the isDragging guard,
+      // because drag-to-size intentionally involves mouse movement that sets isDragging.
+      const pc = s.placementContext;
+      if (s.isEditingAllowed && pc?.isDraggingSize && pc.dragOrigin && pc?.confirmPlacement) {
+        viewport.plugins.resume("drag");
+        const size = pc.dragSize;
+        if (size && size >= 30) {
+          // Place at the drag origin with the dragged size
+          pc.confirmPlacement(pc.dragOrigin, size);
+        } else {
+          // Click or drag too small — place at default size (CITY-364)
+          pc.cancelDragSize();
+          pc.confirmPlacement(pc.dragOrigin);
+        }
+        return;
+      }
+
       // Don't trigger placement if we were dragging
       if (isDragging) return;
 
@@ -1220,23 +1237,8 @@ export const MapCanvas = forwardRef<MapCanvasHandle, MapCanvasProps>(
         return;
       }
 
-      const pc = s.placementContext;
       const isPlacing = pc?.isPlacing ?? false;
       const confirmPlacement = pc?.confirmPlacement;
-
-      // CITY-333: Complete drag-to-size district placement
-      if (s.isEditingAllowed && pc?.isDraggingSize && pc.dragOrigin && confirmPlacement) {
-        viewport.plugins.resume("drag");
-        const size = pc.dragSize;
-        if (size && size >= 30) {
-          // Place at the drag origin with the dragged size
-          confirmPlacement(pc.dragOrigin, size);
-        } else {
-          // Drag was too small, cancel
-          pc.cancelDragSize();
-        }
-        return;
-      }
 
       // Handle seed placement mode (only if editing) - non-district or click placement
       if (s.isEditingAllowed && isPlacing && confirmPlacement) {
