@@ -17,7 +17,9 @@ const SUBWAY_STATION_COLOR = 0x0066cc; // Blue for subway
 const SUBWAY_STATION_BG_COLOR = 0xe6f2ff; // Light blue background
 const SUBWAY_STATION_INVALID_COLOR = 0xff4444; // Red for invalid placement
 const SUBWAY_STATION_RADIUS = 12;
+const HUB_SUBWAY_STATION_RADIUS = 16; // Larger for hub/transfer stations
 const SUBWAY_STATION_INNER_RADIUS = 8;
+const HUB_SUBWAY_STATION_INNER_RADIUS = 11; // Larger inner for hub
 
 // Subway tunnel styling (dashed lines for transit view)
 const TUNNEL_WIDTH = 4;
@@ -37,6 +39,7 @@ export interface SubwayStationData {
   name: string;
   position: { x: number; y: number };
   isTerminus: boolean;
+  isHub?: boolean; // Station serves 2+ lines (transfer/hub station)
 }
 
 /**
@@ -270,7 +273,9 @@ export class SubwayStationLayer {
   }
 
   private createStationGraphics(station: SubwayStationData): void {
-    const { id, name, position, isTerminus } = station;
+    const { id, name, position, isTerminus, isHub } = station;
+    const radius = isHub ? HUB_SUBWAY_STATION_RADIUS : SUBWAY_STATION_RADIUS;
+    const innerRadius = isHub ? HUB_SUBWAY_STATION_INNER_RADIUS : SUBWAY_STATION_INNER_RADIUS;
 
     // Create container for this station
     const stationContainer = new Container();
@@ -279,19 +284,19 @@ export class SubwayStationLayer {
     // Draw the metro-style station marker
     // Outer ring (colored)
     const outer = new Graphics();
-    outer.circle(position.x, position.y, SUBWAY_STATION_RADIUS);
+    outer.circle(position.x, position.y, radius);
     outer.fill({ color: SUBWAY_STATION_COLOR });
     stationContainer.addChild(outer);
 
     // Inner circle (white or light background)
     const inner = new Graphics();
-    inner.circle(position.x, position.y, SUBWAY_STATION_INNER_RADIUS);
+    inner.circle(position.x, position.y, innerRadius);
     inner.fill({ color: SUBWAY_STATION_BG_COLOR });
     stationContainer.addChild(inner);
 
     // Metro "M" icon in center (classic subway symbol)
     const iconStyle = new TextStyle({
-      fontSize: 10,
+      fontSize: isHub ? 12 : 10,
       fontWeight: "bold",
       fill: SUBWAY_STATION_COLOR,
     });
@@ -300,24 +305,31 @@ export class SubwayStationLayer {
     iconText.position.set(position.x, position.y);
     stationContainer.addChild(iconText);
 
-    // Add terminus indicator if applicable
-    if (isTerminus) {
+    // Hub stations get a double-ring indicator
+    if (isHub) {
+      const hubRing = new Graphics();
+      hubRing.setStrokeStyle({ width: 2, color: SUBWAY_STATION_COLOR });
+      hubRing.circle(position.x, position.y, radius + 4);
+      hubRing.stroke();
+      stationContainer.addChild(hubRing);
+    } else if (isTerminus) {
+      // Add terminus indicator for non-hub terminus stations
       const terminusRing = new Graphics();
       terminusRing.setStrokeStyle({ width: 2, color: SUBWAY_STATION_COLOR });
-      terminusRing.circle(position.x, position.y, SUBWAY_STATION_RADIUS + 3);
+      terminusRing.circle(position.x, position.y, radius + 3);
       terminusRing.stroke();
       stationContainer.addChild(terminusRing);
     }
 
     // Add station name label below
     const labelStyle = new TextStyle({
-      fontSize: 9,
+      fontSize: isHub ? 10 : 9,
       fill: 0x333333,
-      fontWeight: "500",
+      fontWeight: isHub ? "bold" : "500",
     });
     const labelText = new Text({ text: name, style: labelStyle });
     labelText.anchor.set(0.5, 0);
-    labelText.position.set(position.x, position.y + SUBWAY_STATION_RADIUS + 4);
+    labelText.position.set(position.x, position.y + radius + 4);
     stationContainer.addChild(labelText);
 
     this.stationsContainer.addChild(stationContainer);
@@ -431,7 +443,8 @@ export class SubwayStationLayer {
       const dy = y - station.position.y;
       const distance = Math.sqrt(dx * dx + dy * dy);
       // Use slightly larger hit radius for easier clicking
-      if (distance <= SUBWAY_STATION_RADIUS + 4) {
+      const hitRadius = (station.isHub ? HUB_SUBWAY_STATION_RADIUS : SUBWAY_STATION_RADIUS) + 4;
+      if (distance <= hitRadius) {
         return station;
       }
     }

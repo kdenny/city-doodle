@@ -19,6 +19,7 @@ export interface RailStationData {
   position: Point;
   isTerminus: boolean;
   lineColor?: string; // Color of the line this station belongs to
+  isHub?: boolean; // Station serves 2+ lines (transfer/hub station)
 }
 
 /**
@@ -46,6 +47,7 @@ const STATION_COLOR = 0x5c4033; // Dark brown
 const STATION_BG_COLOR = 0xfff8e1; // Cream
 const STATION_INVALID_COLOR = 0xff4444; // Red for invalid placement
 const STATION_RADIUS = 12;
+const HUB_STATION_RADIUS = 16; // Larger radius for hub/transfer stations
 const STATION_ICON = "\u{1F682}"; // Train emoji
 
 // Track styling
@@ -234,8 +236,9 @@ export class RailStationLayer {
   }
 
   private createStationGraphics(station: RailStationData): void {
-    const { id, name, position, isTerminus, lineColor } = station;
+    const { id, name, position, isTerminus, lineColor, isHub } = station;
     const color = lineColor ? parseInt(lineColor.replace("#", ""), 16) : STATION_COLOR;
+    const radius = isHub ? HUB_STATION_RADIUS : STATION_RADIUS;
 
     // Create container for this station
     const stationContainer = new Container();
@@ -243,27 +246,32 @@ export class RailStationLayer {
 
     // Draw station marker background
     const bg = new Graphics();
-    bg.circle(position.x, position.y, STATION_RADIUS);
+    bg.circle(position.x, position.y, radius);
     bg.fill({ color: STATION_BG_COLOR, alpha: 0.95 });
     stationContainer.addChild(bg);
 
     // Draw station marker border
     const border = new Graphics();
-    border.setStrokeStyle({ width: isTerminus ? 3 : 2, color });
-    border.circle(position.x, position.y, STATION_RADIUS);
+    border.setStrokeStyle({ width: isHub ? 3 : isTerminus ? 3 : 2, color });
+    border.circle(position.x, position.y, radius);
     border.stroke();
 
-    // Add terminus indicator (double circle)
-    if (isTerminus) {
+    // Hub stations get a double-ring indicator
+    if (isHub) {
+      border.setStrokeStyle({ width: 2, color });
+      border.circle(position.x, position.y, radius + 4);
+      border.stroke();
+    } else if (isTerminus) {
+      // Add terminus indicator (double circle) for non-hub terminus stations
       border.setStrokeStyle({ width: 1, color, alpha: 0.6 });
-      border.circle(position.x, position.y, STATION_RADIUS + 4);
+      border.circle(position.x, position.y, radius + 4);
       border.stroke();
     }
     stationContainer.addChild(border);
 
-    // Add train icon
+    // Add train icon (larger for hub stations)
     const iconStyle = new TextStyle({
-      fontSize: 12,
+      fontSize: isHub ? 14 : 12,
       fill: color,
     });
     const iconText = new Text({ text: STATION_ICON, style: iconStyle });
@@ -273,13 +281,13 @@ export class RailStationLayer {
 
     // Add name label below
     const labelStyle = new TextStyle({
-      fontSize: 10,
+      fontSize: isHub ? 11 : 10,
       fill: 0x333333,
-      fontWeight: "500",
+      fontWeight: isHub ? "bold" : "500",
     });
     const labelText = new Text({ text: name, style: labelStyle });
     labelText.anchor.set(0.5, 0);
-    labelText.position.set(position.x, position.y + STATION_RADIUS + 4);
+    labelText.position.set(position.x, position.y + radius + 4);
     stationContainer.addChild(labelText);
 
     this.stationsContainer.addChild(stationContainer);
@@ -472,7 +480,8 @@ export class RailStationLayer {
       const dy = y - station.position.y;
       const distance = Math.sqrt(dx * dx + dy * dy);
       // Use slightly larger hit radius for easier clicking
-      if (distance <= STATION_RADIUS + 4) {
+      const hitRadius = (station.isHub ? HUB_STATION_RADIUS : STATION_RADIUS) + 4;
+      if (distance <= hitRadius) {
         return station;
       }
     }

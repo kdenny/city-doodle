@@ -220,6 +220,19 @@ export function TransitProvider({ children, worldId }: TransitProviderProps) {
       return;
     }
 
+    // Compute hub stations: stations served by 2+ distinct lines
+    const stationLineCount = new Map<string, number>();
+    for (const line of transitNetwork.lines) {
+      const stationIds = new Set<string>();
+      for (const seg of line.segments) {
+        stationIds.add(seg.from_station_id);
+        stationIds.add(seg.to_station_id);
+      }
+      for (const stationId of stationIds) {
+        stationLineCount.set(stationId, (stationLineCount.get(stationId) || 0) + 1);
+      }
+    }
+
     // Convert API rail stations to render data
     const railStationsData: RailStationData[] = transitNetwork.stations
       .filter((s) => s.station_type === "rail")
@@ -241,13 +254,17 @@ export function TransitProvider({ children, worldId }: TransitProviderProps) {
           position: { x: s.position_x, y: s.position_y },
           isTerminus: s.is_terminus,
           lineColor,
+          isHub: (stationLineCount.get(s.id) || 0) >= 2,
         };
       });
 
     // Convert API subway stations to render data
     const subwayStationsData: SubwayStationData[] = transitNetwork.stations
       .filter((s) => s.station_type === "subway")
-      .map(toSubwayStationData);
+      .map((s) => ({
+        ...toSubwayStationData(s),
+        isHub: (stationLineCount.get(s.id) || 0) >= 2,
+      }));
 
     // Convert API segments to track render data (for rail)
     const tracks: TrackSegmentData[] = [];
