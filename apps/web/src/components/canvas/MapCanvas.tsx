@@ -1231,12 +1231,16 @@ export const MapCanvas = forwardRef<MapCanvasHandle, MapCanvasProps>(
               }
             }
           }
+          // Position with edge-of-screen clamping
+          const container = containerRef.current;
+          const maxX = (container?.clientWidth ?? 800) - 200;
+          const maxY = (container?.clientHeight ?? 600) - 60;
           s.setHoveredStationTooltip({
             name: tooltipStation.name,
             stationType: tooltipStation.stationType,
             lines: stationLines,
-            screenX: event.global.x,
-            screenY: event.global.y,
+            screenX: Math.min(event.global.x + 12, maxX),
+            screenY: Math.max(Math.min(event.global.y - 8, maxY), 4),
           });
         } else {
           s.setHoveredStationTooltip(null);
