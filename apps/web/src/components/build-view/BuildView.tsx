@@ -334,9 +334,9 @@ export function BuildView({
             <div className="flex items-center gap-3">
               <span>
                 {transitLineDrawingContext.state.connectedStations.length === 0 ? (
-                  <>Click a station to start the line</>
+                  <>Click a station or empty space to start the line</>
                 ) : (
-                  <>Click another station to extend the line</>
+                  <>Click a station or empty space to extend the line</>
                 )}
               </span>
               {transitLineDrawingContext.state.connectedStations.length >= 2 && (
