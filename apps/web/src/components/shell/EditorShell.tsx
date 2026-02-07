@@ -217,9 +217,11 @@ function SelectionWithFeatures({ children }: { children: ReactNode }) {
         updatePOI(feature.id, {
           name: feature.name,
         });
+      } else if ((feature.type === "rail_station" || feature.type === "subway_station") && transitContext) {
+        transitContext.renameStation(feature.id, feature.name);
       }
     },
-    [updateDistrict, updateRoad, updateNeighborhood, updatePOI]
+    [updateDistrict, updateRoad, updateNeighborhood, updatePOI, transitContext]
   );
 
   const handleDelete = useCallback(

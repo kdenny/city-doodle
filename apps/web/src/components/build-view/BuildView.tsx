@@ -327,6 +327,41 @@ export function BuildView({
         </div>
       )}
 
+      {/* CITY-361: Transit line drawing hint (bottom center, when drawing transit line) */}
+      {transitLineDrawingContext?.state.isDrawing && (
+        <div className="absolute bottom-4 left-1/2 -translate-x-1/2">
+          <div className="bg-white/90 backdrop-blur-sm rounded-lg shadow-lg px-4 py-2 text-sm text-gray-700">
+            <div className="flex items-center gap-3">
+              <span>
+                {transitLineDrawingContext.state.connectedStations.length === 0 ? (
+                  <>Click a station to start the line</>
+                ) : (
+                  <>Click another station to extend the line</>
+                )}
+              </span>
+              {transitLineDrawingContext.state.connectedStations.length >= 2 && (
+                <>
+                  <span className="text-gray-400">|</span>
+                  <button
+                    onClick={() => transitLineDrawingContext.undoLastConnection()}
+                    className="px-2 py-0.5 text-xs bg-gray-100 hover:bg-gray-200 rounded transition-colors"
+                    title="Undo last connection (Ctrl+Z)"
+                  >
+                    Undo
+                  </button>
+                </>
+              )}
+              <span className="text-gray-400">|</span>
+              <span className="text-gray-500">
+                Press <kbd className="px-1.5 py-0.5 bg-gray-100 rounded text-xs font-mono">Enter</kbd> to finish
+                {" / "}
+                <kbd className="px-1.5 py-0.5 bg-gray-100 rounded text-xs font-mono">Esc</kbd> to cancel
+              </span>
+            </div>
+          </div>
+        </div>
+      )}
+
       {/* Transit line properties dialog */}
       <TransitLinePropertiesDialog
         isOpen={showLinePropertiesDialog}
