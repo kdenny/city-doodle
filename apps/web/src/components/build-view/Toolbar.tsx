@@ -112,7 +112,7 @@ export function Toolbar({ activeTool, onToolChange, disabled, onGrow, growDisabl
   const isGrowDisabled = disabled || growDisabled || isGrowing;
 
   return (
-    <div className="flex flex-col gap-1 bg-white rounded-lg shadow-lg p-1">
+    <div className="flex flex-row gap-1 bg-white rounded-lg shadow-lg p-1">
       {tools.map(({ id, label, icon }) => {
         const isDisabled = disabled && id !== "pan";
         return (
@@ -136,7 +136,7 @@ export function Toolbar({ activeTool, onToolChange, disabled, onGrow, growDisabl
       })}
 
       {/* Divider */}
-      <div className="border-t border-gray-200 my-0.5" />
+      <div className="border-l border-gray-200 mx-0.5 self-stretch" />
 
       {/* Grow button */}
       <div className="relative">
@@ -171,7 +171,7 @@ export function Toolbar({ activeTool, onToolChange, disabled, onGrow, growDisabl
         {showGrowPopover && (
           <>
             <div className="fixed inset-0" onClick={() => setShowGrowPopover(false)} />
-            <div className="absolute left-12 top-0 bg-white rounded-lg shadow-lg border border-gray-200 p-2 z-50 whitespace-nowrap">
+            <div className="absolute bottom-12 left-0 bg-white rounded-lg shadow-lg border border-gray-200 p-2 z-50 whitespace-nowrap">
               <div className="text-xs text-gray-500 px-2 pb-1">Grow by</div>
               {TIME_STEPS.map(({ value, label }) => (
                 <button

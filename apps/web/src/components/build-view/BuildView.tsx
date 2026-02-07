@@ -238,8 +238,8 @@ export function BuildView({
         <ScaleBar zoom={zoomContext?.zoom} />
       </div>
 
-      {/* Toolbar (top-left) */}
-      <div className="absolute top-4 left-4">
+      {/* Toolbar (bottom-center) */}
+      <div className="absolute bottom-4 left-1/2 -translate-x-1/2 z-10">
         <Toolbar
           activeTool={activeTool}
           onToolChange={handleToolChange}
