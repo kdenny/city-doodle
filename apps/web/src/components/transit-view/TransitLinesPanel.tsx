@@ -13,10 +13,75 @@ interface TransitLinesPanelProps {
   isLoading?: boolean;
   highlightedLineId?: string | null;
   onSwitchToBuild?: () => void;
+  onPlaceSubwayStation?: () => void;
+  onPlaceRailStation?: () => void;
+  onDrawNewLine?: () => void;
+  isPlacingStation?: boolean;
+  isDrawingLine?: boolean;
 }
 
 function getLineTypeIcon(lineType: "subway" | "rail"): string {
   return lineType === "subway" ? "🚇" : "🚂";
+}
+
+function StationPlacementButtons({
+  onPlaceSubwayStation,
+  onPlaceRailStation,
+  onDrawNewLine,
+  isPlacingStation,
+  isDrawingLine,
+}: {
+  onPlaceSubwayStation?: () => void;
+  onPlaceRailStation?: () => void;
+  onDrawNewLine?: () => void;
+  isPlacingStation?: boolean;
+  isDrawingLine?: boolean;
+}) {
+  return (
+    <div className="space-y-2">
+      <p className="text-xs font-medium text-gray-500 uppercase tracking-wide">Add</p>
+      <div className="flex gap-2">
+        {onPlaceSubwayStation && (
+          <button
+            onClick={onPlaceSubwayStation}
+            className={`flex-1 flex items-center justify-center gap-1.5 px-3 py-2 text-sm rounded-md transition-colors ${
+              isPlacingStation
+                ? "bg-blue-100 text-blue-700 border border-blue-300"
+                : "bg-gray-100 text-gray-700 hover:bg-gray-200"
+            }`}
+          >
+            <span>🚇</span>
+            <span>Subway</span>
+          </button>
+        )}
+        {onPlaceRailStation && (
+          <button
+            onClick={onPlaceRailStation}
+            className={`flex-1 flex items-center justify-center gap-1.5 px-3 py-2 text-sm rounded-md transition-colors ${
+              isPlacingStation
+                ? "bg-blue-100 text-blue-700 border border-blue-300"
+                : "bg-gray-100 text-gray-700 hover:bg-gray-200"
+            }`}
+          >
+            <span>🚂</span>
+            <span>Rail</span>
+          </button>
+        )}
+      </div>
+      {onDrawNewLine && (
+        <button
+          onClick={onDrawNewLine}
+          className={`w-full flex items-center justify-center gap-1.5 px-3 py-2 text-sm rounded-md transition-colors ${
+            isDrawingLine
+              ? "bg-blue-100 text-blue-700 border border-blue-300"
+              : "bg-blue-600 text-white hover:bg-blue-700"
+          }`}
+        >
+          {isDrawingLine ? "Drawing Line..." : "Draw New Line"}
+        </button>
+      )}
+    </div>
+  );
 }
 
 export function TransitLinesPanel({
@@ -24,7 +89,12 @@ export function TransitLinesPanel({
   onLineClick,
   isLoading,
   highlightedLineId,
-  onSwitchToBuild,
+  onSwitchToBuild: _onSwitchToBuild,
+  onPlaceSubwayStation,
+  onPlaceRailStation,
+  onDrawNewLine,
+  isPlacingStation,
+  isDrawingLine,
 }: TransitLinesPanelProps) {
   const totalStations = lines.reduce((sum, line) => sum + line.stations, 0);
   const totalMiles = lines.reduce((sum, line) => sum + line.miles, 0);
@@ -47,21 +117,20 @@ export function TransitLinesPanel({
     return (
       <div className="p-4">
         <h3 className="text-sm font-semibold text-gray-900 mb-3">Transit Lines</h3>
-        <div className="py-8 text-center">
+        <div className="py-6 text-center">
           <div className="text-3xl mb-2">🚇</div>
           <p className="text-sm text-gray-500">No transit lines yet</p>
           <p className="text-xs text-gray-400 mt-1 mb-4">
-            Place subway or rail stations in Build mode to create lines
+            Place stations, then draw lines to connect them
           </p>
-          {onSwitchToBuild && (
-            <button
-              onClick={onSwitchToBuild}
-              className="px-4 py-2 text-sm bg-blue-600 text-white rounded-md hover:bg-blue-700 transition-colors"
-            >
-              Switch to Build Mode
-            </button>
-          )}
         </div>
+        <StationPlacementButtons
+          onPlaceSubwayStation={onPlaceSubwayStation}
+          onPlaceRailStation={onPlaceRailStation}
+          onDrawNewLine={onDrawNewLine}
+          isPlacingStation={isPlacingStation}
+          isDrawingLine={isDrawingLine}
+        />
       </div>
     );
   }
@@ -123,15 +192,16 @@ export function TransitLinesPanel({
         })}
       </div>
 
-      {/* Add more lines hint */}
-      {onSwitchToBuild && (
-        <button
-          onClick={onSwitchToBuild}
-          className="w-full mt-3 p-2 text-xs text-gray-400 hover:text-gray-600 hover:bg-gray-50 rounded transition-colors text-center"
-        >
-          + Add lines in Build Mode
-        </button>
-      )}
+      {/* Station placement and line drawing actions */}
+      <div className="mt-3 pt-3 border-t border-gray-100">
+        <StationPlacementButtons
+          onPlaceSubwayStation={onPlaceSubwayStation}
+          onPlaceRailStation={onPlaceRailStation}
+          onDrawNewLine={onDrawNewLine}
+          isPlacingStation={isPlacingStation}
+          isDrawingLine={isDrawingLine}
+        />
+      </div>
     </div>
   );
 }
