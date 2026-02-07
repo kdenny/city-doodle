@@ -121,13 +121,98 @@ export interface RailStationValidation {
 export type { SubwayTunnelData } from "./layers";
 
 /**
- * Generate a unique station name based on the district.
+ * Calculate the centroid of a polygon from its points.
  */
-function generateStationName(districtName: string, stationCount: number): string {
-  if (stationCount === 0) {
-    return `${districtName} Station`;
+function polygonCentroid(points: Point[]): Point {
+  if (points.length === 0) return { x: 0, y: 0 };
+  const sum = points.reduce(
+    (acc, p) => ({ x: acc.x + p.x, y: acc.y + p.y }),
+    { x: 0, y: 0 }
+  );
+  return { x: sum.x / points.length, y: sum.y / points.length };
+}
+
+/**
+ * Get a directional suffix (North, South, East, West, etc.) based on
+ * the station's position relative to the district centroid.
+ */
+function getDirectionalSuffix(
+  position: Point,
+  centroid: Point
+): string {
+  const dx = position.x - centroid.x;
+  const dy = position.y - centroid.y;
+  // Note: in screen coords y increases downward, so positive dy = South
+  const absDx = Math.abs(dx);
+  const absDy = Math.abs(dy);
+
+  // If very close to centroid, no suffix
+  if (absDx < 1 && absDy < 1) return "";
+
+  // Use a threshold ratio to determine cardinal vs ordinal
+  const ratio = absDx / (absDy + 0.001);
+
+  if (ratio > 2) {
+    // Strongly horizontal
+    return dx > 0 ? "East" : "West";
+  } else if (ratio < 0.5) {
+    // Strongly vertical
+    return dy > 0 ? "South" : "North";
+  } else {
+    // Diagonal
+    const ns = dy > 0 ? "South" : "North";
+    const ew = dx > 0 ? "East" : "West";
+    return `${ns}${ew}`;
   }
-  return `${districtName} Station ${stationCount + 1}`;
+}
+
+/**
+ * Generate a unique station name based on the district, position, and existing names.
+ *
+ * Naming strategy:
+ * - First station: "{DistrictName} Station"
+ * - Subsequent: "{DistrictName} {Direction} Station" (North, South, East, West, etc.)
+ * - If direction taken: try compound directions, then append number
+ */
+function generateStationName(
+  districtName: string,
+  position: Point,
+  districtPolygonPoints: Point[],
+  existingNames: string[]
+): string {
+  const baseName = `${districtName} Station`;
+
+  // First station in the district gets the plain name
+  if (!existingNames.includes(baseName)) {
+    return baseName;
+  }
+
+  // Calculate direction from district centroid
+  const centroid = polygonCentroid(districtPolygonPoints);
+  const suffix = getDirectionalSuffix(position, centroid);
+
+  if (suffix) {
+    const directionalName = `${districtName} ${suffix} Station`;
+    if (!existingNames.includes(directionalName)) {
+      return directionalName;
+    }
+  }
+
+  // Try all cardinal/ordinal directions as fallback
+  const directions = ["North", "South", "East", "West", "NorthEast", "NorthWest", "SouthEast", "SouthWest"];
+  for (const dir of directions) {
+    const name = `${districtName} ${dir} Station`;
+    if (!existingNames.includes(name)) {
+      return name;
+    }
+  }
+
+  // All directions taken - append a number
+  let counter = 2;
+  while (existingNames.includes(`${districtName} Station ${counter}`)) {
+    counter++;
+  }
+  return `${districtName} Station ${counter}`;
 }
 
 /**
@@ -476,14 +561,30 @@ export function TransitProvider({ children, worldId }: TransitProviderProps) {
         // Use the same name as the nearby subway station for transfer pairing
         stationName = nearbySubway.name;
       } else {
-        // Count existing stations in this district for naming
-        const districtStations = railStations.filter((s) => {
-          const districtValidation = validateRailStationPlacement(s.position);
-          return districtValidation.districtId === validation.districtId;
-        });
+        // Collect existing station names in this district for uniqueness
+        const districtStationNames = railStations
+          .filter((s) => {
+            const districtValidation = validateRailStationPlacement(s.position);
+            return districtValidation.districtId === validation.districtId;
+          })
+          .map((s) => s.name);
+        // Also include subway station names in the same district to avoid cross-type collisions
+        const districtSubwayNames = subwayStations
+          .filter((s) => {
+            const districtValidation = validateSubwayStationPlacement(s.position);
+            return districtValidation.districtId === validation.districtId;
+          })
+          .map((s) => s.name);
+        const allDistrictNames = [...districtStationNames, ...districtSubwayNames];
+        // Find district polygon for centroid calculation
+        const district = featuresContext?.features.districts.find(
+          (d) => d.id === validation.districtId
+        );
         stationName = generateStationName(
           validation.districtName || "Rail",
-          districtStations.length
+          position,
+          district?.polygon.points ?? [],
+          allDistrictNames
         );
       }
 
@@ -643,14 +744,30 @@ export function TransitProvider({ children, worldId }: TransitProviderProps) {
         // Use the same name as the nearby rail station for transfer pairing
         stationName = nearbyRail.name;
       } else {
-        // Count existing subway stations in this district for naming
-        const districtStations = subwayStations.filter((s) => {
-          const districtValidation = validateSubwayStationPlacement(s.position);
-          return districtValidation.districtId === validation.districtId;
-        });
+        // Collect existing station names in this district for uniqueness
+        const districtSubwayNames = subwayStations
+          .filter((s) => {
+            const districtValidation = validateSubwayStationPlacement(s.position);
+            return districtValidation.districtId === validation.districtId;
+          })
+          .map((s) => s.name);
+        // Also include rail station names in the same district to avoid cross-type collisions
+        const districtRailNames = railStations
+          .filter((s) => {
+            const districtValidation = validateRailStationPlacement(s.position);
+            return districtValidation.districtId === validation.districtId;
+          })
+          .map((s) => s.name);
+        const allDistrictNames = [...districtSubwayNames, ...districtRailNames];
+        // Find district polygon for centroid calculation
+        const district = featuresContext?.features.districts.find(
+          (d) => d.id === validation.districtId
+        );
         stationName = generateStationName(
           validation.districtName || "Metro",
-          districtStations.length
+          position,
+          district?.polygon.points ?? [],
+          allDistrictNames
         );
       }
 
