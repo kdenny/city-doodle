@@ -682,23 +682,28 @@ function generateStreetGrid(
   // Collector interval: upgrade to collector every 3-4 blocks
   const collectorInterval = rng.intRange(3, 5);
 
-  // Calculate organic jitter based on district type
-  const organicJitter = districtType === "downtown" ? 0.5 : 2;
+  // CITY-328: Scale jitter with block spacing and reduce magnitude.
+  // Downtown gets minimal jitter; other types get proportional jitter.
+  // Jitter shifts the whole road uniformly (not per-endpoint).
+  const jitterScale = districtType === "downtown" ? 0.02 : 0.06;
+  const maxJitter = spacing * jitterScale;
 
-  // Expand bounds to account for rotation
-  const diagonal = Math.sqrt(
-    (bounds.maxX - bounds.minX) ** 2 + (bounds.maxY - bounds.minY) ** 2
-  );
+  // CITY-331: Use tight rotated bounding box instead of diagonal.
+  // After rotation by angle θ, a rectangle needs expanded bounds:
+  //   newHalfW = hw*|cos(θ)| + hh*|sin(θ)|
+  //   newHalfH = hw*|sin(θ)| + hh*|cos(θ)|
+  const halfWidth = (bounds.maxX - bounds.minX) / 2;
+  const halfHeight = (bounds.maxY - bounds.minY) / 2;
+  const cosA = Math.abs(Math.cos(rotationAngle));
+  const sinA = Math.abs(Math.sin(rotationAngle));
+  const expandedHalfW = halfWidth * cosA + halfHeight * sinA + spacing;
+  const expandedHalfH = halfWidth * sinA + halfHeight * cosA + spacing;
   const expandedBounds = {
-    minX: centroid.x - diagonal / 2 - spacing,
-    maxX: centroid.x + diagonal / 2 + spacing,
-    minY: centroid.y - diagonal / 2 - spacing,
-    maxY: centroid.y + diagonal / 2 + spacing,
+    minX: centroid.x - expandedHalfW,
+    maxX: centroid.x + expandedHalfW,
+    minY: centroid.y - expandedHalfH,
+    maxY: centroid.y + expandedHalfH,
   };
-
-  // Add some offset for variety
-  const offsetX = rng.range(-spacing / 4, spacing / 4);
-  const offsetY = rng.range(-spacing / 4, spacing / 4);
 
   let streetIndex = 0;
   let hStreetCount = 0;
@@ -706,7 +711,7 @@ function generateStreetGrid(
 
   // Generate horizontal streets (in rotated space)
   for (
-    let y = expandedBounds.minY + spacing / 2 + offsetY;
+    let y = expandedBounds.minY + spacing / 2;
     y < expandedBounds.maxY;
     y += spacing
   ) {
@@ -727,49 +732,56 @@ function generateStreetGrid(
       polygon
     );
 
-    // Create road segments from pairs of intersections
+    // Create road segments from validated pairs of intersections
     for (let i = 0; i < intersections.length - 1; i += 2) {
-      if (intersections[i + 1]) {
-        const jitter = rng.range(-organicJitter, organicJitter);
+      if (!intersections[i + 1]) continue;
 
-        // Apply jitter perpendicular to the road direction
-        const dx = intersections[i + 1].x - intersections[i].x;
-        const dy = intersections[i + 1].y - intersections[i].y;
-        const len = Math.sqrt(dx * dx + dy * dy);
-        const perpX = len > 0 ? -dy / len : 0;
-        const perpY = len > 0 ? dx / len : 0;
+      // CITY-327/329: Validate pair by checking midpoint is inside polygon.
+      // This handles concave polygons where distance-sorted pairs may not
+      // form valid road segments, and odd intersection counts.
+      const midX = (intersections[i].x + intersections[i + 1].x) / 2;
+      const midY = (intersections[i].y + intersections[i + 1].y) / 2;
+      if (!pointInPolygon(midX, midY, polygon)) continue;
 
-        const startPoint: Point = {
-          x: intersections[i].x + perpX * jitter,
-          y: intersections[i].y + perpY * jitter,
-        };
-        const endPoint: Point = {
-          x: intersections[i + 1].x + perpX * jitter,
-          y: intersections[i + 1].y + perpY * jitter,
-        };
-
-        // Determine road class based on hierarchy
-        let roadClass: RoadClass = "local";
-        if (isPerimeterRoad(startPoint, endPoint, polygon)) {
-          roadClass = "collector";
-        } else if (hStreetCount % collectorInterval === 0) {
-          roadClass = "collector";
-        }
-
-        roads.push({
-          id: generateId(`${districtId}-street-h-${streetIndex}`),
-          roadClass,
-          line: { points: [startPoint, endPoint] },
-        });
-        streetIndex++;
+      // CITY-330: Check perimeter using ORIGINAL intersection points (before jitter)
+      let roadClass: RoadClass = "local";
+      if (isPerimeterRoad(intersections[i], intersections[i + 1], polygon)) {
+        roadClass = "collector";
+      } else if (hStreetCount % collectorInterval === 0) {
+        roadClass = "collector";
       }
+
+      // CITY-328: Apply same jitter value to both endpoints (shift, don't skew).
+      // Collectors get no jitter to maintain clean grid structure.
+      const jitter = roadClass === "collector" ? 0 : rng.range(-maxJitter, maxJitter);
+      const dx = intersections[i + 1].x - intersections[i].x;
+      const dy = intersections[i + 1].y - intersections[i].y;
+      const len = Math.sqrt(dx * dx + dy * dy);
+      const perpX = len > 0 ? -dy / len : 0;
+      const perpY = len > 0 ? dx / len : 0;
+
+      const startPoint: Point = {
+        x: intersections[i].x + perpX * jitter,
+        y: intersections[i].y + perpY * jitter,
+      };
+      const endPoint: Point = {
+        x: intersections[i + 1].x + perpX * jitter,
+        y: intersections[i + 1].y + perpY * jitter,
+      };
+
+      roads.push({
+        id: generateId(`${districtId}-street-h-${streetIndex}`),
+        roadClass,
+        line: { points: [startPoint, endPoint] },
+      });
+      streetIndex++;
     }
     hStreetCount++;
   }
 
   // Generate vertical streets (in rotated space)
   for (
-    let x = expandedBounds.minX + spacing / 2 + offsetX;
+    let x = expandedBounds.minX + spacing / 2;
     x < expandedBounds.maxX;
     x += spacing
   ) {
@@ -789,41 +801,46 @@ function generateStreetGrid(
       polygon
     );
 
-    // Create road segments from pairs of intersections
+    // Create road segments from validated pairs of intersections
     for (let i = 0; i < intersections.length - 1; i += 2) {
-      if (intersections[i + 1]) {
-        const jitter = rng.range(-organicJitter, organicJitter);
+      if (!intersections[i + 1]) continue;
 
-        const dx = intersections[i + 1].x - intersections[i].x;
-        const dy = intersections[i + 1].y - intersections[i].y;
-        const len = Math.sqrt(dx * dx + dy * dy);
-        const perpX = len > 0 ? -dy / len : 0;
-        const perpY = len > 0 ? dx / len : 0;
+      // CITY-327/329: Validate pair by checking midpoint is inside polygon
+      const midX = (intersections[i].x + intersections[i + 1].x) / 2;
+      const midY = (intersections[i].y + intersections[i + 1].y) / 2;
+      if (!pointInPolygon(midX, midY, polygon)) continue;
 
-        const startPoint: Point = {
-          x: intersections[i].x + perpX * jitter,
-          y: intersections[i].y + perpY * jitter,
-        };
-        const endPoint: Point = {
-          x: intersections[i + 1].x + perpX * jitter,
-          y: intersections[i + 1].y + perpY * jitter,
-        };
-
-        // Determine road class based on hierarchy
-        let roadClass: RoadClass = "local";
-        if (isPerimeterRoad(startPoint, endPoint, polygon)) {
-          roadClass = "collector";
-        } else if (vStreetCount % collectorInterval === 0) {
-          roadClass = "collector";
-        }
-
-        roads.push({
-          id: generateId(`${districtId}-street-v-${streetIndex}`),
-          roadClass,
-          line: { points: [startPoint, endPoint] },
-        });
-        streetIndex++;
+      // CITY-330: Check perimeter using original intersection points
+      let roadClass: RoadClass = "local";
+      if (isPerimeterRoad(intersections[i], intersections[i + 1], polygon)) {
+        roadClass = "collector";
+      } else if (vStreetCount % collectorInterval === 0) {
+        roadClass = "collector";
       }
+
+      // CITY-328: Uniform jitter, skip for collectors
+      const jitter = roadClass === "collector" ? 0 : rng.range(-maxJitter, maxJitter);
+      const dx = intersections[i + 1].x - intersections[i].x;
+      const dy = intersections[i + 1].y - intersections[i].y;
+      const len = Math.sqrt(dx * dx + dy * dy);
+      const perpX = len > 0 ? -dy / len : 0;
+      const perpY = len > 0 ? dx / len : 0;
+
+      const startPoint: Point = {
+        x: intersections[i].x + perpX * jitter,
+        y: intersections[i].y + perpY * jitter,
+      };
+      const endPoint: Point = {
+        x: intersections[i + 1].x + perpX * jitter,
+        y: intersections[i + 1].y + perpY * jitter,
+      };
+
+      roads.push({
+        id: generateId(`${districtId}-street-v-${streetIndex}`),
+        roadClass,
+        line: { points: [startPoint, endPoint] },
+      });
+      streetIndex++;
     }
     vStreetCount++;
   }
