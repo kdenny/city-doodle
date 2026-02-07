@@ -152,12 +152,18 @@ export const MapCanvas = forwardRef<MapCanvasHandle, MapCanvasProps>(
   const viewModeContext = useViewModeOptional();
   const viewMode = viewModeContext?.viewMode ?? "build";
 
-  // Auto-enable subway tunnel visibility in transit view
+  // CITY-395: Auto-enable subway tunnel toggle when entering transit view
+  useEffect(() => {
+    if (viewMode === "transit" && !layerVisibility.subwayTunnels) {
+      setLayerVisibility((prev) => ({ ...prev, subwayTunnels: true }));
+    }
+  }, [viewMode]);
+
+  // Sync subway tunnel rendering with visibility state
   useEffect(() => {
     if (!subwayStationLayerRef.current) return;
-    const shouldShowTunnels = viewMode === "transit" || layerVisibility.subwayTunnels;
-    subwayStationLayerRef.current.setTunnelsVisible(shouldShowTunnels);
-  }, [viewMode, layerVisibility.subwayTunnels, isReady]);
+    subwayStationLayerRef.current.setTunnelsVisible(layerVisibility.subwayTunnels);
+  }, [layerVisibility.subwayTunnels, isReady]);
 
   // Ref to setTerrainData for use in init effect (avoids stale closure)
   const setTerrainDataRef = useRef(terrainContext?.setTerrainData);
