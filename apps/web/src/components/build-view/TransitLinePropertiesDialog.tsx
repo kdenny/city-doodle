@@ -61,6 +61,7 @@ export function TransitLinePropertiesDialog({
       setName(initialProperties.name);
       setColor(initialProperties.color);
       setLineType(initialProperties.type);
+      setColorError("");
 
       // Check if color is custom (not in palette)
       const isCustomColor = !LINE_COLORS.some((c) => c.value === initialProperties.color);
