@@ -1,14 +1,16 @@
 /**
- * Inter-district road generation (CITY-144)
+ * Inter-district road generation (CITY-144, CITY-340)
  *
- * When a district is placed, automatically generates arterial roads
+ * When a district is placed, automatically generates roads
  * connecting it to nearby districts to form a connected road network.
+ * Short connections (<5mi) become arterials; longer ones become highways.
  *
  * Algorithm:
- * 1. Find nearest existing district - always connect with arterial
+ * 1. Find nearest existing district - always connect
  * 2. Find all districts within 10 miles - connect if not already reachable
  * 3. Prefer downtown districts for connections
  * 4. Route around water features when possible
+ * 5. Auto-upgrade to highway for connections >= highwayThreshold
  */
 
 import type { District, Road, Point, RoadClass, WaterFeature } from "./types";
@@ -24,12 +26,15 @@ export interface InterDistrictConfig {
   roadClass?: RoadClass;
   /** Whether to avoid water features */
   avoidWater?: boolean;
+  /** Distance threshold above which connections become highways (default: ~5 miles) */
+  highwayThreshold?: number;
 }
 
 const DEFAULT_CONFIG: Required<InterDistrictConfig> = {
   maxConnectionDistance: 150, // ~10 miles in world units (768 units = 50 miles)
   roadClass: "arterial",
   avoidWater: true,
+  highwayThreshold: 75, // ~5 miles in world units - longer connections become highways
 };
 
 /**
@@ -383,7 +388,8 @@ export function generateInterDistrictRoads(
       newCentroid,
       nearest.centroid,
       waterFeatures,
-      cfg
+      cfg,
+      nearest.distance
     );
     roads.push(road);
     connectedDistrictIds.push(nearest.district.id);
@@ -415,7 +421,8 @@ export function generateInterDistrictRoads(
       newCentroid,
       info.centroid,
       waterFeatures,
-      cfg
+      cfg,
+      info.distance
     );
     roads.push(road);
     connectedDistrictIds.push(info.district.id);
@@ -424,8 +431,27 @@ export function generateInterDistrictRoads(
   return { roads, connectedDistrictIds };
 }
 
+/** Running counter for highway numbering within a session */
+let highwayCounter = 1;
+
+/**
+ * Generate a name for an inter-district road based on its class.
+ */
+function generateRoadName(
+  roadClass: RoadClass,
+  fromDistrict: District,
+  toDistrict: District
+): string {
+  if (roadClass === "highway") {
+    const num = highwayCounter++;
+    return `Highway ${num}`;
+  }
+  return `${fromDistrict.name} - ${toDistrict.name} Blvd`;
+}
+
 /**
  * Create a road connecting two districts.
+ * Connections longer than the highway threshold are auto-upgraded to highways.
  */
 function createConnectionRoad(
   fromDistrict: District,
@@ -433,7 +459,8 @@ function createConnectionRoad(
   fromCentroid: Point,
   toCentroid: Point,
   waterFeatures: WaterFeature[],
-  config: Required<InterDistrictConfig>
+  config: Required<InterDistrictConfig>,
+  connectionDistance: number
 ): Road {
   // Find connection points on district perimeters
   const fromPerimeter = findNearestPointOnPolygon(
@@ -453,10 +480,16 @@ function createConnectionRoad(
     pathPoints = [fromPerimeter, toPerimeter];
   }
 
+  // Auto-upgrade to highway for long-distance connections (only from default arterial)
+  const roadClass =
+    config.roadClass === "arterial" && connectionDistance >= config.highwayThreshold
+      ? "highway"
+      : config.roadClass;
+
   return {
     id: generateId(`inter-district-${fromDistrict.id}-${toDistrict.id}`),
-    name: `${fromDistrict.name} - ${toDistrict.name} Connector`,
-    roadClass: config.roadClass,
+    name: generateRoadName(roadClass, fromDistrict, toDistrict),
+    roadClass,
     line: { points: pathPoints },
   };
 }

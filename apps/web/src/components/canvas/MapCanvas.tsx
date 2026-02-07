@@ -536,6 +536,17 @@ export const MapCanvas = forwardRef<MapCanvasHandle, MapCanvasProps>(
     }
   }, [zoom, isReady]);
 
+  // Sync selected feature to features layer for road highlighting (CITY-250)
+  const selectedFeature = selectionContext?.selection ?? null;
+  useEffect(() => {
+    if (!isReady || !featuresLayerRef.current) return;
+    const roadId =
+      selectedFeature && selectedFeature.type === "road"
+        ? selectedFeature.id
+        : null;
+    featuresLayerRef.current.setSelectedRoadId(roadId);
+  }, [isReady, selectedFeature]);
+
   // Listen for viewport zoom changes and notify parent
   useEffect(() => {
     if (!isReady || !viewportRef.current || !onZoomChange) return;

@@ -73,13 +73,25 @@ describe("generateInterDistrictRoads", () => {
     expect(result.connectedDistrictIds).toContain("existing-1");
   });
 
-  it("creates arterial roads by default", () => {
-    const newDistrict = createDistrict("new-1", 200, 200);
+  it("creates arterial roads for short connections", () => {
+    // Distance ~42 units (well below 75 highway threshold)
+    const newDistrict = createDistrict("new-1", 130, 130);
     const existingDistricts = [createDistrict("existing-1", 100, 100)];
 
     const result = generateInterDistrictRoads(newDistrict, existingDistricts);
 
     expect(result.roads[0].roadClass).toBe("arterial");
+  });
+
+  it("auto-upgrades long connections to highways", () => {
+    // Distance ~141 units (above 75 highway threshold)
+    const newDistrict = createDistrict("new-1", 200, 200);
+    const existingDistricts = [createDistrict("existing-1", 100, 100)];
+
+    const result = generateInterDistrictRoads(newDistrict, existingDistricts);
+
+    expect(result.roads[0].roadClass).toBe("highway");
+    expect(result.roads[0].name).toMatch(/Highway \d+/);
   });
 
   it("respects custom road class configuration", () => {
@@ -93,6 +105,7 @@ describe("generateInterDistrictRoads", () => {
       { roadClass: "collector" }
     );
 
+    // Custom road class should NOT be auto-upgraded to highway
     expect(result.roads[0].roadClass).toBe("collector");
   });
 
@@ -150,8 +163,21 @@ describe("generateInterDistrictRoads", () => {
     expect(uniqueIds.size).toBe(ids.length);
   });
 
-  it("generates road names including district names", () => {
+  it("generates highway names for long connections", () => {
+    // Distance ~141 units (above highway threshold)
     const newDistrict = createDistrict("new-1", 200, 200);
+    newDistrict.name = "New Town";
+    const existingDistricts = [createDistrict("existing-1", 100, 100)];
+    existingDistricts[0].name = "Old Town";
+
+    const result = generateInterDistrictRoads(newDistrict, existingDistricts);
+
+    expect(result.roads[0].name).toMatch(/Highway \d+/);
+  });
+
+  it("generates boulevard names for short arterial connections", () => {
+    // Distance ~42 units (below highway threshold)
+    const newDistrict = createDistrict("new-1", 130, 130);
     newDistrict.name = "New Town";
     const existingDistricts = [createDistrict("existing-1", 100, 100)];
     existingDistricts[0].name = "Old Town";
@@ -160,6 +186,7 @@ describe("generateInterDistrictRoads", () => {
 
     expect(result.roads[0].name).toContain("New Town");
     expect(result.roads[0].name).toContain("Old Town");
+    expect(result.roads[0].name).toContain("Blvd");
   });
 });
 
