@@ -583,6 +583,35 @@ export const MapCanvas = forwardRef<MapCanvasHandle, MapCanvasProps>(
     };
   }, [isReady, onZoomChange]);
 
+  // Sync viewport bounds to features layer for viewport culling (CITY-352)
+  useEffect(() => {
+    if (!isReady || !viewportRef.current || !featuresLayerRef.current) return;
+
+    const viewport = viewportRef.current;
+    const features = featuresLayerRef.current;
+
+    const syncViewportBounds = () => {
+      const left = viewport.left;
+      const top = viewport.top;
+      const right = left + viewport.worldScreenWidth;
+      const bottom = top + viewport.worldScreenHeight;
+      features.setViewportBounds({ minX: left, maxX: right, minY: top, maxY: bottom });
+    };
+
+    // Sync once on mount
+    syncViewportBounds();
+
+    viewport.on("moved", syncViewportBounds);
+    viewport.on("zoomed-end", syncViewportBounds);
+    viewport.on("wheel-scroll", syncViewportBounds);
+
+    return () => {
+      viewport.off("moved", syncViewportBounds);
+      viewport.off("zoomed-end", syncViewportBounds);
+      viewport.off("wheel-scroll", syncViewportBounds);
+    };
+  }, [isReady]);
+
   // Update features layer when context features change
   useEffect(() => {
     if (!isReady || !featuresLayerRef.current || !featuresContext) return;

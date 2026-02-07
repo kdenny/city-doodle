@@ -10,7 +10,10 @@
 import type { Point } from "./types";
 
 /**
- * Calculate the bounding box of a polygon.
+ * Calculate the axis-aligned bounding box of a polygon.
+ *
+ * @param points - Polygon vertices
+ * @returns Object with minX, maxX, minY, maxY bounds
  */
 export function getPolygonBounds(points: Point[]): { minX: number; maxX: number; minY: number; maxY: number } {
   let minX = Infinity;
@@ -31,6 +34,15 @@ export function getPolygonBounds(points: Point[]): { minX: number; maxX: number;
 /**
  * Find all intersection points where a line segment crosses polygon edges.
  * Results are sorted by distance from the line start point.
+ *
+ * Used by street grid generation to clip grid lines to district boundaries.
+ *
+ * @param x1 - Line segment start X
+ * @param y1 - Line segment start Y
+ * @param x2 - Line segment end X
+ * @param y2 - Line segment end Y
+ * @param polygon - Polygon vertices (closed loop, last edge connects back to first)
+ * @returns Intersection points sorted by distance from (x1, y1)
  */
 export function lineIntersectsPolygon(
   x1: number, y1: number,
@@ -61,7 +73,19 @@ export function lineIntersectsPolygon(
 
 /**
  * Calculate intersection point of two line segments using parametric form.
- * Returns null if segments don't intersect.
+ * Uses the standard line-line intersection formula with parameters t and u,
+ * where t ∈ [0,1] means the intersection is on the first segment and
+ * u ∈ [0,1] means it's on the second.
+ *
+ * @param x1 - First segment start X
+ * @param y1 - First segment start Y
+ * @param x2 - First segment end X
+ * @param y2 - First segment end Y
+ * @param x3 - Second segment start X
+ * @param y3 - Second segment start Y
+ * @param x4 - Second segment end X
+ * @param y4 - Second segment end Y
+ * @returns Intersection point, or null if segments are parallel or don't intersect
  */
 export function lineLineIntersection(
   x1: number, y1: number, x2: number, y2: number,
@@ -84,7 +108,14 @@ export function lineLineIntersection(
 }
 
 /**
- * Check if a point is inside a polygon using ray casting algorithm.
+ * Check if a point is inside a polygon using the ray casting algorithm.
+ * Casts a ray from the point to the right (+X) and counts edge crossings;
+ * an odd count means inside.
+ *
+ * @param x - Test point X coordinate
+ * @param y - Test point Y coordinate
+ * @param polygon - Polygon vertices (minimum 3)
+ * @returns true if the point is inside the polygon
  */
 export function pointInPolygon(x: number, y: number, polygon: Point[]): boolean {
   if (polygon.length < 3) return false;
@@ -109,6 +140,11 @@ export function pointInPolygon(x: number, y: number, polygon: Point[]): boolean 
 
 /**
  * Calculate the geometric centroid of a polygon (average of all vertices).
+ * Note: This is the vertex centroid, not the area centroid. For convex polygons
+ * with evenly distributed vertices the difference is negligible.
+ *
+ * @param polygon - Polygon vertices
+ * @returns Centroid point, or (0,0) for empty polygons
  */
 export function getPolygonCentroid(polygon: Point[]): Point {
   if (polygon.length === 0) return { x: 0, y: 0 };
@@ -126,7 +162,12 @@ export function getPolygonCentroid(polygon: Point[]): Point {
 }
 
 /**
- * Rotate a point around a center by a given angle (2D rotation matrix).
+ * Rotate a point around a center by a given angle using a 2D rotation matrix.
+ *
+ * @param point - The point to rotate
+ * @param center - The center of rotation
+ * @param angle - Rotation angle in radians (positive = counter-clockwise)
+ * @returns New rotated point
  */
 export function rotatePoint(point: Point, center: Point, angle: number): Point {
   const cos = Math.cos(angle);
@@ -140,8 +181,14 @@ export function rotatePoint(point: Point, center: Point, angle: number): Point {
 }
 
 /**
- * Calculate the perpendicular distance from a point to a line segment.
- * Uses projection clamped to the segment endpoints.
+ * Calculate the shortest distance from a point to a line segment.
+ * Projects the point onto the infinite line, then clamps the projection
+ * parameter t to [0, 1] so the nearest point stays on the segment.
+ *
+ * @param point - The test point
+ * @param lineStart - Segment start endpoint
+ * @param lineEnd - Segment end endpoint
+ * @returns Euclidean distance from point to nearest point on segment
  */
 export function pointToLineDistance(point: Point, lineStart: Point, lineEnd: Point): number {
   const dx = lineEnd.x - lineStart.x;
@@ -165,6 +212,12 @@ export function pointToLineDistance(point: Point, lineStart: Point, lineEnd: Poi
 
 /**
  * Check if a point is within tolerance distance of any polygon edge.
+ * Used to detect perimeter roads whose endpoints are clipped to the boundary.
+ *
+ * @param point - The test point
+ * @param polygon - Polygon vertices
+ * @param tolerance - Maximum distance in world units to be considered "near"
+ * @returns true if point is within tolerance of any edge
  */
 export function isPointNearPolygonEdge(
   point: Point,
