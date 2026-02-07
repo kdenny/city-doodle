@@ -171,13 +171,15 @@ function distanceToNearestRoad(point: Point, roads: Road[]): number {
  * @param count - Number of positions to generate
  * @param rng - Seeded random instance
  * @param roads - Optional roads to bias placement toward
+ * @param existingPositions - Positions of existing POIs to avoid overlapping (CITY-409)
  * @returns Array of points inside the polygon
  */
 function generateSpreadPositions(
   polygon: Point[],
   count: number,
   rng: SeededRandom,
-  roads?: Road[]
+  roads?: Road[],
+  existingPositions?: Point[]
 ): Point[] {
   const bounds = getPolygonBounds(polygon);
   const width = bounds.maxX - bounds.minX;
@@ -217,8 +219,9 @@ function generateSpreadPositions(
       // Must be inside the polygon
       if (!pointInPolygon(candidate, polygon)) continue;
 
-      // Must be far enough from all existing positions
-      const tooClose = positions.some((existing) => {
+      // Must be far enough from all new positions and existing POIs (CITY-409)
+      const allPositions = existingPositions ? [...positions, ...existingPositions] : positions;
+      const tooClose = allPositions.some((existing) => {
         const dx = candidate.x - existing.x;
         const dy = candidate.y - existing.y;
         return Math.sqrt(dx * dx + dy * dy) < MIN_POI_SPACING;
@@ -261,13 +264,15 @@ function generateSpreadPositions(
  * @param polygon - The district polygon vertices
  * @param districtName - Name of the district (used as prefix context for POI naming)
  * @param roads - Optional roads within/near the district; POIs prefer road-adjacent locations (CITY-406)
+ * @param existingPOIs - Existing POIs to avoid overlapping with (CITY-409)
  * @returns Array of POI objects ready to be added via addPOI / bulk create
  */
 export function generatePOIsForDistrict(
   districtType: DistrictType,
   polygon: Point[],
   _districtName: string,
-  roads?: Road[]
+  roads?: Road[],
+  existingPOIs?: POI[]
 ): POI[] {
   const templates = DISTRICT_POI_TEMPLATES[districtType];
   if (!templates || templates.length === 0) return [];
@@ -292,8 +297,9 @@ export function generatePOIsForDistrict(
   const shuffled = rng.shuffle(templates);
   const selected = shuffled.slice(0, count);
 
-  // Generate spread-out positions inside the polygon, preferring road-adjacent spots
-  const positions = generateSpreadPositions(polygon, count, rng, roads);
+  // Generate spread-out positions, preferring road-adjacent spots and avoiding existing POIs
+  const existingPositions = existingPOIs?.map((p) => p.position);
+  const positions = generateSpreadPositions(polygon, count, rng, roads, existingPositions);
 
   // Build POI objects, tracking used names to avoid duplicates
   const usedNames = new Set<string>();
