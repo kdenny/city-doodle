@@ -262,6 +262,8 @@ interface TransitContextValue {
   getStationIdsForLine: (lineId: string) => string[];
   /** Get segment IDs that belong to a specific line */
   getSegmentIdsForLine: (lineId: string) => string[];
+  /** CITY-376: Get lines that serve a given station */
+  getLinesForStation: (stationId: string) => { id: string; name: string; color: string; lineType: string }[];
   /** Validate if a position is valid for rail station placement */
   validateRailStationPlacement: (position: Point) => StationValidation;
   /** Validate if a position is valid for subway station placement */
@@ -1150,6 +1152,28 @@ export function TransitProvider({ children, worldId }: TransitProviderProps) {
     [transitNetwork]
   );
 
+  /**
+   * CITY-376: Get all transit lines that serve a given station.
+   */
+  const getLinesForStation = useCallback(
+    (stationId: string): { id: string; name: string; color: string; lineType: string }[] => {
+      if (!transitNetwork) return [];
+      return transitNetwork.lines
+        .filter((line) =>
+          line.segments.some(
+            (seg) => seg.from_station_id === stationId || seg.to_station_id === stationId
+          )
+        )
+        .map((line) => ({
+          id: line.id,
+          name: line.name,
+          color: line.color,
+          lineType: line.line_type,
+        }));
+    },
+    [transitNetwork]
+  );
+
   const lineCount = transitNetwork?.lines.length || 0;
   const isLoading = isLoadingNetwork || createStation.isPending || createLine.isPending || updateLine.isPending;
   const error = networkError || createStation.error || null;
@@ -1180,6 +1204,7 @@ export function TransitProvider({ children, worldId }: TransitProviderProps) {
     setHighlightedLineId,
     getStationIdsForLine,
     getSegmentIdsForLine,
+    getLinesForStation,
     // Manual line drawing
     createLine: createLineManual,
     createLineSegment,
@@ -1209,6 +1234,7 @@ export function TransitProvider({ children, worldId }: TransitProviderProps) {
     setHighlightedLineId,
     getStationIdsForLine,
     getSegmentIdsForLine,
+    getLinesForStation,
     createLineManual,
     createLineSegment,
     updateLineMethod,

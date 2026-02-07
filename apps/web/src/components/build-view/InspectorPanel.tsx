@@ -785,6 +785,42 @@ function NeighborhoodInspector({ neighborhood, onUpdate, onDelete, readOnly }: N
   );
 }
 
+/**
+ * CITY-376: Shared component showing transit lines that serve a station.
+ */
+function StationLinesServed({ lines }: { lines: { id: string; name: string; color: string; lineType: string }[] }) {
+  if (lines.length === 0) {
+    return (
+      <div>
+        <label className="block text-xs font-medium text-gray-600 mb-1">Lines Served</label>
+        <p className="text-xs text-gray-400 italic">No lines serve this station</p>
+      </div>
+    );
+  }
+
+  return (
+    <div>
+      <label className="block text-xs font-medium text-gray-600 mb-1">
+        Lines Served ({lines.length})
+      </label>
+      <div className="space-y-1">
+        {lines.map((line) => (
+          <div key={line.id} className="flex items-center gap-2 px-2 py-1 bg-gray-50 rounded">
+            <span
+              className="w-3 h-3 rounded-full flex-shrink-0 border border-gray-300"
+              style={{ backgroundColor: line.color }}
+            />
+            <span className="text-sm text-gray-700 truncate">{line.name}</span>
+            <span className="text-xs text-gray-400 ml-auto flex-shrink-0">
+              {line.lineType === "rail" ? "Rail" : "Subway"}
+            </span>
+          </div>
+        ))}
+      </div>
+    </div>
+  );
+}
+
 interface RailStationInspectorProps {
   station: SelectedRailStation;
   onUpdate?: (feature: SelectedFeature) => void;
@@ -794,6 +830,11 @@ interface RailStationInspectorProps {
 
 function RailStationInspector({ station, onUpdate, onDelete, readOnly }: RailStationInspectorProps) {
   const [editedName, setEditedName] = useState(station.name);
+  const transit = useTransitOptional();
+  const linesServed = useMemo(
+    () => transit?.getLinesForStation(station.id) ?? [],
+    [transit, station.id]
+  );
 
   // Reset name when a different station is selected
   useEffect(() => {
@@ -838,16 +879,8 @@ function RailStationInspector({ station, onUpdate, onDelete, readOnly }: RailSta
         )}
       </div>
 
-      {/* Line color indicator */}
-      {station.lineColor && (
-        <div className="flex items-center gap-2">
-          <span className="text-xs font-medium text-gray-600">Line Color:</span>
-          <span
-            className="w-4 h-4 rounded-full border border-gray-300"
-            style={{ backgroundColor: station.lineColor }}
-          />
-        </div>
-      )}
+      {/* CITY-376: Lines served */}
+      <StationLinesServed lines={linesServed} />
 
       {/* Delete button */}
       {onDelete && (
@@ -871,6 +904,11 @@ interface SubwayStationInspectorProps {
 
 function SubwayStationInspector({ station, onUpdate, onDelete, readOnly }: SubwayStationInspectorProps) {
   const [editedName, setEditedName] = useState(station.name);
+  const transit = useTransitOptional();
+  const linesServed = useMemo(
+    () => transit?.getLinesForStation(station.id) ?? [],
+    [transit, station.id]
+  );
 
   // Reset name when a different station is selected
   useEffect(() => {
@@ -914,6 +952,9 @@ function SubwayStationInspector({ station, onUpdate, onDelete, readOnly }: Subwa
           <p className="text-sm text-gray-700">{station.name}</p>
         )}
       </div>
+
+      {/* CITY-376: Lines served */}
+      <StationLinesServed lines={linesServed} />
 
       {/* Delete button */}
       {onDelete && (
