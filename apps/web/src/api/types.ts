@@ -47,7 +47,34 @@ export interface AuthResponse {
 // World Types
 // ============================================================================
 
+export type GeographicSetting =
+  | "coastal"
+  | "bay_harbor"
+  | "river_valley"
+  | "lakefront"
+  | "inland"
+  | "island"
+  | "peninsula"
+  | "delta";
+
+export const GEOGRAPHIC_SETTINGS: {
+  value: GeographicSetting;
+  label: string;
+  description: string;
+}[] = [
+  { value: "coastal", label: "Coastal", description: "City along an ocean coast with beaches" },
+  { value: "bay_harbor", label: "Bay / Harbor", description: "City on a sheltered bay or natural harbor" },
+  { value: "river_valley", label: "River Valley", description: "City built along a major river" },
+  { value: "lakefront", label: "Lakefront", description: "City on the shore of a large lake" },
+  { value: "inland", label: "Inland", description: "Landlocked city with no major water features" },
+  { value: "island", label: "Island", description: "City on an island surrounded by water" },
+  { value: "peninsula", label: "Peninsula", description: "City on a peninsula jutting into water" },
+  { value: "delta", label: "River Delta", description: "City at a river mouth with wetlands and channels" },
+];
+
 export interface WorldSettings {
+  /** Geographic setting determining water body layout */
+  geographic_setting: GeographicSetting;
   /** 0 = strict grid, 1 = fully organic street layout */
   grid_organic: number;
   /** 0 = sprawling suburbs, 1 = dense urban core */
@@ -68,6 +95,7 @@ export interface WorldSettings {
 
 /** Default world settings */
 export const DEFAULT_WORLD_SETTINGS: WorldSettings = {
+  geographic_setting: "coastal",
   grid_organic: 0.5,
   sprawl_compact: 0.5,
   historic_modern: 0.5,

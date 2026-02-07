@@ -53,11 +53,14 @@ import { useSelectionContextOptional } from "../build-view/SelectionContext";
 import type { SelectedFeature } from "../build-view/SelectionContext";
 import { useEditLockOptional } from "../shell/EditLockContext";
 import type { District, Road, POI, CityLimits } from "./layers";
+import type { GeographicSetting } from "../../api/types";
 import { TILE_SIZE, WORLD_TILES, WORLD_SIZE } from "../../utils/worldConstants";
 
 interface MapCanvasProps {
   className?: string;
   seed?: number;
+  /** Geographic setting for terrain generation */
+  geographicSetting?: GeographicSetting;
   /** Controlled zoom level from parent - synced with viewport */
   zoom?: number;
   /** Callback when zoom changes (from wheel/pinch) */
@@ -81,7 +84,7 @@ export interface MapCanvasHandle {
 }
 
 export const MapCanvas = forwardRef<MapCanvasHandle, MapCanvasProps>(
-  function MapCanvas({ className, seed = 12345, zoom: zoomProp, onZoomChange: onZoomChangeProp, showMockFeatures = true, onFeatureSelect: onFeatureSelectProp }, ref) {
+  function MapCanvas({ className, seed = 12345, geographicSetting, zoom: zoomProp, onZoomChange: onZoomChangeProp, showMockFeatures = true, onFeatureSelect: onFeatureSelectProp }, ref) {
   const containerRef = useRef<HTMLDivElement>(null);
   const appRef = useRef<Application | null>(null);
   const viewportRef = useRef<Viewport | null>(null);
@@ -307,7 +310,7 @@ export const MapCanvas = forwardRef<MapCanvasHandle, MapCanvasProps>(
       viewport.addChild(terrainLayer.getContainer());
 
       // Generate and set terrain data
-      const terrainData = generateMockTerrain(WORLD_SIZE, seed);
+      const terrainData = generateMockTerrain(WORLD_SIZE, seed, geographicSetting);
       terrainLayer.setData(terrainData);
       terrainLayer.setVisibility(layerVisibility);
 
