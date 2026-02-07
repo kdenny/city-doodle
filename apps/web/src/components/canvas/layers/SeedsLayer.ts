@@ -283,6 +283,43 @@ export class SeedsLayer {
     this.container.visible = visible;
   }
 
+  /**
+   * Show a brief red error flash at the given position to indicate
+   * placement failure. The flash fades out over ~600ms.
+   */
+  showPlacementError(position: { x: number; y: number }): void {
+    const g = new Graphics();
+
+    // Draw red "X" marker
+    const s = 12;
+    g.setStrokeStyle({ width: 3, color: 0xe53935, alpha: 1 });
+    g.moveTo(position.x - s, position.y - s);
+    g.lineTo(position.x + s, position.y + s);
+    g.stroke();
+    g.moveTo(position.x + s, position.y - s);
+    g.lineTo(position.x - s, position.y + s);
+    g.stroke();
+
+    // Draw red circle around X
+    g.setStrokeStyle({ width: 2, color: 0xe53935, alpha: 0.6 });
+    g.circle(position.x, position.y, s * 1.5);
+    g.stroke();
+
+    this.previewContainer.addChild(g);
+
+    // Fade out and remove
+    let alpha = 1;
+    const fadeInterval = setInterval(() => {
+      alpha -= 0.05;
+      g.alpha = Math.max(0, alpha);
+      if (alpha <= 0) {
+        clearInterval(fadeInterval);
+        this.previewContainer.removeChild(g);
+        g.destroy();
+      }
+    }, 30);
+  }
+
   destroy(): void {
     this.container.destroy({ children: true });
     this.seedGraphics.clear();

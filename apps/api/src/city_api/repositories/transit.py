@@ -140,12 +140,31 @@ async def update_station(
 
 
 async def delete_station(db: AsyncSession, station_id: UUID) -> bool:
-    """Delete a transit station. Connected segments are deleted via CASCADE."""
+    """Delete a transit station. Connected segments are deleted via CASCADE.
+
+    After deletion, any transit lines left with zero segments are also removed
+    to prevent orphaned line records (CITY-301).
+    """
+    # Find lines that reference this station (via segments) before deletion
+    seg_query = select(TransitLineSegmentModel.line_id).where(
+        (TransitLineSegmentModel.from_station_id == station_id)
+        | (TransitLineSegmentModel.to_station_id == station_id)
+    )
+    seg_result = await db.execute(seg_query)
+    affected_line_ids = list({row[0] for row in seg_result.all()})
+
+    # Delete the station (CASCADE removes its segments)
     result = await db.execute(
         delete(TransitStationModel).where(TransitStationModel.id == station_id)
     )
+    if result.rowcount == 0:
+        await db.commit()
+        return False
+
+    # Clean up orphaned lines
+    await _delete_orphaned_lines(db, affected_line_ids)
     await db.commit()
-    return result.rowcount > 0
+    return True
 
 
 # ============================================================================
@@ -382,12 +401,60 @@ async def update_segment(
 
 
 async def delete_segment(db: AsyncSession, segment_id: UUID) -> bool:
-    """Delete a line segment."""
+    """Delete a line segment.
+
+    After deletion, if the parent line has zero remaining segments it is also
+    removed to prevent orphaned line records (CITY-301).
+    """
+    # Look up the parent line before deleting the segment
+    seg_result = await db.execute(
+        select(TransitLineSegmentModel.line_id).where(
+            TransitLineSegmentModel.id == segment_id
+        )
+    )
+    row = seg_result.one_or_none()
+    parent_line_id = row[0] if row else None
+
     result = await db.execute(
         delete(TransitLineSegmentModel).where(TransitLineSegmentModel.id == segment_id)
     )
+    if result.rowcount == 0:
+        await db.commit()
+        return False
+
+    # Clean up orphaned parent line
+    if parent_line_id:
+        await _delete_orphaned_lines(db, [parent_line_id])
     await db.commit()
-    return result.rowcount > 0
+    return True
+
+
+# ============================================================================
+# Orphan Cleanup Helpers (CITY-301)
+# ============================================================================
+
+
+async def _delete_orphaned_lines(db: AsyncSession, line_ids: list[UUID]) -> int:
+    """Delete any of the given lines that have zero remaining segments.
+
+    Returns the number of lines deleted.
+    """
+    if not line_ids:
+        return 0
+
+    deleted = 0
+    for line_id in line_ids:
+        count_result = await db.execute(
+            select(TransitLineSegmentModel.id).where(
+                TransitLineSegmentModel.line_id == line_id
+            )
+        )
+        if len(count_result.all()) == 0:
+            await db.execute(
+                delete(TransitLineModel).where(TransitLineModel.id == line_id)
+            )
+            deleted += 1
+    return deleted
 
 
 # ============================================================================

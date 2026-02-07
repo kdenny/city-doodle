@@ -20,6 +20,8 @@ interface PlacementState {
   dragOrigin: { x: number; y: number } | null;
   /** Drag-to-size: current radius from drag distance */
   dragSize: number | null;
+  /** Position of last placement error (for visual flash feedback) */
+  placementError: { x: number; y: number } | null;
 }
 
 interface PlacementContextValue extends PlacementState {
@@ -42,19 +44,22 @@ interface PlacementContextValue extends PlacementState {
   cancelDragSize: () => void;
   /** Whether a drag-to-size operation is in progress */
   isDraggingSize: boolean;
+  /** Signal a placement error at the given position (triggers visual feedback) */
+  setPlacementError: (position: { x: number; y: number }) => void;
 }
 
 const PlacementContext = createContext<PlacementContextValue | null>(null);
 
 interface PlacementProviderProps {
   children: ReactNode;
+  /** Callback when a seed is placed. Return false to signal placement failure. */
   onPlaceSeed?: (
     seed: SeedType,
     position: { x: number; y: number },
     personality?: DistrictPersonality,
     generationSeed?: number,
     fixedSize?: number
-  ) => void;
+  ) => Promise<boolean> | boolean | void;
 }
 
 export function PlacementProvider({ children, onPlaceSeed }: PlacementProviderProps) {
@@ -66,6 +71,7 @@ export function PlacementProvider({ children, onPlaceSeed }: PlacementProviderPr
     placementSeed: generateRandomSeed(),
     dragOrigin: null,
     dragSize: null,
+    placementError: null,
   });
 
   const selectSeed = useCallback((seed: SeedType | null) => {
@@ -79,6 +85,7 @@ export function PlacementProvider({ children, onPlaceSeed }: PlacementProviderPr
       placementSeed: generateRandomSeed(),
       dragOrigin: null,
       dragSize: null,
+      placementError: null,
     }));
   }, []);
 
@@ -98,6 +105,7 @@ export function PlacementProvider({ children, onPlaceSeed }: PlacementProviderPr
       placementSeed: generateRandomSeed(),
       dragOrigin: null,
       dragSize: null,
+      placementError: null,
     });
   }, []);
 
@@ -155,14 +163,28 @@ export function PlacementProvider({ children, onPlaceSeed }: PlacementProviderPr
 
   const isDraggingSize = state.dragOrigin !== null;
 
+  const setPlacementError = useCallback((position: { x: number; y: number }) => {
+    setState((prev) => ({ ...prev, placementError: position }));
+    // Auto-clear after a short delay so the next watch cycle can detect it
+    setTimeout(() => {
+      setState((prev) => ({ ...prev, placementError: null }));
+    }, 100);
+  }, []);
+
   const confirmPlacement = useCallback(
-    (position: { x: number; y: number }, size?: number) => {
+    async (position: { x: number; y: number }, size?: number) => {
       if (state.selectedSeed && onPlaceSeed) {
         // Pass personality, seed, and optional size for district seeds
+        let result: boolean | void;
         if (state.selectedSeed.category === "district") {
-          onPlaceSeed(state.selectedSeed, position, state.placementPersonality, state.placementSeed, size);
+          result = await onPlaceSeed(state.selectedSeed, position, state.placementPersonality, state.placementSeed, size);
         } else {
-          onPlaceSeed(state.selectedSeed, position);
+          result = await onPlaceSeed(state.selectedSeed, position);
+        }
+
+        // If placement failed, show error flash at the position
+        if (result === false) {
+          setPlacementError(position);
         }
       }
       // Stay in placement mode with same seed selected for quick consecutive placements
@@ -175,7 +197,7 @@ export function PlacementProvider({ children, onPlaceSeed }: PlacementProviderPr
         dragSize: null,
       }));
     },
-    [state.selectedSeed, state.placementPersonality, state.placementSeed, onPlaceSeed]
+    [state.selectedSeed, state.placementPersonality, state.placementSeed, onPlaceSeed, setPlacementError]
   );
 
   const value: PlacementContextValue = {
@@ -192,6 +214,7 @@ export function PlacementProvider({ children, onPlaceSeed }: PlacementProviderPr
     updateDragSize,
     cancelDragSize,
     isDraggingSize,
+    setPlacementError,
   };
 
   return (
