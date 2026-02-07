@@ -3,6 +3,7 @@ import { TransitLinesPanel, TransitLine } from "./TransitLinesPanel";
 import { TransitLineInspector } from "./TransitLineInspector";
 import { useTransitLinesData } from "./useTransitLinesData";
 import { useTransitOptional } from "../canvas/TransitContext";
+import { useViewMode } from "../shell/ViewModeContext";
 
 interface TransitViewProps {
   children: ReactNode;
@@ -12,38 +13,32 @@ interface TransitViewProps {
 }
 
 /**
- * Transit view wrapper that displays the transit lines panel
+ * Transit view wrapper with a left sidebar for transit line management
  * connected to real transit network data from TransitContext.
  *
- * When transit data is available through context, it displays
- * actual transit lines. Otherwise shows an empty state.
+ * Layout: left sidebar (lines list + inspector) | map canvas
  */
 export function TransitView({
   children,
   lines: propLines,
   onLineClick,
 }: TransitViewProps) {
-  // Get transit context (may be null if not in provider)
   const transitContext = useTransitOptional();
+  const { setViewMode } = useViewMode();
 
-  // Track selected line for editing
   const [selectedLine, setSelectedLine] = useState<TransitLine | null>(null);
   const [isUpdating, setIsUpdating] = useState(false);
 
-  // Transform network data to panel format
   const networkLines = useTransitLinesData(transitContext?.transitNetwork);
-
-  // Use prop lines if provided, otherwise use context network lines
   const lines = propLines ?? networkLines;
 
   const handleLineClick = useCallback(
     (line: TransitLine) => {
       onLineClick?.(line);
-      // Open inspector for editing
-      setSelectedLine(line);
-      // Highlight line on map (CITY-195)
+      // Toggle selection: clicking same line deselects
+      setSelectedLine((prev) => (prev?.id === line.id ? null : line));
+      // Highlight line on map
       if (transitContext) {
-        // Toggle: if already highlighted, clear; otherwise highlight
         if (transitContext.highlightedLineId === line.id) {
           transitContext.setHighlightedLineId(null);
         } else {
@@ -56,7 +51,8 @@ export function TransitView({
 
   const handleCloseInspector = useCallback(() => {
     setSelectedLine(null);
-  }, []);
+    transitContext?.setHighlightedLineId(null);
+  }, [transitContext]);
 
   const handleUpdateLine = useCallback(
     async (lineId: string, updates: { name?: string; color?: string }) => {
@@ -66,11 +62,8 @@ export function TransitView({
       try {
         const success = await transitContext.updateLine(lineId, updates);
         if (success) {
-          // Update local selected line state to reflect changes
           setSelectedLine((prev) =>
-            prev && prev.id === lineId
-              ? { ...prev, ...updates }
-              : prev
+            prev && prev.id === lineId ? { ...prev, ...updates } : prev
           );
         }
       } finally {
@@ -92,43 +85,52 @@ export function TransitView({
     [transitContext]
   );
 
-  // Clear highlight when clicking on the map background
   const handleBackgroundClick = useCallback(() => {
     transitContext?.setHighlightedLineId(null);
   }, [transitContext]);
 
+  const handleSwitchToBuild = useCallback(() => {
+    setViewMode("build");
+  }, [setViewMode]);
+
   return (
-    <div className="relative w-full h-full" onClick={handleBackgroundClick}>
-      {/* Map content (with transit emphasis) */}
-      <div className="absolute inset-0 transit-view-overlay">
-        {children}
-      </div>
-
-      {/* Transit lines panel (right) */}
-      <div className="absolute top-4 right-4" onClick={(e) => e.stopPropagation()}>
-        <TransitLinesPanel
-          lines={lines}
-          onLineClick={handleLineClick}
-          isLoading={transitContext?.isLoading ?? false}
-          highlightedLineId={transitContext?.highlightedLineId ?? null}
-        />
-      </div>
-
-      {/* Line inspector (left, shown when a line is selected) */}
-      {selectedLine && (
-        <div className="absolute top-4 left-4">
-          <TransitLineInspector
-            line={selectedLine}
-            onUpdate={handleUpdateLine}
-            onDelete={handleDeleteLine}
-            onClose={handleCloseInspector}
-            isUpdating={isUpdating}
+    <div className="flex w-full h-full">
+      {/* Left sidebar */}
+      <div
+        className="w-72 shrink-0 bg-white border-r border-gray-200 flex flex-col overflow-hidden z-10"
+        onClick={(e) => e.stopPropagation()}
+      >
+        {/* Transit lines list */}
+        <div className="flex-1 overflow-y-auto">
+          <TransitLinesPanel
+            lines={lines}
+            onLineClick={handleLineClick}
+            isLoading={transitContext?.isLoading ?? false}
+            highlightedLineId={transitContext?.highlightedLineId ?? null}
+            onSwitchToBuild={handleSwitchToBuild}
           />
         </div>
-      )}
 
-      {/* Note: No build tools visible in Transit View */}
-      {/* Note: No timelapse controls visible */}
+        {/* Line inspector (below lines list when a line is selected) */}
+        {selectedLine && (
+          <div className="border-t border-gray-200 overflow-y-auto max-h-[50%]">
+            <TransitLineInspector
+              line={selectedLine}
+              onUpdate={handleUpdateLine}
+              onDelete={handleDeleteLine}
+              onClose={handleCloseInspector}
+              isUpdating={isUpdating}
+            />
+          </div>
+        )}
+      </div>
+
+      {/* Map content */}
+      <div className="flex-1 relative" onClick={handleBackgroundClick}>
+        <div className="absolute inset-0 transit-view-overlay">
+          {children}
+        </div>
+      </div>
     </div>
   );
 }

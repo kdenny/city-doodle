@@ -53,9 +53,14 @@ const allHiddenLayers: LayerVisibility = {
 };
 
 describe("LayerControls integration", () => {
+  function expandPanel() {
+    fireEvent.click(screen.getByTitle("Show layers"));
+  }
+
   it("updates visibility state when checkbox is clicked", () => {
     const onChange = vi.fn();
     render(<LayerControls visibility={allVisibleLayers} onChange={onChange} />);
+    expandPanel();
 
     // Click on water checkbox to toggle it off
     fireEvent.click(screen.getByLabelText("Water"));
@@ -72,6 +77,7 @@ describe("LayerControls integration", () => {
     const { rerender } = render(
       <LayerControls visibility={allVisibleLayers} onChange={onChange} />
     );
+    expandPanel();
 
     // Toggle water off
     fireEvent.click(screen.getByLabelText("Water"));
@@ -111,6 +117,7 @@ describe("LayerControls integration", () => {
     }
 
     render(<StatefulLayerControls />);
+    expandPanel();
 
     // Initially all visible
     expect(screen.getByLabelText("Water")).toBeChecked();
@@ -300,6 +307,9 @@ describe("Full layer toggle flow", () => {
         }}
       />
     );
+
+    // Expand the panel first
+    fireEvent.click(screen.getByTitle("Show layers"));
 
     // Toggle water off
     fireEvent.click(screen.getByLabelText("Water"));
