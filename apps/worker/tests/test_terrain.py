@@ -1815,7 +1815,7 @@ class TestIslandMask:
         hf = np.full((32, 32), 0.7)
         ctx = MaskContext(tx=0, ty=0, tile_size=500.0, resolution=32, seed=42)
         result = island_mask(hf, ctx)
-        # Center region should mostly be unmodified (mask ≈ 1.0)
+        # Center region should mostly be unmodified (mask ~ 1.0)
         center = result[12:20, 12:20]
         assert center.mean() > 0.5, f"Center mean {center.mean()} too low"
 
@@ -1959,7 +1959,7 @@ class TestPeninsulaMask:
         hf = np.full((32, 32), 0.7)
         ctx = MaskContext(tx=0, ty=0, tile_size=500.0, resolution=32, seed=42)
         result = peninsula_mask(hf, ctx)
-        # Compare quadrants — at least two should differ significantly
+        # Compare quadrants -- at least two should differ significantly
         q1 = result[:16, :16].mean()
         q2 = result[:16, 16:].mean()
         q3 = result[16:, :16].mean()
@@ -1974,6 +1974,89 @@ class TestPeninsulaMask:
         config = TerrainConfig(
             world_seed=42,
             geographic_setting="peninsula",
+            resolution=16,
+            tile_size=500.0,
+        )
+        gen = TerrainGenerator(config)
+        result = gen.generate_3x3(0, 0)
+        assert len(result.all_tiles()) == 9
+
+
+class TestRiverValleyMask:
+    """Tests for river valley channel mask (CITY-391)."""
+
+    def test_river_valley_mask_registered(self):
+        """river_valley_mask should be registered for 'river_valley' setting."""
+        from city_worker.terrain.geographic_masks import get_mask, river_valley_mask
+
+        assert get_mask("river_valley") is river_valley_mask
+
+    def test_center_has_depression(self):
+        """The center tile should have a depression (lower heights near the river)."""
+        import numpy as np
+        from city_worker.terrain.geographic_masks import MaskContext, river_valley_mask
+
+        hf = np.full((32, 32), 0.6)
+        ctx = MaskContext(tx=0, ty=0, tile_size=500.0, resolution=32, seed=42)
+        result = river_valley_mask(hf, ctx)
+        # The minimum should be noticeably lower than the input
+        assert result.min() < 0.4, f"Min {result.min()} not depressed enough"
+
+    def test_edges_less_affected(self):
+        """Terrain far from the river should be less affected."""
+        import numpy as np
+        from city_worker.terrain.geographic_masks import MaskContext, river_valley_mask
+
+        hf = np.full((32, 32), 0.6)
+        ctx = MaskContext(tx=0, ty=0, tile_size=500.0, resolution=32, seed=42)
+        result = river_valley_mask(hf, ctx)
+        # Average of full tile vs average of edges
+        edge_vals = np.concatenate([result[0, :], result[-1, :],
+                                    result[:, 0], result[:, -1]])
+        center_row = result[16, :]
+        # At least some edge values should be higher than the lowest center values
+        assert edge_vals.mean() > center_row.min()
+
+    def test_mask_is_deterministic(self):
+        """Same seed should produce identical masks."""
+        import numpy as np
+        from city_worker.terrain.geographic_masks import MaskContext, river_valley_mask
+
+        hf = np.full((16, 16), 0.6)
+        ctx = MaskContext(tx=0, ty=0, tile_size=500.0, resolution=16, seed=42)
+        r1 = river_valley_mask(hf, ctx)
+        r2 = river_valley_mask(hf, ctx)
+        np.testing.assert_array_equal(r1, r2)
+
+    def test_different_seeds_produce_different_valleys(self):
+        """Different seeds should create differently oriented valleys."""
+        import numpy as np
+        from city_worker.terrain.geographic_masks import MaskContext, river_valley_mask
+
+        hf = np.full((32, 32), 0.6)
+        ctx1 = MaskContext(tx=0, ty=0, tile_size=500.0, resolution=32, seed=42)
+        ctx2 = MaskContext(tx=0, ty=0, tile_size=500.0, resolution=32, seed=999)
+        r1 = river_valley_mask(hf, ctx1)
+        r2 = river_valley_mask(hf, ctx2)
+        assert not np.array_equal(r1, r2)
+
+    def test_valley_creates_linear_feature(self):
+        """The depression should be roughly linear, not radial."""
+        import numpy as np
+        from city_worker.terrain.geographic_masks import MaskContext, river_valley_mask
+
+        hf = np.full((32, 32), 0.6)
+        ctx = MaskContext(tx=0, ty=0, tile_size=500.0, resolution=32, seed=42)
+        result = river_valley_mask(hf, ctx)
+        # The depression should span across the tile (not just a point)
+        depressed = result < 0.4
+        assert depressed.sum() > 10, "Valley should span multiple cells"
+
+    def test_river_valley_generates_through_full_pipeline(self):
+        """River valley setting should produce valid terrain through generator."""
+        config = TerrainConfig(
+            world_seed=42,
+            geographic_setting="river_valley",
             resolution=16,
             tile_size=500.0,
         )
