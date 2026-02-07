@@ -102,6 +102,60 @@ def identity_mask(
     return heightfield
 
 
+def island_mask(
+    heightfield: NDArray[np.float64], ctx: MaskContext
+) -> NDArray[np.float64]:
+    """Radial falloff mask for island worlds (CITY-387).
+
+    Multiplies the heightfield by a smooth radial falloff centered on
+    the world origin (middle of tile 0, 0).  The falloff edge is
+    perturbed by angle-dependent noise for an organic coastline, and
+    the island shape is slightly elliptical based on the seed.
+    """
+    res = ctx.resolution
+    ts = ctx.tile_size
+
+    # Island center: middle of tile (0, 0)
+    cx = ts * 0.5
+    cy = ts * 0.5
+
+    # Base radius and transition band
+    base_radius = ts * 0.7
+    falloff_width = ts * 0.35
+
+    # Seed-derived eccentricity for variety
+    aspect = 0.85 + _seeded_hash(ctx.seed, 0) * 0.30  # 0.85 – 1.15
+    rotation = _seeded_hash(ctx.seed, 1) * math.pi     # 0 – π
+
+    # Build world-coordinate grids
+    step = ts / res
+    xs = ctx.tx * ts + np.arange(res, dtype=np.float64) * step
+    ys = ctx.ty * ts + np.arange(res, dtype=np.float64) * step
+    xx, yy = np.meshgrid(xs, ys)
+
+    dx = xx - cx
+    dy = yy - cy
+
+    # Rotate + stretch for elliptical shape
+    cos_r, sin_r = math.cos(rotation), math.sin(rotation)
+    rx = dx * cos_r + dy * sin_r
+    ry = (-dx * sin_r + dy * cos_r) * aspect
+    dist = np.sqrt(rx * rx + ry * ry)
+
+    # Angle-dependent noise for organic shoreline
+    angles = np.arctan2(dy, dx)
+    noise = _angle_noise(angles, ctx.seed)
+    perturbed_radius = np.maximum(base_radius + noise * ts * 0.15, ts * 0.2)
+
+    # Smooth radial falloff
+    inner = perturbed_radius - falloff_width * 0.5
+    outer = perturbed_radius + falloff_width * 0.5
+    t = (dist - inner) / np.maximum(outer - inner, 1e-10)
+    mask = 1.0 - _smoothstep(t)
+
+    return heightfield * mask
+
+
 def peninsula_mask(
     heightfield: NDArray[np.float64], ctx: MaskContext
 ) -> NDArray[np.float64]:
@@ -181,7 +235,7 @@ _MASK_REGISTRY: dict[str, MaskFn] = {
     "river_valley": identity_mask,
     "lakefront": identity_mask,
     "inland": identity_mask,
-    "island": identity_mask,
+    "island": island_mask,
     "peninsula": peninsula_mask,
     "delta": identity_mask,
 }
