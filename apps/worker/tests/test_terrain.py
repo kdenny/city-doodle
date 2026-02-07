@@ -2063,3 +2063,82 @@ class TestRiverValleyMask:
         gen = TerrainGenerator(config)
         result = gen.generate_3x3(0, 0)
         assert len(result.all_tiles()) == 9
+
+
+class TestDeltaMask:
+    """Tests for delta fan-shaped river mouth mask (CITY-393)."""
+
+    def test_delta_mask_registered(self):
+        """delta_mask should be registered for 'delta' setting."""
+        from city_worker.terrain.geographic_masks import delta_mask, get_mask
+
+        assert get_mask("delta") is delta_mask
+
+    def test_center_has_channel_depressions(self):
+        """The center tile should have depressed channels (lower heights)."""
+        import numpy as np
+        from city_worker.terrain.geographic_masks import MaskContext, delta_mask
+
+        hf = np.full((32, 32), 0.6)
+        ctx = MaskContext(tx=0, ty=0, tile_size=500.0, resolution=32, seed=42)
+        result = delta_mask(hf, ctx)
+        # Should have some depression from channels
+        assert result.min() < 0.4, f"Min {result.min()} not depressed enough"
+
+    def test_fan_creates_varied_terrain(self):
+        """The delta should create varied terrain (channels + islands)."""
+        import numpy as np
+        from city_worker.terrain.geographic_masks import MaskContext, delta_mask
+
+        hf = np.full((32, 32), 0.6)
+        ctx = MaskContext(tx=0, ty=0, tile_size=500.0, resolution=32, seed=42)
+        result = delta_mask(hf, ctx)
+        # Range should show channels (low) and delta islands (higher)
+        assert result.max() - result.min() > 0.1
+
+    def test_mask_is_deterministic(self):
+        """Same seed should produce identical masks."""
+        import numpy as np
+        from city_worker.terrain.geographic_masks import MaskContext, delta_mask
+
+        hf = np.full((16, 16), 0.6)
+        ctx = MaskContext(tx=0, ty=0, tile_size=500.0, resolution=16, seed=42)
+        r1 = delta_mask(hf, ctx)
+        r2 = delta_mask(hf, ctx)
+        np.testing.assert_array_equal(r1, r2)
+
+    def test_different_seeds_produce_different_deltas(self):
+        """Different seeds should create differently oriented deltas."""
+        import numpy as np
+        from city_worker.terrain.geographic_masks import MaskContext, delta_mask
+
+        hf = np.full((32, 32), 0.6)
+        ctx1 = MaskContext(tx=0, ty=0, tile_size=500.0, resolution=32, seed=42)
+        ctx2 = MaskContext(tx=0, ty=0, tile_size=500.0, resolution=32, seed=999)
+        r1 = delta_mask(hf, ctx1)
+        r2 = delta_mask(hf, ctx2)
+        assert not np.array_equal(r1, r2)
+
+    def test_multiple_channel_depressions(self):
+        """The delta should have multiple distinct channel depressions."""
+        import numpy as np
+        from city_worker.terrain.geographic_masks import MaskContext, delta_mask
+
+        hf = np.full((64, 64), 0.6)
+        ctx = MaskContext(tx=0, ty=0, tile_size=500.0, resolution=64, seed=42)
+        result = delta_mask(hf, ctx)
+        # Count cells that are significantly depressed (channel areas)
+        depressed = (result < 0.35).sum()
+        assert depressed > 20, f"Only {depressed} depressed cells — need more channels"
+
+    def test_delta_generates_through_full_pipeline(self):
+        """Delta setting should produce valid terrain through generator."""
+        config = TerrainConfig(
+            world_seed=42,
+            geographic_setting="delta",
+            resolution=16,
+            tile_size=500.0,
+        )
+        gen = TerrainGenerator(config)
+        result = gen.generate_3x3(0, 0)
+        assert len(result.all_tiles()) == 9
