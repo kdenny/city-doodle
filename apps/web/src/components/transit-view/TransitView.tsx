@@ -187,9 +187,11 @@ export function TransitView({
         ? lastSegment.to_station_id
         : terminusIds[terminusIds.length - 1];
 
-      // Find the station data for rendering
-      const allStations = [...transitContext.railStations, ...transitContext.subwayStations];
-      const terminus = allStations.find((s) => s.id === lastTerminusId);
+      // Find the station data for rendering (filter by line type to prevent mixing)
+      const stationPool = line.line_type === "subway"
+        ? transitContext.subwayStations
+        : transitContext.railStations;
+      const terminus = stationPool.find((s) => s.id === lastTerminusId);
       if (!terminus) return;
 
       // Cancel any active placement

@@ -185,7 +185,7 @@ export function TransitLineInspector({
       </div>
 
       {/* CITY-363: Extend line button */}
-      {onExtend && line.stations >= 1 && (
+      {onExtend && line.stations >= 2 && (
         <button
           onClick={() => onExtend(line.id)}
           disabled={isUpdating || isExtending}
