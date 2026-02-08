@@ -311,6 +311,71 @@ function generateSpreadPositions(
 }
 
 // ============================================================================
+// Footprint generation (CITY-440)
+// ============================================================================
+
+/**
+ * Footprint size configs by POI type.
+ * halfWidth/halfHeight are base half-extents in world units;
+ * actual values vary ±variation via seeded RNG for organic feel.
+ */
+const FOOTPRINT_CONFIGS: Partial<
+  Record<POIType, { halfWidth: number; halfHeight: number; variation: number }>
+> = {
+  university: { halfWidth: 4.0, halfHeight: 3.5, variation: 0.5 },
+  hospital: { halfWidth: 3.0, halfHeight: 2.5, variation: 0.5 },
+  shopping: { halfWidth: 2.25, halfHeight: 1.75, variation: 0.25 },
+};
+
+/**
+ * Generate a small irregular polygon footprint for campus/compound POI types.
+ *
+ * Returns `undefined` for POI types that don't get footprints (civic, transit,
+ * park, school, industrial). For university/hospital/shopping, generates a
+ * slightly irregular rectangle centered on the POI position using seeded RNG
+ * for determinism (same position + type always produces the same shape).
+ *
+ * @param type - POI type
+ * @param position - Center position of the POI
+ * @returns Array of polygon corner points, or undefined if type has no footprint
+ */
+export function generatePOIFootprint(
+  type: POIType,
+  position: Point,
+): Point[] | undefined {
+  const config = FOOTPRINT_CONFIGS[type];
+  if (!config) return undefined;
+
+  // Seed from position for determinism
+  const seed = Math.floor(position.x * 1000 + position.y * 7919 + type.charCodeAt(0) * 31);
+  const rng = new SeededRandom(seed);
+
+  const { halfWidth, halfHeight, variation } = config;
+
+  // Generate 4 corners with slight per-corner variation for organic feel
+  const corners: Point[] = [
+    { // top-left
+      x: position.x - halfWidth + (rng.next() - 0.5) * variation * 2,
+      y: position.y - halfHeight + (rng.next() - 0.5) * variation * 2,
+    },
+    { // top-right
+      x: position.x + halfWidth + (rng.next() - 0.5) * variation * 2,
+      y: position.y - halfHeight + (rng.next() - 0.5) * variation * 2,
+    },
+    { // bottom-right
+      x: position.x + halfWidth + (rng.next() - 0.5) * variation * 2,
+      y: position.y + halfHeight + (rng.next() - 0.5) * variation * 2,
+    },
+    { // bottom-left
+      x: position.x - halfWidth + (rng.next() - 0.5) * variation * 2,
+      y: position.y + halfHeight + (rng.next() - 0.5) * variation * 2,
+    },
+  ];
+
+  return corners;
+}
+
+// ============================================================================
 // Public API
 // ============================================================================
 
@@ -376,6 +441,7 @@ export function generatePOIsForDistrict(
       name,
       type: poiType,
       position: positions[i],
+      footprint: generatePOIFootprint(poiType, positions[i]),
     });
   }
 
