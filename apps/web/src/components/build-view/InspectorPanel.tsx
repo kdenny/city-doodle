@@ -6,7 +6,7 @@
 
 import { useState, useCallback, useEffect, useMemo } from "react";
 import { CollapsiblePersonalitySliders } from "./PersonalitySliders";
-import type { DistrictPersonality, RoadClass, DistrictType } from "../canvas/layers/types";
+import type { DistrictPersonality, RoadClass, DistrictType, POIType } from "../canvas/layers/types";
 import { DEFAULT_DISTRICT_PERSONALITY, DEFAULT_DENSITY_BY_TYPE } from "../canvas/layers/types";
 import {
   canBeHistoric,
@@ -47,7 +47,7 @@ export interface SelectedPOI {
   type: "poi";
   id: string;
   name: string;
-  poiType: string;
+  poiType: POIType;
 }
 
 export interface SelectedNeighborhood {
