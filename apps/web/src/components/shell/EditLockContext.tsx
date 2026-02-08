@@ -3,6 +3,7 @@ import {
   useContext,
   useCallback,
   useEffect,
+  useMemo,
   useRef,
   useState,
   ReactNode,
@@ -191,17 +192,20 @@ export function EditLockProvider({ children, worldId }: EditLockProviderProps) {
     return () => window.removeEventListener("beforeunload", handleBeforeUnload);
   }, []);
 
+  const value: EditLockContextValue = useMemo(
+    () => ({
+      isEditing,
+      isAcquiring,
+      lockConflict,
+      requestEditMode,
+      exitEditMode,
+      dismissConflict,
+    }),
+    [isEditing, isAcquiring, lockConflict, requestEditMode, exitEditMode, dismissConflict]
+  );
+
   return (
-    <EditLockContext.Provider
-      value={{
-        isEditing,
-        isAcquiring,
-        lockConflict,
-        requestEditMode,
-        exitEditMode,
-        dismissConflict,
-      }}
-    >
+    <EditLockContext.Provider value={value}>
       {children}
     </EditLockContext.Provider>
   );

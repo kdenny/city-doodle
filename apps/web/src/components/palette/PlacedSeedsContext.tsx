@@ -13,6 +13,7 @@ import {
   useState,
   useCallback,
   useEffect,
+  useMemo,
   useRef,
   ReactNode,
 } from "react";
@@ -224,15 +225,18 @@ export function PlacedSeedsProvider({
   const isLoading = !isInitialized || (!!worldId && isLoadingSeeds);
   const error = loadError || null;
 
-  const value: PlacedSeedsContextValue = {
-    seeds,
-    addSeed,
-    removeSeed,
-    updateSeedPosition,
-    clearSeeds,
-    isLoading,
-    error,
-  };
+  const value: PlacedSeedsContextValue = useMemo(
+    () => ({
+      seeds,
+      addSeed,
+      removeSeed,
+      updateSeedPosition,
+      clearSeeds,
+      isLoading,
+      error,
+    }),
+    [seeds, addSeed, removeSeed, updateSeedPosition, clearSeeds, isLoading, error]
+  );
 
   return (
     <PlacedSeedsContext.Provider value={value}>

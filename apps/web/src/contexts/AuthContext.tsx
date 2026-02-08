@@ -8,6 +8,7 @@ import {
   useEffect,
   useState,
   useCallback,
+  useMemo,
   ReactNode,
 } from "react";
 import { useQueryClient } from "@tanstack/react-query";
@@ -106,15 +107,18 @@ export function AuthProvider({ children }: { children: ReactNode }) {
   const isLoading =
     isLoadingUser || loginMutation.isPending || registerMutation.isPending;
 
-  const value: AuthContextValue = {
-    user: user ?? null,
-    isLoading,
-    isAuthenticated: !!user,
-    login,
-    register,
-    logout,
-    error,
-  };
+  const value: AuthContextValue = useMemo(
+    () => ({
+      user: user ?? null,
+      isLoading,
+      isAuthenticated: !!user,
+      login,
+      register,
+      logout,
+      error,
+    }),
+    [user, isLoading, login, register, logout, error]
+  );
 
   return <AuthContext.Provider value={value}>{children}</AuthContext.Provider>;
 }

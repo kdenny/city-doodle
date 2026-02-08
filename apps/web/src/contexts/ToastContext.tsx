@@ -7,6 +7,7 @@ import {
   useContext,
   useState,
   useCallback,
+  useMemo,
   type ReactNode,
 } from "react";
 import { generateId } from "../utils/idGenerator";
@@ -55,8 +56,13 @@ export function ToastProvider({ children }: ToastProviderProps) {
     [removeToast]
   );
 
+  const value: ToastContextValue = useMemo(
+    () => ({ toasts, addToast, removeToast }),
+    [toasts, addToast, removeToast]
+  );
+
   return (
-    <ToastContext.Provider value={{ toasts, addToast, removeToast }}>
+    <ToastContext.Provider value={value}>
       {children}
     </ToastContext.Provider>
   );

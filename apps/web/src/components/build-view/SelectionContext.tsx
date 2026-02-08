@@ -10,6 +10,7 @@ import {
   useContext,
   useState,
   useCallback,
+  useMemo,
   ReactNode,
 } from "react";
 import type {
@@ -83,13 +84,16 @@ export function SelectionProvider({
     }
   }, [selection, onDelete]);
 
-  const value: SelectionContextValue = {
-    selection,
-    selectFeature,
-    clearSelection,
-    updateSelection,
-    deleteSelection,
-  };
+  const value: SelectionContextValue = useMemo(
+    () => ({
+      selection,
+      selectFeature,
+      clearSelection,
+      updateSelection,
+      deleteSelection,
+    }),
+    [selection, selectFeature, clearSelection, updateSelection, deleteSelection]
+  );
 
   return (
     <SelectionContext.Provider value={value}>
