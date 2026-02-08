@@ -3,7 +3,7 @@
 from datetime import UTC, datetime
 from uuid import UUID
 
-from sqlalchemy import select
+from sqlalchemy import delete, select
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from city_api.models.poi import POI as POIModel
@@ -112,10 +112,7 @@ async def delete_poi(db: AsyncSession, poi_id: UUID) -> bool:
 
 async def clear_pois(db: AsyncSession, world_id: UUID) -> None:
     """Delete all POIs in a world."""
-    result = await db.execute(select(POIModel).where(POIModel.world_id == world_id))
-    pois = result.scalars().all()
-    for poi in pois:
-        await db.delete(poi)
+    await db.execute(delete(POIModel).where(POIModel.world_id == world_id))
     await db.commit()
 
 

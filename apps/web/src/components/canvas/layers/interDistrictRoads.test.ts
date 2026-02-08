@@ -91,7 +91,7 @@ describe("generateInterDistrictRoads", () => {
     const result = generateInterDistrictRoads(newDistrict, existingDistricts);
 
     expect(result.roads[0].roadClass).toBe("highway");
-    expect(result.roads[0].name).toMatch(/Highway \d+/);
+    expect(result.roads[0].name).toMatch(/^(I-|US-|SR )\d+$/);
   });
 
   it("respects custom road class configuration", () => {
@@ -172,7 +172,7 @@ describe("generateInterDistrictRoads", () => {
 
     const result = generateInterDistrictRoads(newDistrict, existingDistricts);
 
-    expect(result.roads[0].name).toMatch(/Highway \d+/);
+    expect(result.roads[0].name).toMatch(/^(I-|US-|SR )\d+$/);
   });
 
   it("generates boulevard names for short arterial connections", () => {

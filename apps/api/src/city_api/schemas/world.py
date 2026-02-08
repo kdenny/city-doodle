@@ -97,5 +97,6 @@ class World(BaseModel):
     seed: int
     settings: WorldSettings
     created_at: datetime
+    updated_at: datetime
 
     model_config = {"from_attributes": True}

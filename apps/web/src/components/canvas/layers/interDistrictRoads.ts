@@ -466,6 +466,10 @@ export function generateInterDistrictRoads(
   const roads: Road[] = [];
   const connectedDistrictIds: string[] = [];
 
+  // CITY-422: Reset highway counter per call so numbering is deterministic
+  // and doesn't leak across place/delete cycles.
+  highwayCounter = 1;
+
   if (existingDistricts.length === 0) {
     return { roads, connectedDistrictIds };
   }

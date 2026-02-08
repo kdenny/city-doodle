@@ -34,6 +34,12 @@ DISTRICT_POI_NEEDS: dict[str, list[str]] = {
 # Road class for new roads spawned during growth
 GROWTH_ROAD_CLASS = "local"
 
+# Districts with transit stations grow 30% faster (CITY-429)
+TRANSIT_ACCESS_GROWTH_MULTIPLIER = 1.3
+
+# Expansion bias weight toward transit-accessible neighbours (CITY-429)
+TRANSIT_EXPANSION_BIAS = 1.5
+
 
 def _get_outer_ring(geometry: dict) -> list[list[float]] | None:
     """Extract the outer ring from a GeoJSON-like polygon geometry."""
@@ -142,6 +148,11 @@ class GrowthSimulator:
         """Increase density in an existing district."""
         d_type = district["type"]
         rate = self.config.infill_rates.get(d_type, 0.02)
+
+        # Transit-accessible districts grow faster (CITY-429)
+        if district.get("transit_access", False):
+            rate *= TRANSIT_ACCESS_GROWTH_MULTIPLIER
+
         max_density = self.config.max_density.get(d_type, 10.0)
         old_density = district.get("density", 1.0)
 
@@ -225,7 +236,22 @@ class GrowthSimulator:
         # Reduction for vertices far from roads (0.4x normal expansion)
         off_corridor_factor = 0.4
 
+        # Pre-compute centroids of transit-accessible neighbours (CITY-429)
+        transit_centroids: list[tuple[float, float]] = []
+        for od in other_districts:
+            if od.get("transit_access", False):
+                od_ring = _get_outer_ring(od.get("geometry", {}))
+                if od_ring and len(od_ring) >= 3:
+                    tcx = sum(tp[0] for tp in od_ring if isinstance(tp, list) and len(tp) >= 2) / len(od_ring)
+                    tcy = sum(tp[1] for tp in od_ring if isinstance(tp, list) and len(tp) >= 2) / len(od_ring)
+                    transit_centroids.append((tcx, tcy))
+
         base_expansion = self.config.expansion_rate
+
+        # Transit-accessible districts also expand faster (CITY-429)
+        if district.get("transit_access", False):
+            base_expansion *= TRANSIT_ACCESS_GROWTH_MULTIPLIER
+
         new_ring = []
         points_constrained = 0
         for p in ring:
@@ -249,6 +275,20 @@ class GrowthSimulator:
                 expansion = base_expansion * corridor_boost
             else:
                 expansion = base_expansion * off_corridor_factor
+
+            # Bias expansion toward transit-accessible neighbours (CITY-429)
+            # If the vertex's outward direction points toward a transit district,
+            # give it a soft boost.
+            if transit_centroids:
+                vertex_angle = math.atan2(dy, dx)
+                for tcx_n, tcy_n in transit_centroids:
+                    transit_angle = math.atan2(tcy_n - cy, tcx_n - cx)
+                    # Angular difference (normalised to -pi..pi)
+                    angle_diff = abs((vertex_angle - transit_angle + math.pi) % (2 * math.pi) - math.pi)
+                    # Within ~60 degrees of the transit direction
+                    if angle_diff < math.pi / 3:
+                        expansion *= TRANSIT_EXPANSION_BIAS
+                        break
 
             new_x = p[0] + dx * expansion
             new_y = p[1] + dy * expansion

@@ -165,6 +165,7 @@ export interface World {
   seed: number;
   settings: WorldSettings;
   created_at: DateTime;
+  updated_at: DateTime;
 }
 
 // ============================================================================
@@ -356,16 +357,9 @@ export interface Neighborhood {
 // POI Types
 // ============================================================================
 
-/** API POI types - must match backend POIType enum */
-export type POIType =
-  | "hospital"
-  | "school"
-  | "university"
-  | "park"
-  | "transit"
-  | "shopping"
-  | "civic"
-  | "industrial";
+// Import from canonical definition to avoid duplication (CITY-404)
+import type { POIType } from "../components/canvas/layers/types";
+export type { POIType };
 
 export interface POICreate {
   world_id: UUID;
@@ -393,6 +387,33 @@ export interface POI {
   name: string;
   position_x: number;
   position_y: number;
+  created_at: DateTime;
+  updated_at: DateTime;
+}
+
+// ============================================================================
+// City Limits Types (CITY-407)
+// ============================================================================
+
+export interface CityLimitsCreate {
+  world_id: UUID;
+  name: string;
+  boundary: Record<string, unknown>;
+  established?: number;
+}
+
+export interface CityLimitsUpdate {
+  name?: string;
+  boundary?: Record<string, unknown>;
+  established?: number;
+}
+
+export interface CityLimitsResponse {
+  id: UUID;
+  world_id: UUID;
+  name: string;
+  boundary: Record<string, unknown>;
+  established?: number;
   created_at: DateTime;
   updated_at: DateTime;
 }
