@@ -484,14 +484,29 @@ export class FeaturesLayer {
   }
 
   setData(data: FeaturesData): void {
+    const prev = this.data;
     this.data = data;
-    this.districtScale = this.computeDistrictScale(data.districts);
-    this.roadIndex.build(data.roads);
-    this.poiIndex.build(data.pois);
-    this.districtIndex.build(data.districts);
+
+    // CITY-492: Only re-render sublayers whose data actually changed (by reference).
+    // React's immutable update pattern creates new array references only for changed data.
+    const districtsChanged = !prev || prev.districts !== data.districts;
+    const roadsChanged = !prev || prev.roads !== data.roads;
+    const poisChanged = !prev || prev.pois !== data.pois;
+    const neighborhoodsChanged = !prev || prev.neighborhoods !== data.neighborhoods;
+    const bridgesChanged = !prev || prev.bridges !== data.bridges;
+    const interchangesChanged = !prev || prev.interchanges !== data.interchanges;
+    const cityLimitsChanged = !prev || prev.cityLimits !== data.cityLimits;
+
+    // Only rebuild indexes and recompute scale for changed data
+    if (districtsChanged) {
+      this.districtScale = this.computeDistrictScale(data.districts);
+      this.districtIndex.build(data.districts);
+    }
+    if (roadsChanged) this.roadIndex.build(data.roads);
+    if (poisChanged) this.poiIndex.build(data.pois);
 
     // CITY-377 diagnostic: log road stats on data load
-    if (data.roads.length > 0) {
+    if (roadsChanged && data.roads.length > 0) {
       const byClass: Record<string, number> = {};
       for (const r of data.roads) {
         byClass[r.roadClass] = (byClass[r.roadClass] || 0) + 1;
@@ -501,7 +516,18 @@ export class FeaturesLayer {
       );
     }
 
-    this.render();
+    // CITY-492: Only render changed sublayers
+    if (neighborhoodsChanged) this.renderNeighborhoods(data.neighborhoods || []);
+    if (cityLimitsChanged) this.renderCityLimits(data.cityLimits);
+    if (districtsChanged) this.renderDistricts(data.districts);
+    if (roadsChanged || districtsChanged) {
+      // Roads depend on districtScale which comes from districts
+      this.renderRoads(data.roads);
+      this.renderRoadHighlight();
+    }
+    if (bridgesChanged) this.renderBridges(data.bridges || []);
+    if (interchangesChanged) this.renderInterchanges(data.interchanges || []);
+    if (poisChanged) this.renderPOIs(data.pois);
   }
 
   setVisibility(visibility: LayerVisibility & { neighborhoods?: boolean; cityLimits?: boolean; bridges?: boolean }): void {
@@ -588,18 +614,7 @@ export class FeaturesLayer {
     return Math.max(0.5, Math.min(3, avgDiameter / referenceDiameter));
   }
 
-  private render(): void {
-    if (!this.data) return;
 
-    this.renderNeighborhoods(this.data.neighborhoods || []);
-    this.renderCityLimits(this.data.cityLimits);
-    this.renderDistricts(this.data.districts);
-    this.renderRoads(this.data.roads);
-    this.renderRoadHighlight();
-    this.renderBridges(this.data.bridges || []);
-    this.renderInterchanges(this.data.interchanges || []);
-    this.renderPOIs(this.data.pois);
-  }
 
   private renderNeighborhoods(neighborhoods: Neighborhood[]): void {
     if (this.neighborhoodsGraphics.clear) {
