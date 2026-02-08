@@ -901,13 +901,24 @@ def extract_lakes(
     tile_x: int,
     tile_y: int,
     tile_size: float,
-    min_area_cells: int = 20,
+    min_area_cells: int = 50,
+    min_depth: float = 0.015,
 ) -> list[TerrainFeature]:
     """Extract lake polygons from heightfield depressions.
 
     Lakes form in areas below water level that are surrounded by higher terrain.
     Each lake is classified by type (glacial, crater, oxbow, etc.) based on
     shape analysis.
+
+    Args:
+        heightfield: 2D height array normalized to [0, 1]
+        water_level: Threshold below which is water
+        tile_x, tile_y: Tile coordinates for world positioning
+        tile_size: Size of tile in world units
+        min_area_cells: Minimum number of cells for a lake (CITY-529: raised
+            from 20 to 50 to filter noise-generated micro-depressions)
+        min_depth: Minimum average depth below water_level to qualify as a
+            lake. Shallow depressions from heightfield noise are filtered out.
     """
     h, w = heightfield.shape
     cell_size = tile_size / w
@@ -929,34 +940,42 @@ def extract_lakes(
                     # Check if this is landlocked (surrounded by land)
                     is_landlocked = True
                     for ci, cj in region_cells:
-                        # Check edges
                         if ci == 0 or ci == h - 1 or cj == 0 or cj == w - 1:
                             is_landlocked = False
                             break
 
-                    if is_landlocked:
-                        poly = _cells_to_polygon(
-                            region_cells, tile_x, tile_y, tile_size, cell_size, w
-                        )
-                        if poly is not None and poly.is_valid:
-                            # Classify lake type based on shape
-                            lake_type, properties = _classify_lake_type(
-                                poly,
-                                region_cells,
-                                heightfield,
-                                water_level,
-                                cell_size,
-                            )
+                    if not is_landlocked:
+                        continue
 
-                            features.append(
-                                TerrainFeature(
-                                    type="lake",
-                                    geometry={
-                                        "type": "Polygon",
-                                        "coordinates": [list(poly.exterior.coords)],
-                                    },
-                                    properties=properties,
-                                )
+                    # Filter shallow noise depressions (CITY-529)
+                    avg_depth = float(np.mean([
+                        water_level - heightfield[ci, cj]
+                        for ci, cj in region_cells
+                    ]))
+                    if avg_depth < min_depth:
+                        continue
+
+                    poly = _cells_to_polygon(
+                        region_cells, tile_x, tile_y, tile_size, cell_size, w
+                    )
+                    if poly is not None and poly.is_valid:
+                        lake_type, properties = _classify_lake_type(
+                            poly,
+                            region_cells,
+                            heightfield,
+                            water_level,
+                            cell_size,
+                        )
+
+                        features.append(
+                            TerrainFeature(
+                                type="lake",
+                                geometry={
+                                    "type": "Polygon",
+                                    "coordinates": [list(poly.exterior.coords)],
+                                },
+                                properties=properties,
                             )
+                        )
 
     return features
