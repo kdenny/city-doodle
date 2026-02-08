@@ -272,6 +272,7 @@ class LinearTracker(TrackerBase):
         """Resolve label names to IDs, creating any that don't exist."""
         if not team_id or not label_names:
             return []
+        label_names = self._normalize_labels(label_names)
         # Build name->id map for existing labels
         query = """
         query TeamLabels($teamId: String!) {
@@ -318,6 +319,7 @@ class LinearTracker(TrackerBase):
         """Resolve label names to Linear label IDs for the team."""
         if not team_id or not label_names:
             return []
+        label_names = self._normalize_labels(label_names)
         query = """
         query TeamLabels($teamId: String!) {
             team(id: $teamId) {
