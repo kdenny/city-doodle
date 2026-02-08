@@ -10,6 +10,7 @@ import {
   useContext,
   useState,
   useCallback,
+  useMemo,
   ReactNode,
 } from "react";
 import type { Point } from "./layers/types";
@@ -154,14 +155,17 @@ export function EndpointDragProvider({
     setDragState(null);
   }, [dragState, onDragCancel]);
 
-  const value: EndpointDragContextValue = {
-    dragState,
-    isDragging: dragState !== null,
-    startDrag,
-    updateDrag,
-    completeDrag,
-    cancelDrag,
-  };
+  const value: EndpointDragContextValue = useMemo(
+    () => ({
+      dragState,
+      isDragging: dragState !== null,
+      startDrag,
+      updateDrag,
+      completeDrag,
+      cancelDrag,
+    }),
+    [dragState, startDrag, updateDrag, completeDrag, cancelDrag]
+  );
 
   return (
     <EndpointDragContext.Provider value={value}>

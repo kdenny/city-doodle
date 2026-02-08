@@ -1,4 +1,4 @@
-import { createContext, useContext, useState, useCallback, ReactNode } from "react";
+import { createContext, useContext, useState, useCallback, useMemo, ReactNode } from "react";
 
 interface ZoomContextValue {
   zoom: number;
@@ -45,17 +45,13 @@ export function ZoomProvider({
     setZoom(zoom / 1.25);
   }, [zoom, setZoom]);
 
+  const value: ZoomContextValue = useMemo(
+    () => ({ zoom, setZoom, zoomIn, zoomOut, minZoom, maxZoom }),
+    [zoom, setZoom, zoomIn, zoomOut, minZoom, maxZoom]
+  );
+
   return (
-    <ZoomContext.Provider
-      value={{
-        zoom,
-        setZoom,
-        zoomIn,
-        zoomOut,
-        minZoom,
-        maxZoom,
-      }}
-    >
+    <ZoomContext.Provider value={value}>
       {children}
     </ZoomContext.Provider>
   );

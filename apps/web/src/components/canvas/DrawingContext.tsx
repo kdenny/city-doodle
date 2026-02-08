@@ -11,6 +11,7 @@ import {
   useContext,
   useState,
   useCallback,
+  useMemo,
   ReactNode,
 } from "react";
 import type { Point } from "./layers";
@@ -220,21 +221,28 @@ export function DrawingProvider({ children, onPolygonComplete }: DrawingProvider
     return simplifiedVertices;
   }, [state.isFreehandActive, state.vertices, state.mode, state.roadClass, onPolygonComplete]);
 
-  const value: DrawingContextValue = {
-    state,
-    startDrawing,
-    addVertex,
-    setPreviewPoint,
-    completeDrawing,
-    cancelDrawing,
-    undoLastVertex,
-    canComplete,
-    setInputMode,
-    startFreehand,
-    addFreehandPoint,
-    endFreehand,
-    setRoadClass,
-  };
+  const value: DrawingContextValue = useMemo(
+    () => ({
+      state,
+      startDrawing,
+      addVertex,
+      setPreviewPoint,
+      completeDrawing,
+      cancelDrawing,
+      undoLastVertex,
+      canComplete,
+      setInputMode,
+      startFreehand,
+      addFreehandPoint,
+      endFreehand,
+      setRoadClass,
+    }),
+    [
+      state, startDrawing, addVertex, setPreviewPoint, completeDrawing,
+      cancelDrawing, undoLastVertex, canComplete, setInputMode,
+      startFreehand, addFreehandPoint, endFreehand, setRoadClass,
+    ]
+  );
 
   return (
     <DrawingContext.Provider value={value}>

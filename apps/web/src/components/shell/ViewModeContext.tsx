@@ -1,4 +1,4 @@
-import { createContext, useContext, useState, ReactNode } from "react";
+import { createContext, useContext, useState, useMemo, ReactNode } from "react";
 
 export type ViewMode = "build" | "transit" | "density" | "timelapse" | "export";
 
@@ -21,11 +21,14 @@ const ViewModeContext = createContext<ViewModeContextValue | null>(null);
 export function ViewModeProvider({ children }: { children: ReactNode }) {
   const [viewMode, setViewMode] = useState<ViewMode>("build");
 
-  const value: ViewModeContextValue = {
-    viewMode,
-    setViewMode,
-    viewModeLabel: viewModeLabels[viewMode],
-  };
+  const value: ViewModeContextValue = useMemo(
+    () => ({
+      viewMode,
+      setViewMode,
+      viewModeLabel: viewModeLabels[viewMode],
+    }),
+    [viewMode, setViewMode]
+  );
 
   return (
     <ViewModeContext.Provider value={value}>

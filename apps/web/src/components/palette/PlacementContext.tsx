@@ -2,7 +2,7 @@
  * Context for managing placement state across components.
  */
 
-import { createContext, useContext, useState, useCallback, ReactNode } from "react";
+import { createContext, useContext, useState, useCallback, useMemo, ReactNode } from "react";
 import type { SeedType } from "./types";
 import type { DistrictPersonality } from "../canvas/layers/types";
 import { DEFAULT_DISTRICT_PERSONALITY } from "../canvas/layers/types";
@@ -200,22 +200,30 @@ export function PlacementProvider({ children, onPlaceSeed }: PlacementProviderPr
     [state.selectedSeed, state.placementPersonality, state.placementSeed, onPlaceSeed, setPlacementError]
   );
 
-  const value: PlacementContextValue = {
-    ...state,
-    selectSeed,
-    startPlacing,
-    cancelPlacing,
-    setPreviewPosition,
-    confirmPlacement,
-    setPlacementPersonality,
-    setPlacementSeed,
-    shufflePlacementSeed,
-    startDragSize,
-    updateDragSize,
-    cancelDragSize,
-    isDraggingSize,
-    setPlacementError,
-  };
+  const value: PlacementContextValue = useMemo(
+    () => ({
+      ...state,
+      selectSeed,
+      startPlacing,
+      cancelPlacing,
+      setPreviewPosition,
+      confirmPlacement,
+      setPlacementPersonality,
+      setPlacementSeed,
+      shufflePlacementSeed,
+      startDragSize,
+      updateDragSize,
+      cancelDragSize,
+      isDraggingSize,
+      setPlacementError,
+    }),
+    [
+      state, selectSeed, startPlacing, cancelPlacing, setPreviewPosition,
+      confirmPlacement, setPlacementPersonality, setPlacementSeed,
+      shufflePlacementSeed, startDragSize, updateDragSize, cancelDragSize,
+      isDraggingSize, setPlacementError,
+    ]
+  );
 
   return (
     <PlacementContext.Provider value={value}>
