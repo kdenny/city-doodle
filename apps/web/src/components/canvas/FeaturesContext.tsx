@@ -1513,18 +1513,37 @@ export function FeaturesProvider({
 
   const removePOI = useCallback(
     (id: string) => {
-      // Update local state immediately for responsiveness
+      // Find the POI for potential rollback
+      const poiToRemove = features.pois.find((p) => p.id === id);
+
+      // Optimistically remove from local state
       updateFeatures((prev) => ({
         ...prev,
         pois: prev.pois.filter((p) => p.id !== id),
       }));
 
       // Persist to backend if we have a worldId
-      if (worldId) {
-        deletePOIMutation.mutate({ poiId: id, worldId });
+      if (worldId && poiToRemove) {
+        deletePOIMutation.mutate(
+          { poiId: id, worldId },
+          {
+            onError: (error) => {
+              // Re-add the POI on error
+              updateFeatures((prev) => ({
+                ...prev,
+                pois: [...prev.pois, poiToRemove],
+              }));
+              console.error("Failed to delete POI:", error);
+              toast?.addToast(
+                "Failed to delete POI. Please try again.",
+                "error"
+              );
+            },
+          }
+        );
       }
     },
-    [updateFeatures, worldId, deletePOIMutation]
+    [worldId, features.pois, updateFeatures, deletePOIMutation, toast]
   );
 
   const updatePOI = useCallback(
