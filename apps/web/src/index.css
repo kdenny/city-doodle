@@ -39,3 +39,45 @@
 .animate-slide-in {
   animation: slide-in 0.2s ease-out forwards;
 }
+
+/* City loader animations */
+@keyframes city-draw {
+  from {
+    stroke-dashoffset: var(--dash-length);
+  }
+  to {
+    stroke-dashoffset: 0;
+  }
+}
+
+@keyframes city-fill {
+  from {
+    fill-opacity: 0;
+  }
+  to {
+    fill-opacity: 1;
+  }
+}
+
+@keyframes fade-in {
+  from {
+    opacity: 0;
+  }
+  to {
+    opacity: 1;
+  }
+}
+
+.city-draw {
+  animation: city-draw 0.6s ease-out forwards;
+  fill-opacity: 0;
+}
+
+.city-fill {
+  animation: city-fill 0.4s ease-out forwards;
+}
+
+.city-fade-in {
+  animation: fade-in 0.4s ease-out forwards;
+  opacity: 0;
+}

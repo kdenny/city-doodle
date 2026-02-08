@@ -10,6 +10,7 @@ import { useAuth } from "../contexts";
 import { CreateWorldModal } from "../components/CreateWorldModal";
 import { WorldCard } from "../components/WorldCard";
 import { ConfirmationDialog } from "../components/build-view/ConfirmationDialog";
+import { CityLoader } from "../components/ui";
 import type { World } from "../api/types";
 
 type SortOption = "last_edited" | "name" | "newest";
@@ -96,11 +97,7 @@ export function WorldsPage() {
   };
 
   if (isLoading) {
-    return (
-      <div className="min-h-screen bg-gray-50 flex items-center justify-center">
-        <div className="text-gray-500">Loading worlds...</div>
-      </div>
-    );
+    return <CityLoader variant="page" />;
   }
 
   if (error) {

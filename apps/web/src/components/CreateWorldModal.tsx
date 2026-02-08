@@ -13,6 +13,7 @@ import {
 } from "../api/types";
 import { generateCityName, generateCityNameSuggestions } from "../utils";
 import { WorldSettingsPanel, type WorldSettingsValues } from "./WorldSettingsPanel";
+import { CityLoader } from "./ui";
 
 interface CreateWorldModalProps {
   onClose: () => void;
@@ -91,92 +92,99 @@ export function CreateWorldModal({ onClose, onCreated }: CreateWorldModalProps) 
           </h2>
 
           <form onSubmit={handleSubmit}>
-            {error && (
-              <div className="mb-4 p-3 bg-red-50 rounded-md">
-                <p className="text-sm text-red-700">{error}</p>
-              </div>
-            )}
+            {createWorld.isPending ? (
+              <CityLoader variant="inline" />
+            ) : (
+              <>
+                {error && (
+                  <div className="mb-4 p-3 bg-red-50 rounded-md">
+                    <p className="text-sm text-red-700">{error}</p>
+                  </div>
+                )}
 
-            {/* City Name */}
-            <div className="mb-4">
-              <label
-                htmlFor="name"
-                className="block text-sm font-medium text-gray-700 mb-1"
-              >
-                City Name
-              </label>
-              <div className="flex gap-2">
-                <input
-                  id="name"
-                  type="text"
-                  value={name}
-                  onChange={(e) => setName(e.target.value)}
-                  placeholder="My Awesome City"
-                  className="flex-1 px-3 py-2 border border-gray-300 rounded-md shadow-sm focus:outline-none focus:ring-blue-500 focus:border-blue-500"
-                  autoFocus
-                />
-                <button
-                  type="button"
-                  onClick={handleGenerateNew}
-                  className="px-3 py-2 text-gray-600 border border-gray-300 rounded-md hover:bg-gray-50"
-                  title="Generate new name suggestions"
-                >
-                  <svg xmlns="http://www.w3.org/2000/svg" className="h-5 w-5" viewBox="0 0 20 20" fill="currentColor">
-                    <path fillRule="evenodd" d="M4 2a1 1 0 011 1v2.101a7.002 7.002 0 0111.601 2.566 1 1 0 11-1.885.666A5.002 5.002 0 005.999 7H9a1 1 0 010 2H4a1 1 0 01-1-1V3a1 1 0 011-1zm.008 9.057a1 1 0 011.276.61A5.002 5.002 0 0014.001 13H11a1 1 0 110-2h5a1 1 0 011 1v5a1 1 0 11-2 0v-2.101a7.002 7.002 0 01-11.601-2.566 1 1 0 01.61-1.276z" clipRule="evenodd" />
-                  </svg>
-                </button>
-              </div>
-              {showSuggestions && suggestions.length > 0 && (
-                <div className="mt-2 flex flex-wrap gap-1">
-                  {suggestions.map((suggestion) => (
+                {/* City Name */}
+                <div className="mb-4">
+                  <label
+                    htmlFor="name"
+                    className="block text-sm font-medium text-gray-700 mb-1"
+                  >
+                    City Name
+                  </label>
+                  <div className="flex gap-2">
+                    <input
+                      id="name"
+                      type="text"
+                      value={name}
+                      onChange={(e) => setName(e.target.value)}
+                      placeholder="My Awesome City"
+                      className="flex-1 px-3 py-2 border border-gray-300 rounded-md shadow-sm focus:outline-none focus:ring-blue-500 focus:border-blue-500"
+                      autoFocus
+                    />
                     <button
-                      key={suggestion}
                       type="button"
-                      onClick={() => handleSelectSuggestion(suggestion)}
-                      className="px-2 py-1 text-xs bg-gray-100 hover:bg-gray-200 rounded-full text-gray-700 transition-colors"
+                      onClick={handleGenerateNew}
+                      className="px-3 py-2 text-gray-600 border border-gray-300 rounded-md hover:bg-gray-50"
+                      title="Generate new name suggestions"
                     >
-                      {suggestion}
+                      <svg xmlns="http://www.w3.org/2000/svg" className="h-5 w-5" viewBox="0 0 20 20" fill="currentColor">
+                        <path fillRule="evenodd" d="M4 2a1 1 0 011 1v2.101a7.002 7.002 0 0111.601 2.566 1 1 0 11-1.885.666A5.002 5.002 0 005.999 7H9a1 1 0 010 2H4a1 1 0 01-1-1V3a1 1 0 011-1zm.008 9.057a1 1 0 011.276.61A5.002 5.002 0 0014.001 13H11a1 1 0 110-2h5a1 1 0 011 1v5a1 1 0 11-2 0v-2.101a7.002 7.002 0 01-11.601-2.566 1 1 0 01.61-1.276z" clipRule="evenodd" />
+                      </svg>
                     </button>
-                  ))}
+                  </div>
+                  {showSuggestions && suggestions.length > 0 && (
+                    <div className="mt-2 flex flex-wrap gap-1">
+                      {suggestions.map((suggestion) => (
+                        <button
+                          key={suggestion}
+                          type="button"
+                          onClick={() => handleSelectSuggestion(suggestion)}
+                          className="px-2 py-1 text-xs bg-gray-100 hover:bg-gray-200 rounded-full text-gray-700 transition-colors"
+                        >
+                          {suggestion}
+                        </button>
+                      ))}
+                    </div>
+                  )}
                 </div>
-              )}
-            </div>
 
-            <WorldSettingsPanel
-              values={settingsValues}
-              onChange={setSettingsValues}
-              showAdvanced={showAdvanced}
-              onToggleAdvanced={() => setShowAdvanced(!showAdvanced)}
-            />
-
-            {/* Seed (create-only) */}
-            {showAdvanced && (
-              <div className="mb-4 pl-2 border-l-2 border-gray-100">
-                <label
-                  htmlFor="seed"
-                  className="block text-xs font-medium text-gray-600 mb-1"
-                >
-                  Seed (optional)
-                </label>
-                <input
-                  id="seed"
-                  type="number"
-                  value={seed}
-                  onChange={(e) => setSeed(e.target.value)}
-                  placeholder="Random if empty"
-                  className="w-full px-3 py-1.5 text-sm border border-gray-300 rounded-md shadow-sm focus:outline-none focus:ring-blue-500 focus:border-blue-500"
+                <WorldSettingsPanel
+                  values={settingsValues}
+                  onChange={setSettingsValues}
+                  showAdvanced={showAdvanced}
+                  onToggleAdvanced={() => setShowAdvanced(!showAdvanced)}
                 />
-                <p className="mt-0.5 text-xs text-gray-400">
-                  Same seed + settings = identical terrain
-                </p>
-              </div>
+
+                {/* Seed (create-only) */}
+                {showAdvanced && (
+                  <div className="mb-4 pl-2 border-l-2 border-gray-100">
+                    <label
+                      htmlFor="seed"
+                      className="block text-xs font-medium text-gray-600 mb-1"
+                    >
+                      Seed (optional)
+                    </label>
+                    <input
+                      id="seed"
+                      type="number"
+                      value={seed}
+                      onChange={(e) => setSeed(e.target.value)}
+                      placeholder="Random if empty"
+                      className="w-full px-3 py-1.5 text-sm border border-gray-300 rounded-md shadow-sm focus:outline-none focus:ring-blue-500 focus:border-blue-500"
+                    />
+                    <p className="mt-0.5 text-xs text-gray-400">
+                      Same seed + settings = identical terrain
+                    </p>
+                  </div>
+                )}
+              </>
             )}
 
             <div className="flex gap-3 justify-end">
               <button
                 type="button"
                 onClick={onClose}
-                className="px-4 py-2 text-gray-700 border border-gray-300 rounded-md hover:bg-gray-50"
+                disabled={createWorld.isPending}
+                className="px-4 py-2 text-gray-700 border border-gray-300 rounded-md hover:bg-gray-50 disabled:opacity-50"
               >
                 Cancel
               </button>

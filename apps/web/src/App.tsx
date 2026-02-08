@@ -3,6 +3,7 @@ import { MapCanvas } from './components/canvas'
 import { EditorShell } from './components/shell'
 import { ProtectedRoute } from './components/ProtectedRoute'
 import { LoginPage, RegisterPage, WorldsPage } from './pages'
+import { CityLoader } from './components/ui'
 import { useWorld } from './api'
 
 function WorldEditor() {
@@ -17,7 +18,7 @@ function WorldEditor() {
   }
 
   if (isLoading) {
-    return <div className="p-8 text-gray-600">Loading world...</div>
+    return <CityLoader variant="page" />
   }
 
   if (error || !world) {
