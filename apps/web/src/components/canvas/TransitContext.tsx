@@ -299,6 +299,8 @@ interface TransitContextValue {
   deleteLine: (lineId: string) => Promise<boolean>;
   /** Get the count of existing lines */
   lineCount: number;
+  /** Whether a station placement is currently in progress (prevents duplicate clicks) */
+  isPlacingStation: boolean;
   /** Loading state */
   isLoading: boolean;
   /** Error state */
@@ -320,6 +322,9 @@ export function TransitProvider({ children, worldId }: TransitProviderProps) {
   // Local state for UI rendering - Rail
   const [railStations, setRailStations] = useState<RailStationData[]>([]);
   const [trackSegments, setTrackSegments] = useState<TrackSegmentData[]>([]);
+
+  // CITY-526: Guard flag to prevent concurrent station placements
+  const [isPlacingStation, setIsPlacingStation] = useState(false);
 
   // Highlighted line state (for visual emphasis when line is selected in panel)
   const [highlightedLineId, setHighlightedLineId] = useState<string | null>(null);
@@ -555,6 +560,12 @@ export function TransitProvider({ children, worldId }: TransitProviderProps) {
    */
   const placeRailStation = useCallback(
     async (position: Point, options?: { skipAutoConnect?: boolean }): Promise<TransitStation | null> => {
+      // CITY-526: Prevent concurrent station placements
+      if (isPlacingStation) {
+        toast?.addToast("Station placement in progress", "warning");
+        return null;
+      }
+
       if (!worldId) {
         toast?.addToast("Cannot place station: No world selected", "error");
         return null;
@@ -618,6 +629,7 @@ export function TransitProvider({ children, worldId }: TransitProviderProps) {
         );
       }
 
+      setIsPlacingStation(true);
       try {
         // Create the station
         const station = await createStation.mutateAsync({
@@ -735,10 +747,13 @@ export function TransitProvider({ children, worldId }: TransitProviderProps) {
         console.error("Failed to create rail station:", error);
         toast?.addToast("Failed to create rail station", "error");
         return null;
+      } finally {
+        setIsPlacingStation(false);
       }
     },
     [
       worldId,
+      isPlacingStation,
       validateRailStationPlacement,
       railStations,
       subwayStations,
@@ -760,6 +775,12 @@ export function TransitProvider({ children, worldId }: TransitProviderProps) {
    */
   const placeSubwayStation = useCallback(
     async (position: Point, options?: { skipAutoConnect?: boolean }): Promise<TransitStation | null> => {
+      // CITY-526: Prevent concurrent station placements
+      if (isPlacingStation) {
+        toast?.addToast("Station placement in progress", "warning");
+        return null;
+      }
+
       if (!worldId) {
         toast?.addToast("Cannot place station: No world selected", "error");
         return null;
@@ -823,6 +844,7 @@ export function TransitProvider({ children, worldId }: TransitProviderProps) {
         );
       }
 
+      setIsPlacingStation(true);
       try {
         // Create the station
         const station = await createStation.mutateAsync({
@@ -940,10 +962,13 @@ export function TransitProvider({ children, worldId }: TransitProviderProps) {
         console.error("Failed to create subway station:", error);
         toast?.addToast("Failed to create subway station", "error");
         return null;
+      } finally {
+        setIsPlacingStation(false);
       }
     },
     [
       worldId,
+      isPlacingStation,
       validateSubwayStationPlacement,
       railStations,
       subwayStations,
@@ -1283,6 +1308,8 @@ export function TransitProvider({ children, worldId }: TransitProviderProps) {
     updateLine: updateLineMethod,
     deleteLine: deleteLineMethod,
     lineCount,
+    // Placement guard (CITY-526)
+    isPlacingStation,
     // Loading/Error
     isLoading,
     error,
@@ -1312,6 +1339,7 @@ export function TransitProvider({ children, worldId }: TransitProviderProps) {
     updateLineMethod,
     deleteLineMethod,
     lineCount,
+    isPlacingStation,
     isLoading,
     error,
   ]);

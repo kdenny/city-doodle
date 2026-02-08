@@ -1663,6 +1663,7 @@ export const MapCanvas = forwardRef<MapCanvasHandle, MapCanvasProps>(
     <div
       ref={containerRef}
       className={`relative w-full h-full overflow-hidden ${className || ""}`}
+      style={transitContext?.isPlacingStation ? { cursor: "wait" } : undefined}
     >
       {!isReady && (
         <div className="absolute inset-0 flex items-center justify-center bg-gray-100">
