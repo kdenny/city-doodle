@@ -625,6 +625,37 @@ export const MapCanvas = forwardRef<MapCanvasHandle, MapCanvasProps>(
     };
   }, [isReady, onZoomChange]);
 
+  // CITY-421: Sync viewport bounds to features layer for spatial road culling
+  useEffect(() => {
+    if (!isReady || !viewportRef.current || !featuresLayerRef.current) return;
+
+    const viewport = viewportRef.current;
+    const featuresLayer = featuresLayerRef.current;
+
+    const syncBounds = () => {
+      const corner = viewport.corner;
+      const screenW = viewport.screenWidth / viewport.scale.x;
+      const screenH = viewport.screenHeight / viewport.scale.y;
+      featuresLayer.setViewportBounds({
+        minX: corner.x,
+        minY: corner.y,
+        maxX: corner.x + screenW,
+        maxY: corner.y + screenH,
+      });
+    };
+
+    viewport.on("moved", syncBounds);
+    viewport.on("zoomed-end", syncBounds);
+
+    // Initial sync
+    syncBounds();
+
+    return () => {
+      viewport.off("moved", syncBounds);
+      viewport.off("zoomed-end", syncBounds);
+    };
+  }, [isReady]);
+
   // Update features layer when context features change
   useEffect(() => {
     if (!isReady || !featuresLayerRef.current || !featuresContext) return;
