@@ -6,7 +6,7 @@
 
 import { useState, useCallback, useEffect, useMemo } from "react";
 import { CollapsiblePersonalitySliders } from "./PersonalitySliders";
-import type { DistrictPersonality, RoadClass, DistrictType } from "../canvas/layers/types";
+import type { DistrictPersonality, RoadClass, DistrictType, POIType } from "../canvas/layers/types";
 import { DEFAULT_DISTRICT_PERSONALITY, DEFAULT_DENSITY_BY_TYPE } from "../canvas/layers/types";
 import {
   canBeHistoric,
@@ -780,14 +780,36 @@ interface POIInspectorProps {
   readOnly?: boolean;
 }
 
+// POI types available for selection
+const POI_TYPE_OPTIONS: POIType[] = [
+  "hospital",
+  "school",
+  "university",
+  "park",
+  "transit",
+  "shopping",
+  "civic",
+  "industrial",
+];
+
 function POIInspector({ poi, onUpdate, onDelete, readOnly }: POIInspectorProps) {
   const [editedName, setEditedName] = useState(poi.name);
+  const [editedPoiType, setEditedPoiType] = useState<POIType>(poi.poiType as POIType);
 
   const handleNameChange = useCallback(
     (e: React.ChangeEvent<HTMLInputElement>) => {
       const newName = e.target.value;
       setEditedName(newName);
       onUpdate?.({ ...poi, name: newName });
+    },
+    [poi, onUpdate]
+  );
+
+  const handlePoiTypeChange = useCallback(
+    (e: React.ChangeEvent<HTMLSelectElement>) => {
+      const newType = e.target.value as POIType;
+      setEditedPoiType(newType);
+      onUpdate?.({ ...poi, poiType: newType });
     },
     [poi, onUpdate]
   );
@@ -799,9 +821,25 @@ function POIInspector({ poi, onUpdate, onDelete, readOnly }: POIInspectorProps) 
         <span className="text-xs font-medium text-white bg-green-600 px-2 py-0.5 rounded">
           POI
         </span>
-        <span className="text-xs text-gray-500">
-          {POI_TYPE_LABELS[poi.poiType] || poi.poiType}
-        </span>
+      </div>
+
+      {/* POI type selector */}
+      <div>
+        <label className="block text-xs font-medium text-gray-600 mb-1">
+          Type
+        </label>
+        <select
+          value={editedPoiType}
+          onChange={handlePoiTypeChange}
+          disabled={readOnly}
+          className="w-full px-2 py-1 text-sm border border-gray-300 rounded focus:outline-none focus:ring-1 focus:ring-blue-500 bg-white disabled:opacity-60 disabled:cursor-not-allowed"
+        >
+          {POI_TYPE_OPTIONS.map((poiType) => (
+            <option key={poiType} value={poiType}>
+              {POI_TYPE_LABELS[poiType] || poiType}
+            </option>
+          ))}
+        </select>
       </div>
 
       {/* Name field */}

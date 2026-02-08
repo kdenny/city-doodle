@@ -230,6 +230,7 @@ function SelectionWithFeatures({ children }: { children: ReactNode }) {
       } else if (feature.type === "poi") {
         updatePOI(feature.id, {
           name: feature.name,
+          type: feature.poiType as "hospital" | "school" | "university" | "park" | "transit" | "shopping" | "civic" | "industrial",
         });
       } else if ((feature.type === "rail_station" || feature.type === "subway_station") && transitContext) {
         transitContext.renameStation(feature.id, feature.name);
