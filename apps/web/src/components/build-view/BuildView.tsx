@@ -14,6 +14,7 @@ import { useDrawingOptional } from "../canvas/DrawingContext";
 import { useTransitLineDrawingOptional, usePopulationStats } from "../canvas";
 import type { TransitLineProperties } from "../canvas";
 import { useEditLockOptional } from "../shell/EditLockContext";
+import { usePlacementOptional } from "../palette/PlacementContext";
 import { useCreateJob, useJobPolling } from "../../api/hooks";
 import type { RoadClass } from "../canvas/layers/types";
 
@@ -72,6 +73,9 @@ export function BuildView({
   // Get edit lock context for gating tools
   const editLock = useEditLockOptional();
   const isEditing = editLock?.isEditing ?? true; // default to true if no provider
+
+  // Get placement context for syncing toolbar with seed placement (CITY-524)
+  const placementContext = usePlacementOptional();
 
   // Road class picker state (CITY-413)
   const [selectedRoadClass, setSelectedRoadClass] = useState<RoadClass>("arterial");
@@ -186,6 +190,30 @@ export function BuildView({
     }
   }, [activeTool, transitLineDrawingContext?.state.isDrawing, showLinePropertiesDialog, setActiveTool]);
 
+  // CITY-524: Sync toolbar active state with placement mode.
+  // When a seed is selected in the palette, show "build" as active tool.
+  useEffect(() => {
+    if (placementContext?.isPlacing && activeTool !== "build") {
+      setActiveTool("build");
+    }
+  }, [placementContext?.isPlacing, activeTool, setActiveTool]);
+
+  // CITY-524: Cancel placement when switching away from build/pan tool.
+  // Switching to a drawing tool should exit placement mode.
+  useEffect(() => {
+    if (!placementContext?.isPlacing) return;
+    if (activeTool !== "build" && activeTool !== "pan") {
+      placementContext.cancelPlacing();
+    }
+  }, [activeTool, placementContext]);
+
+  // CITY-524: Clicking pan cancels any active placement.
+  useEffect(() => {
+    if (activeTool === "pan" && placementContext?.isPlacing) {
+      placementContext.cancelPlacing();
+    }
+  }, [activeTool, placementContext]);
+
   // Handle transit line properties confirmation
   const handleLinePropertiesConfirm = useCallback(
     (properties: TransitLineProperties) => {
@@ -249,7 +277,6 @@ export function BuildView({
         <Toolbar
           activeTool={activeTool}
           onToolChange={handleToolChange}
-          disabled={!isEditing}
           onGrow={handleGrow}
           growDisabled={!worldId}
           isGrowing={isGrowing}
@@ -284,9 +311,9 @@ export function BuildView({
         />
       </div>
 
-      {/* Drawing mode hint (bottom center, when drawing) */}
+      {/* Drawing mode hint (above toolbar, when drawing) */}
       {drawingContext?.state.isDrawing && (
-        <div className="absolute bottom-4 left-1/2 -translate-x-1/2">
+        <div className="absolute bottom-[4.5rem] left-1/2 -translate-x-1/2 z-10">
           <div className="bg-white/90 backdrop-blur-sm rounded-lg shadow-lg px-4 py-2 text-sm text-gray-700">
             {drawingContext.state.mode === "road" ? (
               <div className="flex items-center gap-3">
@@ -335,9 +362,9 @@ export function BuildView({
         </div>
       )}
 
-      {/* CITY-361: Transit line drawing hint (bottom center, when drawing transit line) */}
+      {/* CITY-361: Transit line drawing hint (above toolbar, when drawing transit line) */}
       {transitLineDrawingContext?.state.isDrawing && (
-        <div className="absolute bottom-4 left-1/2 -translate-x-1/2">
+        <div className="absolute bottom-[4.5rem] left-1/2 -translate-x-1/2 z-10">
           <div className="bg-white/90 backdrop-blur-sm rounded-lg shadow-lg px-4 py-2 text-sm text-gray-700">
             <div className="flex items-center gap-3">
               <span>
