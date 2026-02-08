@@ -21,7 +21,7 @@ import {
   ReactNode,
 } from "react";
 import type { Point } from "./layers";
-import { pointInPolygon, toSubwayStationData } from "./layers";
+import { pointInPolygon, toSubwayStationData, generateStationAccessRoad } from "./layers";
 import type { RailStationData, TrackSegmentData, SubwayStationData, SubwayTunnelData } from "./layers";
 import {
   useTransitNetwork,
@@ -632,6 +632,21 @@ export function TransitProvider({ children, worldId }: TransitProviderProps) {
           },
         });
 
+        // CITY-430: Generate access road from station to nearest street grid road
+        if (featuresContext && validation.districtId) {
+          const districtRoads = featuresContext.features.roads.filter(
+            (r) => r.districtId === validation.districtId
+          );
+          const accessRoad = generateStationAccessRoad(
+            position,
+            districtRoads,
+            validation.districtId
+          );
+          if (accessRoad) {
+            featuresContext.addRoads([accessRoad]);
+          }
+        }
+
         if (!options?.skipAutoConnect) {
           if (nearbySubway) {
             toast?.addToast(`Created transfer station "${stationName}" (rail ↔ subway)`, "success");
@@ -732,6 +747,7 @@ export function TransitProvider({ children, worldId }: TransitProviderProps) {
       createStation,
       createLine,
       createSegment,
+      featuresContext,
       generateTransitPOIsForStation,
       toast,
     ]
@@ -820,6 +836,21 @@ export function TransitProvider({ children, worldId }: TransitProviderProps) {
             is_terminus: false,
           },
         });
+
+        // CITY-430: Generate access road from station to nearest street grid road
+        if (featuresContext && validation.districtId) {
+          const districtRoads = featuresContext.features.roads.filter(
+            (r) => r.districtId === validation.districtId
+          );
+          const accessRoad = generateStationAccessRoad(
+            position,
+            districtRoads,
+            validation.districtId
+          );
+          if (accessRoad) {
+            featuresContext.addRoads([accessRoad]);
+          }
+        }
 
         if (!options?.skipAutoConnect) {
           if (nearbyRail) {
@@ -921,6 +952,7 @@ export function TransitProvider({ children, worldId }: TransitProviderProps) {
       createStation,
       createLine,
       createSegment,
+      featuresContext,
       generateTransitPOIsForStation,
       toast,
     ]
