@@ -250,11 +250,17 @@ class TerrainGenerator:
         cell_size = cfg.tile_size / w
         features = []
 
+        # CITY-514: Cap segments per level and early-exit to avoid iterating
+        # the full grid when only the first N segments are kept.
+        max_segments_per_level = 100
+
         for level in levels:
             # Find cells that cross this contour level
-            contour_segments = []
+            contour_segments: list[list[tuple[float, float]]] = []
 
             for i in range(h - 1):
+                if len(contour_segments) >= max_segments_per_level:
+                    break
                 for j in range(w - 1):
                     # Get corner values
                     v00 = heightfield[i, j]
@@ -285,11 +291,13 @@ class TerrainGenerator:
                         case, v00, v10, v01, v11, level, x0, y0, cell_size
                     )
                     contour_segments.extend(segments)
+                    if len(contour_segments) >= max_segments_per_level:
+                        break
 
             # Simplify segments (just use raw segments for now)
             if contour_segments:
                 # Group nearby segments into lines (simple approach)
-                for seg in contour_segments[:100]:  # Limit to avoid too many features
+                for seg in contour_segments[:max_segments_per_level]:
                     features.append(
                         TerrainFeature(
                             type="contour",
