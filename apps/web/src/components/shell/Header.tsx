@@ -8,7 +8,12 @@ const viewModeTabs: { mode: ViewMode; label: string }[] = [
   { mode: "export", label: "Export" },
 ];
 
-export function Header() {
+interface HeaderProps {
+  worldName?: string;
+  onOpenSettings?: () => void;
+}
+
+export function Header({ worldName, onOpenSettings }: HeaderProps) {
   const { viewMode, setViewMode, viewModeLabel } = useViewMode();
   const editLock = useEditLockOptional();
 
@@ -18,6 +23,25 @@ export function Header() {
         <a href="/" className="font-bold text-lg hover:text-gray-200 transition-colors">
           City Doodle
         </a>
+        {worldName && (
+          <>
+            <span className="text-gray-500">/</span>
+            <span className="text-gray-200 text-sm font-medium">{worldName}</span>
+          </>
+        )}
+        {onOpenSettings && (
+          <button
+            onClick={onOpenSettings}
+            className="p-1 rounded hover:bg-gray-700 transition-colors text-gray-400 hover:text-gray-200"
+            aria-label="World settings"
+            title="World settings"
+          >
+            <svg className="w-4 h-4" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth={2}>
+              <path strokeLinecap="round" strokeLinejoin="round" d="M10.325 4.317c.426-1.756 2.924-1.756 3.35 0a1.724 1.724 0 002.573 1.066c1.543-.94 3.31.826 2.37 2.37a1.724 1.724 0 001.066 2.573c1.756.426 1.756 2.924 0 3.35a1.724 1.724 0 00-1.066 2.573c.94 1.543-.826 3.31-2.37 2.37a1.724 1.724 0 00-2.573 1.066c-.426 1.756-2.924 1.756-3.35 0a1.724 1.724 0 00-2.573-1.066c-1.543.94-3.31-.826-2.37-2.37a1.724 1.724 0 00-1.066-2.573c-1.756-.426-1.756-2.924 0-3.35a1.724 1.724 0 001.066-2.573c-.94-1.543.826-3.31 2.37-2.37.996.608 2.296.07 2.572-1.065z" />
+              <path strokeLinecap="round" strokeLinejoin="round" d="M15 12a3 3 0 11-6 0 3 3 0 016 0z" />
+            </svg>
+          </button>
+        )}
         <span className="text-gray-400 text-sm">{viewModeLabel}</span>
         {viewMode === "build" && editLock?.isEditing && (
           <span className="text-xs text-green-400 font-medium">Editing</span>
