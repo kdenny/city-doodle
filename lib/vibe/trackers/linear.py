@@ -273,11 +273,12 @@ class LinearTracker(TrackerBase):
         if not team_id or not label_names:
             return []
         label_names = self._normalize_labels(label_names)
-        # Build name->id map for existing labels
+        # Build name->id map for existing team labels (first: 250 to avoid
+        # default pagination cutting off results when many labels exist)
         query = """
         query TeamLabels($teamId: String!) {
             team(id: $teamId) {
-                labels { nodes { id name } }
+                labels(first: 250) { nodes { id name } }
             }
         }
         """
@@ -323,7 +324,7 @@ class LinearTracker(TrackerBase):
         query = """
         query TeamLabels($teamId: String!) {
             team(id: $teamId) {
-                labels { nodes { id name } }
+                labels(first: 250) { nodes { id name } }
             }
         }
         """
@@ -336,24 +337,21 @@ class LinearTracker(TrackerBase):
             return []
 
     def list_labels(self) -> list[dict[str, str]]:
-        """List all labels with their IDs for the configured team."""
-        query = """
-        query ListLabels($teamId: String) {
-            issueLabels(filter: { team: { id: { eq: $teamId } } }, first: 100) {
-                nodes {
-                    id
-                    name
-                    color
-                }
-            }
-        }
-        """
-        variables = {}
-        if self._team_id:
-            variables["teamId"] = self._team_id
-
+        """List all labels (team + workspace) with their IDs."""
         try:
-            result = self._execute_query(query, variables if variables else None)
+            result = self._execute_query(
+                """
+                query ListLabels {
+                    issueLabels(first: 250) {
+                        nodes {
+                            id
+                            name
+                            color
+                        }
+                    }
+                }
+                """
+            )
             nodes = result.get("data", {}).get("issueLabels", {}).get("nodes", [])
             return [
                 {

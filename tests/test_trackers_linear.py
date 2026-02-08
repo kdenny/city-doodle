@@ -580,11 +580,11 @@ class TestLinearTrackerListLabels:
         mock_response = {"data": {"issueLabels": {"nodes": []}}}
 
         with patch.object(tracker, "_execute_query", return_value=mock_response) as mock_query:
-            tracker.list_labels()
+            result = tracker.list_labels()
 
-        # Should pass None for variables when no team_id
-        call_args = mock_query.call_args
-        assert call_args[0][1] is None
+        # list_labels now queries all workspace labels (no variables needed)
+        mock_query.assert_called_once()
+        assert result == []
 
     def test_list_labels_exception(self) -> None:
         tracker = LinearTracker(api_key="test-fake-key")
