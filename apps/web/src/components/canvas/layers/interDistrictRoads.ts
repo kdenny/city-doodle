@@ -3,10 +3,12 @@
  *
  * Handles two levels of inter-district road connectivity:
  *
- * ## 1. Arterial/Highway connections (`generateInterDistrictRoads`)
+ * ## 1. Arterial/Collector connections (`generateInterDistrictRoads`)
  * When a district is placed, automatically generates roads connecting it to
  * nearby districts to form a connected road network.
- * - Short connections (<5mi) become arterials; longer ones become highways
+ * - Arterials connect major districts (downtown, commercial, industrial, etc.)
+ * - Collectors connect minor districts (residential-to-residential)
+ * - Highways are never auto-generated; they must be explicitly placed by the user
  * - Algorithm: find nearest district (always connect), then connect to districts
  *   within 10mi prioritizing downtown, route around water when possible
  *
@@ -27,7 +29,7 @@
  *   are NOT regenerated when districts are moved or reshaped.
  */
 
-import type { District, Road, Point, RoadClass, WaterFeature } from "./types";
+import type { District, DistrictType, Road, Point, RoadClass, WaterFeature } from "./types";
 import { generateId } from "../../../utils/idGenerator";
 
 /**
@@ -36,19 +38,16 @@ import { generateId } from "../../../utils/idGenerator";
 export interface InterDistrictConfig {
   /** Maximum distance in world units to connect districts (default: ~10 miles) */
   maxConnectionDistance?: number;
-  /** Road class for inter-district connections */
+  /** Road class for inter-district connections (ignored — CITY-501 uses context-dependent class) */
   roadClass?: RoadClass;
   /** Whether to avoid water features */
   avoidWater?: boolean;
-  /** Distance threshold above which connections become highways (default: ~5 miles) */
-  highwayThreshold?: number;
 }
 
 const DEFAULT_CONFIG: Required<InterDistrictConfig> = {
   maxConnectionDistance: 150, // ~10 miles in world units (768 units = 50 miles)
-  roadClass: "arterial",
+  roadClass: "arterial", // Ignored — CITY-501 determines class from district types
   avoidWater: true,
-  highwayThreshold: 75, // ~5 miles in world units - longer connections become highways
 };
 
 /**
@@ -616,12 +615,30 @@ function generateRoadName(
   }
 
   // Arterials: named boulevards connecting the two districts
-  return `${fromDistrict.name} - ${toDistrict.name} Blvd`;
+  if (roadClass === "arterial") {
+    return `${fromDistrict.name} - ${toDistrict.name} Blvd`;
+  }
+
+  // Collectors: named streets
+  return `${fromDistrict.name} - ${toDistrict.name} St`;
 }
+
+/** District types that warrant arterial-class inter-district connections */
+const MAJOR_DISTRICT_TYPES: Set<DistrictType> = new Set([
+  "downtown",
+  "commercial",
+  "industrial",
+  "hospital",
+  "university",
+  "airport",
+]);
 
 /**
  * Create a road connecting two districts.
- * Connections longer than the highway threshold are auto-upgraded to highways.
+ * CITY-501: Road class is context-dependent — arterial when either district is a
+ * major type (downtown, commercial, industrial, hospital, university, airport),
+ * collector otherwise. Highways are never auto-generated; they must be explicitly
+ * placed by the user.
  */
 function createConnectionRoad(
   fromDistrict: District,
@@ -650,11 +667,10 @@ function createConnectionRoad(
     pathPoints = [fromPerimeter, toPerimeter];
   }
 
-  // Auto-upgrade to highway for long-distance connections (only from default arterial)
-  const roadClass =
-    config.roadClass === "arterial" && connectionDistance >= config.highwayThreshold
-      ? "highway"
-      : config.roadClass;
+  // CITY-501: Use arterial for major districts, collector for minor (e.g. residential-to-residential)
+  const isMajorConnection =
+    MAJOR_DISTRICT_TYPES.has(fromDistrict.type) || MAJOR_DISTRICT_TYPES.has(toDistrict.type);
+  const roadClass: RoadClass = isMajorConnection ? "arterial" : "collector";
 
   return {
     id: generateId(`inter-district-${fromDistrict.id}-${toDistrict.id}`),
