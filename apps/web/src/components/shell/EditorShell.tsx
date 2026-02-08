@@ -1,4 +1,4 @@
-import { ReactNode, useCallback, useState } from "react";
+import { ReactNode, useCallback, useEffect, useRef, useState } from "react";
 import { useToastOptional } from "../../contexts";
 import { ViewModeProvider, useViewMode, ViewMode } from "./ViewModeContext";
 import { ZoomProvider, useZoom } from "./ZoomContext";
@@ -17,7 +17,11 @@ import {
 import { getParkSizeFromSeedId } from "../canvas/layers/parkGenerator";
 import { AIRPORT_SIZE_WORLD_UNITS } from "../canvas/layers/airportGenerator";
 import type { DistrictPersonality, Point } from "../canvas/layers/types";
-import { MapCanvasProvider, FeaturesProvider, useFeatures, TerrainProvider, TransitProvider, useTransitOptional, useTransit, TransitLineDrawingProvider } from "../canvas";
+import { MapCanvasProvider, FeaturesProvider, useFeatures, TerrainProvider, TransitProvider, useTransitOptional, useTransit, TransitLineDrawingProvider, useTransitLineDrawingOptional } from "../canvas";
+import { useEndpointDragOptional } from "../canvas/EndpointDragContext";
+import { useDrawingOptional } from "../canvas/DrawingContext";
+import { usePlacementOptional } from "../palette/PlacementContext";
+import { useSelectionContextOptional } from "../build-view/SelectionContext";
 import { EditLockProvider, useEditLockOptional } from "./EditLockContext";
 import type { TransitLineProperties } from "../canvas";
 import type { RailStationData } from "../canvas/layers";
@@ -89,6 +93,35 @@ function EditorShellContent({
   const isEditing = editLock?.isEditing ?? true;
   const showPalette = viewMode === "build" && isEditing;
   const showZoomControls = viewMode !== "export"; // Export view has its own controls
+
+  // CITY-423/424/425/426/427: Clean up all editing states when view mode changes.
+  // This prevents state leaks (active drawing, placement, drag, selection, highlighting)
+  // from persisting into the wrong view mode.
+  const placementCtx = usePlacementOptional();
+  const drawingCtx = useDrawingOptional();
+  const transitLineDrawingCtx = useTransitLineDrawingOptional();
+  const endpointDragCtx = useEndpointDragOptional();
+  const selectionCtx = useSelectionContextOptional();
+  const transitCtx = useTransitOptional();
+
+  const prevViewMode = useRef(viewMode);
+  useEffect(() => {
+    if (prevViewMode.current === viewMode) return;
+    prevViewMode.current = viewMode;
+
+    // Cancel any active drawing
+    if (drawingCtx?.state.isDrawing) drawingCtx.cancelDrawing();
+    // Cancel any active transit line drawing
+    if (transitLineDrawingCtx?.state.isDrawing) transitLineDrawingCtx.cancelDrawing();
+    // Cancel any active placement
+    placementCtx?.cancelPlacing();
+    // Cancel any active endpoint drag
+    if (endpointDragCtx?.isDragging) endpointDragCtx.cancelDrag();
+    // Clear feature selection
+    selectionCtx?.clearSelection();
+    // Clear transit line highlighting
+    transitCtx?.setHighlightedLineId(null);
+  }, [viewMode, drawingCtx, transitLineDrawingCtx, placementCtx, endpointDragCtx, selectionCtx, transitCtx]);
 
   return (
     <div className="h-screen w-screen flex flex-col bg-gray-100">
