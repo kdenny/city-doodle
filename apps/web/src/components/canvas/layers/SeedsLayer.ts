@@ -316,17 +316,23 @@ export class SeedsLayer {
 
     this.previewContainer.addChild(g);
 
-    // Fade out and remove
-    let alpha = 1;
-    const fadeInterval = setInterval(() => {
-      alpha -= 0.05;
-      g.alpha = Math.max(0, alpha);
-      if (alpha <= 0) {
-        clearInterval(fadeInterval);
+    // CITY-532: Use rAF instead of setInterval so the fade pauses when
+    // the tab is backgrounded instead of firing hundreds of queued ticks.
+    let lastTime = 0;
+    const fadeStep = (time: number) => {
+      if (!lastTime) lastTime = time;
+      const dt = time - lastTime;
+      lastTime = time;
+      // ~0.05 per 30ms = ~1.67 per second
+      g.alpha = Math.max(0, g.alpha - (dt / 30) * 0.05);
+      if (g.alpha <= 0) {
         this.previewContainer.removeChild(g);
         g.destroy();
+      } else {
+        requestAnimationFrame(fadeStep);
       }
-    }, 30);
+    };
+    requestAnimationFrame(fadeStep);
   }
 
   destroy(): void {

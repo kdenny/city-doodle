@@ -96,6 +96,26 @@ export class SnapIndicator {
   }
 
   /**
+   * CITY-532: Pause the animation loop (e.g. when the tab is backgrounded).
+   * Resumes from where it left off when `resume()` is called.
+   */
+  pause(): void {
+    if (this.animationId !== null) {
+      cancelAnimationFrame(this.animationId);
+      this.animationId = null;
+    }
+  }
+
+  /**
+   * CITY-532: Resume a paused animation loop.
+   */
+  resume(): void {
+    if (this.currentSnapPoint && this.config.animated && this.animationId === null) {
+      this.startAnimation();
+    }
+  }
+
+  /**
    * Destroys the indicator and releases resources.
    */
   destroy(): void {
