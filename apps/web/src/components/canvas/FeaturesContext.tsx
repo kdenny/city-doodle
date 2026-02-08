@@ -804,12 +804,14 @@ export function FeaturesProvider({
       // Detect bridges for all roads
       const { bridges } = detectBridges(prev.roads, terrainData);
 
-      // Only update if bridges changed (compare by length and IDs)
-      const bridgeIds = bridges.map((b) => `${b.roadId}-${b.waterFeatureId}`).sort().join(",");
-      const prevBridgeIds = prev.bridges.map((b) => `${b.roadId}-${b.waterFeatureId}`).sort().join(",");
-
-      if (bridgeIds === prevBridgeIds) {
-        return prev; // No change needed
+      // CITY-493: Bridge IDs are now deterministic (roadId + waterFeatureId + segment),
+      // so we can compare IDs directly for a reliable equality check.
+      if (bridges.length === prev.bridges.length) {
+        const newIds = bridges.map((b) => b.id).sort().join(",");
+        const prevIds = prev.bridges.map((b) => b.id).sort().join(",");
+        if (newIds === prevIds) {
+          return prev; // No change needed
+        }
       }
 
       return { ...prev, bridges };
