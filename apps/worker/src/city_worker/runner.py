@@ -269,53 +269,30 @@ class JobRunner:
 
         try:
             async with session.begin():
+                # CITY-513: Use UPSERT instead of N+1 SELECT+INSERT/UPDATE per tile
                 for tile_data in result.all_tiles():
-                    # Check if tile exists
-                    existing = await session.execute(
-                        text("""
-                            SELECT id FROM tiles
-                            WHERE world_id = :world_id AND tx = :tx AND ty = :ty
-                        """),
-                        {"world_id": world_id, "tx": tile_data.tx, "ty": tile_data.ty},
-                    )
-                    row = existing.fetchone()
-
                     terrain_dict = tile_data.to_dict()
                     features_dict = tile_data.features_to_geojson()
 
-                    if row:
-                        # Update existing tile
-                        await session.execute(
-                            text("""
-                                UPDATE tiles
-                                SET terrain_data = :terrain_data,
-                                    features = :features,
-                                    version = version + 1,
-                                    updated_at = :now
-                                WHERE id = :tile_id
-                            """),
-                            {
-                                "tile_id": row[0],
-                                "terrain_data": terrain_dict,
-                                "features": features_dict,
-                                "now": datetime.now(UTC),
-                            },
-                        )
-                    else:
-                        # Insert new tile
-                        await session.execute(
-                            text("""
-                                INSERT INTO tiles (id, world_id, tx, ty, terrain_data, features, version)
-                                VALUES (gen_random_uuid(), :world_id, :tx, :ty, :terrain_data, :features, 1)
-                            """),
-                            {
-                                "world_id": world_id,
-                                "tx": tile_data.tx,
-                                "ty": tile_data.ty,
-                                "terrain_data": terrain_dict,
-                                "features": features_dict,
-                            },
-                        )
+                    await session.execute(
+                        text("""
+                            INSERT INTO tiles (id, world_id, tx, ty, terrain_data, features, version)
+                            VALUES (gen_random_uuid(), :world_id, :tx, :ty, :terrain_data, :features, 1)
+                            ON CONFLICT (world_id, tx, ty)
+                            DO UPDATE SET
+                                terrain_data = EXCLUDED.terrain_data,
+                                features = EXCLUDED.features,
+                                version = tiles.version + 1,
+                                updated_at = now()
+                        """),
+                        {
+                            "world_id": world_id,
+                            "tx": tile_data.tx,
+                            "ty": tile_data.ty,
+                            "terrain_data": terrain_dict,
+                            "features": features_dict,
+                        },
+                    )
 
                 logger.info(
                     "Saved %d terrain tiles for world %s",
