@@ -3,8 +3,8 @@
 Stores the city boundary for each world (at most one per world).
 CITY-407: CityLimits not persisted to API.
 
-Revision ID: 019
-Revises: 018
+Revision ID: 020
+Revises: 019
 Create Date: 2026-02-07
 
 """
@@ -14,8 +14,8 @@ from collections.abc import Sequence
 import sqlalchemy as sa
 from alembic import op
 
-revision: str = "019"
-down_revision: str | None = "018"
+revision: str = "020"
+down_revision: str | None = "019"
 branch_labels: str | Sequence[str] | None = None
 depends_on: str | Sequence[str] | None = None
 
