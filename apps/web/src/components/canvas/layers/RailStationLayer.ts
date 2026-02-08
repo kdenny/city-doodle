@@ -40,12 +40,14 @@ export interface TrackSegmentData {
 export interface RailStationPreviewData {
   position: Point;
   isValid: boolean; // Whether the position is valid (inside a district)
+  isTooClose?: boolean; // Whether the position is too close to an existing station (CITY-432)
 }
 
 // Rail station styling
 const STATION_COLOR = 0x5c4033; // Dark brown
 const STATION_BG_COLOR = 0xfff8e1; // Cream
 const STATION_INVALID_COLOR = 0xff4444; // Red for invalid placement
+const STATION_TOO_CLOSE_COLOR = 0xff8c00; // Orange for too-close warning (CITY-432)
 const STATION_RADIUS = 12;
 const HUB_STATION_RADIUS = 16; // Larger radius for hub/transfer stations
 const STATION_ICON = "\u{1F682}"; // Train emoji
@@ -180,12 +182,19 @@ export class RailStationLayer {
 
     if (!preview) return;
 
-    const { position, isValid } = preview;
+    const { position, isValid, isTooClose } = preview;
     const color = isValid ? STATION_COLOR : STATION_INVALID_COLOR;
     const bgColor = isValid ? STATION_BG_COLOR : 0xffcccc;
 
     // Create preview graphics
     this.previewGraphics = new Graphics();
+
+    // CITY-432: Draw too-close warning ring behind the station preview
+    if (isTooClose && isValid) {
+      this.previewGraphics.setStrokeStyle({ width: 2.5, color: STATION_TOO_CLOSE_COLOR, alpha: 0.7 });
+      this.previewGraphics.circle(position.x, position.y, STATION_RADIUS + 8);
+      this.previewGraphics.stroke();
+    }
 
     // Draw station marker background (semi-transparent)
     this.previewGraphics.circle(position.x, position.y, STATION_RADIUS + 2);
@@ -232,6 +241,19 @@ export class RailStationLayer {
       invalidIndicator.anchor.set(0.5, 0);
       invalidIndicator.position.set(position.x, position.y + STATION_RADIUS + 8);
       this.previewContainer.addChild(invalidIndicator);
+    } else if (isTooClose) {
+      // CITY-432: Show too-close warning label
+      const tooCloseIndicator = new Text({
+        text: "Too close to station",
+        style: new TextStyle({
+          fontSize: 10,
+          fill: STATION_TOO_CLOSE_COLOR,
+          fontWeight: "bold",
+        }),
+      });
+      tooCloseIndicator.anchor.set(0.5, 0);
+      tooCloseIndicator.position.set(position.x, position.y + STATION_RADIUS + 8);
+      this.previewContainer.addChild(tooCloseIndicator);
     }
   }
 
