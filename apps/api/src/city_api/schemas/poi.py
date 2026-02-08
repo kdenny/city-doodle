@@ -1,26 +1,11 @@
 """POI schemas - represents Points of Interest in a world."""
 
 from datetime import datetime
-from enum import StrEnum
 from uuid import UUID
 
 from pydantic import BaseModel, Field
 
-
-class POIType(StrEnum):
-    """Types of Points of Interest.
-
-    These match the frontend POI types.
-    """
-
-    HOSPITAL = "hospital"
-    SCHOOL = "school"
-    UNIVERSITY = "university"
-    PARK = "park"
-    TRANSIT = "transit"
-    SHOPPING = "shopping"
-    CIVIC = "civic"
-    INDUSTRIAL = "industrial"
+from city_api.models.poi import POIType
 
 
 class POICreate(BaseModel):
