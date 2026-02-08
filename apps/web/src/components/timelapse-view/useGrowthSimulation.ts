@@ -95,12 +95,12 @@ export function useGrowthSimulation(worldId?: string): GrowthSimulationState {
         (job.result as Record<string, unknown>).years_simulated as number || 1
       );
       setHasCompleted(true);
-      // Growth modifies districts, roads, and POIs — invalidate their caches
+      // CITY-497: Growth modifies districts, roads, and POIs — invalidate their caches.
+      // worldRoadNodes/worldRoadEdges removed: no component queries those lists directly,
+      // and worldRoadNetwork already fetches the combined graph.
       if (worldId) {
         queryClient.invalidateQueries({ queryKey: queryKeys.worldDistricts(worldId) });
         queryClient.invalidateQueries({ queryKey: queryKeys.worldRoadNetwork(worldId) });
-        queryClient.invalidateQueries({ queryKey: queryKeys.worldRoadNodes(worldId) });
-        queryClient.invalidateQueries({ queryKey: queryKeys.worldRoadEdges(worldId) });
         queryClient.invalidateQueries({ queryKey: queryKeys.worldPOIs(worldId) });
       }
     } else if (job.status === "failed") {

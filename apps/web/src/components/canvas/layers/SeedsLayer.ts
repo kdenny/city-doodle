@@ -55,8 +55,12 @@ export class SeedsLayer {
   private seedsContainer: Container;
   private previewContainer: Container;
   private seedGraphics: Map<string, Container> = new Map();
+  /** Reusable preview Graphics — cleared instead of destroyed on each update (CITY-498) */
   private previewGraphics: Graphics | null = null;
+  /** Reusable preview Text — repositioned instead of recreated (CITY-498) */
   private previewText: Text | null = null;
+  /** Cached TextStyle per category to avoid allocation on every mousemove (CITY-498) */
+  private previewTextStyles: Map<SeedCategory, TextStyle> = new Map();
 
   constructor() {
     this.container = new Container();
@@ -71,6 +75,16 @@ export class SeedsLayer {
     this.previewContainer = new Container();
     this.previewContainer.label = "seed-preview";
     this.container.addChild(this.previewContainer);
+  }
+
+  /** Get or create a cached TextStyle for a category (CITY-498) */
+  private getPreviewTextStyle(category: SeedCategory): TextStyle {
+    let style = this.previewTextStyles.get(category);
+    if (!style) {
+      style = new TextStyle({ fontSize: 16, fill: CATEGORY_COLORS[category] });
+      this.previewTextStyles.set(category, style);
+    }
+    return style;
   }
 
   getContainer(): Container {
@@ -112,13 +126,9 @@ export class SeedsLayer {
    */
   setPreview(preview: PreviewSeedData | null): void {
     if (!preview) {
-      // Hide existing preview objects instead of destroying them
-      if (this.previewGraphics) {
-        this.previewGraphics.visible = false;
-      }
-      if (this.previewText) {
-        this.previewText.visible = false;
-      }
+      // Hide preview objects instead of destroying them (CITY-498)
+      if (this.previewGraphics) this.previewGraphics.visible = false;
+      if (this.previewText) this.previewText.visible = false;
       return;
     }
 
@@ -126,26 +136,24 @@ export class SeedsLayer {
     const color = CATEGORY_COLORS[category];
     const bgColor = CATEGORY_BG_COLORS[category];
 
-    // Create Graphics once, then reuse by clearing and redrawing
+    // Reuse or lazily create the Graphics object (CITY-498)
     if (!this.previewGraphics) {
       this.previewGraphics = new Graphics();
       this.previewContainer.addChild(this.previewGraphics);
     }
-    this.previewGraphics.visible = true;
     this.previewGraphics.clear();
+    this.previewGraphics.visible = true;
 
     if (category === "district") {
       // For districts, show a polygon preview representing the district area.
-      // `size` is the district diameter (matching generateDistrictGeometry),
-      // so we use size/2 as the base radius (matching generateOrganicPolygon).
-      const size = preview.size ?? 34; // Use drag size or default effective size
+      const size = preview.size ?? 34;
       const baseRadius = size / 2;
       const numPoints = 8;
       const points: { x: number; y: number }[] = [];
 
       for (let i = 0; i < numPoints; i++) {
         const angle = (i / numPoints) * Math.PI * 2;
-        const radius = baseRadius * (0.85 + Math.sin(angle * 3) * 0.15); // Slight variation
+        const radius = baseRadius * (0.85 + Math.sin(angle * 3) * 0.15);
         points.push({
           x: position.x + Math.cos(angle) * radius,
           y: position.y + Math.sin(angle) * radius,
@@ -181,13 +189,11 @@ export class SeedsLayer {
 
       // Draw preview street grid lines within the polygon area
       this.previewGraphics.setStrokeStyle({ width: 1, color: 0xaaaaaa, alpha: 0.3 });
-      const gridSpacing = Math.max(6, baseRadius / 3); // Scale grid to district size
+      const gridSpacing = Math.max(6, baseRadius / 3);
       for (let offset = -baseRadius + gridSpacing; offset < baseRadius; offset += gridSpacing) {
-        // Horizontal lines
         this.previewGraphics.moveTo(position.x - baseRadius * 0.7, position.y + offset);
         this.previewGraphics.lineTo(position.x + baseRadius * 0.7, position.y + offset);
         this.previewGraphics.stroke();
-        // Vertical lines
         this.previewGraphics.moveTo(position.x + offset, position.y - baseRadius * 0.7);
         this.previewGraphics.lineTo(position.x + offset, position.y + baseRadius * 0.7);
         this.previewGraphics.stroke();
@@ -197,28 +203,27 @@ export class SeedsLayer {
       this.previewGraphics.circle(position.x, position.y, 20);
       this.previewGraphics.fill({ color: bgColor, alpha: 0.5 });
 
-      // Draw marker border
       this.previewGraphics.setStrokeStyle({ width: 2, color, alpha: 0.7 });
       this.previewGraphics.circle(position.x, position.y, 20);
       this.previewGraphics.stroke();
 
-      // Dashed inner circle to indicate placement point
       this.previewGraphics.setStrokeStyle({ width: 1, color, alpha: 0.5 });
       this.previewGraphics.circle(position.x, position.y, 8);
       this.previewGraphics.stroke();
     }
 
-    // Create Text once, then reuse by updating properties
+    // Reuse or lazily create the Text object (CITY-498)
     if (!this.previewText) {
-      this.previewText = new Text({ text: icon, style: new TextStyle({ fontSize: 16, fill: color }) });
+      this.previewText = new Text({ text: icon, style: this.getPreviewTextStyle(category) });
       this.previewText.anchor.set(0.5, 0.5);
       this.previewText.alpha = 0.8;
       this.previewContainer.addChild(this.previewText);
+    } else {
+      this.previewText.text = icon;
+      this.previewText.style = this.getPreviewTextStyle(category);
     }
-    this.previewText.visible = true;
-    this.previewText.text = icon;
-    this.previewText.style.fill = color;
     this.previewText.position.set(position.x, position.y);
+    this.previewText.visible = true;
   }
 
   private createSeedGraphics(seed: PlacedSeedData): void {
@@ -329,5 +334,6 @@ export class SeedsLayer {
     this.previewText = null;
     this.container.destroy({ children: true });
     this.seedGraphics.clear();
+    this.previewTextStyles.clear();
   }
 }
