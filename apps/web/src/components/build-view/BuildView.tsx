@@ -238,8 +238,8 @@ export function BuildView({
         <ScaleBar zoom={zoomContext?.zoom} />
       </div>
 
-      {/* Toolbar (top-left) */}
-      <div className="absolute top-4 left-4">
+      {/* Toolbar (bottom-center) */}
+      <div className="absolute bottom-4 left-1/2 -translate-x-1/2 z-20">
         <Toolbar
           activeTool={activeTool}
           onToolChange={handleToolChange}
@@ -276,9 +276,9 @@ export function BuildView({
         />
       </div>
 
-      {/* Drawing mode hint (bottom center, when drawing) */}
+      {/* Drawing mode hint (above toolbar, when drawing) */}
       {drawingContext?.state.isDrawing && (
-        <div className="absolute bottom-4 left-1/2 -translate-x-1/2">
+        <div className="absolute bottom-16 left-1/2 -translate-x-1/2">
           <div className="bg-white/90 backdrop-blur-sm rounded-lg shadow-lg px-4 py-2 text-sm text-gray-700">
             {drawingContext.state.mode === "road" || drawingContext.state.mode === "highway" ? (
               <div className="flex items-center gap-3">
@@ -327,9 +327,9 @@ export function BuildView({
         </div>
       )}
 
-      {/* CITY-361: Transit line drawing hint (bottom center, when drawing transit line) */}
+      {/* CITY-361: Transit line drawing hint (above toolbar, when drawing transit line) */}
       {transitLineDrawingContext?.state.isDrawing && (
-        <div className="absolute bottom-4 left-1/2 -translate-x-1/2">
+        <div className="absolute bottom-16 left-1/2 -translate-x-1/2">
           <div className="bg-white/90 backdrop-blur-sm rounded-lg shadow-lg px-4 py-2 text-sm text-gray-700">
             <div className="flex items-center gap-3">
               <span>
