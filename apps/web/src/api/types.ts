@@ -399,6 +399,33 @@ export interface POI {
 }
 
 // ============================================================================
+// City Limits Types (CITY-407)
+// ============================================================================
+
+export interface CityLimitsCreate {
+  world_id: UUID;
+  name: string;
+  boundary: Record<string, unknown>;
+  established?: number;
+}
+
+export interface CityLimitsUpdate {
+  name?: string;
+  boundary?: Record<string, unknown>;
+  established?: number;
+}
+
+export interface CityLimitsResponse {
+  id: UUID;
+  world_id: UUID;
+  name: string;
+  boundary: Record<string, unknown>;
+  established?: number;
+  created_at: DateTime;
+  updated_at: DateTime;
+}
+
+// ============================================================================
 // Placed Seed Types
 // ============================================================================
 

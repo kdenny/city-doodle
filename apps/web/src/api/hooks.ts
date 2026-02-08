@@ -12,6 +12,9 @@ import {
 import { api } from "./client";
 import {
   AuthResponse,
+  CityLimitsCreate,
+  CityLimitsResponse,
+  CityLimitsUpdate,
   District,
   DistrictBulkCreate,
   DistrictCreate,
@@ -99,6 +102,9 @@ export const queryKeys = {
   // Neighborhoods
   worldNeighborhoods: (worldId: string) => ["worlds", worldId, "neighborhoods"] as const,
   neighborhood: (id: string) => ["neighborhoods", id] as const,
+
+  // City Limits (CITY-407)
+  worldCityLimits: (worldId: string) => ["worlds", worldId, "city-limits"] as const,
 
   // POIs
   worldPOIs: (worldId: string, poiType?: string) =>
@@ -736,6 +742,67 @@ export function useDeleteAllNeighborhoods(
     onSuccess: (_, worldId) => {
       queryClient.invalidateQueries({
         queryKey: queryKeys.worldNeighborhoods(worldId),
+      });
+    },
+    ...options,
+  });
+}
+
+// ============================================================================
+// City Limits Hooks (CITY-407)
+// ============================================================================
+
+export function useWorldCityLimits(
+  worldId: string,
+  options?: Omit<UseQueryOptions<CityLimitsResponse | null>, "queryKey" | "queryFn">
+) {
+  return useQuery({
+    queryKey: queryKeys.worldCityLimits(worldId),
+    queryFn: () => api.cityLimits.get(worldId),
+    enabled: !!worldId,
+    ...options,
+  });
+}
+
+export function useUpsertCityLimits(
+  options?: UseMutationOptions<CityLimitsResponse, Error, { worldId: string; data: Omit<CityLimitsCreate, "world_id"> }>
+) {
+  const queryClient = useQueryClient();
+  return useMutation({
+    mutationFn: ({ worldId, data }) => api.cityLimits.upsert(worldId, data),
+    onSuccess: (_, { worldId }) => {
+      queryClient.invalidateQueries({
+        queryKey: queryKeys.worldCityLimits(worldId),
+      });
+    },
+    ...options,
+  });
+}
+
+export function useUpdateCityLimits(
+  options?: UseMutationOptions<CityLimitsResponse, Error, { worldId: string; data: CityLimitsUpdate }>
+) {
+  const queryClient = useQueryClient();
+  return useMutation({
+    mutationFn: ({ worldId, data }) => api.cityLimits.update(worldId, data),
+    onSuccess: (_, { worldId }) => {
+      queryClient.invalidateQueries({
+        queryKey: queryKeys.worldCityLimits(worldId),
+      });
+    },
+    ...options,
+  });
+}
+
+export function useDeleteCityLimits(
+  options?: UseMutationOptions<void, Error, string>
+) {
+  const queryClient = useQueryClient();
+  return useMutation({
+    mutationFn: (worldId: string) => api.cityLimits.delete(worldId),
+    onSuccess: (_, worldId) => {
+      queryClient.invalidateQueries({
+        queryKey: queryKeys.worldCityLimits(worldId),
       });
     },
     ...options,
