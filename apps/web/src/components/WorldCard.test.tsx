@@ -126,4 +126,9 @@ describe("WorldCard", () => {
     render(<WorldCard {...defaultProps} stats={undefined} />);
     expect(screen.getByText("Test City")).toBeTruthy();
   });
+
+  it("displays stats with zero values instead of dropping them", () => {
+    render(<WorldCard {...defaultProps} stats={{ districts: 0, roads: 3, pois: 0 }} />);
+    expect(screen.getByText("0 districts · 3 roads · 0 POIs")).toBeTruthy();
+  });
 });
