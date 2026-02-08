@@ -750,6 +750,11 @@ def extract_beaches(
                     heightfield, water_mask, region_cells[0], h, w
                 )
 
+                # Beaches only form on ocean and bay coastlines,
+                # not along rivers or small lakes (CITY-531).
+                if beach_type in ("river",):
+                    continue
+
                 for segment_cells in segments:
                     # Include adjacent water cells so the beach polygon
                     # extends to the actual water edge (CITY-520).
