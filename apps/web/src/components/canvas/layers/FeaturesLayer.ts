@@ -432,6 +432,14 @@ export class FeaturesLayer {
   private districtIndex: DistrictSpatialIndex = new DistrictSpatialIndex();
   /** CITY-421: Viewport bounds in world coordinates for spatial culling */
   private viewportBounds: { minX: number; minY: number; maxX: number; maxY: number } | null = null;
+  /** CITY-495: Bitmask of visible road classes at current zoom (for skip-render optimization) */
+  private visibleRoadClassMask: number = 0;
+  /** CITY-495: Bitmask of visible POI types at current zoom */
+  private visiblePoiTypeMask: number = 0;
+  /** CITY-495: Quantized zoom for width scaling (avoids re-render for sub-pixel width changes) */
+  private quantizedZoom: number = 1;
+  /** CITY-495: rAF handle for viewport bounds debounce */
+  private viewportBoundsRafId: number = 0;
 
   constructor() {
     this.container = new Container();
@@ -520,15 +528,51 @@ export class FeaturesLayer {
    * @param zoom - Zoom level (1 = default, <1 = zoomed out, >1 = zoomed in)
    */
   setZoom(zoom: number): void {
-    if (this.currentZoom !== zoom) {
-      this.currentZoom = zoom;
-      // Re-render roads and POIs when zoom changes (for visibility filtering)
-      if (this.data) {
-        this.renderRoads(this.data.roads);
-        this.renderRoadHighlight();
-        this.renderPOIs(this.data.pois);
-      }
+    if (this.currentZoom === zoom) return;
+    this.currentZoom = zoom;
+    if (!this.data) return;
+
+    // CITY-495: Only re-render when visibility thresholds are crossed or
+    // when the quantized zoom changes enough to affect road widths.
+    const newRoadMask = this.computeRoadClassMask(zoom);
+    const newPoiMask = this.computePoiTypeMask(zoom);
+    const newQuantized = Math.round(zoom * 10) / 10; // quantize to 0.1
+
+    const roadVisChanged = newRoadMask !== this.visibleRoadClassMask;
+    const poiVisChanged = newPoiMask !== this.visiblePoiTypeMask;
+    const widthChanged = newQuantized !== this.quantizedZoom;
+
+    this.visibleRoadClassMask = newRoadMask;
+    this.visiblePoiTypeMask = newPoiMask;
+    this.quantizedZoom = newQuantized;
+
+    if (roadVisChanged || widthChanged) {
+      this.renderRoads(this.data.roads);
+      this.renderRoadHighlight();
     }
+    if (poiVisChanged) {
+      this.renderPOIs(this.data.pois);
+    }
+  }
+
+  /** CITY-495: Compute a bitmask of which road classes are visible at a given zoom. */
+  private computeRoadClassMask(zoom: number): number {
+    let mask = 0;
+    const classes: RoadClass[] = ["highway", "arterial", "collector", "local", "trail"];
+    for (let i = 0; i < classes.length; i++) {
+      if (zoom >= ROAD_STYLES[classes[i]].minZoom) mask |= 1 << i;
+    }
+    return mask;
+  }
+
+  /** CITY-495: Compute a bitmask of which POI types are visible at a given zoom. */
+  private computePoiTypeMask(zoom: number): number {
+    let mask = 0;
+    const types: POIType[] = ["hospital", "school", "university", "park", "transit", "shopping", "civic", "industrial"];
+    for (let i = 0; i < types.length; i++) {
+      if (zoom >= (POI_MIN_ZOOM[types[i]] ?? 0.3)) mask |= 1 << i;
+    }
+    return mask;
   }
 
   /**
@@ -537,9 +581,16 @@ export class FeaturesLayer {
    */
   setViewportBounds(bounds: { minX: number; minY: number; maxX: number; maxY: number }): void {
     this.viewportBounds = bounds;
-    if (this.data) {
-      this.renderRoads(this.data.roads);
-      this.renderRoadHighlight();
+    // CITY-495: Debounce viewport bounds updates to one render per animation frame.
+    // Pan fires many events per frame; only the last bounds matter.
+    if (!this.viewportBoundsRafId) {
+      this.viewportBoundsRafId = requestAnimationFrame(() => {
+        this.viewportBoundsRafId = 0;
+        if (this.data) {
+          this.renderRoads(this.data.roads);
+          this.renderRoadHighlight();
+        }
+      });
     }
   }
 
