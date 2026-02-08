@@ -107,29 +107,32 @@ export class SeedsLayer {
 
   /**
    * Set or clear the preview seed.
+   * CITY-498: Reuses Graphics and Text objects instead of destroying and recreating
+   * them on every mousemove, reducing GC pressure during placement.
    */
   setPreview(preview: PreviewSeedData | null): void {
-    // Clear existing preview
-    if (this.previewGraphics) {
-      this.previewContainer.removeChild(this.previewGraphics);
-      this.previewGraphics.destroy();
-      this.previewGraphics = null;
-    }
-    if (this.previewText) {
-      this.previewContainer.removeChild(this.previewText);
-      this.previewText.destroy();
-      this.previewText = null;
+    if (!preview) {
+      // Hide existing preview objects instead of destroying them
+      if (this.previewGraphics) {
+        this.previewGraphics.visible = false;
+      }
+      if (this.previewText) {
+        this.previewText.visible = false;
+      }
+      return;
     }
 
-    if (!preview) return;
-
-    // Create preview graphics (semi-transparent)
     const { position, category, icon } = preview;
     const color = CATEGORY_COLORS[category];
     const bgColor = CATEGORY_BG_COLORS[category];
 
-    // Create container for this preview
-    this.previewGraphics = new Graphics();
+    // Create Graphics once, then reuse by clearing and redrawing
+    if (!this.previewGraphics) {
+      this.previewGraphics = new Graphics();
+      this.previewContainer.addChild(this.previewGraphics);
+    }
+    this.previewGraphics.visible = true;
+    this.previewGraphics.clear();
 
     if (category === "district") {
       // For districts, show a polygon preview representing the district area.
@@ -205,18 +208,17 @@ export class SeedsLayer {
       this.previewGraphics.stroke();
     }
 
-    this.previewContainer.addChild(this.previewGraphics);
-
-    // Add icon text
-    const style = new TextStyle({
-      fontSize: 16,
-      fill: color,
-    });
-    this.previewText = new Text({ text: icon, style });
-    this.previewText.anchor.set(0.5, 0.5);
+    // Create Text once, then reuse by updating properties
+    if (!this.previewText) {
+      this.previewText = new Text({ text: icon, style: new TextStyle({ fontSize: 16, fill: color }) });
+      this.previewText.anchor.set(0.5, 0.5);
+      this.previewText.alpha = 0.8;
+      this.previewContainer.addChild(this.previewText);
+    }
+    this.previewText.visible = true;
+    this.previewText.text = icon;
+    this.previewText.style.fill = color;
     this.previewText.position.set(position.x, position.y);
-    this.previewText.alpha = 0.8;
-    this.previewContainer.addChild(this.previewText);
   }
 
   private createSeedGraphics(seed: PlacedSeedData): void {
@@ -323,6 +325,8 @@ export class SeedsLayer {
   }
 
   destroy(): void {
+    this.previewGraphics = null;
+    this.previewText = null;
     this.container.destroy({ children: true });
     this.seedGraphics.clear();
   }
