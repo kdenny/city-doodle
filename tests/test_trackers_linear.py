@@ -4,6 +4,7 @@ from unittest.mock import MagicMock, patch
 
 import pytest
 
+from lib.vibe.trackers.base import TrackerBase
 from lib.vibe.trackers.linear import LINEAR_API_URL, LinearTracker
 
 
@@ -579,11 +580,11 @@ class TestLinearTrackerListLabels:
         mock_response = {"data": {"issueLabels": {"nodes": []}}}
 
         with patch.object(tracker, "_execute_query", return_value=mock_response) as mock_query:
-            tracker.list_labels()
+            result = tracker.list_labels()
 
-        # Should pass None for variables when no team_id
-        call_args = mock_query.call_args
-        assert call_args[0][1] is None
+        # list_labels now queries all workspace labels (no variables needed)
+        mock_query.assert_called_once()
+        assert result == []
 
     def test_list_labels_exception(self) -> None:
         tracker = LinearTracker(api_key="test-fake-key")
@@ -967,3 +968,63 @@ class TestLinearTrackerProjects:
         with patch.object(tracker, "get_ticket", return_value=None):
             with pytest.raises(RuntimeError, match="Could not resolve ticket ID"):
                 tracker.set_project("NONEXISTENT-1", "proj-1")
+
+
+class TestNormalizeLabels:
+    """Tests for TrackerBase._normalize_labels."""
+
+    def test_already_individual_labels(self) -> None:
+        result = TrackerBase._normalize_labels(["Bug", "Frontend", "Low Risk"])
+        assert result == ["Bug", "Frontend", "Low Risk"]
+
+    def test_comma_separated_single_string(self) -> None:
+        result = TrackerBase._normalize_labels(["Bug,Frontend,Low Risk"])
+        assert result == ["Bug", "Frontend", "Low Risk"]
+
+    def test_mixed_individual_and_comma_separated(self) -> None:
+        result = TrackerBase._normalize_labels(["Bug,Frontend", "v1"])
+        assert result == ["Bug", "Frontend", "v1"]
+
+    def test_extra_whitespace_trimmed(self) -> None:
+        result = TrackerBase._normalize_labels(["Bug , Frontend , Low Risk"])
+        assert result == ["Bug", "Frontend", "Low Risk"]
+
+    def test_empty_parts_skipped(self) -> None:
+        result = TrackerBase._normalize_labels(["Bug,,Frontend", ""])
+        assert result == ["Bug", "Frontend"]
+
+    def test_empty_list(self) -> None:
+        result = TrackerBase._normalize_labels([])
+        assert result == []
+
+
+class TestLinearGetOrCreateLabelIdsNormalization:
+    """Tests that _get_or_create_label_ids splits comma-separated labels."""
+
+    def test_comma_separated_labels_are_split(self) -> None:
+        tracker = LinearTracker(api_key="test-fake-key")
+        mock_labels = [
+            {"id": "label-1", "name": "Bug"},
+            {"id": "label-2", "name": "Frontend"},
+            {"id": "label-3", "name": "Low Risk"},
+        ]
+        mock_response = {"data": {"team": {"labels": {"nodes": mock_labels}}}}
+
+        with patch.object(tracker, "_execute_query", return_value=mock_response):
+            ids = tracker._get_or_create_label_ids("team_abc", ["Bug,Frontend,Low Risk"])
+
+        assert ids == ["label-1", "label-2", "label-3"]
+
+    def test_comma_separated_creates_missing_labels(self) -> None:
+        tracker = LinearTracker(api_key="test-fake-key")
+        mock_labels = [{"id": "label-1", "name": "Bug"}]
+        mock_response = {"data": {"team": {"labels": {"nodes": mock_labels}}}}
+
+        with (
+            patch.object(tracker, "_execute_query", return_value=mock_response),
+            patch.object(tracker, "_create_label", return_value="new-label-id") as mock_create,
+        ):
+            ids = tracker._get_or_create_label_ids("team_abc", ["Bug,NewLabel"])
+
+        assert ids == ["label-1", "new-label-id"]
+        mock_create.assert_called_once_with("team_abc", "NewLabel")

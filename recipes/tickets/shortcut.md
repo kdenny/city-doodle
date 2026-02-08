@@ -85,7 +85,7 @@ bin/ticket get SC-12345
 bin/ticket get 12345
 
 # Create story
-bin/ticket create "Add login button" --labels "Feature,Frontend"
+bin/ticket create "Add login button" --label Feature --label Frontend
 
 # Update story status
 bin/ticket update SC-12345 --status "Done"

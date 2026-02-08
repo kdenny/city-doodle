@@ -24,7 +24,7 @@ List tickets from the configured tracker.
 ```
 /ticket list                    # All open tickets
 /ticket list --status "Todo"    # Filter by status
-/ticket list --labels "Bug"     # Filter by label
+/ticket list --label "Bug"      # Filter by label
 ```
 
 ### get
@@ -39,8 +39,10 @@ Shows: title, description, status, labels, assignee, blocking relationships.
 ### create
 Create a new ticket.
 
+**IMPORTANT:** Each label must be passed as a separate `--label` flag. Do NOT combine labels into a single comma-separated string, as this will create one label with the combined name.
+
 ```
-/ticket create "Title" --description "Details" --labels "Feature,Backend"
+/ticket create "Title" --description "Details" --label Feature --label Backend
 ```
 
 ### update
@@ -77,8 +79,8 @@ bin/ticket list
 # Get ticket details
 bin/ticket get PROJ-123
 
-# Create ticket
-bin/ticket create "Add login button" --labels "Feature,Frontend"
+# Create ticket with labels (each label is a separate --label flag)
+bin/ticket create "Add login button" --label Feature --label Frontend
 
 # Update status
 bin/ticket update PROJ-123 --status "Done"
