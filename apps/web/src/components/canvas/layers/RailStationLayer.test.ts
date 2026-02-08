@@ -214,8 +214,11 @@ describe("RailStationLayer", () => {
       layer.setPreview(preview);
       layer.setPreview(null);
 
+      // CITY-506: Preview objects are now hidden instead of destroyed
       const previewContainer = layer.getContainer().children[2];
-      expect(previewContainer.children.length).toBe(0);
+      for (const child of previewContainer.children) {
+        expect(child.visible).toBe(false);
+      }
     });
   });
 
