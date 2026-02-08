@@ -8,7 +8,7 @@ const viewModeTabs: { mode: ViewMode; label: string }[] = [
   { mode: "export", label: "Export" },
 ];
 
-export function Header() {
+export function Header({ worldName }: { worldName?: string }) {
   const { viewMode, setViewMode, viewModeLabel } = useViewMode();
   const editLock = useEditLockOptional();
 
@@ -18,6 +18,12 @@ export function Header() {
         <a href="/" className="font-bold text-lg hover:text-gray-200 transition-colors">
           City Doodle
         </a>
+        {worldName && (
+          <>
+            <span className="text-gray-500">/</span>
+            <span className="text-gray-200 text-sm font-medium">{worldName}</span>
+          </>
+        )}
         <span className="text-gray-400 text-sm">{viewModeLabel}</span>
         {viewMode === "build" && editLock?.isEditing && (
           <span className="text-xs text-green-400 font-medium">Editing</span>
