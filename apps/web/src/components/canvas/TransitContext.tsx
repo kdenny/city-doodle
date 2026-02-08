@@ -41,6 +41,7 @@ import type {
   LineType,
 } from "../../api/types";
 import { useFeaturesOptional } from "./FeaturesContext";
+import { generateTransitPOIs } from "./layers/poiAutoGenerator";
 import { useToastOptional } from "../../contexts";
 
 // Auto-connection distance for nearby stations (in world units)
@@ -442,6 +443,33 @@ export function TransitProvider({ children, worldId }: TransitProviderProps) {
   }, [transitNetwork]);
 
   /**
+   * CITY-428: Generate transit-oriented POIs near a newly placed station
+   * and add them to the features context.
+   */
+  const generateTransitPOIsForStation = useCallback(
+    (position: Point, stationName: string, districtId: string) => {
+      if (!featuresContext) return;
+
+      const district = featuresContext.features.districts.find(
+        (d) => d.id === districtId
+      );
+      if (!district) return;
+
+      const newPOIs = generateTransitPOIs(
+        position,
+        stationName,
+        district.polygon.points,
+        featuresContext.features.pois
+      );
+
+      for (const poi of newPOIs) {
+        featuresContext.addPOI(poi);
+      }
+    },
+    [featuresContext]
+  );
+
+  /**
    * Validate if a position is valid for station placement (shared logic for rail and subway).
    * Stations must be placed inside a district.
    */
@@ -612,6 +640,9 @@ export function TransitProvider({ children, worldId }: TransitProviderProps) {
           }
         }
 
+        // CITY-428: Generate transit-oriented POIs near the new station
+        generateTransitPOIsForStation(position, stationName, validation.districtId);
+
         // Auto-connect to nearby stations (CITY-394: skip when creating during line drawing)
         const nearbyStations = !options?.skipAutoConnect ? getNearbyStations(position) : [];
         if (nearbyStations.length > 0) {
@@ -701,6 +732,7 @@ export function TransitProvider({ children, worldId }: TransitProviderProps) {
       createStation,
       createLine,
       createSegment,
+      generateTransitPOIsForStation,
       toast,
     ]
   );
@@ -797,6 +829,9 @@ export function TransitProvider({ children, worldId }: TransitProviderProps) {
           }
         }
 
+        // CITY-428: Generate transit-oriented POIs near the new station
+        generateTransitPOIsForStation(position, stationName, validation.districtId);
+
         // Auto-connect to nearby subway stations (CITY-394: skip when creating during line drawing)
         const nearbyStations = !options?.skipAutoConnect ? getNearbySubwayStations(position) : [];
         if (nearbyStations.length > 0) {
@@ -886,6 +921,7 @@ export function TransitProvider({ children, worldId }: TransitProviderProps) {
       createStation,
       createLine,
       createSegment,
+      generateTransitPOIsForStation,
       toast,
     ]
   );
