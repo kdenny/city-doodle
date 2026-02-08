@@ -160,6 +160,7 @@ class TerrainGenerator:
 
         # Beaches (transition zones between water and land)
         if cfg.beach_enabled:
+            beach_seed = abs(cfg.world_seed ^ (tx * 5413 + ty * 5417))
             beaches = extract_beaches(
                 heightfield=heightfield,
                 water_level=cfg.water_level,
@@ -170,6 +171,9 @@ class TerrainGenerator:
                 min_length=cfg.beach_min_length,
                 max_slope=cfg.beach_slope_max,
                 width_multiplier=cfg.beach_width_multiplier,
+                max_segment_cells=cfg.beach_max_segment_cells,
+                gap_cells=cfg.beach_gap_cells,
+                seed=beach_seed,
             )
             features.extend(beaches)
 
