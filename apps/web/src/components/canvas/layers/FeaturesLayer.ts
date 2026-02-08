@@ -435,8 +435,17 @@ export class FeaturesLayer {
   private districtIndex: DistrictSpatialIndex = new DistrictSpatialIndex();
   /** CITY-421: Viewport bounds in world coordinates for spatial culling */
   private viewportBounds: { minX: number; minY: number; maxX: number; maxY: number } | null = null;
-  /** CITY-495: Pending rAF handle for throttled zoom/viewport re-renders */
-  private pendingViewRender: number | null = null;
+  /** CITY-495: Bitmask of visible road classes at current zoom (for skip-render optimization) */
+  private visibleRoadClassMask: number = 0;
+  /** CITY-495: Bitmask of visible POI types at current zoom */
+  private visiblePoiTypeMask: number = 0;
+  /** CITY-495: Quantized zoom for width scaling (avoids re-render for sub-pixel width changes) */
+  private quantizedZoom: number = 1;
+  /** CITY-495: Unified rAF handle for coalescing zoom + viewport re-renders into one frame */
+  private pendingViewRafId: number = 0;
+  /** CITY-495: Dirty flags for which sublayers need re-render on next rAF */
+  private dirtyRoads: boolean = false;
+  private dirtyPois: boolean = false;
 
   constructor() {
     this.container = new Container();
@@ -560,36 +569,84 @@ export class FeaturesLayer {
    * @param zoom - Zoom level (1 = default, <1 = zoomed out, >1 = zoomed in)
    */
   setZoom(zoom: number): void {
-    if (this.currentZoom !== zoom) {
-      this.currentZoom = zoom;
-      this.scheduleViewRender();
+    if (this.currentZoom === zoom) return;
+    this.currentZoom = zoom;
+    if (!this.data) return;
+
+    // CITY-495: Only mark sublayers dirty when visibility thresholds are crossed
+    // or when the quantized zoom changes enough to affect road widths.
+    const newRoadMask = this.computeRoadClassMask(zoom);
+    const newPoiMask = this.computePoiTypeMask(zoom);
+    const newQuantized = Math.round(zoom * 10) / 10; // quantize to 0.1
+
+    if (newRoadMask !== this.visibleRoadClassMask || newQuantized !== this.quantizedZoom) {
+      this.dirtyRoads = true;
     }
+    if (newPoiMask !== this.visiblePoiTypeMask) {
+      this.dirtyPois = true;
+    }
+
+    this.visibleRoadClassMask = newRoadMask;
+    this.visiblePoiTypeMask = newPoiMask;
+    this.quantizedZoom = newQuantized;
+
+    this.scheduleViewRender();
+  }
+
+  /** CITY-495: Compute a bitmask of which road classes are visible at a given zoom. */
+  private computeRoadClassMask(zoom: number): number {
+    let mask = 0;
+    const classes: RoadClass[] = ["highway", "arterial", "collector", "local", "trail"];
+    for (let i = 0; i < classes.length; i++) {
+      if (zoom >= ROAD_STYLES[classes[i]].minZoom) mask |= 1 << i;
+    }
+    return mask;
+  }
+
+  /** CITY-495: Compute a bitmask of which POI types are visible at a given zoom. */
+  private computePoiTypeMask(zoom: number): number {
+    let mask = 0;
+    const types: POIType[] = ["hospital", "school", "university", "park", "transit", "shopping", "civic", "industrial"];
+    for (let i = 0; i < types.length; i++) {
+      if (zoom >= (POI_MIN_ZOOM[types[i]] ?? 0.3)) mask |= 1 << i;
+    }
+    return mask;
   }
 
   /**
-   * CITY-421: Set viewport bounds in world coordinates for spatial road culling.
-   * Roads outside these bounds are skipped during rendering.
-   * CITY-495: Batched with zoom updates via requestAnimationFrame.
+   * CITY-421: Set viewport bounds in world coordinates for spatial culling.
+   * Roads and POIs outside these bounds are skipped during rendering.
+   * CITY-495: Coalesced with zoom updates via a single requestAnimationFrame.
    */
   setViewportBounds(bounds: { minX: number; minY: number; maxX: number; maxY: number }): void {
     this.viewportBounds = bounds;
+    // Viewport changes always require re-rendering roads and POIs for spatial culling
+    this.dirtyRoads = true;
+    this.dirtyPois = true;
     this.scheduleViewRender();
   }
 
   /**
-   * CITY-495: Schedule a zoom/viewport-dependent re-render on the next animation frame.
-   * Multiple calls within the same frame are coalesced into one render.
+   * CITY-495: Schedule a view-dependent re-render on the next animation frame.
+   * Coalesces zoom and viewport bound changes into a single render per frame.
+   * Only sublayers marked dirty are re-rendered.
    */
   private scheduleViewRender(): void {
     if (!this.data) return;
-    if (this.pendingViewRender !== null) return; // Already scheduled
+    if (this.pendingViewRafId) return; // Already scheduled
 
-    this.pendingViewRender = requestAnimationFrame(() => {
-      this.pendingViewRender = null;
+    this.pendingViewRafId = requestAnimationFrame(() => {
+      this.pendingViewRafId = 0;
       if (!this.data) return;
-      this.renderRoads(this.data.roads);
-      this.renderRoadHighlight();
-      this.renderPOIs(this.data.pois);
+      if (this.dirtyRoads) {
+        this.dirtyRoads = false;
+        this.renderRoads(this.data.roads);
+        this.renderRoadHighlight();
+      }
+      if (this.dirtyPois) {
+        this.dirtyPois = false;
+        this.renderPOIs(this.data.pois);
+      }
     });
   }
 
@@ -1024,6 +1081,9 @@ export class FeaturesLayer {
     if (!road || road.line.points.length < 2) return;
 
     const style = ROAD_STYLES[road.roadClass];
+    // Don't highlight roads that are hidden at the current zoom level
+    if (this.currentZoom < style.minZoom) return;
+
     const zoomScale =
       Math.max(0.5, Math.min(1.5, this.currentZoom)) * this.districtScale;
     const scaledWidth = style.width * zoomScale;
@@ -1246,13 +1306,19 @@ export class FeaturesLayer {
     const innerRadius = 2 * zoomScale;
     const strokeWidth = 2 * zoomScale;
 
+    const vb = this.viewportBounds;
+
     for (const poi of pois) {
       // Filter by zoom level (same pattern as road minZoom)
       const minZoom = POI_MIN_ZOOM[poi.type] ?? 0.3;
       if (this.currentZoom < minZoom) continue;
 
-      const color = POI_COLORS[poi.type] ?? 0x666666;
       const { x, y } = poi.position;
+
+      // Viewport culling — skip POIs outside visible bounds
+      if (vb && (x < vb.minX || x > vb.maxX || y < vb.minY || y > vb.maxY)) continue;
+
+      const color = POI_COLORS[poi.type] ?? 0x666666;
 
       if (poi.footprint && poi.footprint.length >= 3) {
         // Draw footprint polygon (filled with outline)
@@ -1411,9 +1477,9 @@ export class FeaturesLayer {
   }
 
   destroy(): void {
-    if (this.pendingViewRender !== null) {
-      cancelAnimationFrame(this.pendingViewRender);
-      this.pendingViewRender = null;
+    if (this.pendingViewRafId) {
+      cancelAnimationFrame(this.pendingViewRafId);
+      this.pendingViewRafId = 0;
     }
     this.container.destroy({ children: true });
   }
