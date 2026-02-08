@@ -588,8 +588,16 @@ export function FeaturesProvider({
   // Track pending operations for optimistic updates
   const pendingCreates = useRef<Set<string>>(new Set());
 
-  // Track whether the batched initial load has fired (CITY-491)
+  // CITY-491: Track whether the batched initial load has fired, and which data
+  // references were already consumed by the batch so post-init effects skip them.
   const initialLoadDone = useRef(false);
+  const lastProcessed = useRef<{
+    districts?: unknown;
+    neighborhoods?: unknown;
+    cityLimits?: unknown;
+    pois?: unknown;
+    roadNetwork?: unknown;
+  }>({});
 
   // API hooks - only enabled when worldId is provided
   const { data: world } = useWorld(worldId || "", {
@@ -754,10 +762,9 @@ export function FeaturesProvider({
       const pendingDistricts = prev.districts.filter(
         (d) => pendingCreates.current.has(d.id)
       );
-      // Keep roads from pending districts (not yet in loaded data)
+      // Keep roads from pending districts and inter-district roads not yet in loaded data
       const pendingRoads = prev.roads.filter((r) => {
-        if (!r.districtId) return false;
-        return pendingCreates.current.has(r.districtId) && !loadedDistrictIds.has(r.districtId);
+        return !r.districtId || (pendingCreates.current.has(r.districtId) && !loadedDistrictIds.has(r.districtId));
       });
 
       return {
@@ -770,17 +777,29 @@ export function FeaturesProvider({
       };
     });
 
+    // Record which data references the batch consumed so post-init effects
+    // skip these same references (they fire in the same React commit).
+    lastProcessed.current = {
+      districts: apiDistricts,
+      neighborhoods: apiNeighborhoods,
+      cityLimits: apiCityLimits,
+      pois: apiPOIs,
+      roadNetwork: apiRoadNetwork,
+    };
+
     setIsInitialized(true);
     initialLoadDone.current = true;
   }, [worldId, apiDistricts, apiNeighborhoods, apiCityLimits, apiPOIs, apiRoadNetwork]);
 
   // Post-init individual update effects for live editing (React Query refetches).
-  // These only fire after the initial batch load is complete, so they don't cause
-  // redundant renders during startup.
+  // Each effect skips data already consumed by the batch (same object reference)
+  // to avoid redundant renders when both fire in the same React commit.
 
   // Districts refetch (post-init)
   useEffect(() => {
     if (!initialLoadDone.current || !worldId || !apiDistricts) return;
+    if (apiDistricts === lastProcessed.current.districts) return;
+    lastProcessed.current.districts = apiDistricts;
 
     const loadedDistricts = apiDistricts.map(fromApiDistrict);
     const streetGridRoads = apiDistricts.flatMap(roadsFromApiStreetGrid);
@@ -803,6 +822,8 @@ export function FeaturesProvider({
   // Neighborhoods refetch (post-init)
   useEffect(() => {
     if (!initialLoadDone.current || !worldId || !apiNeighborhoods) return;
+    if (apiNeighborhoods === lastProcessed.current.neighborhoods) return;
+    lastProcessed.current.neighborhoods = apiNeighborhoods;
 
     setFeaturesState((prev) => ({
       ...prev,
@@ -814,6 +835,8 @@ export function FeaturesProvider({
   useEffect(() => {
     if (!initialLoadDone.current || !worldId) return;
     if (apiCityLimits === undefined) return;
+    if (apiCityLimits === lastProcessed.current.cityLimits) return;
+    lastProcessed.current.cityLimits = apiCityLimits;
 
     setFeaturesState((prev) => ({
       ...prev,
@@ -831,6 +854,8 @@ export function FeaturesProvider({
   // POIs refetch (post-init)
   useEffect(() => {
     if (!initialLoadDone.current || !worldId || !apiPOIs) return;
+    if (apiPOIs === lastProcessed.current.pois) return;
+    lastProcessed.current.pois = apiPOIs;
 
     setFeaturesState((prev) => ({
       ...prev,
@@ -841,6 +866,8 @@ export function FeaturesProvider({
   // Road network refetch (post-init)
   useEffect(() => {
     if (!initialLoadDone.current || !worldId || !apiRoadNetwork) return;
+    if (apiRoadNetwork === lastProcessed.current.roadNetwork) return;
+    lastProcessed.current.roadNetwork = apiRoadNetwork;
 
     const networkRoads = graphToRoads(apiRoadNetwork);
     const networkRoadIds = new Set(networkRoads.map((r) => r.id));
