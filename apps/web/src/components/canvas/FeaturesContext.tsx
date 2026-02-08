@@ -79,6 +79,7 @@ import { generateAirportFeaturesForDistrict } from "./layers/airportGenerator";
 import { useTerrainOptional } from "./TerrainContext";
 import { useTransitOptional } from "./TransitContext";
 import { useToastOptional } from "../../contexts";
+import { WORLD_SIZE } from "../../utils/worldConstants";
 
 /** CITY-384: Distance from a point to a line segment. */
 function pointToSegmentDistance(p: Point, a: Point, b: Point): number {
@@ -833,6 +834,20 @@ export function FeaturesProvider({
       seedId: string,
       config?: AddDistrictConfig
     ): AddDistrictResult => {
+      // CITY-489: Reject placement outside grid bounds
+      if (
+        position.x < 0 ||
+        position.x > WORLD_SIZE ||
+        position.y < 0 ||
+        position.y > WORLD_SIZE
+      ) {
+        return {
+          generated: null,
+          wasClipped: false,
+          error: "District must be placed within the map bounds",
+        };
+      }
+
       // Extract personality from config; fall back to world settings, then hardcoded defaults
       const personality = config?.personality ?? worldSettingsToPersonality(world?.settings);
 
