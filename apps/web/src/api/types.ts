@@ -356,16 +356,9 @@ export interface Neighborhood {
 // POI Types
 // ============================================================================
 
-/** API POI types - must match backend POIType enum */
-export type POIType =
-  | "hospital"
-  | "school"
-  | "university"
-  | "park"
-  | "transit"
-  | "shopping"
-  | "civic"
-  | "industrial";
+// Import from canonical definition to avoid duplication (CITY-404)
+import type { POIType } from "../components/canvas/layers/types";
+export type { POIType };
 
 export interface POICreate {
   world_id: UUID;
