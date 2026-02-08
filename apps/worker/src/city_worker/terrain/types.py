@@ -70,10 +70,12 @@ class TerrainConfig:
 
     # Beach parameters
     beach_enabled: bool = True  # Whether to generate beaches
-    beach_height_band: float = 0.08  # Height band above water level for beaches
-    beach_min_length: int = 5  # Minimum beach segment length in cells
-    beach_slope_max: float = 0.15  # Maximum slope for beach formation (gradual slopes only)
+    beach_height_band: float = 0.025  # Height band above water level for beaches
+    beach_min_length: int = 3  # Minimum beach segment length in cells
+    beach_slope_max: float = 0.12  # Maximum slope for beach formation (gradual slopes only)
     beach_width_multiplier: float = 1.0  # Multiplier for beach width (1.0 = normal)
+    beach_max_segment_cells: int = 20  # Max cells per discrete beach segment
+    beach_gap_cells: int = 4  # Gap cells between beach segments
 
     # Bay parameters
     bay_enabled: bool = True  # Whether to generate bays
