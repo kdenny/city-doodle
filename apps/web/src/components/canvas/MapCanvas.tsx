@@ -527,8 +527,25 @@ export const MapCanvas = forwardRef<MapCanvasHandle, MapCanvasProps>(
         }
       };
 
+      // CITY-532: Pause the PixiJS ticker when the tab is backgrounded to prevent
+      // a massive catch-up freeze when the user returns. Also reset the viewport's
+      // decelerate plugin so any in-progress scroll momentum doesn't lurch forward.
+      const handleVisibilityChange = () => {
+        if (document.hidden) {
+          app.ticker.stop();
+        } else {
+          // Reset decelerate so stale velocity doesn't cause a lurch
+          viewport.plugins.get("decelerate")?.reset?.();
+          app.ticker.start();
+        }
+      };
+      document.addEventListener("visibilitychange", handleVisibilityChange);
+
       window.addEventListener("resize", handleResize);
-      resizeCleanup = () => window.removeEventListener("resize", handleResize);
+      resizeCleanup = () => {
+        window.removeEventListener("resize", handleResize);
+        document.removeEventListener("visibilitychange", handleVisibilityChange);
+      };
     };
 
     init();
