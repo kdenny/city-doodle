@@ -74,7 +74,7 @@ async def list_worlds_for_user(db: AsyncSession, user_id: UUID) -> list[World]:
     result = await db.execute(
         select(WorldModel)
         .where(WorldModel.user_id == user_id)
-        .order_by(WorldModel.created_at.desc())
+        .order_by(WorldModel.updated_at.desc())
     )
     worlds = result.scalars().all()
     return [_to_schema(w) for w in worlds]
@@ -142,4 +142,5 @@ def _to_schema(world: WorldModel) -> World:
         seed=world.seed,
         settings=settings,
         created_at=_ensure_utc(world.created_at),
+        updated_at=_ensure_utc(world.updated_at),
     )

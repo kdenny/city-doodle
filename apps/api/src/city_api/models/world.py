@@ -34,6 +34,9 @@ class World(Base):
     created_at: Mapped[datetime] = mapped_column(
         DateTime(timezone=True), server_default=func.now(), nullable=False
     )
+    updated_at: Mapped[datetime] = mapped_column(
+        DateTime(timezone=True), server_default=func.now(), onupdate=func.now(), nullable=False
+    )
 
     tiles: Mapped[list["Tile"]] = relationship("Tile", back_populates="world")
     placed_seeds: Mapped[list["PlacedSeed"]] = relationship(

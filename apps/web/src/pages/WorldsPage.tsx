@@ -29,7 +29,7 @@ function sortWorlds(worlds: World[], sortBy: SortOption): World[] {
         return new Date(b.created_at).getTime() - new Date(a.created_at).getTime();
       case "last_edited":
       default:
-        return new Date(b.created_at).getTime() - new Date(a.created_at).getTime();
+        return new Date(b.updated_at).getTime() - new Date(a.updated_at).getTime();
     }
   });
 }
@@ -54,7 +54,7 @@ export function WorldsPage() {
   const mostRecentWorld = useMemo(() => {
     if (!worlds || worlds.length === 0) return null;
     return [...worlds].sort(
-      (a, b) => new Date(b.created_at).getTime() - new Date(a.created_at).getTime()
+      (a, b) => new Date(b.updated_at).getTime() - new Date(a.updated_at).getTime()
     )[0];
   }, [worlds]);
 
@@ -152,7 +152,7 @@ export function WorldsPage() {
                 Continue working on {mostRecentWorld.name}?
               </h2>
               <p className="text-sm text-gray-500 mt-0.5">
-                Last edited {new Date(mostRecentWorld.created_at).toLocaleDateString()}
+                Last edited {new Date(mostRecentWorld.updated_at).toLocaleDateString()}
               </p>
             </div>
             <div className="flex items-center gap-3">
