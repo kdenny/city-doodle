@@ -58,9 +58,9 @@ When the user has a Figma design ready to implement:
 
 4. **Create tickets** using the ticket CLI:
    ```bash
-   bin/ticket create "Implement layout for [feature]" --label Feature --label "Low Risk" --label Frontend
-   bin/ticket create "Create UI components for [feature]" --label Feature --label "Low Risk" --label Frontend
-   bin/ticket create "Integrate [feature]" --label Feature --label "Medium Risk" --label Frontend
+   bin/ticket create "Implement layout for [feature]" --label Feature --label Frontend
+   bin/ticket create "Create UI components for [feature]" --label Feature --label Frontend
+   bin/ticket create "Integrate [feature]" --label Feature --label Frontend
    ```
 
 5. **Offer to start the first ticket**:

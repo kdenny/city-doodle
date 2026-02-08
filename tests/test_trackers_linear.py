@@ -129,7 +129,7 @@ class TestLinearTrackerGetTicket:
             "description": "Description here",
             "state": {"id": "state1", "name": "Todo"},
             "team": {"id": "team123"},
-            "labels": {"nodes": [{"name": "Bug"}, {"name": "High Risk"}]},
+            "labels": {"nodes": [{"name": "Bug"}, {"name": "Frontend"}]},
             "url": "https://linear.app/test/issue/TEST-1",
         }
         mock_response = {"data": {"issue": mock_issue}}
@@ -142,7 +142,7 @@ class TestLinearTrackerGetTicket:
         assert ticket.title == "Test Issue"
         assert ticket.description == "Description here"
         assert ticket.status == "Todo"
-        assert ticket.labels == ["Bug", "High Risk"]
+        assert ticket.labels == ["Bug", "Frontend"]
         assert ticket.url == "https://linear.app/test/issue/TEST-1"
 
     def test_get_ticket_not_found(self) -> None:
@@ -653,7 +653,7 @@ class TestLinearTrackerParseIssue:
             "title": "Test Issue",
             "description": "Test description",
             "state": {"name": "In Progress"},
-            "labels": {"nodes": [{"name": "Bug"}, {"name": "High Risk"}]},
+            "labels": {"nodes": [{"name": "Bug"}, {"name": "Frontend"}]},
             "url": "https://linear.app/test/issue/TEST-1",
         }
 
@@ -663,7 +663,7 @@ class TestLinearTrackerParseIssue:
         assert ticket.title == "Test Issue"
         assert ticket.description == "Test description"
         assert ticket.status == "In Progress"
-        assert ticket.labels == ["Bug", "High Risk"]
+        assert ticket.labels == ["Bug", "Frontend"]
         assert ticket.url == "https://linear.app/test/issue/TEST-1"
         assert ticket.raw == issue
 
@@ -974,20 +974,20 @@ class TestNormalizeLabels:
     """Tests for TrackerBase._normalize_labels."""
 
     def test_already_individual_labels(self) -> None:
-        result = TrackerBase._normalize_labels(["Bug", "Frontend", "Low Risk"])
-        assert result == ["Bug", "Frontend", "Low Risk"]
+        result = TrackerBase._normalize_labels(["Bug", "Frontend", "Backend"])
+        assert result == ["Bug", "Frontend", "Backend"]
 
     def test_comma_separated_single_string(self) -> None:
-        result = TrackerBase._normalize_labels(["Bug,Frontend,Low Risk"])
-        assert result == ["Bug", "Frontend", "Low Risk"]
+        result = TrackerBase._normalize_labels(["Bug,Frontend,Backend"])
+        assert result == ["Bug", "Frontend", "Backend"]
 
     def test_mixed_individual_and_comma_separated(self) -> None:
         result = TrackerBase._normalize_labels(["Bug,Frontend", "v1"])
         assert result == ["Bug", "Frontend", "v1"]
 
     def test_extra_whitespace_trimmed(self) -> None:
-        result = TrackerBase._normalize_labels(["Bug , Frontend , Low Risk"])
-        assert result == ["Bug", "Frontend", "Low Risk"]
+        result = TrackerBase._normalize_labels(["Bug , Frontend , Backend"])
+        assert result == ["Bug", "Frontend", "Backend"]
 
     def test_empty_parts_skipped(self) -> None:
         result = TrackerBase._normalize_labels(["Bug,,Frontend", ""])
@@ -1006,12 +1006,12 @@ class TestLinearGetOrCreateLabelIdsNormalization:
         mock_labels = [
             {"id": "label-1", "name": "Bug"},
             {"id": "label-2", "name": "Frontend"},
-            {"id": "label-3", "name": "Low Risk"},
+            {"id": "label-3", "name": "Backend"},
         ]
         mock_response = {"data": {"team": {"labels": {"nodes": mock_labels}}}}
 
         with patch.object(tracker, "_execute_query", return_value=mock_response):
-            ids = tracker._get_or_create_label_ids("team_abc", ["Bug,Frontend,Low Risk"])
+            ids = tracker._get_or_create_label_ids("team_abc", ["Bug,Frontend,Backend"])
 
         assert ids == ["label-1", "label-2", "label-3"]
 

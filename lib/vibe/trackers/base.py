@@ -25,8 +25,8 @@ class TrackerBase(ABC):
     def _normalize_labels(label_names: list[str]) -> list[str]:
         """Split comma-separated label strings into individual labels.
 
-        Handles the case where labels are passed as ["Bug,Frontend,Low Risk"]
-        instead of ["Bug", "Frontend", "Low Risk"].
+        Handles the case where labels are passed as ["Bug,Frontend,Backend"]
+        instead of ["Bug", "Frontend", "Backend"].
         """
         normalized: list[str] = []
         for name in label_names:

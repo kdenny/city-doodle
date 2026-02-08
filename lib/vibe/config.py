@@ -23,7 +23,6 @@ DEFAULT_CONFIG: dict[str, Any] = {
     },
     "labels": {
         "type": ["Bug", "Feature", "Chore", "Refactor"],
-        "risk": ["Low Risk", "Medium Risk", "High Risk"],
         "area": ["Frontend", "Backend", "Infra", "Docs"],
         "special": ["HUMAN", "Milestone", "Blocked"],
     },

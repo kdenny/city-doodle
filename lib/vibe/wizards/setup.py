@@ -43,14 +43,6 @@ Closes #<!-- ticket number -->
 
 -
 
-## Risk Assessment
-
-<!-- Select one risk level and delete the others -->
-
-- [ ] **Low Risk** - Minimal scope, well-tested, low blast radius
-- [ ] **Medium Risk** - Moderate scope, may affect multiple components
-- [ ] **High Risk** - Large scope, critical path, or infrastructure changes
-
 ## Testing
 
 - [ ] Unit tests added/updated
@@ -61,7 +53,6 @@ Closes #<!-- ticket number -->
 - [ ] Code follows project conventions
 - [ ] No secrets or credentials committed
 - [ ] PR title includes ticket reference
-- [ ] Risk label added
 """
 
 

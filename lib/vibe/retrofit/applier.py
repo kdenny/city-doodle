@@ -275,10 +275,6 @@ class RetrofitApplier:
             ("Feature", "a2eeef", "New feature or request"),
             ("Chore", "fef2c0", "Maintenance or cleanup"),
             ("Refactor", "c5def5", "Code improvement without behavior change"),
-            # Risk labels
-            ("Low Risk", "0e8a16", "Minimal scope, well-tested, low blast radius"),
-            ("Medium Risk", "fbca04", "Moderate scope, may affect multiple components"),
-            ("High Risk", "b60205", "Large scope, critical path, or infrastructure"),
             # Area labels
             ("Frontend", "1d76db", "UI and client-side code"),
             ("Backend", "5319e7", "Server, API, business logic"),
@@ -347,14 +343,6 @@ Closes #<!-- ticket number -->
 
 -
 
-## Risk Assessment
-
-<!-- Select one risk level and delete the others -->
-
-- [ ] **Low Risk** - Minimal scope, well-tested, low blast radius
-- [ ] **Medium Risk** - Moderate scope, may affect multiple components
-- [ ] **High Risk** - Large scope, critical path, or infrastructure changes
-
 ## Testing
 
 - [ ] Unit tests added/updated
@@ -365,7 +353,6 @@ Closes #<!-- ticket number -->
 - [ ] Code follows project conventions
 - [ ] No secrets or credentials committed
 - [ ] PR title includes ticket reference
-- [ ] Risk label added
 """
 
     def _get_pr_policy_workflow(self) -> str:
@@ -374,22 +361,23 @@ Closes #<!-- ticket number -->
 
 on:
   pull_request:
-    types: [opened, edited, synchronize, labeled, unlabeled]
+    types: [opened, edited, synchronize]
 
 jobs:
   check-policy:
     runs-on: ubuntu-latest
     steps:
-      - name: Check risk label
+      - name: Check ticket reference
         uses: actions/github-script@v7
         with:
           script: |
-            const labels = context.payload.pull_request.labels.map(l => l.name);
-            const riskLabels = ['Low Risk', 'Medium Risk', 'High Risk'];
-            const hasRiskLabel = labels.some(l => riskLabels.includes(l));
-
-            if (!hasRiskLabel) {
-              core.setFailed('PR must have a risk label (Low Risk, Medium Risk, or High Risk)');
+            const title = context.payload.pull_request.title;
+            const body = context.payload.pull_request.body || '';
+            const branch = context.payload.pull_request.head.ref;
+            const patterns = [/[A-Z]+-\\d+/, /\\#\\d+/];
+            const hasTicket = patterns.some(p => p.test(title) || p.test(body) || p.test(branch));
+            if (!hasTicket) {
+              core.warning('No ticket reference found in PR title, body, or branch name');
             }
 """
 

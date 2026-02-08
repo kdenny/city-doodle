@@ -61,7 +61,7 @@ bin/ticket relations PROJ-123
 
 ## 2. Label Checklist (Required When Creating Tickets)
 
-Every ticket you create must have labels from `.vibe/config.json`. Apply all three categories:
+Every ticket you create must have labels from `.vibe/config.json`. Apply both categories:
 
 ### Type (exactly one)
 
@@ -71,14 +71,6 @@ Every ticket you create must have labels from `.vibe/config.json`. Apply all thr
 | **Feature** | New functionality |
 | **Chore** | Maintenance, dependencies, cleanup |
 | **Refactor** | Code improvement, no behavior change |
-
-### Risk (exactly one)
-
-| Label | Criteria |
-|-------|----------|
-| **Low Risk** | Docs, tests, typos, minor UI tweaks |
-| **Medium Risk** | New features, bug fixes, refactoring |
-| **High Risk** | Auth, payments, database, infrastructure |
 
 ### Area (at least one; use all that apply)
 
@@ -100,7 +92,6 @@ Every ticket you create must have labels from `.vibe/config.json`. Apply all thr
 When creating a ticket, before saving:
 
 - [ ] Type label assigned (Bug / Feature / Chore / Refactor)
-- [ ] Risk label assigned (Low Risk / Medium Risk / High Risk)
 - [ ] Area label(s) assigned (Frontend / Backend / Infra / Docs)
 - [ ] Blocking relationships point the right way (prerequisite blocks dependent)
 - [ ] **Priority (Linear only):** If the ticket has a priority, set the **Priority field** (not a label). See [Priority field](#5-priority-field-linear) below.
@@ -160,9 +151,11 @@ If you use the Linear API to create issues, pass `priority` in the issue input (
 | Do | Don't |
 |----|--------|
 | Prerequisite ticket **blocks** dependent ticket | Foundation ticket "blocked by" later tickets |
-| Assign type + risk + area on every ticket | Leave type/risk/area unset |
+| Assign type + area on every ticket | Leave type/area unset |
 | Set **Priority field** in Linear (Urgent/High/Medium/Low) | Use P0/P1/P2/P3 as **labels** |
-| Use "Milestone" label for epic-style work | Rely only on priority labels without type/risk/area |
+| Use "Milestone" label for epic-style work | Rely only on priority labels without type/area |
 | Verb + Object titles | Vague titles like "Fix stuff" |
 
 See also: `CLAUDE.md` (Ticket Management, Creating Tickets, Label Documentation), `recipes/tickets/linear-setup.md`, `recipes/tickets/shortcut.md`.
+
+> **Note:** Risk labels (Low Risk, Medium Risk, High Risk) are no longer used. They discouraged AI agents from picking up tickets. Use only Type + Area labels.
