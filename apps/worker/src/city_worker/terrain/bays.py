@@ -10,8 +10,7 @@ from typing import Any
 
 import numpy as np
 from numpy.typing import NDArray
-from shapely.geometry import LineString, MultiPoint, Point, Polygon
-from shapely.ops import unary_union
+from shapely.geometry import Polygon
 
 from city_worker.terrain.types import TerrainFeature
 
@@ -614,86 +613,3 @@ def extract_bays(
         )
 
     return features
-
-
-def apply_bay_erosion(
-    heightfield: NDArray[np.float64],
-    bay_features: list[TerrainFeature],
-    water_level: float,
-    tile_x: int,
-    tile_y: int,
-    tile_size: float,
-    erosion_strength: float = 0.5,
-) -> NDArray[np.float64]:
-    """Apply erosion effects within bay regions.
-
-    Deepens the bay area and creates natural depth gradients,
-    simulating the erosion that creates real-world bays.
-
-    Args:
-        heightfield: 2D height array
-        bay_features: List of detected bay features
-        water_level: Water level threshold
-        tile_x, tile_y: Tile coordinates
-        tile_size: Tile size in world units
-        erosion_strength: How much to erode (0-1)
-
-    Returns:
-        Modified heightfield with bay erosion applied
-    """
-    result = heightfield.copy()
-    h, w = heightfield.shape
-    cell_size = tile_size / w
-
-    for feature in bay_features:
-        if feature.type != "bay":
-            continue
-
-        coords = feature.geometry.get("coordinates", [[]])
-        if not coords or not coords[0]:
-            continue
-
-        try:
-            bay_poly = Polygon(coords[0])
-            if not bay_poly.is_valid:
-                continue
-        except Exception:
-            continue
-
-        # Get bay properties
-        max_depth = feature.properties.get("max_water_depth", 0.1)
-        is_river_mouth = feature.properties.get("is_river_mouth", False)
-
-        # Apply erosion to cells within bay bounds
-        minx, miny, maxx, maxy = bay_poly.bounds
-
-        for i in range(h):
-            for j in range(w):
-                world_x = tile_x * tile_size + (j + 0.5) * cell_size
-                world_y = tile_y * tile_size + (i + 0.5) * cell_size
-
-                if not (minx <= world_x <= maxx and miny <= world_y <= maxy):
-                    continue
-
-                point = Point(world_x, world_y)
-                if bay_poly.contains(point):
-                    current_height = result[i, j]
-
-                    # Calculate erosion based on distance from bay center
-                    centroid = bay_poly.centroid
-                    dist_to_center = point.distance(centroid)
-                    max_dist = np.sqrt(bay_poly.area / np.pi)
-
-                    # More erosion toward center (deeper)
-                    normalized_dist = min(1.0, dist_to_center / max_dist) if max_dist > 0 else 0
-                    erosion = erosion_strength * max_depth * (1 - normalized_dist ** 2)
-
-                    # River mouths erode more
-                    if is_river_mouth:
-                        erosion *= 1.3
-
-                    # Apply erosion (lower height = deeper water)
-                    new_height = current_height - erosion
-                    result[i, j] = max(0.0, new_height)
-
-    return result
