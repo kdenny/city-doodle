@@ -3,10 +3,12 @@
  *
  * Handles two levels of inter-district road connectivity:
  *
- * ## 1. Arterial/Highway connections (`generateInterDistrictRoads`)
+ * ## 1. Arterial/Collector connections (`generateInterDistrictRoads`)
  * When a district is placed, automatically generates roads connecting it to
  * nearby districts to form a connected road network.
- * - Short connections (<5mi) become arterials; longer ones become highways
+ * - Arterials connect major districts (downtown, commercial, industrial, etc.)
+ * - Collectors connect minor districts (residential-to-residential)
+ * - Highways are never auto-generated; they must be explicitly placed by the user
  * - Algorithm: find nearest district (always connect), then connect to districts
  *   within 10mi prioritizing downtown, route around water when possible
  *
@@ -27,7 +29,7 @@
  *   are NOT regenerated when districts are moved or reshaped.
  */
 
-import type { District, Road, Point, RoadClass, WaterFeature } from "./types";
+import type { District, DistrictType, Road, Point, RoadClass, WaterFeature } from "./types";
 import { generateId } from "../../../utils/idGenerator";
 
 /**
@@ -36,19 +38,13 @@ import { generateId } from "../../../utils/idGenerator";
 export interface InterDistrictConfig {
   /** Maximum distance in world units to connect districts (default: ~10 miles) */
   maxConnectionDistance?: number;
-  /** Road class for inter-district connections */
-  roadClass?: RoadClass;
   /** Whether to avoid water features */
   avoidWater?: boolean;
-  /** Distance threshold above which connections become highways (default: ~5 miles) */
-  highwayThreshold?: number;
 }
 
 const DEFAULT_CONFIG: Required<InterDistrictConfig> = {
   maxConnectionDistance: 150, // ~10 miles in world units (768 units = 50 miles)
-  roadClass: "arterial",
   avoidWater: true,
-  highwayThreshold: 75, // ~5 miles in world units - longer connections become highways
 };
 
 /**
@@ -466,10 +462,6 @@ export function generateInterDistrictRoads(
   const roads: Road[] = [];
   const connectedDistrictIds: string[] = [];
 
-  // CITY-422: Reset highway counter per call so numbering is deterministic
-  // and doesn't leak across place/delete cycles.
-  highwayCounter = 1;
-
   if (existingDistricts.length === 0) {
     return { roads, connectedDistrictIds };
   }
@@ -511,7 +503,6 @@ export function generateInterDistrictRoads(
       nearest.centroid,
       waterFeatures,
       cfg,
-      nearest.distance
     );
     roads.push(road);
     connectedDistrictIds.push(nearest.district.id);
@@ -544,7 +535,6 @@ export function generateInterDistrictRoads(
       info.centroid,
       waterFeatures,
       cfg,
-      info.distance
     );
     roads.push(road);
     connectedDistrictIds.push(info.district.id);
@@ -553,75 +543,39 @@ export function generateInterDistrictRoads(
   return { roads, connectedDistrictIds };
 }
 
-/** Running counter for highway numbering within a session */
-let highwayCounter = 1;
-
 /**
- * Highway naming convention inspired by US road classification.
- *
- * - Long-distance highways get Interstate-style names (I-5, I-90)
- * - Medium-distance highways get US Route-style names (US-1, US-30)
- * - Short highways get State Route-style names (SR 7, SR 12)
- *
- * Following real-world convention:
- *   - Odd numbers for predominantly N/S routes
- *   - Even numbers for predominantly E/W routes
- */
-
-/** Distance thresholds for highway naming tiers (world units) */
-const INTERSTATE_THRESHOLD = 120; // ~8 miles — long cross-city routes
-const US_ROUTE_THRESHOLD = 75;    // ~5 miles — medium inter-district routes
-
-/**
- * Pick a route number that is odd for N/S roads and even for E/W roads.
- */
-function pickRouteNumber(counter: number, isNorthSouth: boolean): number {
-  // Map counter to the appropriate odd/even number
-  // counter 1 → odd=1, even=2; counter 2 → odd=3, even=4; etc.
-  const base = counter * 2;
-  return isNorthSouth ? base - 1 : base;
-}
-
-/**
- * Determine whether a road runs predominantly North/South based on its endpoints.
- */
-function isNorthSouthRoute(from: Point, to: Point): boolean {
-  const dx = Math.abs(to.x - from.x);
-  const dy = Math.abs(to.y - from.y);
-  return dy >= dx; // More vertical than horizontal → N/S
-}
-
-/**
- * Generate a name for an inter-district road based on its class and geometry.
+ * Generate a name for an inter-district road based on its class.
  */
 function generateRoadName(
   roadClass: RoadClass,
   fromDistrict: District,
   toDistrict: District,
-  fromCentroid: Point,
-  toCentroid: Point,
-  connectionDistance: number
 ): string {
-  if (roadClass === "highway") {
-    const ns = isNorthSouthRoute(fromCentroid, toCentroid);
-    const num = pickRouteNumber(highwayCounter++, ns);
-
-    if (connectionDistance >= INTERSTATE_THRESHOLD) {
-      return `I-${num}`;
-    }
-    if (connectionDistance >= US_ROUTE_THRESHOLD) {
-      return `US-${num}`;
-    }
-    return `SR ${num}`;
+  // Arterials: named boulevards connecting the two districts
+  if (roadClass === "arterial") {
+    return `${fromDistrict.name} - ${toDistrict.name} Blvd`;
   }
 
-  // Arterials: named boulevards connecting the two districts
-  return `${fromDistrict.name} - ${toDistrict.name} Blvd`;
+  // Collectors: named streets
+  return `${fromDistrict.name} - ${toDistrict.name} St`;
 }
+
+/** District types that warrant arterial-class inter-district connections */
+const MAJOR_DISTRICT_TYPES: Set<DistrictType> = new Set([
+  "downtown",
+  "commercial",
+  "industrial",
+  "hospital",
+  "university",
+  "airport",
+]);
 
 /**
  * Create a road connecting two districts.
- * Connections longer than the highway threshold are auto-upgraded to highways.
+ * CITY-501: Road class is context-dependent — arterial when either district is a
+ * major type (downtown, commercial, industrial, hospital, university, airport),
+ * collector otherwise. Highways are never auto-generated; they must be explicitly
+ * placed by the user.
  */
 function createConnectionRoad(
   fromDistrict: District,
@@ -630,7 +584,6 @@ function createConnectionRoad(
   toCentroid: Point,
   waterFeatures: WaterFeature[],
   config: Required<InterDistrictConfig>,
-  connectionDistance: number
 ): Road {
   // Find connection points on district perimeters
   const fromPerimeter = findNearestPointOnPolygon(
@@ -650,15 +603,14 @@ function createConnectionRoad(
     pathPoints = [fromPerimeter, toPerimeter];
   }
 
-  // Auto-upgrade to highway for long-distance connections (only from default arterial)
-  const roadClass =
-    config.roadClass === "arterial" && connectionDistance >= config.highwayThreshold
-      ? "highway"
-      : config.roadClass;
+  // CITY-501: Use arterial for major districts, collector for minor (e.g. residential-to-residential)
+  const isMajorConnection =
+    MAJOR_DISTRICT_TYPES.has(fromDistrict.type) || MAJOR_DISTRICT_TYPES.has(toDistrict.type);
+  const roadClass: RoadClass = isMajorConnection ? "arterial" : "collector";
 
   return {
     id: generateId(`inter-district-${fromDistrict.id}-${toDistrict.id}`),
-    name: generateRoadName(roadClass, fromDistrict, toDistrict, fromCentroid, toCentroid, connectionDistance),
+    name: generateRoadName(roadClass, fromDistrict, toDistrict),
     roadClass,
     line: { points: pathPoints },
   };

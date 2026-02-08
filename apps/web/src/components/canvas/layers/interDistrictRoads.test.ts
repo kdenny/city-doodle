@@ -73,39 +73,23 @@ describe("generateInterDistrictRoads", () => {
     expect(result.connectedDistrictIds).toContain("existing-1");
   });
 
-  it("creates arterial roads for short connections", () => {
-    // Distance ~42 units (well below 75 highway threshold)
-    const newDistrict = createDistrict("new-1", 130, 130);
-    const existingDistricts = [createDistrict("existing-1", 100, 100)];
+  it("creates arterial roads when connecting to major district types", () => {
+    // CITY-501: arterial when either district is a major type
+    const newDistrict = createDistrict("new-1", 130, 130, 50, "residential");
+    const existingDistricts = [createDistrict("existing-1", 100, 100, 50, "downtown")];
 
     const result = generateInterDistrictRoads(newDistrict, existingDistricts);
 
     expect(result.roads[0].roadClass).toBe("arterial");
   });
 
-  it("auto-upgrades long connections to highways", () => {
-    // Distance ~141 units (above 75 highway threshold)
-    const newDistrict = createDistrict("new-1", 200, 200);
-    const existingDistricts = [createDistrict("existing-1", 100, 100)];
+  it("creates collector roads for residential-to-residential connections", () => {
+    // CITY-501: collector when both districts are minor types
+    const newDistrict = createDistrict("new-1", 200, 200, 50, "residential");
+    const existingDistricts = [createDistrict("existing-1", 100, 100, 50, "residential")];
 
     const result = generateInterDistrictRoads(newDistrict, existingDistricts);
 
-    expect(result.roads[0].roadClass).toBe("highway");
-    expect(result.roads[0].name).toMatch(/^(I-|US-|SR )\d+$/);
-  });
-
-  it("respects custom road class configuration", () => {
-    const newDistrict = createDistrict("new-1", 200, 200);
-    const existingDistricts = [createDistrict("existing-1", 100, 100)];
-
-    const result = generateInterDistrictRoads(
-      newDistrict,
-      existingDistricts,
-      [],
-      { roadClass: "collector" }
-    );
-
-    // Custom road class should NOT be auto-upgraded to highway
     expect(result.roads[0].roadClass).toBe("collector");
   });
 
@@ -163,23 +147,11 @@ describe("generateInterDistrictRoads", () => {
     expect(uniqueIds.size).toBe(ids.length);
   });
 
-  it("generates highway names for long connections", () => {
-    // Distance ~141 units (above highway threshold)
-    const newDistrict = createDistrict("new-1", 200, 200);
+  it("generates boulevard names for arterial connections", () => {
+    // CITY-501: arterial when connecting to a major district type
+    const newDistrict = createDistrict("new-1", 130, 130, 50, "residential");
     newDistrict.name = "New Town";
-    const existingDistricts = [createDistrict("existing-1", 100, 100)];
-    existingDistricts[0].name = "Old Town";
-
-    const result = generateInterDistrictRoads(newDistrict, existingDistricts);
-
-    expect(result.roads[0].name).toMatch(/^(I-|US-|SR )\d+$/);
-  });
-
-  it("generates boulevard names for short arterial connections", () => {
-    // Distance ~42 units (below highway threshold)
-    const newDistrict = createDistrict("new-1", 130, 130);
-    newDistrict.name = "New Town";
-    const existingDistricts = [createDistrict("existing-1", 100, 100)];
+    const existingDistricts = [createDistrict("existing-1", 100, 100, 50, "downtown")];
     existingDistricts[0].name = "Old Town";
 
     const result = generateInterDistrictRoads(newDistrict, existingDistricts);
@@ -187,6 +159,20 @@ describe("generateInterDistrictRoads", () => {
     expect(result.roads[0].name).toContain("New Town");
     expect(result.roads[0].name).toContain("Old Town");
     expect(result.roads[0].name).toContain("Blvd");
+  });
+
+  it("generates street names for collector connections", () => {
+    // CITY-501: collector when both districts are minor types
+    const newDistrict = createDistrict("new-1", 130, 130, 50, "residential");
+    newDistrict.name = "New Town";
+    const existingDistricts = [createDistrict("existing-1", 100, 100, 50, "residential")];
+    existingDistricts[0].name = "Old Town";
+
+    const result = generateInterDistrictRoads(newDistrict, existingDistricts);
+
+    expect(result.roads[0].name).toContain("New Town");
+    expect(result.roads[0].name).toContain("Old Town");
+    expect(result.roads[0].name).toContain("St");
   });
 });
 

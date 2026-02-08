@@ -1188,7 +1188,7 @@ export function FeaturesProvider({
         generated.district,
         currentFeatures.districts,
         waterFeatures,
-        { roadClass: "arterial", avoidWater: true },
+        { avoidWater: true },
         adjacentDistrictIds
       );
 

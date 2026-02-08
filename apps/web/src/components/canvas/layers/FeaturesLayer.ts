@@ -103,7 +103,7 @@ const ROAD_STYLES: Record<RoadClass, RoadStyle> = {
     casingWidth: 1.5,
     casingColor: 0x777777, // Gray outline
     dashed: false,
-    minZoom: 0.15, // Visible at most zoom levels
+    minZoom: 0, // CITY-500: Always visible (was 0.15)
   },
   local: {
     width: 2,
@@ -111,7 +111,7 @@ const ROAD_STYLES: Record<RoadClass, RoadStyle> = {
     casingWidth: 1,
     casingColor: 0x888888, // Gray outline
     dashed: false,
-    minZoom: 0.3, // Visible when not extremely zoomed out
+    minZoom: 0.05, // CITY-500: Visible at nearly all zoom levels (was 0.3)
   },
   trail: {
     width: 2,
@@ -119,7 +119,7 @@ const ROAD_STYLES: Record<RoadClass, RoadStyle> = {
     casingWidth: 0,
     casingColor: 0x000000,
     dashed: true,
-    minZoom: 0.6, // Medium+ zoom
+    minZoom: 0.15, // CITY-500: Visible at most zoom levels (was 0.6)
   },
 };
 
@@ -542,13 +542,20 @@ export class FeaturesLayer {
     if (bridgesChanged) this.renderBridges(data.bridges || []);
     if (interchangesChanged) this.renderInterchanges(data.interchanges || []);
     if (poisChanged) this.renderPOIs(data.pois);
+
+    // CITY-499: Re-apply visibility after render so toggled-off layers stay hidden
+    this.applyVisibility();
   }
 
-  setVisibility(visibility: LayerVisibility): void {
+setVisibility(visibility: LayerVisibility & { neighborhoods?: boolean; cityLimits?: boolean; bridges?: boolean }): void {
     this.storedVisibility = visibility;
     this.applyVisibility();
   }
 
+/** CITY-499: Apply stored visibility to all graphics containers.
+   *  Called both from setVisibility() and at the end of setData() so that
+   *  a re-render (which recreates Graphics content) never accidentally
+   *  leaves a layer visible when the user has toggled it off. */
   private applyVisibility(): void {
     if (!this.storedVisibility) return;
     const v = this.storedVisibility;
@@ -647,6 +654,8 @@ export class FeaturesLayer {
         this.dirtyPois = false;
         this.renderPOIs(this.data.pois);
       }
+      // CITY-499: Re-apply visibility after zoom/pan re-render
+      this.applyVisibility();
     });
   }
 
@@ -694,6 +703,7 @@ export class FeaturesLayer {
     // Clamp between 0.5x and 3x to avoid extreme values
     return Math.max(0.5, Math.min(3, avgDiameter / referenceDiameter));
   }
+
 
 
 
