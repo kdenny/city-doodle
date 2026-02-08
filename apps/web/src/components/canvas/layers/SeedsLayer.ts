@@ -121,6 +121,8 @@ export class SeedsLayer {
 
   /**
    * Set or clear the preview seed.
+   * CITY-498: Reuses Graphics and Text objects instead of destroying and recreating
+   * them on every mousemove, reducing GC pressure during placement.
    */
   setPreview(preview: PreviewSeedData | null): void {
     if (!preview) {
@@ -328,10 +330,10 @@ export class SeedsLayer {
   }
 
   destroy(): void {
-    this.container.destroy({ children: true });
-    this.seedGraphics.clear();
     this.previewGraphics = null;
     this.previewText = null;
+    this.container.destroy({ children: true });
+    this.seedGraphics.clear();
     this.previewTextStyles.clear();
   }
 }

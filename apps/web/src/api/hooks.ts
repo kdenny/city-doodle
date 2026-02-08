@@ -413,13 +413,10 @@ export function useCreateJob(
   const queryClient = useQueryClient();
   return useMutation({
     mutationFn: (data: JobCreate) => api.jobs.create(data),
-    onSuccess: (job) => {
+    onSuccess: () => {
+      // CITY-497: jobs() key ["jobs"] prefix-matches ["jobs", { tileId }],
+      // so a single invalidation covers both filtered and unfiltered queries.
       queryClient.invalidateQueries({ queryKey: queryKeys.jobs() });
-      if (job.tile_id) {
-        queryClient.invalidateQueries({
-          queryKey: queryKeys.jobs({ tileId: job.tile_id }),
-        });
-      }
     },
     ...options,
   });
