@@ -101,6 +101,7 @@ const DISTRICT_POI_TYPES: Partial<Record<DistrictType, POIType[]>> = {
   residential: ["shopping", "civic"],
   commercial: ["shopping", "civic", "shopping"],
   airport: ["transit", "shopping"],
+  park: ["park", "civic"],
 };
 
 /**
@@ -116,6 +117,7 @@ const POI_COUNT_RANGE: Partial<Record<DistrictType, [number, number]>> = {
   residential: [1, 2],
   commercial: [2, 3],
   airport: [1, 2],
+  park: [1, 2],
 };
 
 // ============================================================================
