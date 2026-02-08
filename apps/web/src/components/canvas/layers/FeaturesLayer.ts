@@ -430,6 +430,8 @@ export class FeaturesLayer {
   private poiIndex: POISpatialIndex = new POISpatialIndex();
   /** Spatial index for fast district hit testing */
   private districtIndex: DistrictSpatialIndex = new DistrictSpatialIndex();
+  /** CITY-421: Viewport bounds in world coordinates for spatial culling */
+  private viewportBounds: { minX: number; minY: number; maxX: number; maxY: number } | null = null;
 
   constructor() {
     this.container = new Container();
@@ -526,6 +528,18 @@ export class FeaturesLayer {
         this.renderRoadHighlight();
         this.renderPOIs(this.data.pois);
       }
+    }
+  }
+
+  /**
+   * CITY-421: Set viewport bounds in world coordinates for spatial road culling.
+   * Roads outside these bounds are skipped during rendering.
+   */
+  setViewportBounds(bounds: { minX: number; minY: number; maxX: number; maxY: number }): void {
+    this.viewportBounds = bounds;
+    if (this.data) {
+      this.renderRoads(this.data.roads);
+      this.renderRoadHighlight();
     }
   }
 
@@ -852,11 +866,29 @@ export class FeaturesLayer {
       (a, b) => classOrder.indexOf(a.roadClass) - classOrder.indexOf(b.roadClass)
     );
 
-    // Filter roads by zoom level (skip roads with unknown class to prevent crash)
+    // Filter roads by zoom level and viewport bounds (CITY-421)
+    const vb = this.viewportBounds;
     const visibleRoads = sortedRoads.filter((road) => {
       const style = ROAD_STYLES[road.roadClass];
       if (!style) return false;
-      return this.currentZoom >= style.minZoom;
+      if (this.currentZoom < style.minZoom) return false;
+
+      // CITY-421: Spatial culling — skip roads entirely outside viewport
+      if (vb) {
+        const pts = road.line.points;
+        let rMinX = Infinity, rMaxX = -Infinity, rMinY = Infinity, rMaxY = -Infinity;
+        for (const p of pts) {
+          if (p.x < rMinX) rMinX = p.x;
+          if (p.x > rMaxX) rMaxX = p.x;
+          if (p.y < rMinY) rMinY = p.y;
+          if (p.y > rMaxY) rMaxY = p.y;
+        }
+        if (rMaxX < vb.minX || rMinX > vb.maxX || rMaxY < vb.minY || rMinY > vb.maxY) {
+          return false;
+        }
+      }
+
+      return true;
     });
 
     // CITY-377 diagnostic: log render stats (throttled to avoid console spam during zoom)
