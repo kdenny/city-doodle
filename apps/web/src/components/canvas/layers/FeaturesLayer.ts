@@ -1188,6 +1188,13 @@ export class FeaturesLayer {
     }
   }
 
+  // Footprint outline colors (darker variants of POI_COLORS)
+  private static readonly FOOTPRINT_OUTLINE_COLORS: Partial<Record<POIType, number>> = {
+    university: 0x7744cc,
+    hospital: 0xcc3333,
+    shopping: 0xcc4488,
+  };
+
   private renderPOIs(pois: POI[]): void {
     if (this.poisGraphics.clear) {
       this.poisGraphics.clear();
@@ -1208,15 +1215,40 @@ export class FeaturesLayer {
       const color = POI_COLORS[poi.type] ?? 0x666666;
       const { x, y } = poi.position;
 
-      // Draw POI marker (circle with outline)
-      this.poisGraphics.setStrokeStyle({ width: strokeWidth, color: 0xffffff });
-      this.poisGraphics.circle(x, y, radius);
-      this.poisGraphics.fill({ color });
-      this.poisGraphics.stroke();
+      if (poi.footprint && poi.footprint.length >= 3) {
+        // Draw footprint polygon (filled with outline)
+        const fp = poi.footprint;
+        this.poisGraphics.moveTo(fp[0].x, fp[0].y);
+        for (let i = 1; i < fp.length; i++) {
+          this.poisGraphics.lineTo(fp[i].x, fp[i].y);
+        }
+        this.poisGraphics.closePath();
+        this.poisGraphics.fill({ color, alpha: 0.35 });
 
-      // Draw inner dot for emphasis
-      this.poisGraphics.circle(x, y, innerRadius);
-      this.poisGraphics.fill({ color: 0xffffff });
+        // Draw outline
+        const outlineColor = FeaturesLayer.FOOTPRINT_OUTLINE_COLORS[poi.type] ?? color;
+        this.poisGraphics.setStrokeStyle({ width: 1.5, color: outlineColor, alpha: 0.8 });
+        this.poisGraphics.moveTo(fp[0].x, fp[0].y);
+        for (let i = 1; i < fp.length; i++) {
+          this.poisGraphics.lineTo(fp[i].x, fp[i].y);
+        }
+        this.poisGraphics.closePath();
+        this.poisGraphics.stroke();
+
+        // Draw small center dot for label anchoring
+        this.poisGraphics.circle(x, y, 3);
+        this.poisGraphics.fill({ color: 0xffffff });
+      } else {
+        // Standard circle marker for POIs without footprints
+        this.poisGraphics.setStrokeStyle({ width: strokeWidth, color: 0xffffff });
+        this.poisGraphics.circle(x, y, radius);
+        this.poisGraphics.fill({ color });
+        this.poisGraphics.stroke();
+
+        // Draw inner dot for emphasis
+        this.poisGraphics.circle(x, y, innerRadius);
+        this.poisGraphics.fill({ color: 0xffffff });
+      }
     }
   }
 
@@ -1286,8 +1318,12 @@ export class FeaturesLayer {
 
   /**
    * Check if a point hits a POI.
+   * Uses point-in-polygon test for footprint POIs, radius test otherwise.
    */
   private hitTestPOI(poi: POI, x: number, y: number): boolean {
+    if (poi.footprint && poi.footprint.length >= 3) {
+      return pointInPolygon(x, y, poi.footprint);
+    }
     const dx = x - poi.position.x;
     const dy = y - poi.position.y;
     return Math.sqrt(dx * dx + dy * dy) <= POI_HIT_RADIUS;

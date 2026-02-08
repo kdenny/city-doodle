@@ -232,6 +232,8 @@ export interface POI {
   name: string;
   type: POIType;
   position: Point;
+  /** Optional polygon footprint for campus/compound POIs (university, hospital, shopping) */
+  footprint?: Point[];
 }
 
 export interface Neighborhood {

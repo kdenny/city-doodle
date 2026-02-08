@@ -73,7 +73,7 @@ import {
   districtRequiresArterialAdjacency,
   generateArterialConnections,
 } from "./layers/poiArterialValidator";
-import { generatePOIsForDistrict } from "./layers/poiAutoGenerator";
+import { generatePOIsForDistrict, generatePOIFootprint } from "./layers/poiAutoGenerator";
 import { generateParkFeaturesForDistrict } from "./layers/parkGenerator";
 import { generateAirportFeaturesForDistrict } from "./layers/airportGenerator";
 import { useTerrainOptional } from "./TerrainContext";
@@ -397,16 +397,20 @@ function fromApiNeighborhood(apiNeighborhood: ApiNeighborhood): Neighborhood {
 
 /**
  * Convert an API POI to a frontend POI.
+ * Hydrates footprint from type + position since footprints are not stored in the backend.
  */
 function fromApiPOI(apiPOI: ApiPOI): POI {
+  const type = apiPOI.type as POI["type"];
+  const position = {
+    x: apiPOI.position_x,
+    y: apiPOI.position_y,
+  };
   return {
     id: apiPOI.id,
     name: apiPOI.name,
-    type: apiPOI.type as POI["type"],
-    position: {
-      x: apiPOI.position_x,
-      y: apiPOI.position_y,
-    },
+    type,
+    position,
+    footprint: generatePOIFootprint(type, position),
   };
 }
 
