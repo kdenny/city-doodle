@@ -435,8 +435,18 @@ export function TransitView({
   }, [transitContext]);
 
   const handleSwitchToBuild = useCallback(() => {
+    // CITY-423: Cancel active transit line drawing before leaving transit view
+    if (transitLineDrawingContext?.state.isDrawing) {
+      transitLineDrawingContext.cancelDrawing();
+    }
+    // CITY-424: Cancel active station placement before leaving transit view
+    placementContext?.cancelPlacing();
+    // CITY-426: Clear transit line highlighting so stations aren't dimmed in build view
+    transitContext?.setHighlightedLineId(null);
+    // CITY-427: Clear feature selection to avoid stale inspector state
+    selectionContext?.clearSelection();
     setViewMode("build");
-  }, [setViewMode]);
+  }, [setViewMode, transitLineDrawingContext, placementContext, transitContext, selectionContext]);
 
   return (
     <div className="flex w-full h-full">

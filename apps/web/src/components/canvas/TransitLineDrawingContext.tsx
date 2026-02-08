@@ -43,8 +43,6 @@ interface TransitLineDrawingState {
   previewPosition: { x: number; y: number } | null;
   /** Station currently being hovered (for highlighting) */
   hoveredStation: RailStationData | null;
-  /** Whether we're waiting for user to set line properties */
-  awaitingProperties: boolean;
 }
 
 interface TransitLineDrawingContextValue {
@@ -97,7 +95,6 @@ const INITIAL_STATE: TransitLineDrawingState = {
   lineProperties: null,
   previewPosition: null,
   hoveredStation: null,
-  awaitingProperties: false,
 };
 
 const TransitLineDrawingContext = createContext<TransitLineDrawingContextValue | null>(null);
@@ -167,7 +164,6 @@ export function TransitLineDrawingProvider({
       lineProperties: defaultProperties,
       previewPosition: null,
       hoveredStation: null,
-      awaitingProperties: false,
     });
   }, [existingLineColors, existingLineNames]);
 
@@ -236,7 +232,6 @@ export function TransitLineDrawingProvider({
     setState((prev) => ({
       ...prev,
       lineProperties: properties,
-      awaitingProperties: false,
     }));
   }, []);
 
@@ -283,7 +278,6 @@ export function TransitLineDrawingProvider({
         lineProperties: properties,
         previewPosition: null,
         hoveredStation: null,
-        awaitingProperties: false,
       });
     },
     []
