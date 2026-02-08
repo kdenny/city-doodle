@@ -109,9 +109,11 @@ describe("SubwayStationLayer", () => {
       layer.setPreview(preview);
       layer.setPreview(null);
 
-      // Preview container (index 2) should be empty
+      // CITY-506: Preview objects are now hidden instead of destroyed
       const previewContainer = layer.getContainer().children[2];
-      expect(previewContainer.children.length).toBe(0);
+      for (const child of previewContainer.children) {
+        expect(child.visible).toBe(false);
+      }
     });
 
     it("should show warning message for invalid placement", () => {

@@ -215,14 +215,17 @@ export class SubwayStationLayer {
   }
 
   private updateTunnelGraphics(tunnel: SubwayTunnelData): void {
-    // For now, just recreate the graphics
+    // CITY-506: Reuse existing Graphics object instead of destroy+recreate
     const existing = this.tunnelGraphics.get(tunnel.id);
     if (existing) {
-      this.tunnelsContainer.removeChild(existing);
-      existing.destroy();
-      this.tunnelGraphics.delete(tunnel.id);
+      existing.clear();
+      const { fromStation, toStation, lineColor, geometry } = tunnel;
+      const color = lineColor ? parseInt(lineColor.replace("#", ""), 16) : SUBWAY_STATION_COLOR;
+      const points: Point[] = [fromStation, ...(geometry || []), toStation];
+      this.drawDashedLine(existing, points, color);
+    } else {
+      this.createTunnelGraphics(tunnel);
     }
-    this.createTunnelGraphics(tunnel);
   }
 
   /**
@@ -275,26 +278,30 @@ export class SubwayStationLayer {
   }
 
   private createStationGraphics(station: SubwayStationData): void {
-    const { id, name, position, isTerminus, isHub } = station;
+    const stationContainer = new Container();
+    stationContainer.label = `subway-station-${station.id}`;
+    this.populateStationContainer(stationContainer, station);
+    this.stationsContainer.addChild(stationContainer);
+    this.stationGraphics.set(station.id, stationContainer);
+  }
+
+  private populateStationContainer(container: Container, station: SubwayStationData): void {
+    const { name, position, isTerminus, isHub } = station;
     const radius = isHub ? HUB_SUBWAY_STATION_RADIUS : SUBWAY_STATION_RADIUS;
     const innerRadius = isHub ? HUB_SUBWAY_STATION_INNER_RADIUS : SUBWAY_STATION_INNER_RADIUS;
-
-    // Create container for this station
-    const stationContainer = new Container();
-    stationContainer.label = `subway-station-${id}`;
 
     // Draw the metro-style station marker
     // Outer ring (colored)
     const outer = new Graphics();
     outer.circle(position.x, position.y, radius);
     outer.fill({ color: SUBWAY_STATION_COLOR });
-    stationContainer.addChild(outer);
+    container.addChild(outer);
 
     // Inner circle (white or light background)
     const inner = new Graphics();
     inner.circle(position.x, position.y, innerRadius);
     inner.fill({ color: SUBWAY_STATION_BG_COLOR });
-    stationContainer.addChild(inner);
+    container.addChild(inner);
 
     // Metro "M" icon in center (classic subway symbol)
     const iconStyle = new TextStyle({
@@ -305,7 +312,7 @@ export class SubwayStationLayer {
     const iconText = new Text({ text: "M", style: iconStyle });
     iconText.anchor.set(0.5, 0.5);
     iconText.position.set(position.x, position.y);
-    stationContainer.addChild(iconText);
+    container.addChild(iconText);
 
     // Hub stations get a double-ring indicator
     if (isHub) {
@@ -313,14 +320,14 @@ export class SubwayStationLayer {
       hubRing.setStrokeStyle({ width: 2, color: SUBWAY_STATION_COLOR });
       hubRing.circle(position.x, position.y, radius + 4);
       hubRing.stroke();
-      stationContainer.addChild(hubRing);
+      container.addChild(hubRing);
     } else if (isTerminus) {
       // Add terminus indicator for non-hub terminus stations
       const terminusRing = new Graphics();
       terminusRing.setStrokeStyle({ width: 2, color: SUBWAY_STATION_COLOR });
       terminusRing.circle(position.x, position.y, radius + 3);
       terminusRing.stroke();
-      stationContainer.addChild(terminusRing);
+      container.addChild(terminusRing);
     }
 
     // Add station name label below
@@ -332,52 +339,43 @@ export class SubwayStationLayer {
     const labelText = new Text({ text: name, style: labelStyle });
     labelText.anchor.set(0.5, 0);
     labelText.position.set(position.x, position.y + radius + 4);
-    stationContainer.addChild(labelText);
-
-    this.stationsContainer.addChild(stationContainer);
-    this.stationGraphics.set(id, stationContainer);
+    container.addChild(labelText);
   }
 
   private updateStationGraphics(station: SubwayStationData): void {
-    // For now, just recreate the graphics
+    // CITY-506: Reuse Container, destroy children and re-populate
     const existing = this.stationGraphics.get(station.id);
     if (existing) {
-      this.stationsContainer.removeChild(existing);
-      existing.destroy({ children: true });
-      this.stationGraphics.delete(station.id);
+      existing.removeChildren().forEach((c) => c.destroy());
+      this.populateStationContainer(existing, station);
+    } else {
+      this.createStationGraphics(station);
     }
-    this.createStationGraphics(station);
   }
 
   /**
    * Set or clear the preview for subway station placement.
    */
   setPreview(preview: SubwayStationPreviewData | null): void {
-    // Clear existing preview
-    if (this.previewGraphics) {
-      this.previewContainer.removeChild(this.previewGraphics);
-      this.previewGraphics.destroy();
-      this.previewGraphics = null;
+    // CITY-506: Reuse Graphics/Text objects instead of destroy+recreate
+    if (!preview) {
+      if (this.previewGraphics) this.previewGraphics.visible = false;
+      if (this.previewText) this.previewText.visible = false;
+      if (this.previewLabel) this.previewLabel.visible = false;
+      return;
     }
-    if (this.previewText) {
-      this.previewContainer.removeChild(this.previewText);
-      this.previewText.destroy();
-      this.previewText = null;
-    }
-    if (this.previewLabel) {
-      this.previewContainer.removeChild(this.previewLabel);
-      this.previewLabel.destroy();
-      this.previewLabel = null;
-    }
-
-    if (!preview) return;
 
     const { position, isValid, isTooClose } = preview;
     const color = isValid ? SUBWAY_STATION_COLOR : SUBWAY_STATION_INVALID_COLOR;
     const bgColor = isValid ? SUBWAY_STATION_BG_COLOR : 0xffcccc;
 
-    // Create preview graphics
-    this.previewGraphics = new Graphics();
+    // Create or reuse preview graphics
+    if (!this.previewGraphics) {
+      this.previewGraphics = new Graphics();
+      this.previewContainer.addChild(this.previewGraphics);
+    }
+    this.previewGraphics.clear();
+    this.previewGraphics.visible = true;
 
     // CITY-432: Draw too-close warning ring behind the station preview
     if (isTooClose && isValid) {
@@ -405,46 +403,47 @@ export class SubwayStationLayer {
     this.previewGraphics.lineTo(position.x, position.y + crossSize);
     this.previewGraphics.stroke();
 
-    this.previewContainer.addChild(this.previewGraphics);
-
-    // Add metro icon text
-    const style = new TextStyle({
-      fontSize: 10,
-      fontWeight: "bold",
-      fill: color,
-    });
-    this.previewText = new Text({ text: "M", style });
-    this.previewText.anchor.set(0.5, 0.5);
+    // Create or reuse icon text
+    if (!this.previewText) {
+      const style = new TextStyle({ fontSize: 10, fontWeight: "bold", fill: color });
+      this.previewText = new Text({ text: "M", style });
+      this.previewText.anchor.set(0.5, 0.5);
+      this.previewContainer.addChild(this.previewText);
+    }
+    this.previewText.visible = true;
+    this.previewText.style.fill = color;
     this.previewText.position.set(position.x, position.y);
     this.previewText.alpha = 0.8;
-    this.previewContainer.addChild(this.previewText);
 
-    // If not valid, add a warning message
+    // Handle label (warning/indicator text)
     if (!isValid) {
-      this.previewLabel = new Text({
-        text: "Must be in district",
-        style: new TextStyle({
-          fontSize: 10,
-          fill: SUBWAY_STATION_INVALID_COLOR,
-          fontWeight: "bold",
-        }),
-      });
-      this.previewLabel.anchor.set(0.5, 0);
+      if (!this.previewLabel) {
+        this.previewLabel = new Text({
+          text: "Must be in district",
+          style: new TextStyle({ fontSize: 10, fill: SUBWAY_STATION_INVALID_COLOR, fontWeight: "bold" }),
+        });
+        this.previewLabel.anchor.set(0.5, 0);
+        this.previewContainer.addChild(this.previewLabel);
+      }
+      this.previewLabel.visible = true;
+      this.previewLabel.text = "Must be in district";
+      this.previewLabel.style.fill = SUBWAY_STATION_INVALID_COLOR;
       this.previewLabel.position.set(position.x, position.y + SUBWAY_STATION_RADIUS + 8);
-      this.previewContainer.addChild(this.previewLabel);
     } else if (isTooClose) {
-      // CITY-432: Show too-close warning label
-      this.previewLabel = new Text({
-        text: "Too close to station",
-        style: new TextStyle({
-          fontSize: 10,
-          fill: SUBWAY_STATION_TOO_CLOSE_COLOR,
-          fontWeight: "bold",
-        }),
-      });
-      this.previewLabel.anchor.set(0.5, 0);
+      if (!this.previewLabel) {
+        this.previewLabel = new Text({
+          text: "Too close to station",
+          style: new TextStyle({ fontSize: 10, fill: SUBWAY_STATION_TOO_CLOSE_COLOR, fontWeight: "bold" }),
+        });
+        this.previewLabel.anchor.set(0.5, 0);
+        this.previewContainer.addChild(this.previewLabel);
+      }
+      this.previewLabel.visible = true;
+      this.previewLabel.text = "Too close to station";
+      this.previewLabel.style.fill = SUBWAY_STATION_TOO_CLOSE_COLOR;
       this.previewLabel.position.set(position.x, position.y + SUBWAY_STATION_RADIUS + 8);
-      this.previewContainer.addChild(this.previewLabel);
+    } else if (this.previewLabel) {
+      this.previewLabel.visible = false;
     }
   }
 
@@ -544,5 +543,8 @@ export class SubwayStationLayer {
     this.container.destroy({ children: true });
     this.stationGraphics.clear();
     this.tunnelGraphics.clear();
+    this.previewGraphics = null;
+    this.previewText = null;
+    this.previewLabel = null;
   }
 }

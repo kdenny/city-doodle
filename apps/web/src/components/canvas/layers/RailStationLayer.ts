@@ -168,26 +168,28 @@ export class RailStationLayer {
    * Set or clear the preview for rail station placement.
    */
   setPreview(preview: RailStationPreviewData | null): void {
-    // Clear existing preview
-    if (this.previewGraphics) {
-      this.previewContainer.removeChild(this.previewGraphics);
-      this.previewGraphics.destroy();
-      this.previewGraphics = null;
+    // CITY-506: Reuse Graphics/Text objects instead of destroy+recreate
+    if (!preview) {
+      if (this.previewGraphics) this.previewGraphics.visible = false;
+      if (this.previewText) this.previewText.visible = false;
+      // Hide any indicator label children beyond graphics+text
+      for (let i = 0; i < this.previewContainer.children.length; i++) {
+        this.previewContainer.children[i].visible = false;
+      }
+      return;
     }
-    if (this.previewText) {
-      this.previewContainer.removeChild(this.previewText);
-      this.previewText.destroy();
-      this.previewText = null;
-    }
-
-    if (!preview) return;
 
     const { position, isValid, isTooClose } = preview;
     const color = isValid ? STATION_COLOR : STATION_INVALID_COLOR;
     const bgColor = isValid ? STATION_BG_COLOR : 0xffcccc;
 
-    // Create preview graphics
-    this.previewGraphics = new Graphics();
+    // Create or reuse preview graphics
+    if (!this.previewGraphics) {
+      this.previewGraphics = new Graphics();
+      this.previewContainer.addChild(this.previewGraphics);
+    }
+    this.previewGraphics.clear();
+    this.previewGraphics.visible = true;
 
     // CITY-432: Draw too-close warning ring behind the station preview
     if (isTooClose && isValid) {
@@ -215,18 +217,24 @@ export class RailStationLayer {
     this.previewGraphics.lineTo(position.x, position.y + crossSize);
     this.previewGraphics.stroke();
 
-    this.previewContainer.addChild(this.previewGraphics);
-
-    // Add icon text
-    const style = new TextStyle({
-      fontSize: 14,
-      fill: color,
-    });
-    this.previewText = new Text({ text: STATION_ICON, style });
-    this.previewText.anchor.set(0.5, 0.5);
+    // Create or reuse icon text
+    if (!this.previewText) {
+      const style = new TextStyle({ fontSize: 14, fill: color });
+      this.previewText = new Text({ text: STATION_ICON, style });
+      this.previewText.anchor.set(0.5, 0.5);
+      this.previewContainer.addChild(this.previewText);
+    }
+    this.previewText.visible = true;
+    this.previewText.style.fill = color;
     this.previewText.position.set(position.x, position.y);
     this.previewText.alpha = 0.8;
-    this.previewContainer.addChild(this.previewText);
+
+    // Remove old indicator labels (children beyond graphics + text)
+    while (this.previewContainer.children.length > 2) {
+      const child = this.previewContainer.children[this.previewContainer.children.length - 1];
+      this.previewContainer.removeChild(child);
+      child.destroy();
+    }
 
     // If not valid, add an "X" indicator
     if (!isValid) {
@@ -258,19 +266,23 @@ export class RailStationLayer {
   }
 
   private createStationGraphics(station: RailStationData): void {
-    const { id, name, position, isTerminus, lineColor, isHub } = station;
+    const stationContainer = new Container();
+    stationContainer.label = `rail-station-${station.id}`;
+    this.populateStationContainer(stationContainer, station);
+    this.stationsContainer.addChild(stationContainer);
+    this.stationGraphics.set(station.id, stationContainer);
+  }
+
+  private populateStationContainer(container: Container, station: RailStationData): void {
+    const { name, position, isTerminus, lineColor, isHub } = station;
     const color = lineColor ? parseInt(lineColor.replace("#", ""), 16) : STATION_COLOR;
     const radius = isHub ? HUB_STATION_RADIUS : STATION_RADIUS;
-
-    // Create container for this station
-    const stationContainer = new Container();
-    stationContainer.label = `rail-station-${id}`;
 
     // Draw station marker background
     const bg = new Graphics();
     bg.circle(position.x, position.y, radius);
     bg.fill({ color: STATION_BG_COLOR, alpha: 0.95 });
-    stationContainer.addChild(bg);
+    container.addChild(bg);
 
     // Draw station marker border
     const border = new Graphics();
@@ -289,7 +301,7 @@ export class RailStationLayer {
       border.circle(position.x, position.y, radius + 4);
       border.stroke();
     }
-    stationContainer.addChild(border);
+    container.addChild(border);
 
     // Add train icon (larger for hub stations)
     const iconStyle = new TextStyle({
@@ -299,7 +311,7 @@ export class RailStationLayer {
     const iconText = new Text({ text: STATION_ICON, style: iconStyle });
     iconText.anchor.set(0.5, 0.5);
     iconText.position.set(position.x, position.y);
-    stationContainer.addChild(iconText);
+    container.addChild(iconText);
 
     // Add name label below
     const labelStyle = new TextStyle({
@@ -310,21 +322,18 @@ export class RailStationLayer {
     const labelText = new Text({ text: name, style: labelStyle });
     labelText.anchor.set(0.5, 0);
     labelText.position.set(position.x, position.y + radius + 4);
-    stationContainer.addChild(labelText);
-
-    this.stationsContainer.addChild(stationContainer);
-    this.stationGraphics.set(id, stationContainer);
+    container.addChild(labelText);
   }
 
   private updateStationGraphics(station: RailStationData): void {
-    // For now, just recreate the graphics
+    // CITY-506: Reuse Container, destroy children and re-populate
     const existing = this.stationGraphics.get(station.id);
     if (existing) {
-      this.stationsContainer.removeChild(existing);
-      existing.destroy({ children: true });
-      this.stationGraphics.delete(station.id);
+      existing.removeChildren().forEach((c) => c.destroy());
+      this.populateStationContainer(existing, station);
+    } else {
+      this.createStationGraphics(station);
     }
-    this.createStationGraphics(station);
   }
 
   private createTrackGraphics(track: TrackSegmentData): void {
@@ -475,14 +484,19 @@ export class RailStationLayer {
   }
 
   private updateTrackGraphics(track: TrackSegmentData): void {
-    // For now, just recreate the graphics
+    // CITY-506: Reuse existing Graphics object instead of destroy+recreate
     const existing = this.trackGraphics.get(track.id);
     if (existing) {
-      this.tracksContainer.removeChild(existing);
-      existing.destroy();
-      this.trackGraphics.delete(track.id);
+      existing.clear();
+      const { fromStation, toStation, lineColor, geometry, isUnderground } = track;
+      const color = lineColor ? parseInt(lineColor.replace("#", ""), 16) : TRACK_COLOR;
+      const alpha = isUnderground ? TRACK_UNDERGROUND_ALPHA : 1;
+      const points: Point[] = [fromStation, ...(geometry || []), toStation];
+      this.drawRailroadTies(existing, points, color, alpha);
+      this.drawParallelRails(existing, points, color, alpha);
+    } else {
+      this.createTrackGraphics(track);
     }
-    this.createTrackGraphics(track);
   }
 
   /**
@@ -567,5 +581,7 @@ export class RailStationLayer {
     this.container.destroy({ children: true });
     this.stationGraphics.clear();
     this.trackGraphics.clear();
+    this.previewGraphics = null;
+    this.previewText = null;
   }
 }
