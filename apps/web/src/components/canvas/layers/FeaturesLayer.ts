@@ -1316,6 +1316,7 @@ setVisibility(visibility: LayerVisibility & { neighborhoods?: boolean; cityLimit
     const innerRadius = 2 * zoomScale;
     const strokeWidth = 2 * zoomScale;
 
+    // CITY-505: Viewport culling — skip POIs entirely outside the visible area
     const vb = this.viewportBounds;
 
     for (const poi of pois) {
@@ -1325,8 +1326,13 @@ setVisibility(visibility: LayerVisibility & { neighborhoods?: boolean; cityLimit
 
       const { x, y } = poi.position;
 
-      // Viewport culling — skip POIs outside visible bounds
-      if (vb && (x < vb.minX || x > vb.maxX || y < vb.minY || y > vb.maxY)) continue;
+      if (vb) {
+        const buffer = POI_HIT_RADIUS;
+        if (x + buffer < vb.minX || x - buffer > vb.maxX ||
+            y + buffer < vb.minY || y - buffer > vb.maxY) {
+          continue;
+        }
+      }
 
       const color = POI_COLORS[poi.type] ?? 0x666666;
 
