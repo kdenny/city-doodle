@@ -1,6 +1,5 @@
 import { ReactNode, useCallback, useEffect, useState } from "react";
 import { useParams } from "react-router-dom";
-import { useQueryClient } from "@tanstack/react-query";
 import { Toolbar, useToolbar, Tool } from "./Toolbar";
 import { LayersPanel, useLayers, LayerVisibility } from "./LayersPanel";
 import { PopulationPanel } from "./PopulationPanel";
@@ -15,7 +14,7 @@ import { useDrawingOptional } from "../canvas/DrawingContext";
 import { useTransitLineDrawingOptional, usePopulationStats } from "../canvas";
 import type { TransitLineProperties } from "../canvas";
 import { useEditLockOptional } from "../shell/EditLockContext";
-import { useCreateJob, useJobPolling, queryKeys } from "../../api/hooks";
+import { useCreateJob, useJobPolling } from "../../api/hooks";
 import type { RoadClass } from "../canvas/layers/types";
 
 interface BuildViewProps {
@@ -87,20 +86,17 @@ export function BuildView({
 
   // City growth simulation
   const { worldId } = useParams<{ worldId: string }>();
-  const queryClient = useQueryClient();
   const createJob = useCreateJob();
   const [growthJobId, setGrowthJobId] = useState<string | null>(null);
   const { status: growthStatus } = useJobPolling(growthJobId);
 
-  // Refresh districts when growth job completes
+  // CITY-497: useGrowthSimulation already invalidates district/road/POI caches
+  // on completion, so we only need to clear the job ID here.
   useEffect(() => {
-    if (growthStatus === "completed" && worldId) {
-      queryClient.invalidateQueries({ queryKey: queryKeys.worldDistricts(worldId) });
-      setGrowthJobId(null);
-    } else if (growthStatus === "failed") {
+    if (growthStatus === "completed" || growthStatus === "failed") {
       setGrowthJobId(null);
     }
-  }, [growthStatus, worldId, queryClient]);
+  }, [growthStatus]);
 
   const isGrowing = growthJobId !== null && growthStatus !== "completed" && growthStatus !== "failed";
 
