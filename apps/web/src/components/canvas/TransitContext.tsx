@@ -50,7 +50,7 @@ const AUTO_CONNECT_DISTANCE = 200;
 const TRANSFER_STATION_DISTANCE = 60;
 
 // Minimum distance between stations of the same type to prevent duplicates
-const MINIMUM_STATION_DISTANCE = 30;
+export const MINIMUM_STATION_DISTANCE = 30;
 
 // Default colors for rail lines
 const RAIL_LINE_COLORS = [
