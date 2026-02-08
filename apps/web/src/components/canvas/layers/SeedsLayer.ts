@@ -38,6 +38,7 @@ const CATEGORY_COLORS: Record<SeedCategory, number> = {
   poi: 0x7cb342, // Green
   transit: 0xf5a623, // Orange
   park: 0x2e7d32, // Dark green
+  airport: 0x78909c, // Blue-gray
 };
 
 // Background colors (lighter versions)
@@ -46,6 +47,7 @@ const CATEGORY_BG_COLORS: Record<SeedCategory, number> = {
   poi: 0xf1f8e9, // Light green
   transit: 0xfff3e0, // Light orange
   park: 0xe8f5e9, // Light green
+  airport: 0xeceff1, // Light gray
 };
 
 export class SeedsLayer {

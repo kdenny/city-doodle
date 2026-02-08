@@ -5,6 +5,38 @@
  * added with auto-generated street grids when seeds are placed.
  *
  * When a worldId is provided, districts are persisted to the backend API.
+ *
+ * ## Street Data Flow (CITY-377, CITY-382, CITY-383 documentation)
+ *
+ * ### Generation (district placement)
+ * 1. `generateDistrictGeometry()` creates the district polygon
+ * 2. `generateStreetGrid()` fills the polygon with a rotated grid of H+V streets
+ *    - Each street is clipped to the polygon boundary (endpoints on boundary)
+ *    - Streets get roadClass "local" or "collector" based on hierarchy rules
+ * 3. `generateInterDistrictRoads()` creates arterial/highway links to nearby districts
+ * 4. `generateCrossBoundaryConnections()` (CITY-382) bridges collector streets at
+ *    shared boundaries between adjacent districts
+ * 5. All roads are optimistically added to `featuresState.roads`
+ *
+ * ### Persistence (dual storage)
+ * - **street_grid JSONB**: Serialized to `district.street_grid` field (roads array
+ *   with flattened points, gridAngle, personality). This is the authoritative source
+ *   for district-internal streets.
+ * - **road_network graph**: Roads also saved as nodes+edges via `roadsToGraph()`.
+ *   This graph is used for routing and inter-district roads. IDs differ from
+ *   street_grid (graph uses API-generated UUIDs, street_grid uses client-generated
+ *   temp IDs that get remapped on success).
+ *
+ * ### Loading (page load / refetch)
+ * - **Effect 1** (apiDistricts): Deserializes `street_grid` JSONB back to Road[]
+ *   via `roadsFromApiStreetGrid()`. Also backfills streets for legacy districts
+ *   with null street_grid (CITY-383).
+ * - **Effect 2** (apiRoadNetwork): Loads graph roads via `graphToRoads()`, merges
+ *   with street_grid roads (IDs don't overlap, so both are kept).
+ *
+ * ### Rendering
+ * `FeaturesLayer.renderRoads()` draws all roads with class-based styling.
+ * See FeaturesLayer.ts header for rendering pipeline details.
  */
 
 import {
@@ -23,25 +55,42 @@ import type { DistrictType } from "./layers/types";
 import { detectBridges } from "./layers/bridgeDetection";
 import {
   generateDistrictGeometry,
-  wouldOverlap,
+  clipDistrictAgainstExisting,
   regenerateStreetGridForClippedDistrict,
   regenerateStreetGridWithAngle,
+  seedIdToDistrictType,
   type DistrictGenerationConfig,
   type GeneratedDistrict,
 } from "./layers/districtGenerator";
+import type { NamingContext, NearbyContext } from "../../utils/nameGenerator";
 import {
   clipAndValidateDistrict,
   type ClipResult,
 } from "./layers/polygonUtils";
-import { generateInterDistrictRoads } from "./layers/interDistrictRoads";
+import { generateInterDistrictRoads, generateCrossBoundaryConnections } from "./layers/interDistrictRoads";
 import {
   districtRequiresArterialAdjacency,
   generateArterialConnections,
 } from "./layers/poiArterialValidator";
 import { generatePOIsForDistrict } from "./layers/poiAutoGenerator";
+import { generateParkFeaturesForDistrict } from "./layers/parkGenerator";
+import { generateAirportFeaturesForDistrict } from "./layers/airportGenerator";
 import { useTerrainOptional } from "./TerrainContext";
 import { useTransitOptional } from "./TransitContext";
 import { useToastOptional } from "../../contexts";
+
+/** CITY-384: Distance from a point to a line segment. */
+function pointToSegmentDistance(p: Point, a: Point, b: Point): number {
+  const dx = b.x - a.x;
+  const dy = b.y - a.y;
+  const lenSq = dx * dx + dy * dy;
+  if (lenSq === 0) return Math.sqrt((p.x - a.x) ** 2 + (p.y - a.y) ** 2);
+  let t = ((p.x - a.x) * dx + (p.y - a.y) * dy) / lenSq;
+  t = Math.max(0, Math.min(1, t));
+  const cx = a.x + t * dx;
+  const cy = a.y + t * dy;
+  return Math.sqrt((p.x - cx) ** 2 + (p.y - cy) ** 2);
+}
 
 /**
  * Extended config that includes personality settings for the district.
@@ -279,6 +328,15 @@ function fromGeoJsonGeometry(geometry: Record<string, unknown>): Point[] {
  */
 function fromApiDistrict(apiDistrict: ApiDistrict): District {
   const streetGrid = apiDistrict.street_grid as Record<string, unknown> | undefined;
+
+  // Restore park ponds from persisted street_grid (CITY-378)
+  let ponds: import("./layers").Polygon[] | undefined;
+  if (streetGrid?.ponds && Array.isArray(streetGrid.ponds)) {
+    ponds = (streetGrid.ponds as Array<{ points: Array<{ x: number; y: number }> }>).map(
+      (p) => ({ points: p.points.map((pt) => ({ x: pt.x, y: pt.y })) })
+    );
+  }
+
   return {
     id: apiDistrict.id,
     type: fromApiDistrictType(apiDistrict.type) as District["type"],
@@ -287,6 +345,8 @@ function fromApiDistrict(apiDistrict: ApiDistrict): District {
     isHistoric: apiDistrict.historic,
     gridAngle: typeof streetGrid?.gridAngle === "number" ? streetGrid.gridAngle : undefined,
     personality: streetGrid?.personality as District["personality"] | undefined,
+    ponds,
+    fillColor: apiDistrict.fill_color ?? undefined,
   };
 }
 
@@ -585,6 +645,49 @@ export function FeaturesProvider({
       const loadedDistricts = apiDistricts.map(fromApiDistrict);
       // Restore district-internal roads from persisted street_grid data
       const streetGridRoads = apiDistricts.flatMap(roadsFromApiStreetGrid);
+
+      // CITY-383: Backfill streets for legacy districts that predate the street_grid column.
+      // Districts with null street_grid (created before migration 014) need their grids
+      // regenerated on the fly. We also persist the result so this only happens once.
+      const backfilledRoads: Road[] = [];
+      for (const apiDistrict of apiDistricts) {
+        const districtType = fromApiDistrictType(apiDistrict.type) as District["type"];
+        if (districtType === "park" || districtType === "airport") continue;
+        if (apiDistrict.street_grid != null) continue;
+
+        const polygon = fromGeoJsonGeometry(apiDistrict.geometry);
+        if (polygon.length < 3) continue;
+
+        const centroid = { x: 0, y: 0 };
+        for (const p of polygon) { centroid.x += p.x; centroid.y += p.y; }
+        centroid.x /= polygon.length;
+        centroid.y /= polygon.length;
+
+        const gridResult = regenerateStreetGridForClippedDistrict(
+          polygon,
+          apiDistrict.id,
+          districtType,
+          centroid
+        );
+        backfilledRoads.push(...gridResult.roads);
+
+        // Persist the regenerated street_grid so we don't repeat this on every load
+        const streetGridPayload = {
+          roads: gridResult.roads.map((r) => ({
+            id: r.id,
+            name: r.name,
+            roadClass: r.roadClass,
+            districtId: r.districtId,
+            points: r.line.points.map((p) => ({ x: p.x, y: p.y })),
+          })),
+          gridAngle: gridResult.gridAngle,
+        };
+        updateDistrictMutation.mutate(
+          { districtId: apiDistrict.id, data: { street_grid: streetGridPayload }, worldId },
+          { onError: (err) => console.error(`CITY-383: Failed to backfill street_grid for ${apiDistrict.id}:`, err) }
+        );
+      }
+
       const loadedDistrictIds = new Set(loadedDistricts.map((d) => d.id));
       setFeaturesState((prev) => {
         // Keep districts that are still pending API create (not yet in API response)
@@ -594,7 +697,7 @@ export function FeaturesProvider({
         return {
           ...prev,
           districts: [...loadedDistricts, ...pendingDistricts],
-          roads: [...streetGridRoads, ...prev.roads.filter((r) => {
+          roads: [...streetGridRoads, ...backfilledRoads, ...prev.roads.filter((r) => {
             // Keep roads not belonging to any loaded district (e.g., inter-district roads,
             // or roads from pending districts whose temp IDs won't be in loadedDistrictIds)
             return !r.districtId || !loadedDistrictIds.has(r.districtId);
@@ -717,6 +820,68 @@ export function FeaturesProvider({
         }
       }
 
+      // CITY-380: Build naming context for context-aware park/airport names
+      const districtType = seedIdToDistrictType(seedId);
+      let namingContext: NamingContext | undefined;
+
+      if (districtType === "airport" || districtType === "park") {
+        // Find adjacent districts within a search radius
+        const searchRadius = config?.size ? config.size * 0.8 : 50;
+        const adjacentDistrictNames: string[] = [];
+        const adjacentDistrictTypes: NearbyContext[] = [];
+        for (const d of features.districts) {
+          // Use centroid distance as a rough proximity check
+          const cx = d.polygon.points.reduce((s, p) => s + p.x, 0) / d.polygon.points.length;
+          const cy = d.polygon.points.reduce((s, p) => s + p.y, 0) / d.polygon.points.length;
+          const dx = cx - position.x;
+          const dy = cy - position.y;
+          const dist = Math.sqrt(dx * dx + dy * dy);
+          if (dist < searchRadius) {
+            adjacentDistrictNames.push(d.name);
+            if (["residential", "downtown", "commercial", "industrial"].includes(d.type)) {
+              adjacentDistrictTypes.push(d.type as NearbyContext);
+            }
+          }
+        }
+
+        // Find nearby water features with names
+        const waterFeaturesList = terrainContext?.getWaterFeatures() ?? [];
+        const nearbyWaterNames: string[] = [];
+        for (const wf of waterFeaturesList) {
+          if (!wf.name) continue;
+          // Check if water feature is near the placement position
+          const wcx = wf.polygon.points.reduce((s, p) => s + p.x, 0) / wf.polygon.points.length;
+          const wcy = wf.polygon.points.reduce((s, p) => s + p.y, 0) / wf.polygon.points.length;
+          const dx = wcx - position.x;
+          const dy = wcy - position.y;
+          if (Math.sqrt(dx * dx + dy * dy) < searchRadius) {
+            nearbyWaterNames.push(wf.name);
+          }
+        }
+
+        // Also check rivers
+        const rivers = terrainContext?.terrainData?.rivers ?? [];
+        for (const river of rivers) {
+          if (!river.name) continue;
+          // Check if any point of the river is near the placement
+          for (const pt of river.line.points) {
+            const dx = pt.x - position.x;
+            const dy = pt.y - position.y;
+            if (Math.sqrt(dx * dx + dy * dy) < searchRadius) {
+              nearbyWaterNames.push(river.name);
+              break;
+            }
+          }
+        }
+
+        namingContext = {
+          worldName: world?.name,
+          adjacentDistrictNames: adjacentDistrictNames.length > 0 ? adjacentDistrictNames : undefined,
+          nearbyWaterNames: nearbyWaterNames.length > 0 ? nearbyWaterNames : undefined,
+          adjacentDistrictTypes: adjacentDistrictTypes.length > 0 ? adjacentDistrictTypes : undefined,
+        };
+      }
+
       const generationConfig: DistrictGenerationConfig = {
         ...config,
         organicFactor: personality.grid_organic,
@@ -732,6 +897,8 @@ export function FeaturesProvider({
         transitCar: personality.transit_car,
         // Era year affects block sizes and historic flag (CITY-225)
         eraYear: personality.era_year,
+        // CITY-380: Context-aware naming for parks and airports
+        namingContext,
       };
 
       // Generate district geometry
@@ -740,13 +907,94 @@ export function FeaturesProvider({
       // Add personality to the generated district
       generated.district.personality = personality;
 
-      // Check for overlap with existing districts
-      if (wouldOverlap(generated.district.polygon.points, features.districts)) {
-        return {
-          generated: null,
-          wasClipped: false,
-          error: "District would overlap with existing district",
-        };
+      // CITY-384: Clip against existing districts instead of rejecting overlap
+      let adjacentDistrictIds: string[] = [];
+      const districtClipResult = clipDistrictAgainstExisting(
+        generated.district.polygon.points,
+        features.districts,
+      );
+
+      if (districtClipResult.wasClipped) {
+        if (districtClipResult.tooSmall || districtClipResult.clippedPolygon.length < 3) {
+          return {
+            generated: null,
+            wasClipped: true,
+            error: "Not enough space for a new district here",
+          };
+        }
+
+        // Apply the clipped polygon
+        generated.district.polygon.points = districtClipResult.clippedPolygon;
+        adjacentDistrictIds = districtClipResult.adjacentDistrictIds;
+
+        // Determine grid angle and origin from adjacent districts for continuity
+        let adjacentGridAngle: number | undefined;
+        let adjacentGridOrigin: Point | undefined;
+        if (adjacentDistrictIds.length > 0) {
+          // Pick the grid angle from the neighbor with the longest shared boundary
+          let bestNeighborAngle: number | undefined;
+          let bestNeighborPoints: Point[] | undefined;
+          let longestSharedEdge = 0;
+
+          for (const adjId of adjacentDistrictIds) {
+            const adjDistrict = features.districts.find((d) => d.id === adjId);
+            if (!adjDistrict || adjDistrict.gridAngle === undefined) continue;
+
+            // Estimate shared boundary length: count clipped polygon points
+            // that are close to the adjacent district's boundary
+            const adjPoints = adjDistrict.polygon.points;
+            let sharedLength = 0;
+            for (let i = 0; i < districtClipResult.clippedPolygon.length; i++) {
+              const p = districtClipResult.clippedPolygon[i];
+              // Check if this point is near any edge of the adjacent district
+              for (let j = 0; j < adjPoints.length; j++) {
+                const a = adjPoints[j];
+                const b = adjPoints[(j + 1) % adjPoints.length];
+                const dist = pointToSegmentDistance(p, a, b);
+                if (dist < 2) { // Within 2 world units = on the boundary
+                  // Approximate: count segment length between consecutive shared points
+                  const next = districtClipResult.clippedPolygon[(i + 1) % districtClipResult.clippedPolygon.length];
+                  const dx = next.x - p.x;
+                  const dy = next.y - p.y;
+                  sharedLength += Math.sqrt(dx * dx + dy * dy);
+                  break;
+                }
+              }
+            }
+
+            if (sharedLength > longestSharedEdge) {
+              longestSharedEdge = sharedLength;
+              bestNeighborAngle = adjDistrict.gridAngle;
+              bestNeighborPoints = adjPoints;
+            }
+          }
+
+          adjacentGridAngle = bestNeighborAngle;
+
+          // CITY-384: Use the adjacent district's centroid as grid origin so both
+          // districts share the same rotation center and their grid lines align.
+          if (bestNeighborPoints && bestNeighborPoints.length > 0) {
+            let cx = 0, cy = 0;
+            for (const p of bestNeighborPoints) { cx += p.x; cy += p.y; }
+            adjacentGridOrigin = { x: cx / bestNeighborPoints.length, y: cy / bestNeighborPoints.length };
+          }
+        }
+
+        // Regenerate street grid for the clipped polygon with aligned grid angle and origin
+        const clippedGridResult = regenerateStreetGridForClippedDistrict(
+          districtClipResult.clippedPolygon,
+          generated.district.id,
+          generated.district.type,
+          position,
+          personality.sprawl_compact,
+          adjacentGridAngle ?? generated.district.gridAngle,
+          transitStations.length > 0
+            ? { transitStations, transitCar: personality.transit_car }
+            : undefined,
+          adjacentGridOrigin
+        );
+        generated.roads = clippedGridResult.roads;
+        generated.district.gridAngle = clippedGridResult.gridAngle;
       }
 
       // Check for water overlap and clip if necessary
@@ -801,15 +1049,30 @@ export function FeaturesProvider({
       const tempId = generated.district.id;
 
       // Generate inter-district roads connecting to existing districts (CITY-144)
+      // CITY-384: Pass adjacent district IDs so shared-boundary arterials are generated
       const interDistrictResult = generateInterDistrictRoads(
         generated.district,
         features.districts,
         waterFeatures,
-        { roadClass: "arterial", avoidWater: true }
+        { roadClass: "arterial", avoidWater: true },
+        adjacentDistrictIds
       );
 
       // Combine internal roads with inter-district roads
       let allRoads = [...generated.roads, ...interDistrictResult.roads];
+
+      // Connect collector streets across adjacent district boundaries (CITY-382)
+      // This bridges the gap between independently-generated street grids so that
+      // adjacent districts have a connected local road network, not just arterial links.
+      const crossBoundaryRoads = generateCrossBoundaryConnections(
+        generated.district,
+        generated.roads,
+        features.districts,
+        features.roads
+      );
+      if (crossBoundaryRoads.length > 0) {
+        allRoads = [...allRoads, ...crossBoundaryRoads];
+      }
 
       // For districts that require arterial adjacency (CITY-149),
       // check if connected to arterials and generate additional connections if needed
@@ -830,11 +1093,53 @@ export function FeaturesProvider({
         }
       }
 
+      // CITY-378: Generate park features (trails, ponds, perimeter roads, connections)
+      let parkPonds: import("./layers").Polygon[] = [];
+      if (generated.district.type === "park") {
+        const parkFeatures = generateParkFeaturesForDistrict(
+          generated.district.polygon.points,
+          generated.district.id,
+          generated.district.name,
+          seedId,
+          [...features.roads, ...allRoads]
+        );
+        // Add internal trails, perimeter roads, and connection roads
+        allRoads = [
+          ...allRoads,
+          ...parkFeatures.paths,
+          ...parkFeatures.perimeterRoads,
+          ...parkFeatures.connectionRoads,
+        ];
+        parkPonds = parkFeatures.ponds;
+      }
+
+      // Attach ponds to the district for rendering (CITY-378)
+      if (parkPonds.length > 0) {
+        generated.district.ponds = parkPonds;
+      }
+
+      // CITY-379: Generate airport features (runways, taxiways, access roads)
+      if (generated.district.type === "airport") {
+        const airportFeatures = generateAirportFeaturesForDistrict(
+          generated.district.polygon.points,
+          generated.district.id,
+          [...features.roads, ...allRoads]
+        );
+        allRoads = [
+          ...allRoads,
+          ...airportFeatures.runways,
+          ...airportFeatures.accessRoads,
+        ];
+      }
+
       // Auto-generate POIs matching the district type (CITY-345)
+      // Pass district roads for road-adjacent placement (CITY-406) and existing POIs to avoid overlap (CITY-409)
       const autoGeneratedPOIs = generatePOIsForDistrict(
         generated.district.type,
         generated.district.polygon.points,
-        generated.district.name
+        generated.district.name,
+        generated.roads,
+        features.pois
       );
       const autoGeneratedPOIIds = new Set(autoGeneratedPOIs.map(p => p.id));
 
@@ -850,7 +1155,7 @@ export function FeaturesProvider({
       if (worldId) {
         pendingCreates.current.add(tempId);
 
-        // Build street_grid payload with roads, gridAngle, and personality
+        // Build street_grid payload with roads, gridAngle, personality, and park ponds
         const streetGridPayload: Record<string, unknown> = {
           roads: allRoads.map((r) => ({
             id: r.id,
@@ -861,6 +1166,12 @@ export function FeaturesProvider({
           })),
           gridAngle: generated.district.gridAngle,
           personality: generated.district.personality,
+          // CITY-378: Store park pond geometries for rendering
+          ...(parkPonds.length > 0 && {
+            ponds: parkPonds.map((pond) => ({
+              points: pond.points.map((p) => ({ x: p.x, y: p.y })),
+            })),
+          }),
         };
 
         createDistrictMutation.mutate(
@@ -1430,6 +1741,7 @@ export function FeaturesProvider({
         if (updates.name !== undefined) apiUpdate.name = updates.name;
         if (updates.isHistoric !== undefined) apiUpdate.historic = updates.isHistoric;
         if (updates.type !== undefined) apiUpdate.type = toApiDistrictType(updates.type);
+        if (updates.fillColor !== undefined) apiUpdate.fill_color = updates.fillColor || null;
 
         // Only call API if there are fields to update
         if (Object.keys(apiUpdate).length > 0) {

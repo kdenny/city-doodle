@@ -105,6 +105,23 @@ export const MapCanvas = forwardRef<MapCanvasHandle, MapCanvasProps>(
     DEFAULT_LAYER_VISIBILITY
   );
 
+  // CITY-376: Hover tooltip state for stations
+  const [hoveredStationTooltip, setHoveredStationTooltip] = useState<{
+    name: string;
+    stationType: "rail" | "subway";
+    lines: { name: string; color: string }[];
+    screenX: number;
+    screenY: number;
+  } | null>(null);
+
+  // CITY-405: Hover tooltip state for POIs
+  const [hoveredPoiTooltip, setHoveredPoiTooltip] = useState<{
+    name: string;
+    poiType: string;
+    screenX: number;
+    screenY: number;
+  } | null>(null);
+
   // Try to get the context (may be null if not wrapped in provider)
   const canvasContext = useContext(MapCanvasContextInternal);
 
@@ -143,12 +160,18 @@ export const MapCanvas = forwardRef<MapCanvasHandle, MapCanvasProps>(
   const viewModeContext = useViewModeOptional();
   const viewMode = viewModeContext?.viewMode ?? "build";
 
-  // Auto-enable subway tunnel visibility in transit view
+  // CITY-395: Auto-enable subway tunnel toggle when entering transit view
+  useEffect(() => {
+    if (viewMode === "transit" && !layerVisibility.subwayTunnels) {
+      setLayerVisibility((prev) => ({ ...prev, subwayTunnels: true }));
+    }
+  }, [viewMode]);
+
+  // Sync subway tunnel rendering with visibility state
   useEffect(() => {
     if (!subwayStationLayerRef.current) return;
-    const shouldShowTunnels = viewMode === "transit" || layerVisibility.subwayTunnels;
-    subwayStationLayerRef.current.setTunnelsVisible(shouldShowTunnels);
-  }, [viewMode, layerVisibility.subwayTunnels, isReady]);
+    subwayStationLayerRef.current.setTunnelsVisible(layerVisibility.subwayTunnels);
+  }, [layerVisibility.subwayTunnels, isReady]);
 
   // Ref to setTerrainData for use in init effect (avoids stale closure)
   const setTerrainDataRef = useRef(terrainContext?.setTerrainData);
@@ -185,6 +208,9 @@ export const MapCanvas = forwardRef<MapCanvasHandle, MapCanvasProps>(
     featuresContext,
     onFeatureSelect,
     isEditingAllowed,
+    viewMode,
+    setHoveredStationTooltip,
+    setHoveredPoiTooltip,
     snapEngine: null as SnapEngine | null,
   });
 
@@ -211,6 +237,9 @@ export const MapCanvas = forwardRef<MapCanvasHandle, MapCanvasProps>(
     featuresContext,
     onFeatureSelect,
     isEditingAllowed,
+    viewMode,
+    setHoveredStationTooltip,
+    setHoveredPoiTooltip,
     snapEngine,
   };
 
@@ -1189,9 +1218,75 @@ export const MapCanvas = forwardRef<MapCanvasHandle, MapCanvasProps>(
 
         s.transitLineDrawingContext?.setHoveredStation?.(hoveredStation);
       }
+
+      // CITY-376: Station hover tooltip (transit view, non-drawing mode)
+      if (s.viewMode === "transit" && !isLineDrawing) {
+        let tooltipStation: { id: string; name: string; stationType: "rail" | "subway" } | null = null;
+
+        if (railStationLayerRef.current) {
+          const railHit = railStationLayerRef.current.hitTest(worldPos.x, worldPos.y);
+          if (railHit) {
+            tooltipStation = { id: railHit.id, name: railHit.name, stationType: "rail" };
+          }
+        }
+        if (!tooltipStation && subwayStationLayerRef.current) {
+          const subwayHit = subwayStationLayerRef.current.hitTest(worldPos.x, worldPos.y);
+          if (subwayHit) {
+            tooltipStation = { id: subwayHit.id, name: subwayHit.name, stationType: "subway" };
+          }
+        }
+
+        if (tooltipStation) {
+          // Look up lines served by this station
+          const stationLines: { name: string; color: string }[] = [];
+          const network = s.transitContext?.transitNetwork;
+          if (network) {
+            for (const line of network.lines) {
+              if (line.segments.some((seg) => seg.from_station_id === tooltipStation!.id || seg.to_station_id === tooltipStation!.id)) {
+                stationLines.push({ name: line.name, color: line.color });
+              }
+            }
+          }
+          // Position with edge-of-screen clamping
+          const container = containerRef.current;
+          const maxX = (container?.clientWidth ?? 800) - 200;
+          const maxY = (container?.clientHeight ?? 600) - 60;
+          s.setHoveredStationTooltip({
+            name: tooltipStation.name,
+            stationType: tooltipStation.stationType,
+            lines: stationLines,
+            screenX: Math.min(event.global.x + 12, maxX),
+            screenY: Math.max(Math.min(event.global.y - 8, maxY), 4),
+          });
+        } else {
+          s.setHoveredStationTooltip(null);
+        }
+      } else if (s.viewMode !== "transit") {
+        // Clear tooltip when not in transit view
+        s.setHoveredStationTooltip(null);
+      }
+
+      // CITY-405: POI hover tooltip (all view modes)
+      if (featuresLayerRef.current) {
+        const hitResult = featuresLayerRef.current.hitTest(worldPos.x, worldPos.y);
+        if (hitResult && hitResult.type === "poi") {
+          const poi = hitResult.feature as { name: string; type: string };
+          const container = containerRef.current;
+          const maxX = (container?.clientWidth ?? 800) - 200;
+          const maxY = (container?.clientHeight ?? 600) - 60;
+          s.setHoveredPoiTooltip({
+            name: poi.name,
+            poiType: poi.type,
+            screenX: Math.min(event.global.x + 12, maxX),
+            screenY: Math.max(Math.min(event.global.y - 8, maxY), 4),
+          });
+        } else {
+          s.setHoveredPoiTooltip(null);
+        }
+      }
     };
 
-    const handlePointerUp = (event: { global: { x: number; y: number } }) => {
+    const handlePointerUp = async (event: { global: { x: number; y: number } }) => {
       const s = eventStateRef.current;
       const isFreehandActive = s.drawingContext?.state.isFreehandActive ?? false;
       const endFreehand = s.drawingContext?.endFreehand;
@@ -1319,8 +1414,36 @@ export const MapCanvas = forwardRef<MapCanvasHandle, MapCanvasProps>(
 
         if (clickedStation) {
           selectStation(clickedStation);
+          return;
         }
-        // Clicking off a station does nothing (user must click a station)
+
+        // CITY-394: Auto-create station when clicking empty space during line drawing
+        const lineType = s.transitLineDrawingContext?.state.lineProperties?.type;
+        if (s.transitContext && lineType) {
+          const createStation = lineType === "subway"
+            ? s.transitContext.placeSubwayStation
+            : s.transitContext.placeRailStation;
+
+          // Create station at click position (skip auto-connect since drawing context manages connections)
+          const newStation = await createStation(
+            { x: worldPos.x, y: worldPos.y },
+            { skipAutoConnect: true }
+          );
+
+          if (newStation) {
+            // Convert to RailStationData for selectStation
+            selectStation({
+              id: newStation.id,
+              name: newStation.name,
+              position: { x: newStation.position_x, y: newStation.position_y },
+              isTerminus: false,
+              isHub: false,
+            });
+          } else {
+            // Station creation failed (outside district) — show error flash
+            seedsLayerRef.current?.showPlacementError({ x: worldPos.x, y: worldPos.y });
+          }
+        }
         return;
       }
 
@@ -1334,6 +1457,8 @@ export const MapCanvas = forwardRef<MapCanvasHandle, MapCanvasProps>(
       }
 
       // Handle feature selection (default mode - always allowed)
+      // CITY-376: Clear hover tooltip on click
+      s.setHoveredStationTooltip(null);
       if (s.onFeatureSelect) {
         // Check rail stations first (on top)
         if (railStationLayerRef.current) {
@@ -1470,6 +1595,53 @@ export const MapCanvas = forwardRef<MapCanvasHandle, MapCanvasProps>(
           onChange={handleVisibilityChange}
         />
       )}
+      {/* CITY-376: Station hover tooltip */}
+      {hoveredStationTooltip && (
+        <div
+          className="absolute pointer-events-none z-50"
+          style={{
+            left: hoveredStationTooltip.screenX + 12,
+            top: hoveredStationTooltip.screenY - 8,
+          }}
+        >
+          <div className="bg-gray-900 text-white text-xs rounded-md px-3 py-2 shadow-lg max-w-48">
+            <div className="font-medium">{hoveredStationTooltip.name}</div>
+            <div className="text-gray-400 text-[10px] mt-0.5">
+              {hoveredStationTooltip.stationType === "subway" ? "Subway" : "Rail"} Station
+            </div>
+            {hoveredStationTooltip.lines.length > 0 && (
+              <div className="mt-1 pt-1 border-t border-gray-700 space-y-0.5">
+                {hoveredStationTooltip.lines.map((line) => (
+                  <div key={line.name} className="flex items-center gap-1.5">
+                    <div
+                      className="w-2 h-2 rounded-full shrink-0"
+                      style={{ backgroundColor: line.color }}
+                    />
+                    <span className="text-gray-300">{line.name}</span>
+                  </div>
+                ))}
+              </div>
+            )}
+          </div>
+        </div>
+      )}
+      {/* CITY-405: POI hover tooltip */}
+      {hoveredPoiTooltip && !hoveredStationTooltip && (
+        <div
+          className="absolute pointer-events-none z-50"
+          style={{
+            left: hoveredPoiTooltip.screenX + 12,
+            top: hoveredPoiTooltip.screenY - 8,
+          }}
+        >
+          <div className="bg-gray-900 text-white text-xs rounded-md px-3 py-2 shadow-lg max-w-48">
+            <div className="font-medium">{hoveredPoiTooltip.name}</div>
+            <div className="text-gray-400 text-[10px] mt-0.5 capitalize">
+              {hoveredPoiTooltip.poiType}
+            </div>
+          </div>
+        </div>
+      )}
     </div>
   );
   }
@@ -1488,6 +1660,7 @@ function hitTestResultToSelectedFeature(hitResult: HitTestResult): SelectedFeatu
         name: district.name,
         districtType: district.type,
         isHistoric: district.isHistoric ?? false,
+        fillColor: district.fillColor,
       };
     }
     case "road": {

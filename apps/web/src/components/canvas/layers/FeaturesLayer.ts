@@ -1,6 +1,31 @@
 /**
  * Features layer renderer for districts, roads, and POIs.
  *
+ * ## Road Rendering Pipeline (CITY-377 documentation)
+ *
+ * Roads are drawn in the `renderRoads()` method using a two-pass approach:
+ *   Pass 1 — Casings (outlines): drawn first so fills cover their centers
+ *   Pass 2 — Fills (road surface): drawn on top
+ *
+ * Road widths are scaled by `zoomScale = clamp(currentZoom, 0.5, 1.5) * districtScale`,
+ * where `districtScale` is the average district diagonal / 200, clamped to [0.5, 3].
+ * This keeps road widths proportional to the district size.
+ *
+ * Minimum width enforcement (CITY-377): Roads never render below MIN_ROAD_WIDTH (0.8)
+ * for fills or MIN_CASING_WIDTH (1.5) for casings, preventing sub-pixel invisibility
+ * at low zoom or with small districts.
+ *
+ * ### Road style hierarchy (drawn bottom-to-top):
+ *   trail → local → collector → arterial → highway
+ *
+ * Each class has: fill width, fill color, casing width, casing color, minZoom.
+ * LOCAL and COLLECTOR streets have white fills with gray casings (Google Maps style).
+ * Without casings, white roads on the light canvas/district fills are invisible.
+ *
+ * ### Container z-order (bottom-to-top):
+ *   neighborhoods → cityLimits → districts → roads → roadHighlight → bridges →
+ *   interchanges → pois
+ *
  * Renders:
  * - District polygons with type-based colors
  * - Historic district indicators (hatched pattern)
@@ -39,7 +64,11 @@ const DISTRICT_COLORS: Record<DistrictType, number> = {
   airport: 0xe0e0e0, // Light gray
 };
 
-// Road styling by class (Google Maps inspired)
+// Road styling by class (Google Maps inspired).
+//
+// IMPORTANT (CITY-377, CITY-417): Road fills use gray tones (not white) so they
+// contrast against the light canvas (#f5f5f5) and semi-transparent district fills.
+// Casings (casingWidth > 0) provide additional outline contrast for all non-trail classes.
 interface RoadStyle {
   width: number;
   color: number;
@@ -61,25 +90,25 @@ const ROAD_STYLES: Record<RoadClass, RoadStyle> = {
   },
   arterial: {
     width: 6,
-    color: 0xffffff, // White
+    color: 0xaaaaaa, // Medium gray — visible on all district fills
     casingWidth: 1,
-    casingColor: 0x888888, // Gray outline
+    casingColor: 0x666666, // Dark gray outline
     dashed: false,
     minZoom: 0, // Always visible
   },
   collector: {
     width: 4,
-    color: 0xffffff, // White
-    casingWidth: 0.5,
-    casingColor: 0xaaaaaa, // Light gray outline
+    color: 0xbbbbbb, // Light-medium gray
+    casingWidth: 1.5,
+    casingColor: 0x777777, // Gray outline
     dashed: false,
     minZoom: 0.15, // Visible at most zoom levels
   },
   local: {
     width: 2,
-    color: 0xffffff, // White
-    casingWidth: 0,
-    casingColor: 0x000000,
+    color: 0xcccccc, // Light gray — subtle but visible on district fills
+    casingWidth: 1,
+    casingColor: 0x888888, // Gray outline
     dashed: false,
     minZoom: 0.3, // Visible when not extremely zoomed out
   },
@@ -380,6 +409,7 @@ export class FeaturesLayer {
   private currentZoom: number = 1;
   /** Scale factor derived from average district size. Roads widen for larger districts. */
   private districtScale: number = 1;
+  private _lastRoadLogTime: number = 0; // CITY-377 diagnostic throttle
   /** ID of the currently selected road (null = no selection) */
   private selectedRoadId: string | null = null;
   /** Spatial index for fast road hit testing */
@@ -445,6 +475,18 @@ export class FeaturesLayer {
     this.roadIndex.build(data.roads);
     this.poiIndex.build(data.pois);
     this.districtIndex.build(data.districts);
+
+    // CITY-377 diagnostic: log road stats on data load
+    if (data.roads.length > 0) {
+      const byClass: Record<string, number> = {};
+      for (const r of data.roads) {
+        byClass[r.roadClass] = (byClass[r.roadClass] || 0) + 1;
+      }
+      console.log(
+        `[FeaturesLayer] setData: ${data.districts.length} districts, ${data.roads.length} roads (${JSON.stringify(byClass)}), districtScale=${this.districtScale.toFixed(3)}`
+      );
+    }
+
     this.render();
   }
 
@@ -486,7 +528,15 @@ export class FeaturesLayer {
 
   /**
    * Compute a road width scale factor from the average district diameter.
-   * The base road widths were designed for districts ~200px across.
+   *
+   * CITY-377: The reference diameter must match the actual world-unit coordinate
+   * space districts use. Districts are typically ~30 world units across (diagonal).
+   * A reference of 40 means roads render at full defined width for ~40-unit districts
+   * and scale down slightly for smaller ones. The clamp [0.5, 3] prevents extremes.
+   *
+   * Previous value of 200 was designed for pixel-space distances, not world units,
+   * which caused districtScale=0.5 for typical districts — halving all road widths
+   * and making local/collector streets invisible.
    */
   private computeDistrictScale(districts: District[]): number {
     if (districts.length === 0) return 1;
@@ -506,7 +556,7 @@ export class FeaturesLayer {
     }
 
     const avgDiameter = totalDiameter / districts.length;
-    const referenceDiameter = 200;
+    const referenceDiameter = 40;
     // Clamp between 0.5x and 3x to avoid extreme values
     return Math.max(0.5, Math.min(3, avgDiameter / referenceDiameter));
   }
@@ -684,7 +734,12 @@ export class FeaturesLayer {
     }
 
     for (const district of districts) {
-      const color = DISTRICT_COLORS[district.type] ?? 0xcccccc;
+      // CITY-408: Use custom fill color if set, otherwise use type default
+      let color = DISTRICT_COLORS[district.type] ?? 0xcccccc;
+      if (district.fillColor) {
+        const parsed = parseInt(district.fillColor.replace("#", ""), 16);
+        if (!isNaN(parsed)) color = parsed;
+      }
       const points = district.polygon.points;
 
       if (points.length < 3) continue;
@@ -713,6 +768,34 @@ export class FeaturesLayer {
       // Draw historic district hatching
       if (district.isHistoric) {
         this.renderHistoricHatching(district.polygon.points);
+      }
+
+      // CITY-378: Draw park ponds as water features
+      if (district.ponds && district.ponds.length > 0) {
+        for (const pond of district.ponds) {
+          const pondPoints = pond.points;
+          if (pondPoints.length < 3) continue;
+
+          this.districtsGraphics.moveTo(pondPoints[0].x, pondPoints[0].y);
+          for (let i = 1; i < pondPoints.length; i++) {
+            this.districtsGraphics.lineTo(pondPoints[i].x, pondPoints[i].y);
+          }
+          this.districtsGraphics.closePath();
+          this.districtsGraphics.fill({ color: 0x87ceeb, alpha: 0.7 }); // Light blue water
+
+          // Pond outline
+          this.districtsGraphics.setStrokeStyle({
+            width: 0.5,
+            color: 0x4a90d9,
+            alpha: 0.6,
+          });
+          this.districtsGraphics.moveTo(pondPoints[0].x, pondPoints[0].y);
+          for (let i = 1; i < pondPoints.length; i++) {
+            this.districtsGraphics.lineTo(pondPoints[i].x, pondPoints[i].y);
+          }
+          this.districtsGraphics.closePath();
+          this.districtsGraphics.stroke();
+        }
       }
     }
   }
@@ -756,14 +839,30 @@ export class FeaturesLayer {
       (a, b) => classOrder.indexOf(a.roadClass) - classOrder.indexOf(b.roadClass)
     );
 
-    // Filter roads by zoom level
+    // Filter roads by zoom level (skip roads with unknown class to prevent crash)
     const visibleRoads = sortedRoads.filter((road) => {
       const style = ROAD_STYLES[road.roadClass];
+      if (!style) return false;
       return this.currentZoom >= style.minZoom;
     });
 
+    // CITY-377 diagnostic: log render stats (throttled to avoid console spam during zoom)
+    const now = performance.now();
+    if (!this._lastRoadLogTime || now - this._lastRoadLogTime > 2000) {
+      this._lastRoadLogTime = now;
+      const totalPts = visibleRoads.reduce((sum, r) => sum + r.line.points.length, 0);
+      console.log(
+        `[FeaturesLayer] renderRoads: ${roads.length} total, ${visibleRoads.length} visible at zoom=${this.currentZoom.toFixed(2)}, ${totalPts} points, districtScale=${this.districtScale.toFixed(3)}`
+      );
+    }
+    const renderStart = performance.now();
+
     // Scale road widths with zoom (thinner when zoomed out) and district size
     const zoomScale = Math.max(0.5, Math.min(1.5, this.currentZoom)) * this.districtScale;
+
+    // CITY-377: Enforce minimum widths so streets never become sub-pixel invisible
+    const MIN_ROAD_WIDTH = 0.8;
+    const MIN_CASING_WIDTH = 1.5;
 
     // Draw road casings first (outlines) - only for roads that have casings
     for (const road of visibleRoads) {
@@ -773,8 +872,8 @@ export class FeaturesLayer {
       if (points.length < 2) continue;
       if (style.casingWidth <= 0) continue;
 
-      const scaledWidth = style.width * zoomScale;
-      const casingWidth = scaledWidth + style.casingWidth * 2;
+      const scaledWidth = Math.max(MIN_ROAD_WIDTH, style.width * zoomScale);
+      const casingWidth = Math.max(MIN_CASING_WIDTH, scaledWidth + style.casingWidth * 2);
 
       // Draw casing (outline)
       this.roadsGraphics.setStrokeStyle({
@@ -798,7 +897,7 @@ export class FeaturesLayer {
 
       if (points.length < 2) continue;
 
-      const scaledWidth = style.width * zoomScale;
+      const scaledWidth = Math.max(MIN_ROAD_WIDTH, style.width * zoomScale);
 
       if (style.dashed) {
         // Draw dashed line for trails
@@ -818,6 +917,12 @@ export class FeaturesLayer {
         }
         this.roadsGraphics.stroke();
       }
+    }
+
+    // CITY-377 diagnostic: log render time
+    const renderEnd = performance.now();
+    if (now === this._lastRoadLogTime) {
+      console.log(`[FeaturesLayer] renderRoads took ${(renderEnd - renderStart).toFixed(1)}ms`);
     }
   }
 

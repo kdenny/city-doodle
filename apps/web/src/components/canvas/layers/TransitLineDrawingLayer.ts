@@ -266,10 +266,10 @@ export class TransitLineDrawingLayer {
 
   private getInstructionText(state: TransitLineDrawingState): string | null {
     if (!state.firstStation) {
-      return "Click a station to start the line";
+      return "Click a station or empty space to start the line";
     }
     if (state.connectedStations.length < 2) {
-      return "Click another station to connect";
+      return "Click a station or empty space to connect";
     }
     return "Click to extend, ESC to finish";
   }

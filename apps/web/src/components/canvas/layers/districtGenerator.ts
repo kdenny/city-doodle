@@ -9,7 +9,7 @@
  */
 
 import type { District, Road, Point, DistrictType, RoadClass } from "./types";
-import { generateDistrictName } from "../../../utils/nameGenerator";
+import { generateDistrictName, type NamingContext } from "../../../utils/nameGenerator";
 import { generateId } from "../../../utils/idGenerator";
 import {
   metersToWorldUnits,
@@ -18,7 +18,9 @@ import {
   worldUnitsToMiles,
 } from "../../../utils/worldConstants";
 import { getPolygonBounds, getPolygonCentroid, pointInPolygon } from "./geometry";
+import { polygonArea } from "./polygonUtils";
 import { SeededRandom, generateStreetGrid, type TransitGridOptions } from "./streetGrid";
+import polygonClipping from "polygon-clipping";
 
 // Re-export conversion functions for backwards compatibility
 export { metersToWorldUnits, worldUnitsToMeters, milesToWorldUnits, worldUnitsToMiles };
@@ -145,9 +147,14 @@ export interface DistrictGenerationConfig {
    * Historic eras produce smaller, tighter blocks; modern eras produce larger blocks.
    */
   eraYear?: number;
+  /**
+   * Naming context for context-aware name generation (CITY-380).
+   * Provides world name, adjacent district names, and nearby water feature names.
+   */
+  namingContext?: NamingContext;
 }
 
-const DEFAULT_CONFIG: Required<Omit<DistrictGenerationConfig, "scaleSettings" | "seed" | "transitStations" | "transitCar" | "eraYear">> & {
+const DEFAULT_CONFIG: Required<Omit<DistrictGenerationConfig, "scaleSettings" | "seed" | "transitStations" | "transitCar" | "eraYear" | "namingContext">> & {
   scaleSettings: ScaleSettings;
 } = {
   size: 120,
@@ -165,7 +172,7 @@ const DEFAULT_CONFIG: Required<Omit<DistrictGenerationConfig, "scaleSettings" | 
  */
 export function getEffectiveDistrictConfig(
   config: DistrictGenerationConfig = {}
-): Required<Omit<DistrictGenerationConfig, "scaleSettings" | "seed" | "transitStations" | "transitCar" | "eraYear">> & {
+): Required<Omit<DistrictGenerationConfig, "scaleSettings" | "seed" | "transitStations" | "transitCar" | "eraYear" | "namingContext">> & {
   scaleSettings: ScaleSettings;
 } {
   const scaleSettings = config.scaleSettings ?? DEFAULT_SCALE_SETTINGS;
@@ -222,6 +229,11 @@ export function seedIdToDistrictType(seedId: string): DistrictType {
     university: "university",
     k12: "k12",
     park: "park",
+    park_pocket: "park",
+    park_neighborhood: "park",
+    park_community: "park",
+    park_regional: "park",
+    park_city: "park",
     airport: "airport",
   };
   return mapping[seedId] ?? "residential";
@@ -230,9 +242,10 @@ export function seedIdToDistrictType(seedId: string): DistrictType {
 /**
  * Get a display name for a district type.
  * Delegates to the centralized name generator utility.
+ * Passes naming context for context-aware park/airport naming (CITY-380).
  */
-function getDistrictName(type: DistrictType, seed: number): string {
-  return generateDistrictName(type, { seed });
+function getDistrictName(type: DistrictType, seed: number, namingContext?: NamingContext): string {
+  return generateDistrictName(type, { seed }, namingContext);
 }
 
 /**
@@ -401,7 +414,7 @@ export function generateDistrictGeometry(
   const district: District = {
     id: districtId,
     type: districtType,
-    name: getDistrictName(districtType, seed),
+    name: getDistrictName(districtType, seed, config.namingContext),
     polygon: { points: polygonPoints },
     isHistoric,
   };
@@ -492,6 +505,145 @@ export function wouldOverlap(
 }
 
 /**
+ * CITY-384: Result of clipping a new district against existing districts.
+ */
+export interface DistrictClipResult {
+  /** Clipped polygon (empty if nothing remains) */
+  clippedPolygon: Point[];
+  /** IDs of districts that share a boundary with the clipped polygon */
+  adjacentDistrictIds: string[];
+  /** Whether the original polygon needed clipping */
+  wasClipped: boolean;
+  /** Whether the remaining area is too small for a valid district */
+  tooSmall: boolean;
+}
+
+/**
+ * CITY-384: Clip a new district polygon against existing districts.
+ *
+ * Uses polygon-clipping library to compute the difference (subtraction)
+ * of the new polygon minus all overlapping existing districts. The result
+ * is a polygon that fits flush against its neighbors with shared boundaries.
+ *
+ * @param newPolygon - The proposed new district polygon
+ * @param existingDistricts - All existing districts to clip against
+ * @param minAreaWorldUnits - Minimum area in world units squared (default: 4 blocks)
+ * @returns Clip result with the clipped polygon and adjacency info
+ */
+export function clipDistrictAgainstExisting(
+  newPolygon: Point[],
+  existingDistricts: District[],
+  minAreaWorldUnits: number = 400
+): DistrictClipResult {
+  if (newPolygon.length < 3) {
+    return { clippedPolygon: [], adjacentDistrictIds: [], wasClipped: false, tooSmall: true };
+  }
+
+  // Find which existing districts actually overlap
+  const overlapping: District[] = [];
+  const newBounds = getPolygonBounds(newPolygon);
+
+  for (const existing of existingDistricts) {
+    const existingBounds = getPolygonBounds(existing.polygon.points);
+
+    // Quick AABB check
+    if (
+      newBounds.maxX < existingBounds.minX ||
+      newBounds.minX > existingBounds.maxX ||
+      newBounds.maxY < existingBounds.minY ||
+      newBounds.minY > existingBounds.maxY
+    ) {
+      continue;
+    }
+
+    // Detailed point-in-polygon check (either direction)
+    let overlaps = false;
+    for (const point of newPolygon) {
+      if (pointInPolygon(point.x, point.y, existing.polygon.points)) {
+        overlaps = true;
+        break;
+      }
+    }
+    if (!overlaps) {
+      for (const point of existing.polygon.points) {
+        if (pointInPolygon(point.x, point.y, newPolygon)) {
+          overlaps = true;
+          break;
+        }
+      }
+    }
+
+    if (overlaps) {
+      overlapping.push(existing);
+    }
+  }
+
+  // No overlap — return original polygon unchanged
+  if (overlapping.length === 0) {
+    return {
+      clippedPolygon: newPolygon,
+      adjacentDistrictIds: [],
+      wasClipped: false,
+      tooSmall: false,
+    };
+  }
+
+  // Convert Point[] to polygon-clipping format: [[[x,y], [x,y], ...]]
+  // polygon-clipping uses GeoJSON-style rings: number[][][]
+  const toRing = (pts: Point[]): [number, number][] =>
+    pts.map((p) => [p.x, p.y]);
+
+  let result: [number, number][][][] = [[toRing(newPolygon)]];
+
+  // Subtract each overlapping district
+  for (const existing of overlapping) {
+    const clipPoly: [number, number][][][] = [[toRing(existing.polygon.points)]];
+    result = polygonClipping.difference(result, clipPoly) as [number, number][][][];
+    if (result.length === 0) break;
+  }
+
+  if (result.length === 0) {
+    return { clippedPolygon: [], adjacentDistrictIds: overlapping.map((d) => d.id), wasClipped: true, tooSmall: true };
+  }
+
+  // If multiple polygons result, pick the largest
+  let bestPoly: [number, number][] = result[0][0];
+  if (result.length > 1) {
+    let bestArea = 0;
+    for (const multiPoly of result) {
+      const ring = multiPoly[0]; // outer ring
+      const pts = ring.map(([x, y]) => ({ x, y }));
+      const area = Math.abs(polygonArea(pts));
+      if (area > bestArea) {
+        bestArea = area;
+        bestPoly = ring;
+      }
+    }
+  }
+
+  // Convert back to Point[]
+  const clippedPolygon = bestPoly.map(([x, y]) => ({ x, y }));
+
+  // Validate area
+  const area = Math.abs(polygonArea(clippedPolygon));
+  if (area < minAreaWorldUnits) {
+    return {
+      clippedPolygon,
+      adjacentDistrictIds: overlapping.map((d) => d.id),
+      wasClipped: true,
+      tooSmall: true,
+    };
+  }
+
+  return {
+    clippedPolygon,
+    adjacentDistrictIds: overlapping.map((d) => d.id),
+    wasClipped: true,
+    tooSmall: false,
+  };
+}
+
+/**
  * Regenerate the street grid for a district with a new polygon.
  * Used after water clipping to ensure streets fit the clipped boundary.
  *
@@ -511,7 +663,9 @@ export function regenerateStreetGridForClippedDistrict(
   position: { x: number; y: number },
   sprawlCompact: number = 0.5,
   gridAngle?: number,
-  transitOptions?: { transitStations?: Point[]; transitCar?: number }
+  transitOptions?: { transitStations?: Point[]; transitCar?: number },
+  /** CITY-384: Grid origin from adjacent district for street alignment */
+  adjacentGridOrigin?: Point
 ): { roads: Road[]; gridAngle: number } {
   // Don't generate streets for parks or airports
   if (districtType === "park" || districtType === "airport") {
@@ -540,7 +694,8 @@ export function regenerateStreetGridForClippedDistrict(
     rng,
     districtType,
     gridAngle,
-    transitOptions
+    transitOptions,
+    adjacentGridOrigin
   );
 }
 

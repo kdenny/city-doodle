@@ -233,6 +233,7 @@ class JobRunner:
         geographic_setting = world_settings.get("geographic_setting", "coastal")
         config_kwargs = apply_seed_variation(geographic_setting, seed=int(world_seed))
         config_kwargs["world_seed"] = int(world_seed)
+        config_kwargs["geographic_setting"] = geographic_setting
         # Explicit per-world overrides take precedence over preset
         if "beach_enabled" in world_settings:
             config_kwargs["beach_enabled"] = world_settings["beach_enabled"]

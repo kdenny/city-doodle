@@ -106,3 +106,10 @@ CREATE TABLE districts (
 - CITY-189: District sizing fix
 - CITY-202: ENUM case fix
 - CITY-203: World settings for sizing
+- CITY-378: Park generation with perimeter roads
+- CITY-379: Airport generation with runways
+- CITY-380: Context-aware naming for parks/airports
+
+## Special District Types
+
+Parks and airports are districts with specialized generation. They use organic polygon shapes, have internal features instead of street grids, and use context-aware naming. See [parks-and-airports.md](./parks-and-airports.md) for full details.

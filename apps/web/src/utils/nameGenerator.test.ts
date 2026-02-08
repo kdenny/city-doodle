@@ -15,6 +15,8 @@ import {
   generatePlazaName,
   generateParkName,
   generateShoppingDistrictName,
+  generateAirportName,
+  generateContextAwareParkName,
 } from "./nameGenerator";
 
 describe("nameGenerator", () => {
@@ -341,6 +343,152 @@ describe("nameGenerator", () => {
       );
       // At least one should be water-related (20% chance per name)
       expect(waterRelated.length).toBeGreaterThanOrEqual(0);
+    });
+  });
+
+  // Tests for CITY-380 additions
+
+  describe("generateAirportName", () => {
+    it("generates a non-empty string", () => {
+      const name = generateAirportName();
+      expect(name).toBeTruthy();
+    });
+
+    it("uses world name when provided", () => {
+      const names = [];
+      for (let i = 0; i < 20; i++) {
+        names.push(generateAirportName({ seed: i * 1000 }, { worldName: "Springfield" }));
+      }
+      // Most names should contain the world name (80% probability per call)
+      const withWorldName = names.filter((n) => n.includes("Springfield"));
+      expect(withWorldName.length).toBeGreaterThan(5);
+    });
+
+    it("generates airport-like names with world name", () => {
+      const names = [];
+      for (let i = 0; i < 20; i++) {
+        names.push(generateAirportName({ seed: i * 1000 }, { worldName: "Oakdale" }));
+      }
+      const hasAirportWord = names.every(
+        (n) =>
+          n.includes("Airport") ||
+          n.includes("Field") ||
+          n.includes("Airfield")
+      );
+      expect(hasAirportWord).toBe(true);
+    });
+
+    it("falls back to generic names without world name", () => {
+      const name = generateAirportName({ seed: 42 });
+      expect(name).toBeTruthy();
+      expect(
+        name.includes("Airport") ||
+          name.includes("Field") ||
+          name.includes("Airfield")
+      ).toBe(true);
+    });
+
+    it("is deterministic with same seed", () => {
+      const name1 = generateAirportName({ seed: 42 }, { worldName: "Test" });
+      const name2 = generateAirportName({ seed: 42 }, { worldName: "Test" });
+      expect(name1).toBe(name2);
+    });
+  });
+
+  describe("generateContextAwareParkName", () => {
+    it("generates a non-empty string", () => {
+      const name = generateContextAwareParkName();
+      expect(name).toBeTruthy();
+    });
+
+    it("incorporates water feature names when available", () => {
+      const names = [];
+      for (let i = 0; i < 30; i++) {
+        names.push(
+          generateContextAwareParkName(
+            { seed: i * 1000 },
+            { nearbyWaterNames: ["Crystal Lake"] }
+          )
+        );
+      }
+      // Some should reference the water feature
+      const waterReferenced = names.filter(
+        (n) =>
+          n.includes("Crystal") ||
+          n.includes("Lake") ||
+          n.includes("Lakeside") ||
+          n.includes("Waterfront") ||
+          n.includes("Riverside") ||
+          n.includes("Bayside")
+      );
+      expect(waterReferenced.length).toBeGreaterThan(0);
+    });
+
+    it("incorporates adjacent district names when available", () => {
+      const names = [];
+      for (let i = 0; i < 30; i++) {
+        names.push(
+          generateContextAwareParkName(
+            { seed: i * 1000 },
+            { adjacentDistrictNames: ["Maple Heights"] }
+          )
+        );
+      }
+      // Some should reference the adjacent district
+      const districtReferenced = names.filter((n) => n.includes("Maple"));
+      expect(districtReferenced.length).toBeGreaterThan(0);
+    });
+
+    it("falls back to standard park names without context", () => {
+      const name = generateContextAwareParkName({ seed: 42 });
+      expect(name).toBeTruthy();
+    });
+
+    it("is deterministic with same seed", () => {
+      const ctx = { nearbyWaterNames: ["Silver Lake"], adjacentDistrictNames: ["Oak Heights"] };
+      const name1 = generateContextAwareParkName({ seed: 42 }, ctx);
+      const name2 = generateContextAwareParkName({ seed: 42 }, ctx);
+      expect(name1).toBe(name2);
+    });
+  });
+
+  describe("generateDistrictName with naming context (CITY-380)", () => {
+    it("delegates to airport naming for airport type", () => {
+      const names = [];
+      for (let i = 0; i < 20; i++) {
+        names.push(
+          generateDistrictName("airport", { seed: i * 1000 }, { worldName: "Riverdale" })
+        );
+      }
+      const withWorldName = names.filter((n) => n.includes("Riverdale"));
+      expect(withWorldName.length).toBeGreaterThan(5);
+    });
+
+    it("delegates to context-aware park naming for park type", () => {
+      const names = [];
+      for (let i = 0; i < 30; i++) {
+        names.push(
+          generateDistrictName(
+            "park",
+            { seed: i * 1000 },
+            { adjacentDistrictNames: ["Cedar Village"] }
+          )
+        );
+      }
+      const contextReferenced = names.filter((n) => n.includes("Cedar"));
+      expect(contextReferenced.length).toBeGreaterThan(0);
+    });
+
+    it("falls through for non-park/airport types", () => {
+      // With naming context but residential type, should use standard naming
+      const name = generateDistrictName(
+        "residential",
+        { seed: 42 },
+        { worldName: "TestCity" }
+      );
+      expect(name).toBeTruthy();
+      // Should NOT contain "Airport"
+      expect(name.includes("Airport")).toBe(false);
     });
   });
 });

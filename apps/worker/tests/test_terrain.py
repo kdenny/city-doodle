@@ -1589,3 +1589,364 @@ class TestSeedBasedVariety:
                 if k in TerrainConfig.__dataclass_fields__
             })
             assert config is not None
+
+
+class TestRiverImprovements:
+    """Tests for river aesthetics improvements (CITY-389)."""
+
+    def test_chaikin_smooth_produces_more_points(self):
+        """Chaikin smoothing should produce more points than the input."""
+        from city_worker.terrain.water import _chaikin_smooth
+
+        coords = [(0, 0), (10, 0), (10, 10), (20, 10)]
+        smoothed = _chaikin_smooth(coords, iterations=1)
+        assert len(smoothed) > len(coords)
+
+    def test_chaikin_smooth_preserves_endpoints(self):
+        """Chaikin smoothing should preserve the first and last points."""
+        from city_worker.terrain.water import _chaikin_smooth
+
+        coords = [(0.0, 0.0), (10.0, 0.0), (10.0, 10.0), (20.0, 10.0)]
+        smoothed = _chaikin_smooth(coords, iterations=2)
+        assert smoothed[0] == coords[0]
+        assert smoothed[-1] == coords[-1]
+
+    def test_chaikin_smooth_handles_short_input(self):
+        """Chaikin should handle 2-point lines without error."""
+        from city_worker.terrain.water import _chaikin_smooth
+
+        coords = [(0, 0), (10, 10)]
+        smoothed = _chaikin_smooth(coords, iterations=2)
+        assert len(smoothed) >= 2
+
+    def test_rivers_have_width_property(self):
+        """Extracted rivers should include a width property."""
+        import numpy as np
+        from city_worker.terrain.water import extract_rivers
+
+        # Create a heightfield with a clear valley for river formation
+        hf = np.ones((32, 32), dtype=np.float64) * 0.6
+        # Create a valley from top to bottom (column 16)
+        for i in range(32):
+            for j in range(32):
+                dist = abs(j - 16)
+                hf[i, j] -= max(0, 0.3 - dist * 0.05)
+            hf[i, 16] = 0.2 + i * 0.005  # Gentle downhill slope
+
+        rivers = extract_rivers(
+            hf, water_level=0.25, tile_x=0, tile_y=0,
+            tile_size=500.0, flow_threshold=5.0, min_length=5,
+        )
+        if rivers:
+            for river in rivers:
+                assert "width" in river.properties
+                assert river.properties["width"] > 0
+
+    def test_rivers_have_flow_properties(self):
+        """Extracted rivers should include max_flow and avg_flow properties."""
+        import numpy as np
+        from city_worker.terrain.water import extract_rivers
+
+        hf = np.ones((32, 32), dtype=np.float64) * 0.6
+        for i in range(32):
+            for j in range(32):
+                dist = abs(j - 16)
+                hf[i, j] -= max(0, 0.3 - dist * 0.05)
+            hf[i, 16] = 0.2 + i * 0.005
+
+        rivers = extract_rivers(
+            hf, water_level=0.25, tile_x=0, tile_y=0,
+            tile_size=500.0, flow_threshold=5.0, min_length=5,
+        )
+        if rivers:
+            for river in rivers:
+                assert "max_flow" in river.properties
+                assert "avg_flow" in river.properties
+                assert river.properties["max_flow"] >= river.properties["avg_flow"]
+
+    def test_chaikin_smooth_multiple_iterations(self):
+        """Multiple Chaikin iterations should produce progressively smoother curves."""
+        from city_worker.terrain.water import _chaikin_smooth
+
+        # Zigzag path
+        coords = [(0, 0), (5, 10), (10, 0), (15, 10), (20, 0)]
+        smooth1 = _chaikin_smooth(coords, iterations=1)
+        smooth2 = _chaikin_smooth(coords, iterations=2)
+        # More iterations = more points
+        assert len(smooth2) > len(smooth1) > len(coords)
+
+
+class TestGeographicMasks:
+    """Tests for geographic mask framework (CITY-386)."""
+
+    def test_identity_mask_returns_unchanged(self):
+        """identity_mask should return the heightfield unchanged."""
+        import numpy as np
+        from city_worker.terrain.geographic_masks import MaskContext, identity_mask
+
+        hf = np.random.default_rng(42).random((16, 16))
+        ctx = MaskContext(tx=0, ty=0, tile_size=500.0, resolution=16, seed=42)
+        result = identity_mask(hf, ctx)
+        np.testing.assert_array_equal(result, hf)
+
+    def test_all_settings_have_registered_masks(self):
+        """Every geographic setting should have a mask in the registry."""
+        from city_worker.terrain.geographic_masks import get_mask, identity_mask
+
+        settings = [
+            "coastal", "bay_harbor", "river_valley", "lakefront",
+            "inland", "island", "peninsula", "delta",
+        ]
+        for setting in settings:
+            mask = get_mask(setting)
+            assert mask is not None, f"No mask registered for {setting}"
+
+    def test_unknown_setting_returns_identity(self):
+        """Unknown settings should fall back to identity_mask."""
+        from city_worker.terrain.geographic_masks import get_mask, identity_mask
+
+        mask = get_mask("nonexistent_setting")
+        assert mask is identity_mask
+
+    def test_register_mask_replaces_existing(self):
+        """register_mask should replace the existing mask for a setting."""
+        import numpy as np
+        from city_worker.terrain.geographic_masks import (
+            MaskContext,
+            get_mask,
+            identity_mask,
+            register_mask,
+        )
+
+        def custom_mask(hf, ctx):
+            return hf * 0.5
+
+        register_mask("coastal", custom_mask)
+        try:
+            assert get_mask("coastal") is custom_mask
+        finally:
+            # Restore original
+            register_mask("coastal", identity_mask)
+
+    def test_apply_geographic_mask_clamps_output(self):
+        """apply_geographic_mask should clamp results to [0, 1]."""
+        import numpy as np
+        from city_worker.terrain.geographic_masks import (
+            apply_geographic_mask,
+            identity_mask,
+            register_mask,
+        )
+
+        def overflow_mask(hf, ctx):
+            return hf + 1.0  # Push all values above 1
+
+        register_mask("_test_overflow", overflow_mask)
+        try:
+            hf = np.full((16, 16), 0.8)
+            result = apply_geographic_mask(
+                hf, "_test_overflow", tx=0, ty=0,
+                tile_size=500.0, resolution=16, seed=42,
+            )
+            assert result.max() <= 1.0
+            assert result.min() >= 0.0
+        finally:
+            # Clean up
+            from city_worker.terrain.geographic_masks import _MASK_REGISTRY
+            _MASK_REGISTRY.pop("_test_overflow", None)
+
+    def test_apply_geographic_mask_clamps_negative(self):
+        """apply_geographic_mask should clamp negative values to 0."""
+        import numpy as np
+        from city_worker.terrain.geographic_masks import (
+            apply_geographic_mask,
+            register_mask,
+        )
+
+        def underflow_mask(hf, ctx):
+            return hf - 1.0  # Push all values below 0
+
+        register_mask("_test_underflow", underflow_mask)
+        try:
+            hf = np.full((16, 16), 0.2)
+            result = apply_geographic_mask(
+                hf, "_test_underflow", tx=0, ty=0,
+                tile_size=500.0, resolution=16, seed=42,
+            )
+            assert result.min() >= 0.0
+        finally:
+            from city_worker.terrain.geographic_masks import _MASK_REGISTRY
+            _MASK_REGISTRY.pop("_test_underflow", None)
+
+    def test_mask_context_has_correct_fields(self):
+        """MaskContext should expose all expected fields."""
+        from city_worker.terrain.geographic_masks import MaskContext
+
+        ctx = MaskContext(tx=3, ty=-2, tile_size=80467.2, resolution=128, seed=12345)
+        assert ctx.tx == 3
+        assert ctx.ty == -2
+        assert ctx.tile_size == 80467.2
+        assert ctx.resolution == 128
+        assert ctx.seed == 12345
+
+    def test_mask_context_is_frozen(self):
+        """MaskContext should be immutable."""
+        from city_worker.terrain.geographic_masks import MaskContext
+
+        ctx = MaskContext(tx=0, ty=0, tile_size=500.0, resolution=16, seed=42)
+        with pytest.raises(AttributeError):
+            ctx.tx = 1  # type: ignore[misc]
+
+    def test_custom_mask_receives_correct_context(self):
+        """A custom mask should receive the correct MaskContext values."""
+        import numpy as np
+        from city_worker.terrain.geographic_masks import (
+            apply_geographic_mask,
+            register_mask,
+        )
+
+        captured_ctx = {}
+
+        def spy_mask(hf, ctx):
+            captured_ctx["tx"] = ctx.tx
+            captured_ctx["ty"] = ctx.ty
+            captured_ctx["tile_size"] = ctx.tile_size
+            captured_ctx["resolution"] = ctx.resolution
+            captured_ctx["seed"] = ctx.seed
+            return hf
+
+        register_mask("_test_spy", spy_mask)
+        try:
+            hf = np.zeros((16, 16))
+            apply_geographic_mask(
+                hf, "_test_spy", tx=5, ty=-3,
+                tile_size=1000.0, resolution=16, seed=99,
+            )
+            assert captured_ctx["tx"] == 5
+            assert captured_ctx["ty"] == -3
+            assert captured_ctx["tile_size"] == 1000.0
+            assert captured_ctx["resolution"] == 16
+            assert captured_ctx["seed"] == 99
+        finally:
+            from city_worker.terrain.geographic_masks import _MASK_REGISTRY
+            _MASK_REGISTRY.pop("_test_spy", None)
+
+    def test_terrain_config_accepts_geographic_setting(self):
+        """TerrainConfig should accept the geographic_setting field."""
+        config = TerrainConfig(world_seed=42, geographic_setting="island")
+        assert config.geographic_setting == "island"
+
+    def test_terrain_config_default_geographic_setting(self):
+        """TerrainConfig should default to 'coastal'."""
+        config = TerrainConfig(world_seed=42)
+        assert config.geographic_setting == "coastal"
+
+    def test_generator_applies_mask_in_pipeline(self):
+        """TerrainGenerator should apply the geographic mask during generation."""
+        import numpy as np
+        from city_worker.terrain.geographic_masks import register_mask, identity_mask
+
+        mask_called = {"count": 0}
+
+        def counting_mask(hf, ctx):
+            mask_called["count"] += 1
+            return hf
+
+        register_mask("_test_counting", counting_mask)
+        try:
+            config = TerrainConfig(
+                world_seed=42,
+                geographic_setting="_test_counting",
+                resolution=16,
+                tile_size=500.0,
+            )
+            gen = TerrainGenerator(config)
+            gen.generate_3x3(0, 0)
+            # Should be called once per tile (9 tiles in 3x3)
+            assert mask_called["count"] == 9
+        finally:
+            register_mask("_test_counting", identity_mask)
+            from city_worker.terrain.geographic_masks import _MASK_REGISTRY
+            _MASK_REGISTRY.pop("_test_counting", None)
+
+    def test_all_presets_generate_with_mask_pipeline(self):
+        """All geographic settings should generate terrain through the mask pipeline."""
+        for setting in ["coastal", "bay_harbor", "river_valley", "lakefront",
+                        "inland", "island", "peninsula", "delta"]:
+            config = TerrainConfig(
+                world_seed=42,
+                geographic_setting=setting,
+                resolution=16,
+                tile_size=500.0,
+            )
+            gen = TerrainGenerator(config)
+            result = gen.generate_3x3(0, 0)
+            assert len(result.all_tiles()) == 9
+
+
+class TestInlandMask:
+    """Tests for inland minimal-water mask (CITY-388)."""
+
+    def test_inland_mask_registered(self):
+        """inland_mask should be registered for the 'inland' setting."""
+        from city_worker.terrain.geographic_masks import get_mask, inland_mask
+
+        assert get_mask("inland") is inland_mask
+
+    def test_floor_raises_minimum_height(self):
+        """All heights should be at or above the floor after masking."""
+        import numpy as np
+        from city_worker.terrain.geographic_masks import MaskContext, inland_mask
+
+        hf = np.zeros((16, 16))  # All zeros — worst case
+        ctx = MaskContext(tx=0, ty=0, tile_size=500.0, resolution=16, seed=42)
+        result = inland_mask(hf, ctx)
+        assert result.min() >= 0.12 - 1e-9
+
+    def test_high_values_preserved(self):
+        """Heights near 1.0 should stay near 1.0."""
+        import numpy as np
+        from city_worker.terrain.geographic_masks import MaskContext, inland_mask
+
+        hf = np.ones((16, 16))
+        ctx = MaskContext(tx=0, ty=0, tile_size=500.0, resolution=16, seed=42)
+        result = inland_mask(hf, ctx)
+        assert result.max() <= 1.0
+        assert result.min() > 0.99
+
+    def test_minimal_water_with_inland_water_level(self):
+        """With inland water_level (~0.15), very little terrain should be below water."""
+        import numpy as np
+        from city_worker.terrain.geographic_masks import MaskContext, inland_mask
+
+        rng = np.random.default_rng(42)
+        hf = rng.random((64, 64))  # Uniform [0, 1)
+        ctx = MaskContext(tx=0, ty=0, tile_size=500.0, resolution=64, seed=42)
+        result = inland_mask(hf, ctx)
+        water_level = 0.15
+        water_fraction = (result < water_level).sum() / result.size
+        assert water_fraction < 0.05, f"Water fraction {water_fraction:.2%} too high"
+
+    def test_near_zero_water_with_typical_noise(self):
+        """With realistic noise (mostly 0.3-0.7), water should be negligible."""
+        import numpy as np
+        from city_worker.terrain.geographic_masks import MaskContext, inland_mask
+
+        rng = np.random.default_rng(99)
+        hf = np.clip(rng.normal(0.5, 0.15, (64, 64)), 0.0, 1.0)
+        ctx = MaskContext(tx=0, ty=0, tile_size=500.0, resolution=64, seed=42)
+        result = inland_mask(hf, ctx)
+        water_level = 0.15
+        water_fraction = (result < water_level).sum() / result.size
+        assert water_fraction < 0.005, f"Water fraction {water_fraction:.4%} too high"
+
+    def test_inland_generates_through_full_pipeline(self):
+        """Inland setting should produce valid terrain with minimal water."""
+        config = TerrainConfig(
+            world_seed=42,
+            geographic_setting="inland",
+            resolution=16,
+            tile_size=500.0,
+        )
+        gen = TerrainGenerator(config)
+        result = gen.generate_3x3(0, 0)
+        assert len(result.all_tiles()) == 9

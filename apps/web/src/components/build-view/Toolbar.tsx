@@ -136,7 +136,7 @@ export function Toolbar({ activeTool, onToolChange, disabled, onGrow, growDisabl
       })}
 
       {/* Divider */}
-      <div className="border-l border-gray-200 mx-0.5" />
+      <div className="border-l border-gray-200 mx-0.5 self-stretch" />
 
       {/* Grow button */}
       <div className="relative">

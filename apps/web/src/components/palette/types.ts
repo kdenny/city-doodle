@@ -2,7 +2,7 @@
  * Seed types and placement-related types.
  */
 
-export type SeedCategory = "district" | "poi" | "transit" | "park";
+export type SeedCategory = "district" | "poi" | "transit" | "park" | "airport";
 
 /**
 + * Park size preset options.
@@ -89,9 +89,10 @@ export const SEED_TYPES: SeedType[] = [
   {
     id: "airport",
     label: "Airport",
-    category: "poi",
+    category: "airport",
     icon: "✈️",
-    description: "Regional airport",
+    description: "International or regional airport with runways and terminals",
+    independentPlacement: true,
   },
   // Stadiums (large POIs with street grid impact)
   {
@@ -181,6 +182,7 @@ export const SEED_TYPES: SeedType[] = [
 export const SEED_CATEGORIES: { id: SeedCategory; label: string }[] = [
   { id: "district", label: "Districts" },
   { id: "park", label: "Parks" },
+  { id: "airport", label: "Airports" },
   { id: "poi", label: "Points of Interest" },
   { id: "transit", label: "Transit" },
 ];

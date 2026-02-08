@@ -318,6 +318,29 @@ def calculate_flow_accumulation(
     return flow
 
 
+def _chaikin_smooth(
+    coords: list[tuple[float, float]], iterations: int = 2
+) -> list[tuple[float, float]]:
+    """Apply Chaikin's corner-cutting algorithm for smoother polylines.
+
+    Each iteration replaces each segment with two new points at 25% and
+    75% along the segment, producing a progressively smoother curve.
+    """
+    pts = list(coords)
+    for _ in range(iterations):
+        if len(pts) < 3:
+            break
+        new_pts = [pts[0]]
+        for i in range(len(pts) - 1):
+            x0, y0 = pts[i]
+            x1, y1 = pts[i + 1]
+            new_pts.append((0.75 * x0 + 0.25 * x1, 0.75 * y0 + 0.25 * y1))
+            new_pts.append((0.25 * x0 + 0.75 * x1, 0.25 * y0 + 0.75 * y1))
+        new_pts.append(pts[-1])
+        pts = new_pts
+    return pts
+
+
 def extract_rivers(
     heightfield: NDArray[np.float64],
     water_level: float,
@@ -413,6 +436,26 @@ def extract_rivers(
                 path.append((ci, cj))
 
             if len(path) >= min_length:
+                # Collect flow values along the path for width calculation
+                path_flows = [float(flow[pi, pj]) for pi, pj in path]
+                max_flow = max(path_flows)
+                avg_flow = sum(path_flows) / len(path_flows)
+
+                # Flow-based width: log-scale so tributaries aren't invisible
+                # but main rivers are noticeably wider.
+                # Maps flow_threshold..max_possible to ~1.5..8.0 world-unit width
+                import math as _math
+
+                width_min = cell_size * 0.3
+                width_max = cell_size * 1.5
+                log_flow = _math.log1p(max_flow)
+                log_thresh = _math.log1p(flow_threshold)
+                log_cap = _math.log1p(flow_threshold * 20)
+                t_width = min(
+                    (log_flow - log_thresh) / max(log_cap - log_thresh, 1e-6), 1.0
+                )
+                width = width_min + (width_max - width_min) * t_width
+
                 # Convert to world coordinates
                 coords = [
                     (
@@ -422,17 +465,25 @@ def extract_rivers(
                     for i, j in path
                 ]
 
+                # Simplify then apply Chaikin subdivision for smoother curves
                 line = LineString(coords)
-                smoothed = line.simplify(cell_size * 2, preserve_topology=True)
+                simplified = line.simplify(cell_size * 1.0, preserve_topology=True)
+                smoothed = _chaikin_smooth(list(simplified.coords), iterations=2)
+                smoothed_line = LineString(smoothed)
 
                 features.append(
                     TerrainFeature(
                         type="river",
                         geometry={
                             "type": "LineString",
-                            "coordinates": list(smoothed.coords),
+                            "coordinates": list(smoothed_line.coords),
                         },
-                        properties={"length": smoothed.length},
+                        properties={
+                            "length": smoothed_line.length,
+                            "width": round(width, 2),
+                            "max_flow": round(max_flow, 1),
+                            "avg_flow": round(avg_flow, 1),
+                        },
                     )
                 )
 

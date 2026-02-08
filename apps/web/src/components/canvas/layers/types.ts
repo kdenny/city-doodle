@@ -166,6 +166,10 @@ export interface District {
    * Range: typically -π/12 to π/12 (-15° to +15°) but can be any angle.
    */
   gridAngle?: number;
+  /** Pond features inside park districts (CITY-378) */
+  ponds?: Polygon[];
+  /** Custom fill color as hex string (e.g. "#ff0000"). Uses type default if not set. (CITY-408) */
+  fillColor?: string;
 }
 
 // Road hierarchy classes

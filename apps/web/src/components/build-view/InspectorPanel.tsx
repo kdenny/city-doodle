@@ -31,6 +31,8 @@ export interface SelectedDistrict {
   personality?: DistrictPersonality;
   /** Grid orientation angle in radians */
   gridAngle?: number;
+  /** Custom fill color as hex string (CITY-408) */
+  fillColor?: string;
 }
 
 export interface SelectedRoad {
@@ -87,6 +89,33 @@ interface InspectorPanelProps {
   onClose?: () => void;
   readOnly?: boolean;
 }
+
+// CITY-408: Default fill colors by district type (hex strings for color picker)
+const DISTRICT_TYPE_COLORS: Record<string, string> = {
+  residential: "#fff3cd",
+  downtown: "#d4a5a5",
+  commercial: "#aed9e0",
+  industrial: "#c9c9c9",
+  hospital: "#ffcccb",
+  university: "#d4c4fb",
+  k12: "#b5ead7",
+  park: "#90ee90",
+  airport: "#e0e0e0",
+};
+
+// CITY-408: Color palette for quick selection
+const COLOR_PALETTE = [
+  { label: "Light Yellow", value: "#fff3cd" },
+  { label: "Dusty Rose", value: "#d4a5a5" },
+  { label: "Light Teal", value: "#aed9e0" },
+  { label: "Gray", value: "#c9c9c9" },
+  { label: "Light Red", value: "#ffcccb" },
+  { label: "Light Purple", value: "#d4c4fb" },
+  { label: "Mint Green", value: "#b5ead7" },
+  { label: "Light Green", value: "#90ee90" },
+  { label: "Sand", value: "#f5deb3" },
+  { label: "Peach", value: "#ffdab9" },
+];
 
 // District type display names
 const DISTRICT_TYPE_LABELS: Record<string, string> = {
@@ -253,6 +282,9 @@ function DistrictInspector({
   const [personality, setPersonality] = useState<DistrictPersonality>(
     district.personality ?? DEFAULT_DISTRICT_PERSONALITY
   );
+  // CITY-408: Fill color (empty string = use type default)
+  const [fillColor, setFillColor] = useState(district.fillColor ?? "");
+
   // Grid angle in degrees for easier editing
   const [gridAngleDeg, setGridAngleDeg] = useState(
     district.gridAngle !== undefined ? radToDeg(district.gridAngle) : 0
@@ -352,6 +384,15 @@ function DistrictInspector({
     [district, onUpdate, isHistoric]
   );
 
+  // CITY-408: Handle fill color change
+  const handleFillColorChange = useCallback(
+    (newColor: string) => {
+      setFillColor(newColor);
+      onUpdate?.({ ...district, fillColor: newColor || undefined });
+    },
+    [district, onUpdate]
+  );
+
   return (
     <div className="space-y-3">
       {/* Type badge */}
@@ -393,6 +434,66 @@ function DistrictInspector({
           disabled={readOnly}
           className="w-full px-2 py-1 text-sm border border-gray-300 rounded focus:outline-none focus:ring-1 focus:ring-blue-500 disabled:opacity-60 disabled:cursor-not-allowed"
         />
+      </div>
+
+      {/* CITY-408: Fill color picker */}
+      <div>
+        <label className="block text-xs font-medium text-gray-600 mb-1">
+          Fill Color
+        </label>
+        <div className="flex flex-wrap gap-1.5 mb-2">
+          {/* Default (type-based) option */}
+          <button
+            type="button"
+            onClick={() => handleFillColorChange("")}
+            disabled={readOnly}
+            className={`w-7 h-7 rounded-full border-2 transition-all ${
+              !fillColor
+                ? "border-gray-900 scale-110"
+                : "border-transparent hover:border-gray-400"
+            } disabled:opacity-60 disabled:cursor-not-allowed`}
+            style={{ backgroundColor: DISTRICT_TYPE_COLORS[editedDistrictType] ?? "#cccccc" }}
+            title="Default (type-based)"
+            aria-label="Use default type color"
+          />
+          {COLOR_PALETTE.map((c) => (
+            <button
+              key={c.value}
+              type="button"
+              onClick={() => handleFillColorChange(c.value)}
+              disabled={readOnly}
+              className={`w-7 h-7 rounded-full border-2 transition-all ${
+                fillColor === c.value
+                  ? "border-gray-900 scale-110"
+                  : "border-transparent hover:border-gray-400"
+              } disabled:opacity-60 disabled:cursor-not-allowed`}
+              style={{ backgroundColor: c.value }}
+              title={c.label}
+              aria-label={`Select ${c.label}`}
+            />
+          ))}
+        </div>
+        <div className="flex items-center gap-2">
+          <label htmlFor="district-custom-color" className="text-xs text-gray-500">
+            Custom:
+          </label>
+          <input
+            id="district-custom-color"
+            type="color"
+            value={fillColor || DISTRICT_TYPE_COLORS[editedDistrictType] || "#cccccc"}
+            onChange={(e) => handleFillColorChange(e.target.value)}
+            disabled={readOnly}
+            className="w-7 h-7 rounded cursor-pointer border border-gray-300 disabled:opacity-60 disabled:cursor-not-allowed"
+          />
+          {fillColor && (
+            <button
+              onClick={() => handleFillColorChange("")}
+              className="text-xs text-blue-600 hover:text-blue-800"
+            >
+              Reset to default
+            </button>
+          )}
+        </div>
       </div>
 
       {/* Density slider */}
@@ -785,6 +886,42 @@ function NeighborhoodInspector({ neighborhood, onUpdate, onDelete, readOnly }: N
   );
 }
 
+/**
+ * CITY-376: Shared component showing transit lines that serve a station.
+ */
+function StationLinesServed({ lines }: { lines: { id: string; name: string; color: string; lineType: string }[] }) {
+  if (lines.length === 0) {
+    return (
+      <div>
+        <label className="block text-xs font-medium text-gray-600 mb-1">Lines Served</label>
+        <p className="text-xs text-gray-400 italic">No lines serve this station</p>
+      </div>
+    );
+  }
+
+  return (
+    <div>
+      <label className="block text-xs font-medium text-gray-600 mb-1">
+        Lines Served ({lines.length})
+      </label>
+      <div className="space-y-1">
+        {lines.map((line) => (
+          <div key={line.id} className="flex items-center gap-2 px-2 py-1 bg-gray-50 rounded">
+            <span
+              className="w-3 h-3 rounded-full flex-shrink-0 border border-gray-300"
+              style={{ backgroundColor: line.color }}
+            />
+            <span className="text-sm text-gray-700 truncate">{line.name}</span>
+            <span className="text-xs text-gray-400 ml-auto flex-shrink-0">
+              {line.lineType === "rail" ? "Rail" : "Subway"}
+            </span>
+          </div>
+        ))}
+      </div>
+    </div>
+  );
+}
+
 interface RailStationInspectorProps {
   station: SelectedRailStation;
   onUpdate?: (feature: SelectedFeature) => void;
@@ -794,6 +931,11 @@ interface RailStationInspectorProps {
 
 function RailStationInspector({ station, onUpdate, onDelete, readOnly }: RailStationInspectorProps) {
   const [editedName, setEditedName] = useState(station.name);
+  const transit = useTransitOptional();
+  const linesServed = useMemo(
+    () => transit?.getLinesForStation(station.id) ?? [],
+    [transit, station.id]
+  );
 
   // Reset name when a different station is selected
   useEffect(() => {
@@ -838,16 +980,8 @@ function RailStationInspector({ station, onUpdate, onDelete, readOnly }: RailSta
         )}
       </div>
 
-      {/* Line color indicator */}
-      {station.lineColor && (
-        <div className="flex items-center gap-2">
-          <span className="text-xs font-medium text-gray-600">Line Color:</span>
-          <span
-            className="w-4 h-4 rounded-full border border-gray-300"
-            style={{ backgroundColor: station.lineColor }}
-          />
-        </div>
-      )}
+      {/* CITY-376: Lines served */}
+      <StationLinesServed lines={linesServed} />
 
       {/* Delete button */}
       {onDelete && (
@@ -871,6 +1005,11 @@ interface SubwayStationInspectorProps {
 
 function SubwayStationInspector({ station, onUpdate, onDelete, readOnly }: SubwayStationInspectorProps) {
   const [editedName, setEditedName] = useState(station.name);
+  const transit = useTransitOptional();
+  const linesServed = useMemo(
+    () => transit?.getLinesForStation(station.id) ?? [],
+    [transit, station.id]
+  );
 
   // Reset name when a different station is selected
   useEffect(() => {
@@ -914,6 +1053,9 @@ function SubwayStationInspector({ station, onUpdate, onDelete, readOnly }: Subwa
           <p className="text-sm text-gray-700">{station.name}</p>
         )}
       </div>
+
+      {/* CITY-376: Lines served */}
+      <StationLinesServed lines={linesServed} />
 
       {/* Delete button */}
       {onDelete && (

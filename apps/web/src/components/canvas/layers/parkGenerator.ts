@@ -548,6 +548,297 @@ export function generatePark(
 }
 
 /**
+ * Result of generating features for a park district.
+ */
+export interface ParkDistrictFeatures {
+  /** Internal trails/paths */
+  paths: Road[];
+  /** Pond features (as polygons) */
+  ponds: Polygon[];
+  /** Perimeter roads along park boundary */
+  perimeterRoads: Road[];
+  /** Connection roads to existing street network */
+  connectionRoads: Road[];
+}
+
+/**
+ * Generate perimeter roads along a park boundary.
+ *
+ * Real parks have collector-class roads running along their edges
+ * (e.g. Central Park West, 5th Avenue along Central Park).
+ * For smaller parks (pocket/neighborhood), generates local roads instead.
+ *
+ * @param polygon - The park polygon boundary points
+ * @param districtId - District ID for road naming
+ * @param parkName - Park name for road naming
+ * @param parkSize - Size tier of the park
+ * @returns Array of perimeter road segments
+ */
+function generatePerimeterRoads(
+  polygon: Point[],
+  districtId: string,
+  parkName: string,
+  parkSize: ParkSize
+): Road[] {
+  const roads: Road[] = [];
+
+  if (polygon.length < 3) return roads;
+
+  // Pocket parks are too small for perimeter roads
+  if (parkSize === "pocket") return roads;
+
+  // Road class depends on park size — larger parks get collector roads
+  const roadClass: RoadClass = (parkSize === "city" || parkSize === "regional")
+    ? "collector"
+    : "local";
+
+  // Offset the perimeter slightly outward from the park boundary
+  // so the road sits OUTSIDE the park polygon
+  const centroid = {
+    x: polygon.reduce((sum, p) => sum + p.x, 0) / polygon.length,
+    y: polygon.reduce((sum, p) => sum + p.y, 0) / polygon.length,
+  };
+
+  const offsetFactor = parkSize === "neighborhood" ? 0.06 : 0.04;
+
+  const offsetPolygon: Point[] = polygon.map(p => {
+    const dx = p.x - centroid.x;
+    const dy = p.y - centroid.y;
+    return {
+      x: p.x + dx * offsetFactor,
+      y: p.y + dy * offsetFactor,
+    };
+  });
+
+  // Generate perimeter road names based on cardinal direction from park center
+  const directionNames = ["North", "East", "South", "West"];
+
+  // Group polygon edges into ~4 sides for named road segments
+  const edgesPerSide = Math.max(1, Math.floor(offsetPolygon.length / 4));
+
+  for (let side = 0; side < 4; side++) {
+    const startIdx = side * edgesPerSide;
+    const endIdx = side === 3 ? offsetPolygon.length : (side + 1) * edgesPerSide;
+
+    // Collect all points for this side
+    const sidePoints: Point[] = [];
+    for (let i = startIdx; i <= endIdx; i++) {
+      sidePoints.push(offsetPolygon[i % offsetPolygon.length]);
+    }
+
+    if (sidePoints.length < 2) continue;
+
+    // Name the road based on direction relative to park
+    const direction = directionNames[side];
+    const roadName = parkSize === "city" || parkSize === "regional"
+      ? `${parkName} ${direction} Drive`
+      : `${parkName} ${direction}`;
+
+    roads.push({
+      id: generateId(`${districtId}-perimeter-${side}`),
+      roadClass,
+      line: { points: sidePoints },
+      name: roadName,
+      districtId,
+    });
+  }
+
+  return roads;
+}
+
+/**
+ * Find multiple road connections from a park boundary to nearby roads.
+ *
+ * For larger parks, generates multiple access points (like how Central Park
+ * has entrances at various cross-streets). For smaller parks, 1-2 connections.
+ *
+ * @param polygon - Park boundary polygon
+ * @param existingRoads - Existing road network to connect to
+ * @param parkSize - Size tier determining number of connections
+ * @param districtId - District ID for road naming
+ * @returns Array of connection roads from park perimeter to street network
+ */
+function generateConnectionRoads(
+  polygon: Point[],
+  existingRoads: Road[],
+  parkSize: ParkSize,
+  districtId: string
+): Road[] {
+  const roads: Road[] = [];
+  const segments = extractRoadSegments(existingRoads);
+  if (segments.length === 0) return roads;
+
+  // Number of connections depends on park size
+  const connectionCounts: Record<ParkSize, number> = {
+    pocket: 1,
+    neighborhood: 2,
+    community: 3,
+    regional: 4,
+    city: 6,
+  };
+  const maxConnections = connectionCounts[parkSize];
+
+  // Find the best connection points distributed around the perimeter
+  const candidates: Array<{
+    parkEdgePoint: Point;
+    roadPoint: Point;
+    roadId: string;
+    distance: number;
+    perimeterIndex: number;
+  }> = [];
+
+  // Sample points along the park perimeter
+  for (let i = 0; i < polygon.length; i++) {
+    const p1 = polygon[i];
+    const p2 = polygon[(i + 1) % polygon.length];
+
+    // Sample along this edge
+    for (let s = 0; s <= 3; s++) {
+      const t = s / 3;
+      const edgePoint: Point = {
+        x: p1.x + (p2.x - p1.x) * t,
+        y: p1.y + (p2.y - p1.y) * t,
+      };
+
+      for (const seg of segments) {
+        const roadPoint = nearestPointOnSegment(edgePoint, seg.start, seg.end);
+        const dist = distance(edgePoint, roadPoint);
+
+        if (dist <= 50) {
+          candidates.push({
+            parkEdgePoint: edgePoint,
+            roadPoint,
+            roadId: seg.id,
+            distance: dist,
+            perimeterIndex: i,
+          });
+        }
+      }
+    }
+  }
+
+  // Sort by distance and pick spread-out connections
+  candidates.sort((a, b) => a.distance - b.distance);
+
+  const selectedConnections: typeof candidates = [];
+  const usedPerimeterIndices = new Set<number>();
+
+  for (const candidate of candidates) {
+    if (selectedConnections.length >= maxConnections) break;
+
+    // Ensure connections are spread around the perimeter
+    // (don't cluster multiple connections on the same polygon edge)
+    const tooClose = selectedConnections.some(
+      (sc) => Math.abs(sc.perimeterIndex - candidate.perimeterIndex) <= 1
+    );
+    if (tooClose && selectedConnections.length > 0) continue;
+
+    if (usedPerimeterIndices.has(candidate.perimeterIndex)) continue;
+    usedPerimeterIndices.add(candidate.perimeterIndex);
+
+    selectedConnections.push(candidate);
+  }
+
+  // Create connection roads
+  for (let i = 0; i < selectedConnections.length; i++) {
+    const conn = selectedConnections[i];
+    roads.push({
+      id: generateId(`${districtId}-access-${i}`),
+      roadClass: "local",
+      line: { points: [conn.parkEdgePoint, conn.roadPoint] },
+      name: "Park Access Road",
+      districtId,
+    });
+  }
+
+  return roads;
+}
+
+/**
+ * Generate all park features for an existing park district.
+ *
+ * Called after districtGenerator creates the park polygon. This function
+ * generates internal features (trails, ponds), perimeter roads, and
+ * connection roads to integrate the park into the urban fabric.
+ *
+ * @param districtPolygon - The park district's polygon points
+ * @param districtId - The park district's ID
+ * @param districtName - The park district's name
+ * @param seedId - Original seed type ID (e.g. "park_neighborhood")
+ * @param existingRoads - Existing road network for connections
+ * @param config - Optional park generation config overrides
+ * @returns Park features (paths, ponds, perimeter roads, connection roads)
+ */
+export function generateParkFeaturesForDistrict(
+  districtPolygon: Point[],
+  districtId: string,
+  districtName: string,
+  seedId: string,
+  existingRoads: Road[],
+  config: Partial<ParkGenerationConfig> = {}
+): ParkDistrictFeatures {
+  const size = config.size ?? getParkSizeFromSeedId(seedId);
+  const sizeConfig = PARK_SIZE_CONFIG[size];
+
+  // Derive seed from polygon centroid for deterministic results
+  const centroid = {
+    x: districtPolygon.reduce((sum, p) => sum + p.x, 0) / districtPolygon.length,
+    y: districtPolygon.reduce((sum, p) => sum + p.y, 0) / districtPolygon.length,
+  };
+  const seed = config.seed ?? Math.floor(centroid.x * 1000 + centroid.y * 7919);
+  const rng = new SeededRandom(seed);
+
+  // Estimate radius from polygon for internal feature generation
+  const maxDist = Math.max(...districtPolygon.map(
+    p => Math.sqrt((p.x - centroid.x) ** 2 + (p.y - centroid.y) ** 2)
+  ));
+  const avgRadius = maxDist * 0.8;
+
+  // Generate internal paths/trails
+  const paths: Road[] = sizeConfig.hasInternalFeatures
+    ? generateInternalPaths(
+        districtPolygon,
+        centroid.x,
+        centroid.y,
+        avgRadius,
+        sizeConfig.featureDensity,
+        rng,
+        districtId
+      )
+    : [];
+
+  // Generate ponds
+  const ponds: Polygon[] = sizeConfig.hasInternalFeatures
+    ? generatePonds(
+        districtPolygon,
+        centroid.x,
+        centroid.y,
+        avgRadius,
+        sizeConfig.featureDensity,
+        rng
+      )
+    : [];
+
+  // Generate perimeter roads along the park boundary
+  const perimeterRoads = generatePerimeterRoads(
+    districtPolygon,
+    districtId,
+    districtName,
+    size
+  );
+
+  // Generate connection roads to the existing street network
+  const connectionRoads = generateConnectionRoads(
+    districtPolygon,
+    existingRoads,
+    size,
+    districtId
+  );
+
+  return { paths, ponds, perimeterRoads, connectionRoads };
+}
+
+/**
  * Check if a park would overlap with existing districts or parks.
  */
 export function wouldParkOverlap(

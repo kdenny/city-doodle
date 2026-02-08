@@ -3,6 +3,7 @@ import { useParams } from "react-router-dom";
 import { TransitLinesPanel, TransitLine } from "./TransitLinesPanel";
 import { TransitLineInspector } from "./TransitLineInspector";
 import type { SegmentDisplayData } from "./TransitLineInspector";
+import { TransitStationInspector, StationInspectorData } from "./TransitStationInspector";
 import { useTransitLinesData } from "./useTransitLinesData";
 import { useTransitOptional } from "../canvas/TransitContext";
 import { useTransitLineDrawingOptional } from "../canvas/TransitLineDrawingContext";
@@ -11,6 +12,7 @@ import { usePlacementOptional } from "../palette/PlacementContext";
 import { SEED_TYPES } from "../palette/types";
 import { useViewMode } from "../shell/ViewModeContext";
 import { TransitLinePropertiesDialog } from "../build-view/TransitLinePropertiesDialog";
+import { useSelectionContextOptional } from "../build-view/SelectionContext";
 import type { RailStationData } from "../canvas/layers";
 import { useDeleteTransitLineSegment, useDeleteTransitStation } from "../../api/hooks";
 
@@ -51,8 +53,40 @@ export function TransitView({
     termini: RailStationData[];
   } | null>(null);
 
+  const selectionContext = useSelectionContextOptional();
+  const [isStationUpdating, setIsStationUpdating] = useState(false);
+
   const networkLines = useTransitLinesData(transitContext?.transitNetwork);
   const lines = propLines ?? networkLines;
+
+  // CITY-375: Build station inspector data from selection context
+  const selectedStation: StationInspectorData | null = useMemo(() => {
+    const selection = selectionContext?.selection;
+    if (!selection) return null;
+    if (selection.type !== "rail_station" && selection.type !== "subway_station") return null;
+
+    const network = transitContext?.transitNetwork;
+    const stationLines: { id: string; name: string; color: string }[] = [];
+
+    if (network) {
+      for (const line of network.lines) {
+        const servesStation = line.segments.some(
+          (seg) => seg.from_station_id === selection.id || seg.to_station_id === selection.id
+        );
+        if (servesStation) {
+          stationLines.push({ id: line.id, name: line.name, color: line.color });
+        }
+      }
+    }
+
+    return {
+      id: selection.id,
+      name: selection.name,
+      stationType: selection.type === "rail_station" ? "rail" : "subway",
+      isTerminus: selection.isTerminus,
+      lines: stationLines,
+    };
+  }, [selectionContext?.selection, transitContext?.transitNetwork]);
 
   // Station placement via PlacementContext
   const subwaySeed = SEED_TYPES.find((s) => s.id === "subway") ?? null;
@@ -242,6 +276,45 @@ export function TransitView({
     [terminusChoices, transitLineDrawingContext, placementContext]
   );
 
+  // CITY-375: Station rename handler
+  const handleStationRename = useCallback(
+    async (stationId: string, newName: string): Promise<boolean> => {
+      if (!transitContext?.renameStation) return false;
+      setIsStationUpdating(true);
+      try {
+        const success = await transitContext.renameStation(stationId, newName);
+        if (success && selectionContext?.selection) {
+          // Update selection state to reflect new name
+          selectionContext.selectFeature({ ...selectionContext.selection, name: newName });
+        }
+        return success;
+      } finally {
+        setIsStationUpdating(false);
+      }
+    },
+    [transitContext, selectionContext]
+  );
+
+  // CITY-375: Station delete handler
+  const handleStationDelete = useCallback(
+    async (stationId: string) => {
+      if (!transitContext) return;
+      // Find the station type to call the correct delete method
+      const isRail = transitContext.railStations.some((s) => s.id === stationId);
+      if (isRail) {
+        await transitContext.removeRailStation(stationId);
+      } else {
+        await transitContext.removeSubwayStation(stationId);
+      }
+      selectionContext?.clearSelection();
+    },
+    [transitContext, selectionContext]
+  );
+
+  const handleCloseStationInspector = useCallback(() => {
+    selectionContext?.clearSelection();
+  }, [selectionContext]);
+
   // CITY-367: Compute segment display data for the selected line
   const selectedLineSegments: SegmentDisplayData[] | undefined = useMemo(() => {
     if (!selectedLine || !transitContext?.transitNetwork) return undefined;
@@ -357,7 +430,6 @@ export function TransitView({
     },
     [transitContext, selectedLineSegments, stationIdsUsedByOtherLines, deleteStation]
   );
-
   const handleBackgroundClick = useCallback(() => {
     transitContext?.setHighlightedLineId(null);
   }, [transitContext]);
@@ -406,6 +478,19 @@ export function TransitView({
             />
           </div>
         )}
+
+        {/* CITY-375: Station inspector (when a station is selected on the map) */}
+        {selectedStation && !selectedLine && (
+          <div className="border-t border-gray-200 overflow-y-auto max-h-[50%]">
+            <TransitStationInspector
+              station={selectedStation}
+              onRename={handleStationRename}
+              onDelete={handleStationDelete}
+              onClose={handleCloseStationInspector}
+              isUpdating={isStationUpdating}
+            />
+          </div>
+        )}
       </div>
 
       {/* Map content */}
@@ -438,8 +523,8 @@ export function TransitView({
           <div className="absolute top-4 left-4 z-10 bg-blue-600 text-white px-4 py-2 rounded-lg shadow-lg flex items-center gap-2">
             <span className="text-sm font-medium">
               {transitLineDrawingContext.state.connectedStations.length === 0
-                ? "Click a station to start"
-                : "Click another station to extend"}
+                ? "Click a station or empty space to start"
+                : "Click a station or empty space to extend"}
               {transitLineDrawingContext.state.connectedStations.length >= 2 && (
                 <> — Press <kbd className="px-1 py-0.5 bg-blue-500 rounded text-xs font-mono">Enter</kbd> to finish</>
               )}

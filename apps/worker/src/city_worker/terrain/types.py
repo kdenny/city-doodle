@@ -40,6 +40,9 @@ class TerrainConfig:
     # World seed for deterministic generation
     world_seed: int
 
+    # Geographic setting (world type) — drives mask-based terrain shaping
+    geographic_setting: str = "coastal"
+
     # Tile size in world units (50 miles = 80467.2 meters)
     tile_size: float = 80467.2
 
