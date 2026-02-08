@@ -236,6 +236,20 @@ function nextSegmentOrder(segments: { order_in_line: number }[]): number {
 }
 
 /**
+ * CITY-528: Result of checking whether a station can be safely deleted.
+ */
+export interface DeletionSafetyCheck {
+  /** Whether the deletion is safe (won't orphan other stations) */
+  safe: boolean;
+  /** Number of segments connected to this station */
+  connectedSegments: number;
+  /** Names of stations that would become orphaned */
+  wouldOrphanStations: string[];
+  /** Names of affected transit lines */
+  affectedLines: string[];
+}
+
+/**
  * Properties for creating a new transit line manually.
  */
 export interface CreateLineParams {
@@ -297,6 +311,8 @@ interface TransitContextValue {
   updateLine: (lineId: string, updates: { name?: string; color?: string }) => Promise<boolean>;
   /** Delete a transit line and all its segments */
   deleteLine: (lineId: string) => Promise<boolean>;
+  /** CITY-528: Check whether a station can be safely deleted without orphaning other stations */
+  checkStationDeletionSafety: (stationId: string) => DeletionSafetyCheck;
   /** Get the count of existing lines */
   lineCount: number;
   /** Loading state */
@@ -1246,6 +1262,77 @@ export function TransitProvider({ children, worldId }: TransitProviderProps) {
     [transitNetwork]
   );
 
+  /**
+   * CITY-528: Check whether deleting a station is safe.
+   *
+   * A station is safe to delete if:
+   * - It has no segment connections at all (isolated station), OR
+   * - It is a terminus on every line it belongs to (connected on only one side per line)
+   *
+   * It is unsafe if the station is a "middle" station on any line (2+ connections
+   * on the same line), because removing it would disconnect the line.
+   */
+  const checkStationDeletionSafety = useCallback(
+    (stationId: string): DeletionSafetyCheck => {
+      if (!transitNetwork) {
+        return { safe: true, connectedSegments: 0, wouldOrphanStations: [], affectedLines: [] };
+      }
+
+      // Gather all segments touching this station, grouped by line
+      const affectedLineNames: string[] = [];
+      const wouldOrphanStationNames: string[] = [];
+      let totalConnectedSegments = 0;
+      let isSafe = true;
+
+      for (const line of transitNetwork.lines) {
+        // Find segments on this line that involve our station
+        const touchingSegments = line.segments.filter(
+          (seg) => seg.from_station_id === stationId || seg.to_station_id === stationId
+        );
+
+        if (touchingSegments.length === 0) continue;
+
+        totalConnectedSegments += touchingSegments.length;
+        affectedLineNames.push(line.name);
+
+        // If the station has 2+ connections on the same line, it's a middle station
+        if (touchingSegments.length >= 2) {
+          isSafe = false;
+
+          // Find which neighbor stations would be orphaned
+          for (const seg of touchingSegments) {
+            const neighborId = seg.from_station_id === stationId
+              ? seg.to_station_id
+              : seg.from_station_id;
+
+            // Check if this neighbor has OTHER segments on this line (besides the one connecting to our station)
+            const neighborOtherSegments = line.segments.filter(
+              (s) =>
+                s.id !== seg.id &&
+                (s.from_station_id === neighborId || s.to_station_id === neighborId)
+            );
+
+            // If the neighbor has no other connections on this line, it becomes orphaned
+            if (neighborOtherSegments.length === 0) {
+              const neighborStation = transitNetwork.stations.find((s) => s.id === neighborId);
+              if (neighborStation && !wouldOrphanStationNames.includes(neighborStation.name)) {
+                wouldOrphanStationNames.push(neighborStation.name);
+              }
+            }
+          }
+        }
+      }
+
+      return {
+        safe: isSafe,
+        connectedSegments: totalConnectedSegments,
+        wouldOrphanStations: wouldOrphanStationNames,
+        affectedLines: affectedLineNames,
+      };
+    },
+    [transitNetwork]
+  );
+
   const lineCount = transitNetwork?.lines.length || 0;
   const isLoading = isLoadingNetwork || createStation.isPending || createLine.isPending || updateLine.isPending;
   const error = networkError || createStation.error || null;
@@ -1282,6 +1369,8 @@ export function TransitProvider({ children, worldId }: TransitProviderProps) {
     createLineSegment,
     updateLine: updateLineMethod,
     deleteLine: deleteLineMethod,
+    // CITY-528: Station deletion safety check
+    checkStationDeletionSafety,
     lineCount,
     // Loading/Error
     isLoading,
@@ -1311,6 +1400,7 @@ export function TransitProvider({ children, worldId }: TransitProviderProps) {
     createLineSegment,
     updateLineMethod,
     deleteLineMethod,
+    checkStationDeletionSafety,
     lineCount,
     isLoading,
     error,

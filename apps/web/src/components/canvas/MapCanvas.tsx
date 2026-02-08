@@ -47,6 +47,8 @@ import { MapCanvasContextInternal } from "./MapCanvasContext";
 import { useFeaturesOptional } from "./FeaturesContext";
 import { useTerrainOptional } from "./TerrainContext";
 import { useTransitOptional, MINIMUM_STATION_DISTANCE } from "./TransitContext";
+import { StationContextMenu } from "../build-view/StationContextMenu";
+import { StationDeleteWarningModal } from "../build-view/StationDeleteWarningModal";
 import { useZoomOptional } from "../shell/ZoomContext";
 import { usePlacementOptional, usePlacedSeedsOptional } from "../palette";
 import { useSelectionContextOptional } from "../build-view/SelectionContext";
@@ -124,6 +126,22 @@ export const MapCanvas = forwardRef<MapCanvasHandle, MapCanvasProps>(
     poiType: string;
     screenX: number;
     screenY: number;
+  } | null>(null);
+
+  // CITY-528: Right-click context menu state for stations
+  const [stationContextMenu, setStationContextMenu] = useState<{
+    x: number;
+    y: number;
+    stationId: string;
+    stationName: string;
+    stationType: "rail" | "subway";
+  } | null>(null);
+
+  // CITY-528: Warning modal state for unsafe station deletion
+  const [deleteWarning, setDeleteWarning] = useState<{
+    stationName: string;
+    orphanedStations: string[];
+    affectedLines: string[];
   } | null>(null);
 
   // Try to get the context (may be null if not wrapped in provider)
@@ -1659,6 +1677,87 @@ export const MapCanvas = forwardRef<MapCanvasHandle, MapCanvasProps>(
     };
   }, [isReady]);
 
+  // CITY-528: Right-click context menu for stations
+  useEffect(() => {
+    const container = containerRef.current;
+    if (!isReady || !container || !viewportRef.current) return;
+
+    const handleContextMenu = (e: MouseEvent) => {
+      const viewport = viewportRef.current;
+      if (!viewport) return;
+
+      // Get the canvas element's bounding rect for coordinate conversion
+      const rect = container.getBoundingClientRect();
+      const screenX = e.clientX - rect.left;
+      const screenY = e.clientY - rect.top;
+      const worldPos = viewport.toWorld(screenX, screenY);
+
+      // Check rail stations
+      if (railStationLayerRef.current) {
+        const railHit = railStationLayerRef.current.hitTest(worldPos.x, worldPos.y);
+        if (railHit) {
+          e.preventDefault();
+          setStationContextMenu({
+            x: e.clientX,
+            y: e.clientY,
+            stationId: railHit.id,
+            stationName: railHit.name,
+            stationType: "rail",
+          });
+          return;
+        }
+      }
+
+      // Check subway stations
+      if (subwayStationLayerRef.current) {
+        const subwayHit = subwayStationLayerRef.current.hitTest(worldPos.x, worldPos.y);
+        if (subwayHit) {
+          e.preventDefault();
+          setStationContextMenu({
+            x: e.clientX,
+            y: e.clientY,
+            stationId: subwayHit.id,
+            stationName: subwayHit.name,
+            stationType: "subway",
+          });
+          return;
+        }
+      }
+    };
+
+    container.addEventListener("contextmenu", handleContextMenu);
+    return () => {
+      container.removeEventListener("contextmenu", handleContextMenu);
+    };
+  }, [isReady]);
+
+  // CITY-528: Handle station deletion from context menu with orphan protection
+  const handleContextMenuDelete = useCallback(() => {
+    if (!stationContextMenu || !transitContext) return;
+
+    const { stationId, stationName, stationType } = stationContextMenu;
+
+    // Check deletion safety
+    const safety = transitContext.checkStationDeletionSafety(stationId);
+
+    if (!safety.safe) {
+      // Show warning modal
+      setDeleteWarning({
+        stationName,
+        orphanedStations: safety.wouldOrphanStations,
+        affectedLines: safety.affectedLines,
+      });
+      return;
+    }
+
+    // Safe to delete - proceed
+    if (stationType === "rail") {
+      transitContext.removeRailStation(stationId);
+    } else {
+      transitContext.removeSubwayStation(stationId);
+    }
+  }, [stationContextMenu, transitContext]);
+
   return (
     <div
       ref={containerRef}
@@ -1721,6 +1820,26 @@ export const MapCanvas = forwardRef<MapCanvasHandle, MapCanvasProps>(
             </div>
           </div>
         </div>
+      )}
+      {/* CITY-528: Station right-click context menu */}
+      {stationContextMenu && (
+        <StationContextMenu
+          x={stationContextMenu.x}
+          y={stationContextMenu.y}
+          stationName={stationContextMenu.stationName}
+          stationType={stationContextMenu.stationType}
+          onDelete={handleContextMenuDelete}
+          onClose={() => setStationContextMenu(null)}
+        />
+      )}
+      {/* CITY-528: Station deletion warning modal */}
+      {deleteWarning && (
+        <StationDeleteWarningModal
+          stationName={deleteWarning.stationName}
+          orphanedStations={deleteWarning.orphanedStations}
+          affectedLines={deleteWarning.affectedLines}
+          onClose={() => setDeleteWarning(null)}
+        />
       )}
     </div>
   );
