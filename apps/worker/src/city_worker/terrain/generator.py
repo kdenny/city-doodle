@@ -173,7 +173,7 @@ class TerrainGenerator:
             )
             features.extend(beaches)
 
-        # Rivers
+        # Rivers (CITY-508: pass pre-computed flow accumulation)
         rivers = extract_rivers(
             heightfield=heightfield,
             water_level=cfg.water_level,
@@ -182,6 +182,7 @@ class TerrainGenerator:
             tile_size=cfg.tile_size,
             flow_threshold=cfg.resolution * 0.8,  # Scale with resolution
             min_length=cfg.min_river_length,
+            flow_accumulation=flow_accumulation,
         )
         features.extend(rivers)
 

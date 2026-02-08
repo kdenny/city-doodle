@@ -349,6 +349,7 @@ def extract_rivers(
     tile_size: float,
     flow_threshold: float = 100.0,
     min_length: int = 10,
+    flow_accumulation: NDArray[np.float64] | None = None,
 ) -> list[TerrainFeature]:
     """Extract river linestrings from heightfield.
 
@@ -359,6 +360,7 @@ def extract_rivers(
         tile_size: Size of tile
         flow_threshold: Minimum flow accumulation for river
         min_length: Minimum river length in cells
+        flow_accumulation: Pre-computed flow accumulation array (avoids recomputation)
 
     Returns:
         List of river LineString features
@@ -366,8 +368,8 @@ def extract_rivers(
     h, w = heightfield.shape
     cell_size = tile_size / w
 
-    # Calculate flow accumulation
-    flow = calculate_flow_accumulation(heightfield)
+    # Use pre-computed flow accumulation if provided (CITY-508)
+    flow = flow_accumulation if flow_accumulation is not None else calculate_flow_accumulation(heightfield)
 
     # Find river cells (high flow, above water level for now)
     river_mask = (flow >= flow_threshold) & (heightfield >= water_level * 0.8)
