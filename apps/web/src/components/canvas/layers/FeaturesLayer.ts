@@ -424,6 +424,8 @@ export class FeaturesLayer {
   private _lastRoadLogTime: number = 0; // CITY-377 diagnostic throttle
   /** ID of the currently selected road (null = no selection) */
   private selectedRoadId: string | null = null;
+  /** CITY-499: Stored visibility state, re-applied after every render */
+  private storedVisibility: LayerVisibility | null = null;
   /** Spatial index for fast road hit testing */
   private roadIndex: RoadSpatialIndex = new RoadSpatialIndex();
   /** Spatial index for fast POI hit testing */
@@ -492,14 +494,29 @@ export class FeaturesLayer {
   }
 
   setData(data: FeaturesData): void {
+    const prev = this.data;
     this.data = data;
-    this.districtScale = this.computeDistrictScale(data.districts);
-    this.roadIndex.build(data.roads);
-    this.poiIndex.build(data.pois);
-    this.districtIndex.build(data.districts);
+
+    // CITY-492: Only re-render sublayers whose data actually changed (by reference).
+    // React's immutable update pattern creates new array references only for changed data.
+    const districtsChanged = !prev || prev.districts !== data.districts;
+    const roadsChanged = !prev || prev.roads !== data.roads;
+    const poisChanged = !prev || prev.pois !== data.pois;
+    const neighborhoodsChanged = !prev || prev.neighborhoods !== data.neighborhoods;
+    const bridgesChanged = !prev || prev.bridges !== data.bridges;
+    const interchangesChanged = !prev || prev.interchanges !== data.interchanges;
+    const cityLimitsChanged = !prev || prev.cityLimits !== data.cityLimits;
+
+    // Only rebuild indexes and recompute scale for changed data
+    if (districtsChanged) {
+      this.districtScale = this.computeDistrictScale(data.districts);
+      this.districtIndex.build(data.districts);
+    }
+    if (roadsChanged) this.roadIndex.build(data.roads);
+    if (poisChanged) this.poiIndex.build(data.pois);
 
     // CITY-377 diagnostic: log road stats on data load
-    if (data.roads.length > 0) {
+    if (roadsChanged && data.roads.length > 0) {
       const byClass: Record<string, number> = {};
       for (const r of data.roads) {
         byClass[r.roadClass] = (byClass[r.roadClass] || 0) + 1;
@@ -509,22 +526,42 @@ export class FeaturesLayer {
       );
     }
 
-    this.render();
+    // CITY-492: Only render changed sublayers
+    if (neighborhoodsChanged) this.renderNeighborhoods(data.neighborhoods || []);
+    if (cityLimitsChanged) this.renderCityLimits(data.cityLimits);
+    if (districtsChanged) this.renderDistricts(data.districts);
+    if (roadsChanged || districtsChanged) {
+      // Roads depend on districtScale which comes from districts
+      this.renderRoads(data.roads);
+      this.renderRoadHighlight();
+    }
+    if (bridgesChanged) this.renderBridges(data.bridges || []);
+    if (interchangesChanged) this.renderInterchanges(data.interchanges || []);
+    if (poisChanged) this.renderPOIs(data.pois);
   }
 
-  setVisibility(visibility: LayerVisibility & { neighborhoods?: boolean; cityLimits?: boolean; bridges?: boolean }): void {
-    this.neighborhoodsGraphics.visible = visibility.neighborhoods ?? true;
-    this.cityLimitsGraphics.visible = visibility.cityLimits ?? true;
-    this.districtsGraphics.visible = visibility.districts;
-    this.roadsGraphics.visible = visibility.roads;
-    this.roadHighlightGraphics.visible = visibility.roads;
-    this.bridgesGraphics.visible = visibility.bridges ?? visibility.roads; // Default to road visibility
-    this.interchangesGraphics.visible = visibility.roads; // Show with roads
-    this.poisGraphics.visible = visibility.pois;
+  setVisibility(visibility: LayerVisibility): void {
+    this.storedVisibility = visibility;
+    this.applyVisibility();
+  }
+
+  private applyVisibility(): void {
+    if (!this.storedVisibility) return;
+    const v = this.storedVisibility;
+    this.neighborhoodsGraphics.visible = v.neighborhoods ?? true;
+    this.cityLimitsGraphics.visible = v.cityLimits ?? true;
+    this.districtsGraphics.visible = v.districts;
+    this.roadsGraphics.visible = v.roads;
+    this.roadHighlightGraphics.visible = v.roads;
+    this.bridgesGraphics.visible = v.bridges ?? v.roads;
+    this.interchangesGraphics.visible = v.roads;
+    this.poisGraphics.visible = v.pois;
   }
 
   /**
    * Set the current zoom level for zoom-based road visibility.
+   * CITY-495: Uses requestAnimationFrame to batch rapid zoom/pan updates
+   * into a single render per frame instead of re-rendering on every event.
    * @param zoom - Zoom level (1 = default, <1 = zoomed out, >1 = zoomed in)
    */
   setZoom(zoom: number): void {
@@ -578,6 +615,7 @@ export class FeaturesLayer {
   /**
    * CITY-421: Set viewport bounds in world coordinates for spatial road culling.
    * Roads outside these bounds are skipped during rendering.
+   * CITY-495: Batched with zoom updates via requestAnimationFrame.
    */
   setViewportBounds(bounds: { minX: number; minY: number; maxX: number; maxY: number }): void {
     this.viewportBounds = bounds;
@@ -639,18 +677,7 @@ export class FeaturesLayer {
     return Math.max(0.5, Math.min(3, avgDiameter / referenceDiameter));
   }
 
-  private render(): void {
-    if (!this.data) return;
 
-    this.renderNeighborhoods(this.data.neighborhoods || []);
-    this.renderCityLimits(this.data.cityLimits);
-    this.renderDistricts(this.data.districts);
-    this.renderRoads(this.data.roads);
-    this.renderRoadHighlight();
-    this.renderBridges(this.data.bridges || []);
-    this.renderInterchanges(this.data.interchanges || []);
-    this.renderPOIs(this.data.pois);
-  }
 
   private renderNeighborhoods(neighborhoods: Neighborhood[]): void {
     if (this.neighborhoodsGraphics.clear) {
@@ -1423,6 +1450,10 @@ export class FeaturesLayer {
   }
 
   destroy(): void {
+    if (this.viewportBoundsRafId) {
+      cancelAnimationFrame(this.viewportBoundsRafId);
+      this.viewportBoundsRafId = 0;
+    }
     this.container.destroy({ children: true });
   }
 }

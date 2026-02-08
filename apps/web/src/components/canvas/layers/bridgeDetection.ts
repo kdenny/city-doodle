@@ -19,7 +19,15 @@ import type {
   WaterCrossingType,
   TerrainData,
 } from "./types";
-import { generateId } from "../../../utils/idGenerator";
+
+/**
+ * Generate a deterministic bridge ID from road and water feature identifiers.
+ * Using stable inputs avoids creating new IDs on every detectBridges() call,
+ * which previously caused unnecessary React state updates and re-renders.
+ */
+function deterministicBridgeId(roadId: string, waterFeatureId: string, segmentIndex: number, crossingIndex: number): string {
+  return `bridge-${roadId}-${waterFeatureId}-${segmentIndex}-${crossingIndex}`;
+}
 
 /**
  * Configuration for bridge detection.
@@ -214,7 +222,7 @@ function detectBridgesForRoad(
               water.type === "ocean" ? "ocean" : "lake";
 
             bridges.push({
-              id: generateId("bridge"),
+              id: deterministicBridgeId(road.id, water.id, i, j),
               roadId: road.id,
               waterType,
               waterFeatureId: water.id,
@@ -238,7 +246,7 @@ function detectBridgesForRoad(
 
         if (bridgeLength >= config.minBridgeLength) {
           bridges.push({
-            id: generateId("bridge"),
+            id: deterministicBridgeId(road.id, water.id, i, 0),
             roadId: road.id,
             waterType: water.type === "ocean" ? "ocean" : "lake",
             waterFeatureId: water.id,
@@ -258,7 +266,7 @@ function detectBridgesForRoad(
         const bridgeLength = distance(crossing.entry, crossing.exit);
         if (bridgeLength >= config.minBridgeLength) {
           bridges.push({
-            id: generateId("bridge"),
+            id: deterministicBridgeId(road.id, river.id, i, 0),
             roadId: road.id,
             waterType: "river",
             waterFeatureId: river.id,
