@@ -112,9 +112,9 @@ export function WorldCard({
 
   const statsText = stats
     ? [
-        stats.districts !== undefined && `${stats.districts} districts`,
-        stats.roads !== undefined && `${stats.roads} roads`,
-        stats.pois !== undefined && `${stats.pois} POIs`,
+        stats.districts != null && `${stats.districts} districts`,
+        stats.roads != null && `${stats.roads} roads`,
+        stats.pois != null && `${stats.pois} POIs`,
       ]
         .filter(Boolean)
         .join(" · ")
