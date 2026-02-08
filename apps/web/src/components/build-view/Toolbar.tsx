@@ -1,6 +1,7 @@
 import { useState } from "react";
+import type { RoadClass } from "../canvas/layers/types";
 
-export type Tool = "pan" | "draw" | "city-limits" | "split" | "build" | "draw-road" | "draw-highway" | "transit-line";
+export type Tool = "pan" | "draw" | "city-limits" | "split" | "build" | "draw-road" | "transit-line";
 
 interface ToolbarProps {
   activeTool: Tool;
@@ -9,6 +10,8 @@ interface ToolbarProps {
   onGrow?: (timeStep: number) => void;
   growDisabled?: boolean;
   isGrowing?: boolean;
+  selectedRoadClass?: RoadClass;
+  onRoadClassChange?: (roadClass: RoadClass) => void;
 }
 
 const tools: { id: Tool; label: string; icon: JSX.Element }[] = [
@@ -62,17 +65,6 @@ const tools: { id: Tool; label: string; icon: JSX.Element }[] = [
     ),
   },
   {
-    id: "draw-highway",
-    label: "Draw Highway",
-    icon: (
-      <svg className="w-5 h-5" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-        {/* Highway icon - wide road with lane markings */}
-        <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M6 4v16M18 4v16M12 4v3m0 3v3m0 3v4" />
-        <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={1.5} d="M4 4h16M4 20h16" />
-      </svg>
-    ),
-  },
-  {
     id: "build",
     label: "Build",
     icon: (
@@ -95,43 +87,100 @@ const tools: { id: Tool; label: string; icon: JSX.Element }[] = [
   },
 ];
 
+const ROAD_CLASSES: { value: RoadClass; label: string; color: string }[] = [
+  { value: "highway", label: "Highway", color: "#f9dc5c" },
+  { value: "arterial", label: "Arterial", color: "#ffffff" },
+  { value: "collector", label: "Collector", color: "#ffffff" },
+  { value: "local", label: "Local Street", color: "#ffffff" },
+  { value: "trail", label: "Trail", color: "#a8d5a2" },
+];
+
 const TIME_STEPS = [
   { value: 1, label: "1 yr" },
   { value: 5, label: "5 yr" },
   { value: 10, label: "10 yr" },
 ];
 
-export function Toolbar({ activeTool, onToolChange, disabled, onGrow, growDisabled, isGrowing }: ToolbarProps) {
+export function Toolbar({ activeTool, onToolChange, disabled, onGrow, growDisabled, isGrowing, selectedRoadClass = "arterial", onRoadClassChange }: ToolbarProps) {
   const [showGrowPopover, setShowGrowPopover] = useState(false);
+  const [showRoadClassPopover, setShowRoadClassPopover] = useState(false);
 
   const handleGrow = (timeStep: number) => {
     setShowGrowPopover(false);
     onGrow?.(timeStep);
   };
 
+  const handleRoadClassSelect = (roadClass: RoadClass) => {
+    setShowRoadClassPopover(false);
+    onRoadClassChange?.(roadClass);
+    onToolChange("draw-road");
+  };
+
   const isGrowDisabled = disabled || growDisabled || isGrowing;
+  const selectedRoadColor = ROAD_CLASSES.find((r) => r.value === selectedRoadClass)?.color ?? "#ffffff";
 
   return (
     <div className="flex flex-row gap-1 bg-white rounded-lg shadow-lg p-1">
       {tools.map(({ id, label, icon }) => {
         const isDisabled = disabled && id !== "pan";
+        const isRoadTool = id === "draw-road";
         return (
-          <button
-            key={id}
-            onClick={() => !isDisabled && onToolChange(id)}
-            disabled={isDisabled}
-            className={`w-10 h-10 flex items-center justify-center rounded transition-colors ${
-              isDisabled
-                ? "text-gray-300 cursor-not-allowed"
-                : activeTool === id
-                  ? "bg-blue-600 text-white"
-                  : "text-gray-600 hover:bg-gray-100"
-            }`}
-            title={isDisabled ? "Enter edit mode to use this tool" : label}
-            aria-label={label}
-          >
-            {icon}
-          </button>
+          <div key={id} className={isRoadTool ? "relative" : undefined}>
+            <button
+              onClick={() => {
+                if (isDisabled) return;
+                if (isRoadTool) {
+                  setShowRoadClassPopover(!showRoadClassPopover);
+                } else {
+                  setShowRoadClassPopover(false);
+                  onToolChange(id);
+                }
+              }}
+              disabled={isDisabled}
+              className={`w-10 h-10 flex items-center justify-center rounded transition-colors ${
+                isDisabled
+                  ? "text-gray-300 cursor-not-allowed"
+                  : activeTool === id
+                    ? "bg-blue-600 text-white"
+                    : "text-gray-600 hover:bg-gray-100"
+              }`}
+              title={isDisabled ? "Enter edit mode to use this tool" : label}
+              aria-label={label}
+            >
+              {icon}
+              {isRoadTool && !isDisabled && (
+                <span
+                  className="absolute bottom-1 right-1 w-2.5 h-2.5 rounded-full border border-gray-400"
+                  style={{ backgroundColor: selectedRoadColor }}
+                />
+              )}
+            </button>
+
+            {/* Road class popover */}
+            {isRoadTool && showRoadClassPopover && !isDisabled && (
+              <>
+                <div className="fixed inset-0" onClick={() => setShowRoadClassPopover(false)} />
+                <div className="absolute bottom-12 left-1/2 -translate-x-1/2 bg-white rounded-lg shadow-lg border border-gray-200 p-2 z-50 whitespace-nowrap">
+                  <div className="text-xs text-gray-500 px-2 pb-1">Road class</div>
+                  {ROAD_CLASSES.map(({ value, label: classLabel, color }) => (
+                    <button
+                      key={value}
+                      onClick={() => handleRoadClassSelect(value)}
+                      className={`flex items-center gap-2 w-full text-left px-3 py-1.5 text-sm rounded hover:bg-blue-50 ${
+                        selectedRoadClass === value ? "bg-blue-50 text-blue-700 font-medium" : "text-gray-700"
+                      }`}
+                    >
+                      <span
+                        className="w-3 h-3 rounded-full border border-gray-400 flex-shrink-0"
+                        style={{ backgroundColor: color }}
+                      />
+                      {classLabel}
+                    </button>
+                  ))}
+                </div>
+              </>
+            )}
+          </div>
         );
       })}
 
@@ -171,7 +220,7 @@ export function Toolbar({ activeTool, onToolChange, disabled, onGrow, growDisabl
         {showGrowPopover && (
           <>
             <div className="fixed inset-0" onClick={() => setShowGrowPopover(false)} />
-            <div className="absolute bottom-12 left-0 bg-white rounded-lg shadow-lg border border-gray-200 p-2 z-50 whitespace-nowrap">
+            <div className="absolute bottom-12 left-1/2 -translate-x-1/2 bg-white rounded-lg shadow-lg border border-gray-200 p-2 z-50 whitespace-nowrap">
               <div className="text-xs text-gray-500 px-2 pb-1">Grow by</div>
               {TIME_STEPS.map(({ value, label }) => (
                 <button

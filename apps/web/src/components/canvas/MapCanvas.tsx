@@ -850,6 +850,7 @@ export const MapCanvas = forwardRef<MapCanvasHandle, MapCanvasProps>(
       isDrawing: drawingContext.state.isDrawing,
       isFreehandActive: drawingContext.state.isFreehandActive,
       mode: drawingContext.state.mode,
+      roadClass: drawingContext.state.roadClass,
     });
   }, [
     isReady,
