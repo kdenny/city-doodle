@@ -191,8 +191,8 @@ export function BuildView({
     (properties: TransitLineProperties) => {
       setShowLinePropertiesDialog(false);
       if (transitLineDrawingContext) {
-        transitLineDrawingContext.setLineProperties(properties);
-        transitLineDrawingContext.startDrawing();
+        // Pass properties directly so startDrawing() uses them instead of defaults
+        transitLineDrawingContext.startDrawing(properties);
       }
     },
     [transitLineDrawingContext]

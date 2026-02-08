@@ -136,8 +136,8 @@ export function TransitView({
       if (transitLineDrawingContext) {
         // Cancel any active station placement
         placementContext?.cancelPlacing();
-        transitLineDrawingContext.setLineProperties(properties);
-        transitLineDrawingContext.startDrawing();
+        // Pass properties directly so startDrawing() uses them instead of defaults
+        transitLineDrawingContext.startDrawing(properties);
       }
     },
     [transitLineDrawingContext, placementContext]

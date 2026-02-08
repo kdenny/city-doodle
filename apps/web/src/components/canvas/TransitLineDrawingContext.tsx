@@ -48,8 +48,8 @@ interface TransitLineDrawingState {
 interface TransitLineDrawingContextValue {
   /** Current drawing state */
   state: TransitLineDrawingState;
-  /** Start transit line drawing mode */
-  startDrawing: () => void;
+  /** Start transit line drawing mode, optionally with pre-set properties */
+  startDrawing: (properties?: TransitLineProperties) => void;
   /** Select a station (first click sets start, subsequent clicks create segments) */
   selectStation: (station: RailStationData) => Promise<void>;
   /** Update preview position (mouse move) */
@@ -135,7 +135,7 @@ export function TransitLineDrawingProvider({
   const stateRef = useRef(state);
   stateRef.current = state;
 
-  const startDrawing = useCallback(() => {
+  const startDrawing = useCallback((properties?: TransitLineProperties) => {
     // Find first unused color and name to avoid collisions after deletions
     const usedColors = new Set(existingLineColors);
     let color = DEFAULT_LINE_COLORS[0];
@@ -150,7 +150,7 @@ export function TransitLineDrawingProvider({
       if (!usedNames.has(candidate)) { name = candidate; break; }
     }
 
-    const defaultProperties: TransitLineProperties = {
+    const lineProperties: TransitLineProperties = properties ?? {
       name,
       color,
       type: "rail",
@@ -161,7 +161,7 @@ export function TransitLineDrawingProvider({
       firstStation: null,
       connectedStations: [],
       lineId: null,
-      lineProperties: defaultProperties,
+      lineProperties,
       previewPosition: null,
       hoveredStation: null,
     });
