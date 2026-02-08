@@ -27,6 +27,7 @@ const mockWorld: World = {
     beach_width_multiplier: 1.0,
   },
   created_at: new Date(Date.now() - 2 * 60 * 60 * 1000).toISOString(), // 2h ago
+  updated_at: new Date(Date.now() - 2 * 60 * 60 * 1000).toISOString(), // 2h ago
 };
 
 describe("WorldCard", () => {

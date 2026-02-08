@@ -165,6 +165,7 @@ export interface World {
   seed: number;
   settings: WorldSettings;
   created_at: DateTime;
+  updated_at: DateTime;
 }
 
 // ============================================================================
