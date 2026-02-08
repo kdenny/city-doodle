@@ -1,5 +1,6 @@
 import { ReactNode, useCallback, useEffect, useRef, useState } from "react";
 import { useToastOptional } from "../../contexts";
+import { useWorld } from "../../api";
 import { ViewModeProvider, useViewMode, ViewMode } from "./ViewModeContext";
 import { ZoomProvider, useZoom } from "./ZoomContext";
 import { Header } from "./Header";
@@ -90,6 +91,7 @@ function EditorShellContent({
   const { viewMode } = useViewMode();
   const { zoom, zoomIn, zoomOut } = useZoom();
   const editLock = useEditLockOptional();
+  const { data: world } = useWorld(worldId || "", { enabled: !!worldId });
   const isEditing = editLock?.isEditing ?? true;
   const showPalette = viewMode === "build" && isEditing;
   const showZoomControls = viewMode !== "export"; // Export view has its own controls
@@ -125,7 +127,7 @@ function EditorShellContent({
 
   return (
     <div className="h-screen w-screen flex flex-col bg-gray-100">
-      <Header />
+      <Header worldName={world?.name} />
 
       {/* Main content area */}
       <main className="flex-1 relative overflow-hidden">
