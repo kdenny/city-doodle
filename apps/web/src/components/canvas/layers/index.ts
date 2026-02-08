@@ -14,6 +14,7 @@ export type { RailStationData, TrackSegmentData, RailStationPreviewData } from "
 export type { SubwayStationData, SubwayStationPreviewData, SubwayTunnelData } from "./SubwayStationLayer";
 export type { TransitLineDrawingState } from "./TransitLineDrawingLayer";
 export { generateMockTerrain } from "./mockTerrain";
+export { transformTileFeatures, emptyTerrainData } from "./terrainTransformer";
 export {
   generateDistrictGeometry,
   wouldOverlap,
