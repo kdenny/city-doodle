@@ -79,7 +79,6 @@ import { generateAirportFeaturesForDistrict } from "./layers/airportGenerator";
 import { useTerrainOptional } from "./TerrainContext";
 import { useTransitOptional } from "./TransitContext";
 import { useToastOptional } from "../../contexts";
-import { WORLD_SIZE } from "../../utils/worldConstants";
 
 /** CITY-384: Distance from a point to a line segment. */
 function pointToSegmentDistance(p: Point, a: Point, b: Point): number {
@@ -589,6 +588,17 @@ export function FeaturesProvider({
   // Track pending operations for optimistic updates
   const pendingCreates = useRef<Set<string>>(new Set());
 
+  // CITY-491: Track whether the batched initial load has fired, and which data
+  // references were already consumed by the batch so post-init effects skip them.
+  const initialLoadDone = useRef(false);
+  const lastProcessed = useRef<{
+    districts?: unknown;
+    neighborhoods?: unknown;
+    cityLimits?: unknown;
+    pois?: unknown;
+    roadNetwork?: unknown;
+  }>({});
+
   // API hooks - only enabled when worldId is provided
   const { data: world } = useWorld(worldId || "", {
     enabled: !!worldId,
@@ -654,138 +664,221 @@ export function FeaturesProvider({
   const updateRoadEdgeMutation = useUpdateRoadEdge();
   const deleteRoadEdgeMutation = useDeleteRoadEdge();
 
-  // Load districts and neighborhoods from API when data is available
-  // CITY-365: Preserve optimistically added districts that are still pending API confirmation,
-  // so rapid sequential placement doesn't cause districts to flicker/vanish when query refetch
-  // overwrites local state.
+  // CITY-491: Batch initial load into a single state update.
+  // Instead of 5 separate effects each calling setFeaturesState (causing 5 canvas redraws),
+  // wait for ALL queries to have data, then do one atomic update.
   useEffect(() => {
-    if (worldId && apiDistricts) {
-      const loadedDistricts = apiDistricts.map(fromApiDistrict);
-      // Restore district-internal roads from persisted street_grid data
-      const streetGridRoads = apiDistricts.flatMap(roadsFromApiStreetGrid);
+    // Skip if already done initial load (post-init updates handled by individual effects below)
+    if (initialLoadDone.current) return;
 
-      // CITY-383: Backfill streets for legacy districts that predate the street_grid column.
-      // Districts with null street_grid (created before migration 014) need their grids
-      // regenerated on the fly. We also persist the result so this only happens once.
-      const backfilledRoads: Road[] = [];
-      for (const apiDistrict of apiDistricts) {
-        const districtType = fromApiDistrictType(apiDistrict.type) as District["type"];
-        if (districtType === "park" || districtType === "airport") continue;
-        if (apiDistrict.street_grid != null) continue;
-
-        const polygon = fromGeoJsonGeometry(apiDistrict.geometry);
-        if (polygon.length < 3) continue;
-
-        const centroid = { x: 0, y: 0 };
-        for (const p of polygon) { centroid.x += p.x; centroid.y += p.y; }
-        centroid.x /= polygon.length;
-        centroid.y /= polygon.length;
-
-        const gridResult = regenerateStreetGridForClippedDistrict(
-          polygon,
-          apiDistrict.id,
-          districtType,
-          centroid
-        );
-        backfilledRoads.push(...gridResult.roads);
-
-        // Persist the regenerated street_grid so we don't repeat this on every load
-        const streetGridPayload = {
-          roads: gridResult.roads.map((r) => ({
-            id: r.id,
-            name: r.name,
-            roadClass: r.roadClass,
-            districtId: r.districtId,
-            points: r.line.points.map((p) => ({ x: p.x, y: p.y })),
-          })),
-          gridAngle: gridResult.gridAngle,
-        };
-        updateDistrictMutation.mutate(
-          { districtId: apiDistrict.id, data: { street_grid: streetGridPayload }, worldId },
-          { onError: (err) => console.error(`CITY-383: Failed to backfill street_grid for ${apiDistrict.id}:`, err) }
-        );
-      }
-
-      const loadedDistrictIds = new Set(loadedDistricts.map((d) => d.id));
-      setFeaturesState((prev) => {
-        // Keep districts that are still pending API create (not yet in API response)
-        const pendingDistricts = prev.districts.filter(
-          (d) => pendingCreates.current.has(d.id)
-        );
-        return {
-          ...prev,
-          districts: [...loadedDistricts, ...pendingDistricts],
-          roads: [...streetGridRoads, ...backfilledRoads, ...prev.roads.filter((r) => {
-            // Keep roads not belonging to any loaded district (e.g., inter-district roads,
-            // or roads from pending districts whose temp IDs won't be in loadedDistrictIds)
-            return !r.districtId || !loadedDistrictIds.has(r.districtId);
-          })],
-        };
-      });
+    if (!worldId) {
+      setIsInitialized(true);
+      initialLoadDone.current = true;
+      return;
     }
-  }, [worldId, apiDistricts]);
 
-  useEffect(() => {
-    if (worldId && apiNeighborhoods) {
-      const loadedNeighborhoods = apiNeighborhoods.map(fromApiNeighborhood);
-      setFeaturesState((prev) => ({
-        ...prev,
-        neighborhoods: loadedNeighborhoods,
-      }));
+    // Wait for all required queries to have data
+    // City limits is optional (null when none exists), so we check !== undefined
+    if (!apiDistricts || !apiNeighborhoods || !apiPOIs || !apiRoadNetwork || apiCityLimits === undefined) {
+      return;
     }
-  }, [worldId, apiNeighborhoods]);
 
-  // Load city limits from API when data is available (CITY-407)
-  useEffect(() => {
-    if (worldId && apiCityLimits) {
-      setFeaturesState((prev) => ({
-        ...prev,
-        cityLimits: {
+    // --- Districts + street grid roads ---
+    const loadedDistricts = apiDistricts.map(fromApiDistrict);
+    const streetGridRoads = apiDistricts.flatMap(roadsFromApiStreetGrid);
+
+    // CITY-383: Backfill streets for legacy districts that predate the street_grid column.
+    const backfilledRoads: Road[] = [];
+    for (const apiDistrict of apiDistricts) {
+      const districtType = fromApiDistrictType(apiDistrict.type) as District["type"];
+      if (districtType === "park" || districtType === "airport") continue;
+      if (apiDistrict.street_grid != null) continue;
+
+      const polygon = fromGeoJsonGeometry(apiDistrict.geometry);
+      if (polygon.length < 3) continue;
+
+      const centroid = { x: 0, y: 0 };
+      for (const p of polygon) { centroid.x += p.x; centroid.y += p.y; }
+      centroid.x /= polygon.length;
+      centroid.y /= polygon.length;
+
+      const gridResult = regenerateStreetGridForClippedDistrict(
+        polygon,
+        apiDistrict.id,
+        districtType,
+        centroid
+      );
+      backfilledRoads.push(...gridResult.roads);
+
+      // Persist the regenerated street_grid so we don't repeat this on every load
+      const streetGridPayload = {
+        roads: gridResult.roads.map((r) => ({
+          id: r.id,
+          name: r.name,
+          roadClass: r.roadClass,
+          districtId: r.districtId,
+          points: r.line.points.map((p) => ({ x: p.x, y: p.y })),
+        })),
+        gridAngle: gridResult.gridAngle,
+      };
+      updateDistrictMutation.mutate(
+        { districtId: apiDistrict.id, data: { street_grid: streetGridPayload }, worldId },
+        { onError: (err) => console.error(`CITY-383: Failed to backfill street_grid for ${apiDistrict.id}:`, err) }
+      );
+    }
+
+    // --- Neighborhoods ---
+    const loadedNeighborhoods = apiNeighborhoods.map(fromApiNeighborhood);
+
+    // --- City limits (optional) ---
+    const loadedCityLimits = apiCityLimits
+      ? {
           id: String(apiCityLimits.id),
           name: apiCityLimits.name,
           boundary: { points: (apiCityLimits.boundary as { points: { x: number; y: number }[] }).points ?? [] },
           established: apiCityLimits.established ?? undefined,
-        },
-      }));
-    }
+        }
+      : undefined;
+
+    // --- POIs ---
+    const loadedPOIs = apiPOIs.map(fromApiPOI);
+
+    // --- Road network (inter-district roads from graph) ---
+    const networkRoads = graphToRoads(apiRoadNetwork);
+    const networkRoadIds = new Set(networkRoads.map((r) => r.id));
+
+    // Merge street grid roads + backfilled roads + network roads (dedup by ID)
+    const allStreetGridRoads = [...streetGridRoads, ...backfilledRoads];
+    const mergedRoads = [
+      ...allStreetGridRoads.filter((r) => !networkRoadIds.has(r.id)),
+      ...networkRoads,
+    ];
+
+    // CITY-365: Preserve optimistically added districts that are still pending API confirmation
+    const loadedDistrictIds = new Set(loadedDistricts.map((d) => d.id));
+
+    // Single atomic state update
+    setFeaturesState((prev) => {
+      const pendingDistricts = prev.districts.filter(
+        (d) => pendingCreates.current.has(d.id)
+      );
+      // Keep roads from pending districts and inter-district roads not yet in loaded data
+      const pendingRoads = prev.roads.filter((r) => {
+        return !r.districtId || (pendingCreates.current.has(r.districtId) && !loadedDistrictIds.has(r.districtId));
+      });
+
+      return {
+        ...prev,
+        districts: [...loadedDistricts, ...pendingDistricts],
+        neighborhoods: loadedNeighborhoods,
+        cityLimits: loadedCityLimits,
+        pois: loadedPOIs,
+        roads: [...mergedRoads, ...pendingRoads],
+      };
+    });
+
+    // Record which data references the batch consumed so post-init effects
+    // skip these same references (they fire in the same React commit).
+    lastProcessed.current = {
+      districts: apiDistricts,
+      neighborhoods: apiNeighborhoods,
+      cityLimits: apiCityLimits,
+      pois: apiPOIs,
+      roadNetwork: apiRoadNetwork,
+    };
+
+    setIsInitialized(true);
+    initialLoadDone.current = true;
+  }, [worldId, apiDistricts, apiNeighborhoods, apiCityLimits, apiPOIs, apiRoadNetwork]);
+
+  // Post-init individual update effects for live editing (React Query refetches).
+  // Each effect skips data already consumed by the batch (same object reference)
+  // to avoid redundant renders when both fire in the same React commit.
+
+  // Districts refetch (post-init)
+  useEffect(() => {
+    if (!initialLoadDone.current || !worldId || !apiDistricts) return;
+    if (apiDistricts === lastProcessed.current.districts) return;
+    lastProcessed.current.districts = apiDistricts;
+
+    const loadedDistricts = apiDistricts.map(fromApiDistrict);
+    const streetGridRoads = apiDistricts.flatMap(roadsFromApiStreetGrid);
+    const loadedDistrictIds = new Set(loadedDistricts.map((d) => d.id));
+
+    setFeaturesState((prev) => {
+      const pendingDistricts = prev.districts.filter(
+        (d) => pendingCreates.current.has(d.id)
+      );
+      return {
+        ...prev,
+        districts: [...loadedDistricts, ...pendingDistricts],
+        roads: [...streetGridRoads, ...prev.roads.filter((r) => {
+          return !r.districtId || !loadedDistrictIds.has(r.districtId);
+        })],
+      };
+    });
+  }, [worldId, apiDistricts]);
+
+  // Neighborhoods refetch (post-init)
+  useEffect(() => {
+    if (!initialLoadDone.current || !worldId || !apiNeighborhoods) return;
+    if (apiNeighborhoods === lastProcessed.current.neighborhoods) return;
+    lastProcessed.current.neighborhoods = apiNeighborhoods;
+
+    setFeaturesState((prev) => ({
+      ...prev,
+      neighborhoods: apiNeighborhoods.map(fromApiNeighborhood),
+    }));
+  }, [worldId, apiNeighborhoods]);
+
+  // City limits refetch (post-init, CITY-407)
+  useEffect(() => {
+    if (!initialLoadDone.current || !worldId) return;
+    if (apiCityLimits === undefined) return;
+    if (apiCityLimits === lastProcessed.current.cityLimits) return;
+    lastProcessed.current.cityLimits = apiCityLimits;
+
+    setFeaturesState((prev) => ({
+      ...prev,
+      cityLimits: apiCityLimits
+        ? {
+            id: String(apiCityLimits.id),
+            name: apiCityLimits.name,
+            boundary: { points: (apiCityLimits.boundary as { points: { x: number; y: number }[] }).points ?? [] },
+            established: apiCityLimits.established ?? undefined,
+          }
+        : undefined,
+    }));
   }, [worldId, apiCityLimits]);
 
-  // Load POIs from API when data is available
+  // POIs refetch (post-init)
   useEffect(() => {
-    if (worldId && apiPOIs) {
-      const loadedPOIs = apiPOIs.map(fromApiPOI);
-      setFeaturesState((prev) => ({
-        ...prev,
-        pois: loadedPOIs,
-      }));
-    }
+    if (!initialLoadDone.current || !worldId || !apiPOIs) return;
+    if (apiPOIs === lastProcessed.current.pois) return;
+    lastProcessed.current.pois = apiPOIs;
+
+    setFeaturesState((prev) => ({
+      ...prev,
+      pois: apiPOIs.map(fromApiPOI),
+    }));
   }, [worldId, apiPOIs]);
 
-  // Load inter-district roads from road network, merging with street grid roads from districts
+  // Road network refetch (post-init)
   useEffect(() => {
-    if (worldId && apiRoadNetwork) {
-      const networkRoads = graphToRoads(apiRoadNetwork);
-      const networkRoadIds = new Set(networkRoads.map((r) => r.id));
-      setFeaturesState((prev) => ({
-        ...prev,
-        roads: [
-          // Keep street grid roads (from districts) that aren't duplicated in the network
-          ...prev.roads.filter((r) => !networkRoadIds.has(r.id)),
-          // Add all roads from the road network graph
-          ...networkRoads,
-        ],
-      }));
-    }
-  }, [worldId, apiRoadNetwork]);
+    if (!initialLoadDone.current || !worldId || !apiRoadNetwork) return;
+    if (apiRoadNetwork === lastProcessed.current.roadNetwork) return;
+    lastProcessed.current.roadNetwork = apiRoadNetwork;
 
-  // Mark as initialized when districts, neighborhoods, POIs, and roads are loaded (or not using worldId)
-  useEffect(() => {
-    if (!worldId) {
-      setIsInitialized(true);
-    } else if (apiDistricts !== undefined && apiNeighborhoods !== undefined && apiPOIs !== undefined && apiRoadNetwork !== undefined) {
-      setIsInitialized(true);
-    }
-  }, [worldId, apiDistricts, apiNeighborhoods, apiPOIs, apiRoadNetwork]);
+    const networkRoads = graphToRoads(apiRoadNetwork);
+    const networkRoadIds = new Set(networkRoads.map((r) => r.id));
+    setFeaturesState((prev) => ({
+      ...prev,
+      roads: [
+        ...prev.roads.filter((r) => !networkRoadIds.has(r.id)),
+        ...networkRoads,
+      ],
+    }));
+  }, [worldId, apiRoadNetwork]);
 
   // Auto-detect bridges when roads or terrain change (CITY-148)
   useEffect(() => {
@@ -836,20 +929,6 @@ export function FeaturesProvider({
       seedId: string,
       config?: AddDistrictConfig
     ): AddDistrictResult => {
-      // CITY-489: Reject placement outside grid bounds
-      if (
-        position.x < 0 ||
-        position.x > WORLD_SIZE ||
-        position.y < 0 ||
-        position.y > WORLD_SIZE
-      ) {
-        return {
-          generated: null,
-          wasClipped: false,
-          error: "District must be placed within the map bounds",
-        };
-      }
-
       // Extract personality from config; fall back to world settings, then hardcoded defaults
       const personality = config?.personality ?? worldSettingsToPersonality(world?.settings);
 
