@@ -646,12 +646,35 @@ def extract_beaches(
                 region_cells = _flood_fill(beach_mask, visited, i, j)
 
                 if len(region_cells) >= min_length:
+                    # Include adjacent water cells so the beach polygon
+                    # extends to the actual water edge (CITY-520).
+                    # Without this, concave_hull approximation creates a gap
+                    # between the beach polygon and water, showing land through.
+                    region_set = set(region_cells)
+                    water_fringe: list[tuple[int, int]] = []
+                    for ci, cj in region_cells:
+                        for di in [-1, 0, 1]:
+                            for dj in [-1, 0, 1]:
+                                if di == 0 and dj == 0:
+                                    continue
+                                ni, nj = ci + di, cj + dj
+                                if (
+                                    0 <= ni < h
+                                    and 0 <= nj < w
+                                    and water_mask[ni, nj]
+                                    and (ni, nj) not in region_set
+                                ):
+                                    water_fringe.append((ni, nj))
+                                    region_set.add((ni, nj))
+
+                    extended_cells = list(region_cells) + water_fringe
+
                     # Convert to polygon
                     poly = _cells_to_polygon(
-                        region_cells, tile_x, tile_y, tile_size, cell_size, w
+                        extended_cells, tile_x, tile_y, tile_size, cell_size, w
                     )
                     if poly is not None and poly.is_valid:
-                        # Calculate average width based on region shape
+                        # Calculate average width based on original region shape
                         area = len(region_cells) * cell_size * cell_size
                         perimeter = poly.length
                         avg_width = 2 * area / perimeter if perimeter > 0 else cell_size
