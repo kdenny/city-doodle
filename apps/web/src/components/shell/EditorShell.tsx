@@ -275,7 +275,7 @@ function DrawingWithFeatures({ children }: { children: ReactNode }) {
   const toast = useToastOptional();
 
   const handlePolygonComplete = useCallback(
-    (points: Point[], mode: DrawingMode) => {
+    (points: Point[], mode: DrawingMode, drawingRoadClass?: import("../canvas/layers/types").RoadClass) => {
       if (mode === "neighborhood") {
         // Create a new neighborhood from the drawn polygon
         const neighborhood = {
@@ -301,77 +301,73 @@ function DrawingWithFeatures({ children }: { children: ReactNode }) {
         };
         setCityLimits(cityLimits);
       } else if (mode === "road") {
-        // Road mode: create a user-drawn road from the polyline points (CITY-253)
+        // Road mode: create a user-drawn road from the polyline points (CITY-253, CITY-413)
         if (points.length < 2) {
           toast?.addToast("Road needs at least 2 points", "warning");
           return;
         }
+
+        // Read road class from drawing callback (CITY-413)
+        const roadClass = drawingRoadClass ?? "arterial";
+
         const road = {
           id: generateId("road"),
           name: undefined,
-          roadClass: "arterial" as const,
+          roadClass,
           line: { points },
         };
         addRoads([road]);
 
-        // CITY-159: Detect diagonal arterial crossings through districts
-        const crossedDistricts = findDistrictsCrossedByArterial(points, features.districts);
-        let adjustedCount = 0;
-        const warnings: string[] = [];
-
-        for (const district of crossedDistricts) {
-          const validation = validateDiagonalForDistrict(points, district, features.roads);
-          if (!validation.isDiagonal) continue;
-          if (validation.warning) {
-            warnings.push(validation.warning);
-            continue;
+        if (roadClass === "highway") {
+          // Detect interchanges where this highway crosses existing roads (CITY-150)
+          const interchanges = detectInterchanges(road, features.roads);
+          if (interchanges.length > 0) {
+            addInterchanges(interchanges);
+            toast?.addToast(
+              `Highway created with ${interchanges.length} interchange${interchanges.length > 1 ? "s" : ""}`,
+              "info"
+            );
+          } else {
+            toast?.addToast("Highway created", "info");
           }
+        } else if (roadClass === "arterial") {
+          // CITY-159: Detect diagonal arterial crossings through districts
+          const crossedDistricts = findDistrictsCrossedByArterial(points, features.districts);
+          let adjustedCount = 0;
+          const warnings: string[] = [];
 
-          // Split grid streets at the diagonal arterial
-          const adjustment = splitGridStreetsAtArterial(district.id, features.roads, points);
-          if (adjustment.removedRoadIds.length > 0) {
-            for (const id of adjustment.removedRoadIds) {
-              removeRoad(id);
+          for (const district of crossedDistricts) {
+            const validation = validateDiagonalForDistrict(points, district, features.roads);
+            if (!validation.isDiagonal) continue;
+            if (validation.warning) {
+              warnings.push(validation.warning);
+              continue;
             }
-            addRoads(adjustment.newRoads);
-            adjustedCount++;
+
+            // Split grid streets at the diagonal arterial
+            const adjustment = splitGridStreetsAtArterial(district.id, features.roads, points);
+            if (adjustment.removedRoadIds.length > 0) {
+              for (const id of adjustment.removedRoadIds) {
+                removeRoad(id);
+              }
+              addRoads(adjustment.newRoads);
+              adjustedCount++;
+            }
           }
-        }
 
-        if (warnings.length > 0) {
-          toast?.addToast(warnings[0], "warning");
-        } else if (adjustedCount > 0) {
-          toast?.addToast(
-            `Road created — adjusted grid in ${adjustedCount} district${adjustedCount > 1 ? "s" : ""}`,
-            "info"
-          );
+          if (warnings.length > 0) {
+            toast?.addToast(warnings[0], "warning");
+          } else if (adjustedCount > 0) {
+            toast?.addToast(
+              `Road created — adjusted grid in ${adjustedCount} district${adjustedCount > 1 ? "s" : ""}`,
+              "info"
+            );
+          } else {
+            toast?.addToast("Road created", "info");
+          }
         } else {
+          // collector, local, trail — just create the road
           toast?.addToast("Road created", "info");
-        }
-      } else if (mode === "highway") {
-        // Highway mode: create a user-drawn highway and detect interchanges (CITY-150)
-        if (points.length < 2) {
-          toast?.addToast("Highway needs at least 2 points", "warning");
-          return;
-        }
-        const highway = {
-          id: generateId("road"),
-          name: undefined,
-          roadClass: "highway" as const,
-          line: { points },
-        };
-        addRoads([highway]);
-
-        // Detect interchanges where this highway crosses existing roads
-        const interchanges = detectInterchanges(highway, features.roads);
-        if (interchanges.length > 0) {
-          addInterchanges(interchanges);
-          toast?.addToast(
-            `Highway created with ${interchanges.length} interchange${interchanges.length > 1 ? "s" : ""}`,
-            "info"
-          );
-        } else {
-          toast?.addToast("Highway created", "info");
         }
       } else if (mode === "split") {
         // Split mode: points is a line (2 points) that divides a district

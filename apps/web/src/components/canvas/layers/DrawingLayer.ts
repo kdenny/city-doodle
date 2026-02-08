@@ -37,6 +37,8 @@ interface DrawingState {
   isFreehandActive?: boolean;
   /** Current drawing mode (affects rendering style) */
   mode?: string | null;
+  /** Selected road class when in road mode */
+  roadClass?: string;
 }
 
 export class DrawingLayer {
@@ -84,8 +86,8 @@ export class DrawingLayer {
     if (!isDrawing || vertices.length === 0) return;
 
     const isRoadMode = mode === "road";
-    const isHighwayMode = mode === "highway";
-    const isLinearMode = isRoadMode || isHighwayMode;
+    const isHighwayMode = isRoadMode && this.state.roadClass === "highway";
+    const isLinearMode = isRoadMode;
     const lineColor = isHighwayMode ? HIGHWAY_LINE_COLOR : isRoadMode ? ROAD_LINE_COLOR : LINE_COLOR;
     const lineWidth = isHighwayMode ? HIGHWAY_LINE_WIDTH : isRoadMode ? ROAD_LINE_WIDTH : LINE_WIDTH;
     const vertexColor = isHighwayMode ? HIGHWAY_VERTEX_COLOR : isRoadMode ? ROAD_VERTEX_COLOR : VERTEX_COLOR;

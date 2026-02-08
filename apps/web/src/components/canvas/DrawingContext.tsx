@@ -14,9 +14,10 @@ import {
   ReactNode,
 } from "react";
 import type { Point } from "./layers";
+import type { RoadClass } from "./layers/types";
 import { simplifyPath, shouldSamplePoint } from "./pathSimplification";
 
-export type DrawingMode = "neighborhood" | "cityLimits" | "split" | "road" | "highway" | null;
+export type DrawingMode = "neighborhood" | "cityLimits" | "split" | "road" | null;
 
 /** Input mode for drawing: click-to-place or freehand */
 export type DrawingInputMode = "click" | "freehand";
@@ -34,6 +35,8 @@ interface DrawingState {
   previewPoint: Point | null;
   /** Whether freehand drawing is actively happening (mouse held down) */
   isFreehandActive: boolean;
+  /** Selected road class for road drawing mode */
+  roadClass: RoadClass;
 }
 
 interface DrawingContextValue {
@@ -61,6 +64,8 @@ interface DrawingContextValue {
   addFreehandPoint: (point: Point) => void;
   /** End freehand drawing and simplify path (mouse up) */
   endFreehand: () => Point[] | null;
+  /** Set the road class for road drawing mode */
+  setRoadClass: (roadClass: RoadClass) => void;
 }
 
 const INITIAL_STATE: DrawingState = {
@@ -70,6 +75,7 @@ const INITIAL_STATE: DrawingState = {
   isDrawing: false,
   previewPoint: null,
   isFreehandActive: false,
+  roadClass: "arterial",
 };
 
 const DrawingContext = createContext<DrawingContextValue | null>(null);
@@ -77,7 +83,7 @@ const DrawingContext = createContext<DrawingContextValue | null>(null);
 interface DrawingProviderProps {
   children: ReactNode;
   /** Callback when a polygon is completed */
-  onPolygonComplete?: (points: Point[], mode: DrawingMode) => void;
+  onPolygonComplete?: (points: Point[], mode: DrawingMode, roadClass?: RoadClass) => void;
 }
 
 export function DrawingProvider({ children, onPolygonComplete }: DrawingProviderProps) {
@@ -91,6 +97,7 @@ export function DrawingProvider({ children, onPolygonComplete }: DrawingProvider
       isDrawing: true,
       previewPoint: null,
       isFreehandActive: false,
+      roadClass: prev.roadClass,
     }));
   }, []);
 
@@ -120,7 +127,7 @@ export function DrawingProvider({ children, onPolygonComplete }: DrawingProvider
 
   const canComplete = useCallback(() => {
     // Split and road modes only need 2 vertices (a line/polyline)
-    if (state.mode === "split" || state.mode === "road" || state.mode === "highway") {
+    if (state.mode === "split" || state.mode === "road") {
       return state.vertices.length >= 2;
     }
     // Other modes need at least 3 vertices for a valid polygon
@@ -132,17 +139,18 @@ export function DrawingProvider({ children, onPolygonComplete }: DrawingProvider
 
     const completedPolygon = [...state.vertices];
     const completedMode = state.mode;
+    const completedRoadClass = state.roadClass;
 
     // Reset state
     setState(INITIAL_STATE);
 
     // Notify callback
     if (onPolygonComplete && completedMode) {
-      onPolygonComplete(completedPolygon, completedMode);
+      onPolygonComplete(completedPolygon, completedMode, completedRoadClass);
     }
 
     return completedPolygon;
-  }, [state.vertices, state.mode, canComplete, onPolygonComplete]);
+  }, [state.vertices, state.mode, state.roadClass, canComplete, onPolygonComplete]);
 
   const cancelDrawing = useCallback(() => {
     setState(INITIAL_STATE);
@@ -156,6 +164,13 @@ export function DrawingProvider({ children, onPolygonComplete }: DrawingProvider
         vertices: prev.vertices.slice(0, -1),
       };
     });
+  }, []);
+
+  const setRoadClass = useCallback((roadClass: RoadClass) => {
+    setState((prev) => ({
+      ...prev,
+      roadClass,
+    }));
   }, []);
 
   const startFreehand = useCallback((point: Point) => {
@@ -192,17 +207,18 @@ export function DrawingProvider({ children, onPolygonComplete }: DrawingProvider
     // Simplify the path
     const simplifiedVertices = simplifyPath(state.vertices);
     const completedMode = state.mode;
+    const completedRoadClass = state.roadClass;
 
     // Reset state
     setState(INITIAL_STATE);
 
     // Notify callback
     if (onPolygonComplete && completedMode) {
-      onPolygonComplete(simplifiedVertices, completedMode);
+      onPolygonComplete(simplifiedVertices, completedMode, completedRoadClass);
     }
 
     return simplifiedVertices;
-  }, [state.isFreehandActive, state.vertices, state.mode, onPolygonComplete]);
+  }, [state.isFreehandActive, state.vertices, state.mode, state.roadClass, onPolygonComplete]);
 
   const value: DrawingContextValue = {
     state,
@@ -217,6 +233,7 @@ export function DrawingProvider({ children, onPolygonComplete }: DrawingProvider
     startFreehand,
     addFreehandPoint,
     endFreehand,
+    setRoadClass,
   };
 
   return (
