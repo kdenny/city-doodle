@@ -134,6 +134,18 @@ const POI_COLORS: Record<POIType, number> = {
   industrial: 0x888888,
 };
 
+// Minimum zoom level to show each POI type (mirroring ROAD_STYLES.minZoom pattern)
+const POI_MIN_ZOOM: Record<POIType, number> = {
+  hospital: 0.15,    // Important landmarks, visible at most zoom levels
+  university: 0.15,
+  transit: 0.15,
+  civic: 0.2,
+  school: 0.3,       // Medium importance, like local roads
+  shopping: 0.3,
+  park: 0.3,
+  industrial: 0.3,
+};
+
 // Bridge styling by water type
 interface BridgeStyle {
   color: number;
@@ -508,10 +520,11 @@ export class FeaturesLayer {
   setZoom(zoom: number): void {
     if (this.currentZoom !== zoom) {
       this.currentZoom = zoom;
-      // Re-render roads when zoom changes (for visibility filtering)
+      // Re-render roads and POIs when zoom changes (for visibility filtering)
       if (this.data) {
         this.renderRoads(this.data.roads);
         this.renderRoadHighlight();
+        this.renderPOIs(this.data.pois);
       }
     }
   }
@@ -1148,19 +1161,29 @@ export class FeaturesLayer {
       this.poisGraphics.clear();
     }
 
+    // Scale marker size with zoom: smaller when zoomed out, larger when zoomed in
+    const baseRadius = 6;
+    const zoomScale = Math.max(0.5, Math.min(1.5, this.currentZoom));
+    const radius = baseRadius * zoomScale;
+    const innerRadius = 2 * zoomScale;
+    const strokeWidth = 2 * zoomScale;
+
     for (const poi of pois) {
+      // Filter by zoom level (same pattern as road minZoom)
+      const minZoom = POI_MIN_ZOOM[poi.type] ?? 0.3;
+      if (this.currentZoom < minZoom) continue;
+
       const color = POI_COLORS[poi.type] ?? 0x666666;
       const { x, y } = poi.position;
-      const radius = 6;
 
       // Draw POI marker (circle with outline)
-      this.poisGraphics.setStrokeStyle({ width: 2, color: 0xffffff });
+      this.poisGraphics.setStrokeStyle({ width: strokeWidth, color: 0xffffff });
       this.poisGraphics.circle(x, y, radius);
       this.poisGraphics.fill({ color });
       this.poisGraphics.stroke();
 
       // Draw inner dot for emphasis
-      this.poisGraphics.circle(x, y, 2);
+      this.poisGraphics.circle(x, y, innerRadius);
       this.poisGraphics.fill({ color: 0xffffff });
     }
   }
