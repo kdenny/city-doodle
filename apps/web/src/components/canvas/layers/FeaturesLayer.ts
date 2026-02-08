@@ -424,6 +424,8 @@ export class FeaturesLayer {
   private _lastRoadLogTime: number = 0; // CITY-377 diagnostic throttle
   /** ID of the currently selected road (null = no selection) */
   private selectedRoadId: string | null = null;
+  /** CITY-499: Stored visibility state, re-applied after every render */
+  private storedVisibility: LayerVisibility | null = null;
   /** Spatial index for fast road hit testing */
   private roadIndex: RoadSpatialIndex = new RoadSpatialIndex();
   /** Spatial index for fast POI hit testing */
@@ -432,6 +434,8 @@ export class FeaturesLayer {
   private districtIndex: DistrictSpatialIndex = new DistrictSpatialIndex();
   /** CITY-421: Viewport bounds in world coordinates for spatial culling */
   private viewportBounds: { minX: number; minY: number; maxX: number; maxY: number } | null = null;
+  /** CITY-495: Pending rAF handle for throttled zoom/viewport re-renders */
+  private pendingViewRender: number | null = null;
 
   constructor() {
     this.container = new Container();
@@ -504,43 +508,62 @@ export class FeaturesLayer {
     this.render();
   }
 
-  setVisibility(visibility: LayerVisibility & { neighborhoods?: boolean; cityLimits?: boolean; bridges?: boolean }): void {
-    this.neighborhoodsGraphics.visible = visibility.neighborhoods ?? true;
-    this.cityLimitsGraphics.visible = visibility.cityLimits ?? true;
-    this.districtsGraphics.visible = visibility.districts;
-    this.roadsGraphics.visible = visibility.roads;
-    this.roadHighlightGraphics.visible = visibility.roads;
-    this.bridgesGraphics.visible = visibility.bridges ?? visibility.roads; // Default to road visibility
-    this.interchangesGraphics.visible = visibility.roads; // Show with roads
-    this.poisGraphics.visible = visibility.pois;
+  setVisibility(visibility: LayerVisibility): void {
+    this.storedVisibility = visibility;
+    this.applyVisibility();
+  }
+
+  private applyVisibility(): void {
+    if (!this.storedVisibility) return;
+    const v = this.storedVisibility;
+    this.neighborhoodsGraphics.visible = v.neighborhoods ?? true;
+    this.cityLimitsGraphics.visible = v.cityLimits ?? true;
+    this.districtsGraphics.visible = v.districts;
+    this.roadsGraphics.visible = v.roads;
+    this.roadHighlightGraphics.visible = v.roads;
+    this.bridgesGraphics.visible = v.bridges ?? v.roads;
+    this.interchangesGraphics.visible = v.roads;
+    this.poisGraphics.visible = v.pois;
   }
 
   /**
    * Set the current zoom level for zoom-based road visibility.
+   * CITY-495: Uses requestAnimationFrame to batch rapid zoom/pan updates
+   * into a single render per frame instead of re-rendering on every event.
    * @param zoom - Zoom level (1 = default, <1 = zoomed out, >1 = zoomed in)
    */
   setZoom(zoom: number): void {
     if (this.currentZoom !== zoom) {
       this.currentZoom = zoom;
-      // Re-render roads and POIs when zoom changes (for visibility filtering)
-      if (this.data) {
-        this.renderRoads(this.data.roads);
-        this.renderRoadHighlight();
-        this.renderPOIs(this.data.pois);
-      }
+      this.scheduleViewRender();
     }
   }
 
   /**
    * CITY-421: Set viewport bounds in world coordinates for spatial road culling.
    * Roads outside these bounds are skipped during rendering.
+   * CITY-495: Batched with zoom updates via requestAnimationFrame.
    */
   setViewportBounds(bounds: { minX: number; minY: number; maxX: number; maxY: number }): void {
     this.viewportBounds = bounds;
-    if (this.data) {
+    this.scheduleViewRender();
+  }
+
+  /**
+   * CITY-495: Schedule a zoom/viewport-dependent re-render on the next animation frame.
+   * Multiple calls within the same frame are coalesced into one render.
+   */
+  private scheduleViewRender(): void {
+    if (!this.data) return;
+    if (this.pendingViewRender !== null) return; // Already scheduled
+
+    this.pendingViewRender = requestAnimationFrame(() => {
+      this.pendingViewRender = null;
+      if (!this.data) return;
       this.renderRoads(this.data.roads);
       this.renderRoadHighlight();
-    }
+      this.renderPOIs(this.data.pois);
+    });
   }
 
   /**
@@ -1372,6 +1395,10 @@ export class FeaturesLayer {
   }
 
   destroy(): void {
+    if (this.pendingViewRender !== null) {
+      cancelAnimationFrame(this.pendingViewRender);
+      this.pendingViewRender = null;
+    }
     this.container.destroy({ children: true });
   }
 }
