@@ -6,6 +6,9 @@
 import {
   ApiClientError,
   AuthResponse,
+  CityLimitsCreate,
+  CityLimitsResponse,
+  CityLimitsUpdate,
   District,
   DistrictBulkCreate,
   DistrictCreate,
@@ -708,6 +711,34 @@ export const transit = {
 };
 
 // ============================================================================
+// City Limits Endpoints (CITY-407)
+// ============================================================================
+
+export const cityLimits = {
+  /** Get city limits for a world (returns null if none set) */
+  async get(worldId: string): Promise<CityLimitsResponse | null> {
+    return request<CityLimitsResponse | null>("GET", `/worlds/${worldId}/city-limits`);
+  },
+
+  /** Create or replace city limits for a world */
+  async upsert(worldId: string, data: Omit<CityLimitsCreate, "world_id">): Promise<CityLimitsResponse> {
+    return request<CityLimitsResponse>("PUT", `/worlds/${worldId}/city-limits`, {
+      body: { ...data, world_id: worldId },
+    });
+  },
+
+  /** Update city limits for a world */
+  async update(worldId: string, data: CityLimitsUpdate): Promise<CityLimitsResponse> {
+    return request<CityLimitsResponse>("PATCH", `/worlds/${worldId}/city-limits`, { body: data });
+  },
+
+  /** Delete city limits for a world */
+  async delete(worldId: string): Promise<void> {
+    return request<void>("DELETE", `/worlds/${worldId}/city-limits`);
+  },
+};
+
+// ============================================================================
 // Default Export
 // ============================================================================
 
@@ -722,6 +753,7 @@ export const api = {
   pois,
   roads,
   transit,
+  cityLimits,
 };
 
 export default api;

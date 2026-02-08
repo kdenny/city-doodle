@@ -46,7 +46,7 @@ import {
 import { MapCanvasContextInternal } from "./MapCanvasContext";
 import { useFeaturesOptional } from "./FeaturesContext";
 import { useTerrainOptional } from "./TerrainContext";
-import { useTransitOptional } from "./TransitContext";
+import { useTransitOptional, MINIMUM_STATION_DISTANCE } from "./TransitContext";
 import { useZoomOptional } from "../shell/ZoomContext";
 import { usePlacementOptional, usePlacedSeedsOptional } from "../palette";
 import { useSelectionContextOptional } from "../build-view/SelectionContext";
@@ -625,6 +625,37 @@ export const MapCanvas = forwardRef<MapCanvasHandle, MapCanvasProps>(
     };
   }, [isReady, onZoomChange]);
 
+  // CITY-421: Sync viewport bounds to features layer for spatial road culling
+  useEffect(() => {
+    if (!isReady || !viewportRef.current || !featuresLayerRef.current) return;
+
+    const viewport = viewportRef.current;
+    const featuresLayer = featuresLayerRef.current;
+
+    const syncBounds = () => {
+      const corner = viewport.corner;
+      const screenW = viewport.screenWidth / viewport.scale.x;
+      const screenH = viewport.screenHeight / viewport.scale.y;
+      featuresLayer.setViewportBounds({
+        minX: corner.x,
+        minY: corner.y,
+        maxX: corner.x + screenW,
+        maxY: corner.y + screenH,
+      });
+    };
+
+    viewport.on("moved", syncBounds);
+    viewport.on("zoomed-end", syncBounds);
+
+    // Initial sync
+    syncBounds();
+
+    return () => {
+      viewport.off("moved", syncBounds);
+      viewport.off("zoomed-end", syncBounds);
+    };
+  }, [isReady]);
+
   // Update features layer when context features change
   useEffect(() => {
     if (!isReady || !featuresLayerRef.current || !featuresContext) return;
@@ -850,9 +881,17 @@ export const MapCanvas = forwardRef<MapCanvasHandle, MapCanvasProps>(
       const validation = transitContext.validateRailStationPlacement(
         placementContext.previewPosition
       );
+      // CITY-432: Check if too close to any existing rail station
+      const previewPos = placementContext.previewPosition;
+      const isTooClose = transitContext.railStations.some((station) => {
+        const dx = previewPos.x - station.position.x;
+        const dy = previewPos.y - station.position.y;
+        return Math.sqrt(dx * dx + dy * dy) < MINIMUM_STATION_DISTANCE;
+      });
       railStationLayerRef.current.setPreview({
-        position: placementContext.previewPosition,
+        position: previewPos,
         isValid: validation.isValid,
+        isTooClose,
       });
     } else {
       railStationLayerRef.current.setPreview(null);
@@ -887,9 +926,17 @@ export const MapCanvas = forwardRef<MapCanvasHandle, MapCanvasProps>(
       const validation = transitContext.validateSubwayStationPlacement(
         placementContext.previewPosition
       );
+      // CITY-432: Check if too close to any existing subway station
+      const previewPos = placementContext.previewPosition;
+      const isTooClose = transitContext.subwayStations.some((station) => {
+        const dx = previewPos.x - station.position.x;
+        const dy = previewPos.y - station.position.y;
+        return Math.sqrt(dx * dx + dy * dy) < MINIMUM_STATION_DISTANCE;
+      });
       subwayStationLayerRef.current.setPreview({
-        position: placementContext.previewPosition,
+        position: previewPos,
         isValid: validation.isValid,
+        isTooClose,
       });
     } else {
       subwayStationLayerRef.current.setPreview(null);

@@ -157,7 +157,7 @@ export function WorldCard({
 
         {/* Last edited */}
         <p className="text-xs text-gray-400 mt-0.5">
-          Last edited {formatRelativeTime(world.created_at)}
+          Last edited {formatRelativeTime(world.updated_at)}
         </p>
 
         {/* Stats */}

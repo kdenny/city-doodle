@@ -16,7 +16,7 @@ export type RoadClass =
   | 'arterial'     // Main city roads, high capacity
   | 'collector'    // Connect local roads to arterials
   | 'local'        // Neighborhood streets
-  | 'alley'        // Back alleys, service roads
+  | 'trail'        // Trails, paths, service roads
 
 /**
  * Node types for special intersection handling
@@ -143,7 +143,7 @@ export const ROAD_CLASS_DEFAULTS: Record<RoadClass, { speed_limit: number; lanes
   arterial: { speed_limit: 60, lanes: 4 },
   collector: { speed_limit: 50, lanes: 2 },
   local: { speed_limit: 40, lanes: 2 },
-  alley: { speed_limit: 20, lanes: 1 },
+  trail: { speed_limit: 20, lanes: 1 },
 }
 
 /**
@@ -154,5 +154,5 @@ export const ROAD_CLASS_STYLES: Record<RoadClass, { width: number; color: string
   arterial: { width: 8, color: '#FFA500' },
   collector: { width: 5, color: '#FFFFFF' },
   local: { width: 3, color: '#CCCCCC' },
-  alley: { width: 2, color: '#999999' },
+  trail: { width: 2, color: '#999999' },
 }

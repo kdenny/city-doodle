@@ -16,6 +16,7 @@ import type { Point } from "./types";
 const SUBWAY_STATION_COLOR = 0x0066cc; // Blue for subway
 const SUBWAY_STATION_BG_COLOR = 0xe6f2ff; // Light blue background
 const SUBWAY_STATION_INVALID_COLOR = 0xff4444; // Red for invalid placement
+const SUBWAY_STATION_TOO_CLOSE_COLOR = 0xff8c00; // Orange for too-close warning (CITY-432)
 const SUBWAY_STATION_RADIUS = 12;
 const HUB_SUBWAY_STATION_RADIUS = 16; // Larger for hub/transfer stations
 const SUBWAY_STATION_INNER_RADIUS = 8;
@@ -48,6 +49,7 @@ export interface SubwayStationData {
 export interface SubwayStationPreviewData {
   position: { x: number; y: number };
   isValid: boolean; // Whether the position is valid (inside a district)
+  isTooClose?: boolean; // Whether the position is too close to an existing station (CITY-432)
 }
 
 /**
@@ -370,12 +372,19 @@ export class SubwayStationLayer {
 
     if (!preview) return;
 
-    const { position, isValid } = preview;
+    const { position, isValid, isTooClose } = preview;
     const color = isValid ? SUBWAY_STATION_COLOR : SUBWAY_STATION_INVALID_COLOR;
     const bgColor = isValid ? SUBWAY_STATION_BG_COLOR : 0xffcccc;
 
     // Create preview graphics
     this.previewGraphics = new Graphics();
+
+    // CITY-432: Draw too-close warning ring behind the station preview
+    if (isTooClose && isValid) {
+      this.previewGraphics.setStrokeStyle({ width: 2.5, color: SUBWAY_STATION_TOO_CLOSE_COLOR, alpha: 0.7 });
+      this.previewGraphics.circle(position.x, position.y, SUBWAY_STATION_RADIUS + 8);
+      this.previewGraphics.stroke();
+    }
 
     // Draw station marker background (semi-transparent)
     this.previewGraphics.circle(position.x, position.y, SUBWAY_STATION_RADIUS + 2);
@@ -417,6 +426,19 @@ export class SubwayStationLayer {
         style: new TextStyle({
           fontSize: 10,
           fill: SUBWAY_STATION_INVALID_COLOR,
+          fontWeight: "bold",
+        }),
+      });
+      this.previewLabel.anchor.set(0.5, 0);
+      this.previewLabel.position.set(position.x, position.y + SUBWAY_STATION_RADIUS + 8);
+      this.previewContainer.addChild(this.previewLabel);
+    } else if (isTooClose) {
+      // CITY-432: Show too-close warning label
+      this.previewLabel = new Text({
+        text: "Too close to station",
+        style: new TextStyle({
+          fontSize: 10,
+          fill: SUBWAY_STATION_TOO_CLOSE_COLOR,
           fontWeight: "bold",
         }),
       });

@@ -4,7 +4,12 @@ from uuid import uuid4
 
 import pytest
 from city_worker.growth import GrowthChangelog, GrowthConfig
-from city_worker.growth.simulator import GrowthSimulator, _point_in_ring
+from city_worker.growth.simulator import (
+    GrowthSimulator,
+    TRANSIT_ACCESS_GROWTH_MULTIPLIER,
+    TRANSIT_EXPANSION_BIAS,
+    _point_in_ring,
+)
 from city_worker.growth.types import ChangeEntry
 
 
@@ -13,6 +18,7 @@ def _make_district(
     density: float = 3.0,
     max_height: int = 8,
     historic: bool = False,
+    transit_access: bool = False,
 ) -> dict:
     """Helper to create a test district dict."""
     return {
@@ -28,7 +34,7 @@ def _make_district(
         },
         "density": density,
         "max_height": max_height,
-        "transit_access": False,
+        "transit_access": transit_access,
         "historic": historic,
     }
 
@@ -320,6 +326,95 @@ class TestGrowthSimulator:
             if e.action == "expand" and e.entity_id == inner["id"]
         ]
         assert len(expand_entries) == 0
+
+
+    def test_transit_access_boosts_infill_rate(self):
+        """Districts with transit_access=True grow faster than those without (CITY-429)."""
+        district_no_transit = _make_district("residential", density=3.0, transit_access=False)
+        district_transit = _make_district("residential", density=3.0, transit_access=True)
+
+        config = GrowthConfig(world_id=uuid4(), years=5)
+
+        sim_no = GrowthSimulator(config, seed=42)
+        sim_no.simulate([district_no_transit], [], [], [])
+
+        sim_yes = GrowthSimulator(config, seed=42)
+        sim_yes.simulate([district_transit], [], [], [])
+
+        assert district_transit["density"] > district_no_transit["density"]
+
+    def test_transit_access_multiplier_value(self):
+        """The transit multiplier constant is 1.3 (30% boost)."""
+        assert TRANSIT_ACCESS_GROWTH_MULTIPLIER == 1.3
+
+    def test_transit_access_boosts_expansion(self):
+        """Districts with transit_access=True expand faster (CITY-429)."""
+        district_no_transit = _make_district("downtown", density=5.0, transit_access=False)
+        district_transit = _make_district("downtown", density=5.0, transit_access=True)
+
+        config = GrowthConfig(world_id=uuid4(), years=1)
+
+        sim_no = GrowthSimulator(config, seed=42)
+        sim_no.simulate([district_no_transit], [], [], [])
+
+        sim_yes = GrowthSimulator(config, seed=42)
+        sim_yes.simulate([district_transit], [], [], [])
+
+        # Transit district should have expanded further from its centroid
+        def _max_vertex_dist(district: dict) -> float:
+            ring = district["geometry"]["coordinates"][0]
+            cx = sum(p[0] for p in ring) / len(ring)
+            cy = sum(p[1] for p in ring) / len(ring)
+            return max(((p[0] - cx) ** 2 + (p[1] - cy) ** 2) ** 0.5 for p in ring)
+
+        assert _max_vertex_dist(district_transit) > _max_vertex_dist(district_no_transit)
+
+    def test_expansion_biased_toward_transit_neighbour(self):
+        """Expansion direction biases toward a transit-accessible neighbour (CITY-429)."""
+        world_id = str(uuid4())
+
+        # District under test: sits at origin
+        district = _make_district("residential", density=3.0)
+        district["world_id"] = world_id
+        district["geometry"]["coordinates"] = [
+            [[0, 0], [1000, 0], [1000, 1000], [0, 1000], [0, 0]],
+        ]
+
+        # Transit-accessible neighbour to the east (centroid ~3000, 500)
+        transit_neighbour = _make_district("commercial", density=3.0, transit_access=True)
+        transit_neighbour["world_id"] = world_id
+        transit_neighbour["geometry"]["coordinates"] = [
+            [[2500, 0], [3500, 0], [3500, 1000], [2500, 1000], [2500, 0]],
+        ]
+
+        config = GrowthConfig(world_id=uuid4(), years=1)
+        sim = GrowthSimulator(config, seed=42)
+        changelog = sim.simulate([district, transit_neighbour], [], [], [])
+
+        # The right-side vertices (x=1000 originally) should have expanded
+        # further than the left-side vertices (x=0 originally) due to transit bias
+        ring = district["geometry"]["coordinates"][0]
+        # centroid is at ~(500, 500) originally
+        right_vertices = [p for p in ring if p[0] > 500]
+        left_vertices = [p for p in ring if p[0] < 500]
+
+        if right_vertices and left_vertices:
+            max_right_x = max(p[0] for p in right_vertices)
+            min_left_x = min(p[0] for p in left_vertices)
+            # Right side expansion from centroid should be larger than left side
+            right_expansion = max_right_x - 500
+            left_expansion = 500 - min_left_x
+            assert right_expansion > left_expansion
+
+    def test_transit_access_still_respects_max_density(self):
+        """Transit boost does not allow density to exceed the type maximum (CITY-429)."""
+        district = _make_district("residential", density=7.99, transit_access=True)
+        config = GrowthConfig(world_id=uuid4(), years=10)
+        sim = GrowthSimulator(config, seed=42)
+
+        sim.simulate([district], [], [], [])
+
+        assert district["density"] <= config.max_density["residential"]
 
 
 class TestPointInRing:

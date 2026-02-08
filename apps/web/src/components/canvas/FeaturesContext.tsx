@@ -125,6 +125,9 @@ import {
   useCreateRoadEdgesBulk,
   useUpdateRoadEdge,
   useDeleteRoadEdge,
+  useWorldCityLimits,
+  useUpsertCityLimits,
+  useDeleteCityLimits,
 } from "../../api/hooks";
 import type {
   District as ApiDistrict,
@@ -609,6 +612,15 @@ export function FeaturesProvider({
   const updateNeighborhoodMutation = useUpdateNeighborhood();
   const deleteNeighborhoodMutation = useDeleteNeighborhood();
 
+  // City limits query and mutations (CITY-407)
+  const {
+    data: apiCityLimits,
+  } = useWorldCityLimits(worldId || "", {
+    enabled: !!worldId,
+  });
+  const upsertCityLimitsMutation = useUpsertCityLimits();
+  const deleteCityLimitsMutation = useDeleteCityLimits();
+
   // POI queries and mutations
   const {
     data: apiPOIs,
@@ -716,6 +728,21 @@ export function FeaturesProvider({
       }));
     }
   }, [worldId, apiNeighborhoods]);
+
+  // Load city limits from API when data is available (CITY-407)
+  useEffect(() => {
+    if (worldId && apiCityLimits) {
+      setFeaturesState((prev) => ({
+        ...prev,
+        cityLimits: {
+          id: String(apiCityLimits.id),
+          name: apiCityLimits.name,
+          boundary: { points: (apiCityLimits.boundary as { points: { x: number; y: number }[] }).points ?? [] },
+          established: apiCityLimits.established ?? undefined,
+        },
+      }));
+    }
+  }, [worldId, apiCityLimits]);
 
   // Load POIs from API when data is available
   useEffect(() => {
@@ -1513,18 +1540,37 @@ export function FeaturesProvider({
 
   const removePOI = useCallback(
     (id: string) => {
-      // Update local state immediately for responsiveness
+      // Find the POI for potential rollback
+      const poiToRemove = features.pois.find((p) => p.id === id);
+
+      // Optimistically remove from local state
       updateFeatures((prev) => ({
         ...prev,
         pois: prev.pois.filter((p) => p.id !== id),
       }));
 
       // Persist to backend if we have a worldId
-      if (worldId) {
-        deletePOIMutation.mutate({ poiId: id, worldId });
+      if (worldId && poiToRemove) {
+        deletePOIMutation.mutate(
+          { poiId: id, worldId },
+          {
+            onError: (error) => {
+              // Re-add the POI on error
+              updateFeatures((prev) => ({
+                ...prev,
+                pois: [...prev.pois, poiToRemove],
+              }));
+              console.error("Failed to delete POI:", error);
+              toast?.addToast(
+                "Failed to delete POI. Please try again.",
+                "error"
+              );
+            },
+          }
+        );
       }
     },
-    [updateFeatures, worldId, deletePOIMutation]
+    [worldId, features.pois, updateFeatures, deletePOIMutation, toast]
   );
 
   const updatePOI = useCallback(
@@ -1957,10 +2003,20 @@ export function FeaturesProvider({
         cityLimits,
       }));
 
-      // Note: City limits persistence to backend API is not yet implemented
-      // When city limits API is added, persistence should be added here
+      if (worldId) {
+        upsertCityLimitsMutation.mutate({
+          worldId,
+          data: {
+            name: cityLimits.name,
+            boundary: {
+              points: cityLimits.boundary.points.map((p) => ({ x: p.x, y: p.y })),
+            },
+            established: cityLimits.established,
+          },
+        });
+      }
     },
-    [updateFeatures]
+    [updateFeatures, worldId, upsertCityLimitsMutation]
   );
 
   const removeCityLimits = useCallback(() => {
@@ -1969,9 +2025,10 @@ export function FeaturesProvider({
       cityLimits: undefined,
     }));
 
-    // Note: City limits persistence to backend API is not yet implemented
-    // When city limits API is added, deletion should be added here
-  }, [updateFeatures]);
+    if (worldId) {
+      deleteCityLimitsMutation.mutate(worldId);
+    }
+  }, [updateFeatures, worldId, deleteCityLimitsMutation]);
 
   const clearFeatures = useCallback(() => {
     updateFeatures(() => EMPTY_FEATURES);

@@ -83,6 +83,22 @@ function generateContextualName(
 }
 
 // ============================================================================
+// Transit-oriented POI names (CITY-428)
+// ============================================================================
+
+/**
+ * Names for transit-type POIs generated near placed transit stations.
+ * Combined with a context prefix to form names like "Maple Transit Plaza".
+ */
+const TRANSIT_POI_NAMES = [
+  "Transit Plaza",
+  "Bus Terminal",
+  "Park & Ride",
+  "Metro Entrance",
+  "Commuter Lot",
+];
+
+// ============================================================================
 // District type -> POI type mapping
 // ============================================================================
 
@@ -90,8 +106,7 @@ function generateContextualName(
  * Mapping from district type to the set of POI types that should be
  * auto-generated when that district type is placed.
  *
- * District types that should NOT generate POIs (e.g., park, airport) are
- * omitted and will return an empty array.
+ * District types not listed here will not generate POIs.
  */
 const DISTRICT_POI_TYPES: Partial<Record<DistrictType, POIType[]>> = {
   hospital: ["hospital", "civic"],
@@ -101,6 +116,7 @@ const DISTRICT_POI_TYPES: Partial<Record<DistrictType, POIType[]>> = {
   k12: ["school", "civic"],
   residential: ["shopping", "civic"],
   commercial: ["shopping", "civic", "shopping"],
+  park: ["park", "civic"],
 };
 
 /**
@@ -115,6 +131,7 @@ const POI_COUNT_RANGE: Partial<Record<DistrictType, [number, number]>> = {
   k12: [1, 2],
   residential: [1, 2],
   commercial: [2, 3],
+  park: [1, 2],
 };
 
 // ============================================================================
@@ -359,6 +376,111 @@ export function generatePOIsForDistrict(
       name,
       type: poiType,
       position: positions[i],
+    });
+  }
+
+  return pois;
+}
+
+// ============================================================================
+// Transit station POI generation (CITY-428)
+// ============================================================================
+
+/**
+ * Minimum distance between transit POIs and existing POIs (in world units).
+ * Matches the overlap prevention threshold used elsewhere.
+ */
+const TRANSIT_POI_MIN_SPACING = 80;
+
+/**
+ * Range for how far a transit POI is offset from the station (in world units).
+ */
+const TRANSIT_POI_OFFSET_MIN = 50;
+const TRANSIT_POI_OFFSET_MAX = 100;
+
+/**
+ * Generate 1-2 transit-oriented POIs near a placed transit station.
+ *
+ * @param stationPosition - Position of the placed station
+ * @param stationName - Name of the station (used for seed derivation)
+ * @param districtPolygon - Polygon points of the containing district
+ * @param existingPOIs - Existing POIs to avoid overlapping with
+ * @returns Array of POI objects ready to be added
+ */
+export function generateTransitPOIs(
+  stationPosition: Point,
+  stationName: string,
+  districtPolygon: Point[],
+  existingPOIs: POI[]
+): POI[] {
+  // Derive a seed from the station position and name for determinism
+  const nameSeed = stationName.split("").reduce((acc, c) => acc + c.charCodeAt(0), 0);
+  const seed = Math.floor(stationPosition.x * 1000 + stationPosition.y * 7919 + nameSeed);
+  const rng = new SeededRandom(seed);
+
+  // Generate 1-2 POIs
+  const count = rng.intRange(1, 3); // 1 or 2
+
+  const usedNames = new Set<string>(existingPOIs.map((p) => p.name));
+  const existingPositions = existingPOIs.map((p) => p.position);
+  const pois: POI[] = [];
+
+  for (let i = 0; i < count; i++) {
+    // Pick a transit POI name, combined with a context prefix
+    let name: string | null = null;
+    for (let attempt = 0; attempt < 10; attempt++) {
+      const transitName = rng.pick(TRANSIT_POI_NAMES);
+      const prefix = rng.pick(CONTEXT_PREFIXES);
+      const candidate = `${prefix} ${transitName}`;
+      if (!usedNames.has(candidate)) {
+        usedNames.add(candidate);
+        name = candidate;
+        break;
+      }
+    }
+    if (!name) {
+      // Fallback: accept potential duplicate (extremely unlikely)
+      name = `${rng.pick(CONTEXT_PREFIXES)} ${rng.pick(TRANSIT_POI_NAMES)}`;
+      usedNames.add(name);
+    }
+
+    // Generate a position offset from the station, within the district polygon
+    let position: Point | null = null;
+    const maxAttempts = 30;
+
+    for (let attempt = 0; attempt < maxAttempts; attempt++) {
+      // Random angle and distance
+      const angle = rng.next() * Math.PI * 2;
+      const dist = TRANSIT_POI_OFFSET_MIN + rng.next() * (TRANSIT_POI_OFFSET_MAX - TRANSIT_POI_OFFSET_MIN);
+      const candidate: Point = {
+        x: stationPosition.x + Math.cos(angle) * dist,
+        y: stationPosition.y + Math.sin(angle) * dist,
+      };
+
+      // Must be inside the district polygon
+      if (!pointInPolygon(candidate, districtPolygon)) continue;
+
+      // Must be far enough from all existing POIs and previously generated ones
+      const allPositions = [...existingPositions, ...pois.map((p) => p.position)];
+      const tooClose = allPositions.some((existing) => {
+        const dx = candidate.x - existing.x;
+        const dy = candidate.y - existing.y;
+        return Math.sqrt(dx * dx + dy * dy) < TRANSIT_POI_MIN_SPACING;
+      });
+      if (tooClose) continue;
+
+      position = candidate;
+      break;
+    }
+
+    // If no valid position found, skip this POI
+    if (!position) continue;
+
+    pois.push({
+      id: generateId("poi"),
+      name,
+      type: "transit" as POIType,
+      position,
     });
   }
 

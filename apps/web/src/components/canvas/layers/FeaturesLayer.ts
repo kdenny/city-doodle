@@ -134,6 +134,18 @@ const POI_COLORS: Record<POIType, number> = {
   industrial: 0x888888,
 };
 
+// Minimum zoom level to show each POI type (mirroring ROAD_STYLES.minZoom pattern)
+const POI_MIN_ZOOM: Record<POIType, number> = {
+  hospital: 0.15,    // Important landmarks, visible at most zoom levels
+  university: 0.15,
+  transit: 0.15,
+  civic: 0.2,
+  school: 0.3,       // Medium importance, like local roads
+  shopping: 0.3,
+  park: 0.3,
+  industrial: 0.3,
+};
+
 // Bridge styling by water type
 interface BridgeStyle {
   color: number;
@@ -418,6 +430,8 @@ export class FeaturesLayer {
   private poiIndex: POISpatialIndex = new POISpatialIndex();
   /** Spatial index for fast district hit testing */
   private districtIndex: DistrictSpatialIndex = new DistrictSpatialIndex();
+  /** CITY-421: Viewport bounds in world coordinates for spatial culling */
+  private viewportBounds: { minX: number; minY: number; maxX: number; maxY: number } | null = null;
 
   constructor() {
     this.container = new Container();
@@ -508,11 +522,24 @@ export class FeaturesLayer {
   setZoom(zoom: number): void {
     if (this.currentZoom !== zoom) {
       this.currentZoom = zoom;
-      // Re-render roads when zoom changes (for visibility filtering)
+      // Re-render roads and POIs when zoom changes (for visibility filtering)
       if (this.data) {
         this.renderRoads(this.data.roads);
         this.renderRoadHighlight();
+        this.renderPOIs(this.data.pois);
       }
+    }
+  }
+
+  /**
+   * CITY-421: Set viewport bounds in world coordinates for spatial road culling.
+   * Roads outside these bounds are skipped during rendering.
+   */
+  setViewportBounds(bounds: { minX: number; minY: number; maxX: number; maxY: number }): void {
+    this.viewportBounds = bounds;
+    if (this.data) {
+      this.renderRoads(this.data.roads);
+      this.renderRoadHighlight();
     }
   }
 
@@ -839,11 +866,29 @@ export class FeaturesLayer {
       (a, b) => classOrder.indexOf(a.roadClass) - classOrder.indexOf(b.roadClass)
     );
 
-    // Filter roads by zoom level (skip roads with unknown class to prevent crash)
+    // Filter roads by zoom level and viewport bounds (CITY-421)
+    const vb = this.viewportBounds;
     const visibleRoads = sortedRoads.filter((road) => {
       const style = ROAD_STYLES[road.roadClass];
       if (!style) return false;
-      return this.currentZoom >= style.minZoom;
+      if (this.currentZoom < style.minZoom) return false;
+
+      // CITY-421: Spatial culling — skip roads entirely outside viewport
+      if (vb) {
+        const pts = road.line.points;
+        let rMinX = Infinity, rMaxX = -Infinity, rMinY = Infinity, rMaxY = -Infinity;
+        for (const p of pts) {
+          if (p.x < rMinX) rMinX = p.x;
+          if (p.x > rMaxX) rMaxX = p.x;
+          if (p.y < rMinY) rMinY = p.y;
+          if (p.y > rMaxY) rMaxY = p.y;
+        }
+        if (rMaxX < vb.minX || rMinX > vb.maxX || rMaxY < vb.minY || rMinY > vb.maxY) {
+          return false;
+        }
+      }
+
+      return true;
     });
 
     // CITY-377 diagnostic: log render stats (throttled to avoid console spam during zoom)
@@ -1148,19 +1193,29 @@ export class FeaturesLayer {
       this.poisGraphics.clear();
     }
 
+    // Scale marker size with zoom: smaller when zoomed out, larger when zoomed in
+    const baseRadius = 6;
+    const zoomScale = Math.max(0.5, Math.min(1.5, this.currentZoom));
+    const radius = baseRadius * zoomScale;
+    const innerRadius = 2 * zoomScale;
+    const strokeWidth = 2 * zoomScale;
+
     for (const poi of pois) {
+      // Filter by zoom level (same pattern as road minZoom)
+      const minZoom = POI_MIN_ZOOM[poi.type] ?? 0.3;
+      if (this.currentZoom < minZoom) continue;
+
       const color = POI_COLORS[poi.type] ?? 0x666666;
       const { x, y } = poi.position;
-      const radius = 6;
 
       // Draw POI marker (circle with outline)
-      this.poisGraphics.setStrokeStyle({ width: 2, color: 0xffffff });
+      this.poisGraphics.setStrokeStyle({ width: strokeWidth, color: 0xffffff });
       this.poisGraphics.circle(x, y, radius);
       this.poisGraphics.fill({ color });
       this.poisGraphics.stroke();
 
       // Draw inner dot for emphasis
-      this.poisGraphics.circle(x, y, 2);
+      this.poisGraphics.circle(x, y, innerRadius);
       this.poisGraphics.fill({ color: 0xffffff });
     }
   }
