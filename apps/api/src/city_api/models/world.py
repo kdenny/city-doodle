@@ -10,6 +10,7 @@ from sqlalchemy.orm import Mapped, mapped_column, relationship
 from city_api.database import Base, JSONVariant
 
 if TYPE_CHECKING:
+    from city_api.models.city_limits import CityLimits
     from city_api.models.district import District
     from city_api.models.neighborhood import Neighborhood
     from city_api.models.poi import POI
@@ -33,6 +34,9 @@ class World(Base):
     settings: Mapped[dict] = mapped_column(JSONVariant, nullable=False, default=dict)
     created_at: Mapped[datetime] = mapped_column(
         DateTime(timezone=True), server_default=func.now(), nullable=False
+    )
+    updated_at: Mapped[datetime] = mapped_column(
+        DateTime(timezone=True), server_default=func.now(), onupdate=func.now(), nullable=False
     )
 
     tiles: Mapped[list["Tile"]] = relationship("Tile", back_populates="world")
@@ -59,6 +63,9 @@ class World(Base):
     )
     pois: Mapped[list["POI"]] = relationship(
         "POI", back_populates="world", cascade="all, delete-orphan"
+    )
+    city_limits: Mapped["CityLimits | None"] = relationship(
+        "CityLimits", back_populates="world", cascade="all, delete-orphan", uselist=False
     )
 
     __table_args__ = (Index("ix_worlds_user_id", "user_id"),)
