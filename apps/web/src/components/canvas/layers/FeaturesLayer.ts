@@ -532,6 +532,9 @@ export class FeaturesLayer {
     if (bridgesChanged) this.renderBridges(data.bridges || []);
     if (interchangesChanged) this.renderInterchanges(data.interchanges || []);
     if (poisChanged) this.renderPOIs(data.pois);
+
+    // CITY-499: Re-apply visibility after render so toggled-off layers stay hidden
+    this.applyVisibility();
   }
 
 setVisibility(visibility: LayerVisibility & { neighborhoods?: boolean; cityLimits?: boolean; bridges?: boolean }): void {
@@ -593,6 +596,8 @@ setVisibility(visibility: LayerVisibility & { neighborhoods?: boolean; cityLimit
       this.renderRoads(this.data.roads);
       this.renderRoadHighlight();
       this.renderPOIs(this.data.pois);
+      // CITY-499: Re-apply visibility after zoom/pan re-render
+      this.applyVisibility();
     });
   }
 
