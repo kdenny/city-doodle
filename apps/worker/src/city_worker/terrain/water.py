@@ -419,18 +419,41 @@ def extract_rivers(
                             next_cell = (ni, nj)
 
                 if next_cell is None:
-                    # Check if we reached water
+                    # Already in water — stop here (CITY-522)
                     if heightfield[ci, cj] < water_level:
                         break
-                    # Look for any lower neighbor
+                    # Look for any lower neighbor that is still on land.
+                    # Do NOT follow into water cells — that causes rivers
+                    # to extend deep into bays instead of ending at the
+                    # coastline.
                     for di, dj in directions:
                         ni, nj = ci + di, cj + dj
                         if 0 <= ni < h and 0 <= nj < w:
-                            if not visited[ni, nj] and heightfield[ni, nj] < heightfield[ci, cj]:
+                            if (
+                                not visited[ni, nj]
+                                and heightfield[ni, nj] < heightfield[ci, cj]
+                                and heightfield[ni, nj] >= water_level
+                            ):
                                 next_cell = (ni, nj)
                                 break
 
                 if next_cell is None:
+                    # Snap the river endpoint to the coastline by finding
+                    # the nearest water neighbor and adding a point on
+                    # the land/water boundary (CITY-522).
+                    if heightfield[ci, cj] >= water_level:
+                        best_water = None
+                        best_h = float("inf")
+                        for di, dj in directions:
+                            ni, nj = ci + di, cj + dj
+                            if 0 <= ni < h and 0 <= nj < w:
+                                if heightfield[ni, nj] < water_level:
+                                    if heightfield[ni, nj] < best_h:
+                                        best_h = heightfield[ni, nj]
+                                        best_water = (ni, nj)
+                        if best_water is not None:
+                            # Add the water cell as the terminal point
+                            path.append(best_water)
                     break
 
                 ci, cj = next_cell
