@@ -90,8 +90,7 @@ function generateContextualName(
  * Mapping from district type to the set of POI types that should be
  * auto-generated when that district type is placed.
  *
- * District types that should NOT generate POIs (e.g., park, airport) are
- * omitted and will return an empty array.
+ * District types not listed here will not generate POIs.
  */
 const DISTRICT_POI_TYPES: Partial<Record<DistrictType, POIType[]>> = {
   hospital: ["hospital", "civic"],
@@ -101,6 +100,7 @@ const DISTRICT_POI_TYPES: Partial<Record<DistrictType, POIType[]>> = {
   k12: ["school", "civic"],
   residential: ["shopping", "civic"],
   commercial: ["shopping", "civic", "shopping"],
+  airport: ["transit", "shopping"],
 };
 
 /**
@@ -115,6 +115,7 @@ const POI_COUNT_RANGE: Partial<Record<DistrictType, [number, number]>> = {
   k12: [1, 2],
   residential: [1, 2],
   commercial: [2, 3],
+  airport: [1, 2],
 };
 
 // ============================================================================
