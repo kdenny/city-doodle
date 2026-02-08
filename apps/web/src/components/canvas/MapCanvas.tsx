@@ -55,14 +55,18 @@ import { useEditLockOptional } from "../shell/EditLockContext";
 import { useViewModeOptional } from "../shell/ViewModeContext";
 import type { District, Road, POI, CityLimits } from "./layers";
 import type { GeographicSetting } from "../../api/types";
+import { useWorldTiles } from "../../api/hooks";
 import { TILE_SIZE, WORLD_TILES, WORLD_SIZE } from "../../utils/worldConstants";
 import { getEffectiveDistrictConfig } from "./layers/districtGenerator";
+import { transformTileFeatures } from "./layers/terrainTransformer";
 
 interface MapCanvasProps {
   className?: string;
   seed?: number;
   /** Geographic setting for terrain generation */
   geographicSetting?: GeographicSetting;
+  /** World ID for fetching real terrain from the tiles API (CITY-439) */
+  worldId?: string;
   /** Controlled zoom level from parent - synced with viewport */
   zoom?: number;
   /** Callback when zoom changes (from wheel/pinch) */
@@ -86,7 +90,7 @@ export interface MapCanvasHandle {
 }
 
 export const MapCanvas = forwardRef<MapCanvasHandle, MapCanvasProps>(
-  function MapCanvas({ className, seed = 12345, geographicSetting, zoom: zoomProp, onZoomChange: onZoomChangeProp, showMockFeatures = true, onFeatureSelect: onFeatureSelectProp }, ref) {
+  function MapCanvas({ className, seed = 12345, geographicSetting, worldId, zoom: zoomProp, onZoomChange: onZoomChangeProp, showMockFeatures = true, onFeatureSelect: onFeatureSelectProp }, ref) {
   const containerRef = useRef<HTMLDivElement>(null);
   const appRef = useRef<Application | null>(null);
   const viewportRef = useRef<Viewport | null>(null);
@@ -172,6 +176,11 @@ export const MapCanvas = forwardRef<MapCanvasHandle, MapCanvasProps>(
     if (!subwayStationLayerRef.current) return;
     subwayStationLayerRef.current.setTunnelsVisible(layerVisibility.subwayTunnels);
   }, [layerVisibility.subwayTunnels, isReady]);
+
+  // CITY-439: Fetch tiles from API when worldId is provided
+  const { data: tiles } = useWorldTiles(worldId || "", {
+    enabled: !!worldId,
+  });
 
   // Ref to setTerrainData for use in init effect (avoids stale closure)
   const setTerrainDataRef = useRef(terrainContext?.setTerrainData);
@@ -363,8 +372,15 @@ export const MapCanvas = forwardRef<MapCanvasHandle, MapCanvasProps>(
       const terrainLayer = new TerrainLayer();
       viewport.addChild(terrainLayer.getContainer());
 
-      // Generate and set terrain data
-      const terrainData = generateMockTerrain(WORLD_SIZE, seed, geographicSetting);
+      // CITY-439: Use real terrain from tiles API if available, otherwise mock.
+      // The API features column stores a GeoJSON FeatureCollection (not matching the TS TileFeatures type),
+      // so we pass it as unknown and let transformTileFeatures validate the shape.
+      const tileWithFeatures = tiles?.find(
+        (t) => t.features && typeof t.features === "object" && "type" in (t.features as unknown as Record<string, unknown>)
+      );
+      const terrainData = tileWithFeatures
+        ? transformTileFeatures(tileWithFeatures.features as unknown)
+        : generateMockTerrain(WORLD_SIZE, seed, geographicSetting);
       terrainLayer.setData(terrainData);
       terrainLayer.setVisibility(layerVisibility);
 
@@ -549,6 +565,22 @@ export const MapCanvas = forwardRef<MapCanvasHandle, MapCanvasProps>(
       }
     };
   }, [seed, geographicSetting]);
+
+  // CITY-439: Update terrain when tile data loads from API (after canvas init)
+  useEffect(() => {
+    if (!isReady || !terrainLayerRef.current || !tiles) return;
+    const tileWithFeatures = tiles.find(
+      (t) => t.features && typeof t.features === "object" && "type" in (t.features as unknown as Record<string, unknown>)
+    );
+    if (!tileWithFeatures) return;
+
+    const terrainData = transformTileFeatures(tileWithFeatures.features as unknown);
+    // Only update if we actually got features (don't replace mock with empty)
+    if (terrainData.water.length > 0 || terrainData.coastlines.length > 0 || terrainData.rivers.length > 0) {
+      terrainLayerRef.current.setData(terrainData);
+      setTerrainDataRef.current?.(terrainData);
+    }
+  }, [tiles, isReady]);
 
   // Update visibility when state changes (after initial mount)
   useEffect(() => {
