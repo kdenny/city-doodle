@@ -846,3 +846,60 @@ export function areDistrictsConnected(
 
   return false;
 }
+
+/**
+ * CITY-430: Generate a short local-class road connecting a transit station
+ * to the nearest road in its district.
+ *
+ * Transit stations are placed inside districts but have no road segment
+ * extending to them. This function bridges that gap by finding the closest
+ * point on any district road and creating a short "Station Access" road.
+ *
+ * @param stationPosition - The station's world-space position
+ * @param districtRoads - Roads belonging to the station's district
+ * @param districtId - ID of the district the station belongs to
+ * @returns A local-class access road, or null if the station is already
+ *          close enough to a road (< 5 world units)
+ */
+export function generateStationAccessRoad(
+  stationPosition: { x: number; y: number },
+  districtRoads: Road[],
+  districtId: string
+): Road | null {
+  if (districtRoads.length === 0) return null;
+
+  const MIN_DISTANCE = 5; // Don't generate if station is already on/near a road
+
+  let bestPoint: Point | null = null;
+  let bestDist = Infinity;
+
+  for (const road of districtRoads) {
+    const points = road.line.points;
+    if (points.length < 2) continue;
+
+    // Check each segment of the road
+    for (let i = 0; i < points.length - 1; i++) {
+      const closest = nearestPointOnSegment(stationPosition, points[i], points[i + 1]);
+      const dist = distance(stationPosition, closest);
+      if (dist < bestDist) {
+        bestDist = dist;
+        bestPoint = closest;
+      }
+    }
+  }
+
+  if (!bestPoint || bestDist < MIN_DISTANCE) return null;
+
+  return {
+    id: generateId(`station-access-${districtId}`),
+    name: "Station Access",
+    roadClass: "local",
+    line: {
+      points: [
+        { x: stationPosition.x, y: stationPosition.y },
+        bestPoint,
+      ],
+    },
+    districtId,
+  };
+}

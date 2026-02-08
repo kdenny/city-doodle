@@ -65,9 +65,10 @@ import {
 import type { NamingContext, NearbyContext } from "../../utils/nameGenerator";
 import {
   clipAndValidateDistrict,
+  pointInPolygon,
   type ClipResult,
 } from "./layers/polygonUtils";
-import { generateInterDistrictRoads, generateCrossBoundaryConnections } from "./layers/interDistrictRoads";
+import { generateInterDistrictRoads, generateCrossBoundaryConnections, generateStationAccessRoad } from "./layers/interDistrictRoads";
 import {
   districtRequiresArterialAdjacency,
   generateArterialConnections,
@@ -1090,6 +1091,26 @@ export function FeaturesProvider({
         // Add any additional arterial roads that were generated
         if (!arterialResult.wasAlreadyAdjacent && arterialResult.roads.length > 0) {
           allRoads = [...allRoads, ...arterialResult.roads];
+        }
+      }
+
+      // CITY-430: Generate access roads for any transit stations inside this district
+      if (transitContext) {
+        const allStationPositions = [
+          ...transitContext.railStations.map((s) => s.position),
+          ...transitContext.subwayStations.map((s) => s.position),
+        ];
+        for (const stationPos of allStationPositions) {
+          if (pointInPolygon(stationPos, generated.district.polygon.points)) {
+            const accessRoad = generateStationAccessRoad(
+              stationPos,
+              [...generated.roads, ...allRoads],
+              generated.district.id
+            );
+            if (accessRoad) {
+              allRoads = [...allRoads, accessRoad];
+            }
+          }
         }
       }
 
