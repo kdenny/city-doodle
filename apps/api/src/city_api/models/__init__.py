@@ -1,5 +1,6 @@
 """SQLAlchemy models for City Doodle database."""
 
+from city_api.models.city_limits import CityLimits
 from city_api.models.district import District, DistrictType
 from city_api.models.job import Job
 from city_api.models.neighborhood import Neighborhood
@@ -18,6 +19,7 @@ from city_api.models.user import Session, User
 from city_api.models.world import World
 
 __all__ = [
+    "CityLimits",
     "District",
     "DistrictType",
     "Job",
