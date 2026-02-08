@@ -13,6 +13,7 @@ Create Date: 2026-02-06
 from collections.abc import Sequence
 
 from alembic import op
+from sqlalchemy import text
 
 # revision identifiers, used by Alembic.
 revision: str = "018"
@@ -22,7 +23,7 @@ depends_on: str | Sequence[str] | None = None
 
 
 def upgrade() -> None:
-    op.create_index("ix_worlds_user_id", "worlds", ["user_id"])
+    op.execute(text("CREATE INDEX IF NOT EXISTS ix_worlds_user_id ON worlds (user_id)"))
 
 
 def downgrade() -> None:
