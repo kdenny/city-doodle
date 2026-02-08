@@ -34,6 +34,7 @@
  */
 
 import { Container, Graphics } from "pixi.js";
+import { generatePOIFootprint } from "./poiAutoGenerator";
 import type {
   FeaturesData,
   District,
@@ -1616,69 +1617,23 @@ export function generateMockFeatures(
     },
   });
 
-  // Generate POIs
-  const pois: POI[] = [
-    {
-      id: "poi-hospital",
-      name: "City Hospital",
-      type: "hospital",
-      position: { x: worldSize * 0.3, y: worldSize * 0.3 },
-    },
-    {
-      id: "poi-school-1",
-      name: "Lincoln Elementary",
-      type: "school",
-      position: { x: worldSize * 0.2, y: worldSize * 0.5 },
-    },
-    {
-      id: "poi-school-2",
-      name: "Washington High",
-      type: "school",
-      position: { x: worldSize * 0.7, y: worldSize * 0.6 },
-    },
-    {
-      id: "poi-university",
-      name: "State University",
-      type: "university",
-      position: { x: worldSize * 0.8, y: worldSize * 0.2 },
-    },
-    {
-      id: "poi-park",
-      name: "Central Park",
-      type: "park",
-      position: { x: worldSize * 0.5, y: worldSize * 0.5 },
-    },
-    {
-      id: "poi-transit-1",
-      name: "Central Station",
-      type: "transit",
-      position: { x: worldSize * 0.5, y: worldSize * 0.4 },
-    },
-    {
-      id: "poi-transit-2",
-      name: "Harbor Station",
-      type: "transit",
-      position: { x: worldSize * 0.15, y: worldSize * 0.4 },
-    },
-    {
-      id: "poi-shopping",
-      name: "Downtown Mall",
-      type: "shopping",
-      position: { x: worldSize * 0.45, y: worldSize * 0.35 },
-    },
-    {
-      id: "poi-civic",
-      name: "City Hall",
-      type: "civic",
-      position: { x: worldSize * 0.5, y: worldSize * 0.3 },
-    },
-    {
-      id: "poi-industrial",
-      name: "Power Plant",
-      type: "industrial",
-      position: { x: worldSize * 0.85, y: worldSize * 0.7 },
-    },
+  // Generate POIs (CITY-474: hydrate footprints for types that support them)
+  const mockPOIData: { id: string; name: string; type: POIType; position: Point }[] = [
+    { id: "poi-hospital", name: "City Hospital", type: "hospital", position: { x: worldSize * 0.3, y: worldSize * 0.3 } },
+    { id: "poi-school-1", name: "Lincoln Elementary", type: "school", position: { x: worldSize * 0.2, y: worldSize * 0.5 } },
+    { id: "poi-school-2", name: "Washington High", type: "school", position: { x: worldSize * 0.7, y: worldSize * 0.6 } },
+    { id: "poi-university", name: "State University", type: "university", position: { x: worldSize * 0.8, y: worldSize * 0.2 } },
+    { id: "poi-park", name: "Central Park", type: "park", position: { x: worldSize * 0.5, y: worldSize * 0.5 } },
+    { id: "poi-transit-1", name: "Central Station", type: "transit", position: { x: worldSize * 0.5, y: worldSize * 0.4 } },
+    { id: "poi-transit-2", name: "Harbor Station", type: "transit", position: { x: worldSize * 0.15, y: worldSize * 0.4 } },
+    { id: "poi-shopping", name: "Downtown Mall", type: "shopping", position: { x: worldSize * 0.45, y: worldSize * 0.35 } },
+    { id: "poi-civic", name: "City Hall", type: "civic", position: { x: worldSize * 0.5, y: worldSize * 0.3 } },
+    { id: "poi-industrial", name: "Power Plant", type: "industrial", position: { x: worldSize * 0.85, y: worldSize * 0.7 } },
   ];
+  const pois: POI[] = mockPOIData.map((d) => ({
+    ...d,
+    footprint: generatePOIFootprint(d.type, d.position),
+  }));
 
   return { districts, roads, pois, neighborhoods: [], bridges: [] };
 }

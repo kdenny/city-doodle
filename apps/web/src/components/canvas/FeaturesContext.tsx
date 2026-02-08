@@ -1700,11 +1700,19 @@ export function FeaturesProvider({
       const currentPOI = features.pois.find((p) => p.id === id);
       if (!currentPOI) return;
 
+      // CITY-472: Regenerate footprint when type or position changes
+      const effectiveUpdates = { ...updates };
+      if (updates.type !== undefined || updates.position !== undefined) {
+        const newType = updates.type ?? currentPOI.type;
+        const newPosition = updates.position ?? currentPOI.position;
+        effectiveUpdates.footprint = generatePOIFootprint(newType, newPosition) ?? undefined;
+      }
+
       // Optimistically update local state
       updateFeatures((prev) => ({
         ...prev,
         pois: prev.pois.map((p) =>
-          p.id === id ? { ...p, ...updates } : p
+          p.id === id ? { ...p, ...effectiveUpdates } : p
         ),
       }));
 
