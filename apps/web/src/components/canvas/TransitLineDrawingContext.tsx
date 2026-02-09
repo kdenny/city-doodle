@@ -21,6 +21,7 @@ import {
 } from "react";
 import type { RailStationData } from "./layers";
 import type { LineType } from "../../api/types";
+import { RAIL_LINE_HEX } from "./transitColors";
 
 export interface TransitLineProperties {
   name: string;
@@ -78,14 +79,6 @@ interface TransitLineDrawingContextValue {
   ) => void;
 }
 
-const DEFAULT_LINE_COLORS = [
-  "#B22222", // Firebrick Red
-  "#2E8B57", // Sea Green
-  "#4169E1", // Royal Blue
-  "#DAA520", // Goldenrod
-  "#8B4513", // Saddle Brown
-  "#663399", // Rebecca Purple
-];
 
 const INITIAL_STATE: TransitLineDrawingState = {
   isDrawing: false,
@@ -142,8 +135,8 @@ export function TransitLineDrawingProvider({
   const startDrawing = useCallback((properties?: TransitLineProperties) => {
     // Find first unused color and name to avoid collisions after deletions
     const usedColors = new Set(existingLineColors);
-    let color = DEFAULT_LINE_COLORS[0];
-    for (const c of DEFAULT_LINE_COLORS) {
+    let color = RAIL_LINE_HEX[0];
+    for (const c of RAIL_LINE_HEX) {
       if (!usedColors.has(c)) { color = c; break; }
     }
 
