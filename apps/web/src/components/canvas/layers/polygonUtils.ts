@@ -769,7 +769,7 @@ export function riverToPolygon(river: RiverFeature): Point[] {
   const pts = river.line.points;
   if (pts.length < 2) return [];
 
-  const halfWidth = river.width / 2 + 0.5;
+  const halfWidth = (river.width || 1) / 2 + 0.5;
   const leftPoints: Point[] = [];
   const rightPoints: Point[] = [];
 

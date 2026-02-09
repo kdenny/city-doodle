@@ -1163,7 +1163,8 @@ export function FeaturesProvider({
       }
 
       // Check for water overlap and clip if necessary
-      const waterFeatures = terrainContext?.getWaterFeatures() ?? [];
+      // Spread to avoid mutating the cached terrainData.water array
+      const waterFeatures = [...(terrainContext?.getWaterFeatures() ?? [])];
 
       // CITY-552: Convert rivers to water features for district clipping (parks exempt)
       if (generated.district.type !== "park") {
