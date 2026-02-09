@@ -65,6 +65,7 @@ import {
 import type { NamingContext, NearbyContext } from "../../utils/nameGenerator";
 import {
   clipAndValidateDistrict,
+  clipPolygonToWorldBounds,
   pointInPolygon,
   type ClipResult,
 } from "./layers/polygonUtils";
@@ -1043,6 +1044,17 @@ export function FeaturesProvider({
 
       // Add personality to the generated district
       generated.district.personality = personality;
+
+      // CITY-537: Clip district polygon to world boundaries
+      const clippedToWorld = clipPolygonToWorldBounds(generated.district.polygon.points);
+      if (clippedToWorld.length < 3) {
+        return {
+          generated: null,
+          wasClipped: true,
+          error: "District is outside the world boundary",
+        };
+      }
+      generated.district.polygon.points = clippedToWorld;
 
       // CITY-384: Clip against existing districts instead of rejecting overlap
       let adjacentDistrictIds: string[] = [];
