@@ -11,7 +11,7 @@ import { TransitLinePropertiesDialog } from "./TransitLinePropertiesDialog";
 import { useSelectionContextOptional } from "./SelectionContext";
 import { useZoomOptional } from "../shell/ZoomContext";
 import { useDrawingOptional } from "../canvas/DrawingContext";
-import { useTransitLineDrawingOptional, usePopulationStats } from "../canvas";
+import { useTransitLineDrawingOptional, useTransitOptional, usePopulationStats } from "../canvas";
 import type { TransitLineProperties } from "../canvas";
 import { useEditLockOptional } from "../shell/EditLockContext";
 import { usePlacementOptional } from "../palette/PlacementContext";
@@ -69,6 +69,7 @@ export function BuildView({
 
   // Get transit line drawing context
   const transitLineDrawingContext = useTransitLineDrawingOptional();
+  const transitContext = useTransitOptional();
 
   // Get edit lock context for gating tools
   const editLock = useEditLockOptional();
@@ -401,6 +402,7 @@ export function BuildView({
       <TransitLinePropertiesDialog
         isOpen={showLinePropertiesDialog}
         initialProperties={transitLineDrawingContext?.state.lineProperties || undefined}
+        existingLineNames={transitContext?.transitNetwork?.lines.map((l) => l.name) ?? []}
         onConfirm={handleLinePropertiesConfirm}
         onCancel={handleLinePropertiesCancel}
       />
