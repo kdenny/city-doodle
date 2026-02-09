@@ -116,6 +116,12 @@ interface TransitLineDrawingProviderProps {
     lineProperties: TransitLineProperties,
     lineId: string | null
   ) => void;
+  /** CITY-538: Callback when a segment is undone (should delete from DB) */
+  onSegmentUndo?: (
+    fromStationId: string,
+    toStationId: string,
+    lineId: string | null
+  ) => Promise<void> | void;
   /** Number of existing lines (for auto-naming) */
   existingLineCount?: number;
   /** Names of existing lines (to avoid collisions) */
@@ -128,6 +134,7 @@ export function TransitLineDrawingProvider({
   children,
   onSegmentCreate,
   onLineComplete,
+  onSegmentUndo,
   existingLineNames = [],
   existingLineColors = [],
 }: TransitLineDrawingProviderProps) {
@@ -307,19 +314,27 @@ export function TransitLineDrawingProvider({
   );
 
   const undoLastConnection = useCallback(() => {
-    setState((prev) => {
-      if (!prev.isDrawing || prev.connectedStations.length <= 1) return prev;
+    const current = stateRef.current;
+    if (!current.isDrawing || current.connectedStations.length <= 1) return;
 
-      const newConnectedStations = prev.connectedStations.slice(0, -1);
-      const newFirstStation = newConnectedStations[newConnectedStations.length - 1] || null;
+    const stations = current.connectedStations;
+    const lastStation = stations[stations.length - 1];
+    const prevStation = stations[stations.length - 2];
 
-      return {
-        ...prev,
-        connectedStations: newConnectedStations,
-        firstStation: newFirstStation,
-      };
-    });
-  }, []);
+    // CITY-538: Delete the segment from the database
+    if (onSegmentUndo && prevStation && lastStation) {
+      onSegmentUndo(prevStation.id, lastStation.id, lineIdRef.current);
+    }
+
+    const newConnectedStations = stations.slice(0, -1);
+    const newFirstStation = newConnectedStations[newConnectedStations.length - 1] || null;
+
+    setState((prev) => ({
+      ...prev,
+      connectedStations: newConnectedStations,
+      firstStation: newFirstStation,
+    }));
+  }, [onSegmentUndo]);
 
   const isStationConnected = useCallback(
     (stationId: string) => {
