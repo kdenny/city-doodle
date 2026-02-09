@@ -10,7 +10,7 @@ import {
   useCallback,
   ReactNode,
 } from "react";
-import type { TerrainData, WaterFeature } from "./layers/types";
+import type { TerrainData, WaterFeature, RiverFeature } from "./layers/types";
 
 interface TerrainContextValue {
   /** Current terrain data */
@@ -19,6 +19,8 @@ interface TerrainContextValue {
   setTerrainData: (data: TerrainData) => void;
   /** Get water features for collision detection */
   getWaterFeatures: () => WaterFeature[];
+  /** Get river features for district clipping (CITY-552) */
+  getRiverFeatures: () => RiverFeature[];
   /** Check if terrain is loaded */
   isLoaded: boolean;
 }
@@ -47,12 +49,17 @@ export function TerrainProvider({
     return terrainData?.water ?? [];
   }, [terrainData]);
 
+  const getRiverFeatures = useCallback((): RiverFeature[] => {
+    return terrainData?.rivers ?? [];
+  }, [terrainData]);
+
   const isLoaded = terrainData !== null;
 
   const value: TerrainContextValue = {
     terrainData,
     setTerrainData,
     getWaterFeatures,
+    getRiverFeatures,
     isLoaded,
   };
 
