@@ -43,6 +43,7 @@ import type {
 import { useFeaturesOptional } from "./FeaturesContext";
 import { generateTransitPOIs } from "./layers/poiAutoGenerator";
 import { useToastOptional } from "../../contexts";
+import { RAIL_LINE_HEX, SUBWAY_LINE_HEX } from "./transitColors";
 
 // Auto-connection distance for nearby stations (in world units)
 const AUTO_CONNECT_DISTANCE = 200;
@@ -53,27 +54,6 @@ const TRANSFER_STATION_DISTANCE = 60;
 // Minimum distance between stations of the same type to prevent duplicates
 export const MINIMUM_STATION_DISTANCE = 30;
 
-// Default colors for rail lines
-const RAIL_LINE_COLORS = [
-  "#B22222", // Firebrick Red
-  "#2E8B57", // Sea Green
-  "#4169E1", // Royal Blue
-  "#DAA520", // Goldenrod
-  "#8B4513", // Saddle Brown
-  "#663399", // Rebecca Purple
-];
-
-// Default colors for subway lines (more vibrant metro colors)
-const SUBWAY_LINE_COLORS = [
-  "#0066CC", // Blue (like NYC A/C/E)
-  "#FF6600", // Orange (like NYC B/D/F/M)
-  "#00933C", // Green (like NYC 4/5/6)
-  "#FCCC0A", // Yellow (like NYC N/Q/R/W)
-  "#EE352E", // Red (like NYC 1/2/3)
-  "#A626AA", // Purple (like NYC 7)
-  "#6CBE45", // Lime (like NYC G)
-  "#996633", // Brown (like NYC J/Z)
-];
 
 /**
  * Find the first unused color from a palette, given existing line colors.
@@ -890,7 +870,7 @@ export function TransitProvider({ children, worldId }: TransitProviderProps) {
             const existingRailLines = transitNetwork?.lines.filter((l) => l.line_type === "rail") || [];
             const usedColors = new Set(existingRailLines.map((l) => l.color));
             const usedNames = new Set(existingRailLines.map((l) => l.name));
-            const lineColor = nextUnusedColor(RAIL_LINE_COLORS, usedColors);
+            const lineColor = nextUnusedColor(RAIL_LINE_HEX, usedColors);
             const lineName = nextUnusedName("Rail Line", usedNames);
 
             const line = await createLine.mutateAsync({
@@ -1112,7 +1092,7 @@ export function TransitProvider({ children, worldId }: TransitProviderProps) {
             const existingSubwayLines = transitNetwork?.lines.filter((l) => l.line_type === "subway") || [];
             const usedColors = new Set(existingSubwayLines.map((l) => l.color));
             const usedNames = new Set(existingSubwayLines.map((l) => l.name));
-            const lineColor = nextUnusedColor(SUBWAY_LINE_COLORS, usedColors);
+            const lineColor = nextUnusedColor(SUBWAY_LINE_HEX, usedColors);
             const lineName = nextUnusedName("Subway Line", usedNames);
 
             const line = await createLine.mutateAsync({
