@@ -492,8 +492,8 @@ def extract_rivers(
 
                 # Simplify then apply Chaikin subdivision for smoother curves
                 line = LineString(coords)
-                simplified = line.simplify(cell_size * 1.0, preserve_topology=True)
-                smoothed = _chaikin_smooth(list(simplified.coords), iterations=2)
+                simplified = line.simplify(cell_size * 0.5, preserve_topology=True)
+                smoothed = _chaikin_smooth(list(simplified.coords), iterations=4)
                 smoothed_line = LineString(smoothed)
 
                 features.append(
