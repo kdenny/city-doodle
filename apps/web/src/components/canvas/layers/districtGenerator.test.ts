@@ -2,6 +2,7 @@ import { describe, it, expect } from "vitest";
 import {
   generateDistrictGeometry,
   wouldOverlap,
+  clipDistrictAgainstExisting,
   seedIdToDistrictType,
   getEffectiveDistrictConfig,
   regenerateStreetGridForClippedDistrict,
@@ -918,5 +919,31 @@ describe("CITY-328: Jitter control", () => {
         pts[1].y >= -1 && pts[1].y <= 301;
       expect(withinBounds).toBe(true);
     }
+  });
+});
+
+// CITY-554: Strip duplicate closing point from polygon-clipping output
+describe("CITY-554: clipDistrictAgainstExisting strips closed ring duplicate", () => {
+  it("strips duplicate closing point from polygon-clipping output", () => {
+    // Two overlapping squares — clipping will produce a polygon
+    const newPolygon = [
+      { x: 0, y: 0 }, { x: 10, y: 0 }, { x: 10, y: 10 }, { x: 0, y: 10 }
+    ];
+    const existingDistrict = {
+      id: "existing-1",
+      type: "residential" as const,
+      name: "Test District",
+      polygon: { points: [
+        { x: 5, y: 0 }, { x: 15, y: 0 }, { x: 15, y: 10 }, { x: 5, y: 10 }
+      ]},
+    };
+
+    const result = clipDistrictAgainstExisting(newPolygon, [existingDistrict] as any);
+
+    // The result should NOT have first == last (no closed ring)
+    expect(result.clippedPolygon.length).toBeGreaterThan(2);
+    const first = result.clippedPolygon[0];
+    const last = result.clippedPolygon[result.clippedPolygon.length - 1];
+    expect(first.x === last.x && first.y === last.y).toBe(false);
   });
 });

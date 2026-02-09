@@ -612,7 +612,11 @@ export function clipDistrictAgainstExisting(
     let bestArea = 0;
     for (const multiPoly of result) {
       const ring = multiPoly[0]; // outer ring
-      const pts = ring.map(([x, y]) => ({ x, y }));
+      let pts = ring.map(([x, y]) => ({ x, y }));
+      // Strip closing duplicate (polygon-clipping outputs closed GeoJSON rings)
+      if (pts.length > 1 && pts[0].x === pts[pts.length - 1].x && pts[0].y === pts[pts.length - 1].y) {
+        pts = pts.slice(0, -1);
+      }
       const area = Math.abs(polygonArea(pts));
       if (area > bestArea) {
         bestArea = area;
@@ -620,9 +624,16 @@ export function clipDistrictAgainstExisting(
       }
     }
   }
-
-  // Convert back to Point[]
-  const clippedPolygon = bestPoly.map(([x, y]) => ({ x, y }));
+  // Convert back to Point[] — strip the closing duplicate vertex that
+  // polygon-clipping adds (GeoJSON rings are closed, our Point[] are open)
+  let clippedPolygon = bestPoly.map(([x, y]) => ({ x, y }));
+  if (
+    clippedPolygon.length > 1 &&
+    clippedPolygon[0].x === clippedPolygon[clippedPolygon.length - 1].x &&
+    clippedPolygon[0].y === clippedPolygon[clippedPolygon.length - 1].y
+  ) {
+    clippedPolygon = clippedPolygon.slice(0, -1);
+  }
 
   // Validate area
   const area = Math.abs(polygonArea(clippedPolygon));
