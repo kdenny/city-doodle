@@ -168,52 +168,218 @@ function getDirectionalSuffix(
 }
 
 /**
- * Generate a unique station name based on the district, position, and existing names.
- *
- * Naming strategy:
- * - First station: "{DistrictName} Station"
- * - Subsequent: "{DistrictName} {Direction} Station" (North, South, East, West, etc.)
- * - If direction taken: try compound directions, then append number
+ * Context for naming a station based on nearby features.
  */
-function generateStationName(
-  districtName: string,
+interface StationNameContext {
+  districtName: string;
+  position: Point;
+  districtPolygonPoints: Point[];
+  existingNames: string[];
+  nearbyRoads: { name?: string; line: { points: Point[] } }[];
+  nearbyNeighborhoods: { name: string; polygon: { points: Point[] } }[];
+  nearbyPOIs: { name: string; position: Point }[];
+}
+
+// Prefix/suffix lists for random fallback station names
+const STATION_NAME_PREFIXES = [
+  "Grand", "Central", "Union", "Metro", "Harbor", "Market", "Park", "River",
+  "Lake", "Meadow", "Oak", "Pine", "Elm", "Cedar", "Maple", "Summit",
+  "Valley", "Bridge", "Bayside", "Midtown", "Uptown", "Civic", "Liberty",
+  "Commerce", "Heritage",
+];
+
+const STATION_NAME_SUFFIXES = [
+  "Square", "Center", "Plaza", "Crossing", "Junction", "Heights", "Hill",
+  "Park", "Gardens", "Commons", "Point", "Landing", "Terrace", "Gate", "Row",
+];
+
+/**
+ * Calculate the minimum distance from a point to a polyline (series of line segments).
+ */
+function pointToPolylineDistance(point: Point, polyline: Point[]): number {
+  if (polyline.length === 0) return Infinity;
+  if (polyline.length === 1) return distance(point, polyline[0]);
+
+  let minDist = Infinity;
+  for (let i = 0; i < polyline.length - 1; i++) {
+    const a = polyline[i];
+    const b = polyline[i + 1];
+    const dx = b.x - a.x;
+    const dy = b.y - a.y;
+    const lenSq = dx * dx + dy * dy;
+
+    let dist: number;
+    if (lenSq === 0) {
+      // Degenerate segment (both endpoints are the same)
+      dist = distance(point, a);
+    } else {
+      // Project point onto the line segment, clamped to [0, 1]
+      const t = Math.max(0, Math.min(1, ((point.x - a.x) * dx + (point.y - a.y) * dy) / lenSq));
+      const proj = { x: a.x + t * dx, y: a.y + t * dy };
+      dist = distance(point, proj);
+    }
+
+    if (dist < minDist) {
+      minDist = dist;
+    }
+  }
+  return minDist;
+}
+
+/**
+ * Find the name of the nearest named road within maxDistance of the given position.
+ */
+function findNearestNamedRoad(
   position: Point,
-  districtPolygonPoints: Point[],
-  existingNames: string[]
-): string {
-  const baseName = `${districtName} Station`;
+  roads: { name?: string; line: { points: Point[] } }[],
+  maxDistance: number
+): string | null {
+  let bestName: string | null = null;
+  let bestDist = maxDistance;
 
-  // First station in the district gets the plain name
-  if (!existingNames.includes(baseName)) {
-    return baseName;
-  }
-
-  // Calculate direction from district centroid
-  const centroid = polygonCentroid(districtPolygonPoints);
-  const suffix = getDirectionalSuffix(position, centroid);
-
-  if (suffix) {
-    const directionalName = `${districtName} ${suffix} Station`;
-    if (!existingNames.includes(directionalName)) {
-      return directionalName;
+  for (const road of roads) {
+    if (!road.name) continue;
+    const dist = pointToPolylineDistance(position, road.line.points);
+    if (dist < bestDist) {
+      bestDist = dist;
+      bestName = road.name;
     }
   }
 
-  // Try all cardinal/ordinal directions as fallback
-  const directions = ["North", "South", "East", "West", "NorthEast", "NorthWest", "SouthEast", "SouthWest"];
-  for (const dir of directions) {
-    const name = `${districtName} ${dir} Station`;
-    if (!existingNames.includes(name)) {
-      return name;
+  return bestName;
+}
+
+/**
+ * Find the name of the neighborhood whose polygon contains the given position.
+ */
+function findContainingNeighborhood(
+  position: Point,
+  neighborhoods: { name: string; polygon: { points: Point[] } }[]
+): string | null {
+  for (const neighborhood of neighborhoods) {
+    if (pointInPolygon(position, neighborhood.polygon.points)) {
+      return neighborhood.name;
+    }
+  }
+  return null;
+}
+
+/**
+ * Find the name of the nearest POI within maxDistance of the given position.
+ */
+function findNearestPOI(
+  position: Point,
+  pois: { name: string; position: Point }[],
+  maxDistance: number
+): string | null {
+  let bestName: string | null = null;
+  let bestDist = maxDistance;
+
+  for (const poi of pois) {
+    const dist = distance(position, poi.position);
+    if (dist < bestDist) {
+      bestDist = dist;
+      bestName = poi.name;
     }
   }
 
-  // All directions taken - append a number
-  let counter = 2;
-  while (existingNames.includes(`${districtName} Station ${counter}`)) {
+  return bestName;
+}
+
+/**
+ * Generate a unique station name based on the district, position, nearby features,
+ * and existing names.
+ *
+ * CITY-527: Context-aware naming strategy (priority order):
+ * 1. District base name (if no station in district yet uses it): "{DistrictName} Station"
+ * 2. District directional (if only 1 station uses district name): "{DistrictName} {Direction}"
+ *    At most 2 stations per district can use district-based names.
+ * 3. Nearby street name: closest named road within ~100 world units -> "{RoadName} Station"
+ * 4. Nearby neighborhood: containing neighborhood -> "{NeighborhoodName} Station"
+ * 5. Nearby POI: closest named POI within ~80 world units -> "{POIName} Station"
+ * 6. Random prefix/suffix combination as fallback
+ */
+function generateStationName(ctx: StationNameContext): string {
+  const {
+    districtName,
+    position,
+    districtPolygonPoints,
+    existingNames,
+    nearbyRoads,
+    nearbyNeighborhoods,
+    nearbyPOIs,
+  } = ctx;
+  const namesSet = new Set(existingNames);
+
+  // Count how many existing stations in this district have names starting with the district name
+  const districtNameCount = existingNames.filter(
+    (n) => n.startsWith(districtName)
+  ).length;
+
+  // 1. District base name (if no station in district uses it yet)
+  if (districtNameCount === 0) {
+    const baseName = `${districtName} Station`;
+    if (!namesSet.has(baseName)) {
+      return baseName;
+    }
+  }
+
+  // 2. District directional (if only 1 station uses district name, allow 1 directional)
+  if (districtNameCount < 2) {
+    const centroid = polygonCentroid(districtPolygonPoints);
+    const suffix = getDirectionalSuffix(position, centroid);
+    if (suffix) {
+      const directionalName = `${districtName} ${suffix}`;
+      if (!namesSet.has(directionalName)) {
+        return directionalName;
+      }
+    }
+  }
+
+  // 3. Nearby street name
+  const roadName = findNearestNamedRoad(position, nearbyRoads, 100);
+  if (roadName) {
+    const streetStationName = `${roadName} Station`;
+    if (!namesSet.has(streetStationName)) {
+      return streetStationName;
+    }
+  }
+
+  // 4. Nearby neighborhood
+  const neighborhoodName = findContainingNeighborhood(position, nearbyNeighborhoods);
+  if (neighborhoodName) {
+    const neighborhoodStationName = `${neighborhoodName} Station`;
+    if (!namesSet.has(neighborhoodStationName)) {
+      return neighborhoodStationName;
+    }
+  }
+
+  // 5. Nearby POI
+  const poiName = findNearestPOI(position, nearbyPOIs, 80);
+  if (poiName) {
+    const poiStationName = `${poiName} Station`;
+    if (!namesSet.has(poiStationName)) {
+      return poiStationName;
+    }
+  }
+
+  // 6. Random prefix/suffix fallback
+  // Use a deterministic-ish approach: try combinations in order, skip any that collide
+  for (const prefix of STATION_NAME_PREFIXES) {
+    for (const suffix of STATION_NAME_SUFFIXES) {
+      const candidateName = `${prefix} ${suffix}`;
+      if (!namesSet.has(candidateName)) {
+        return candidateName;
+      }
+    }
+  }
+
+  // Extremely unlikely fallback: numbered station
+  let counter = 1;
+  while (namesSet.has(`Station ${counter}`)) {
     counter++;
   }
-  return `${districtName} Station ${counter}`;
+  return `Station ${counter}`;
 }
 
 /**
@@ -233,6 +399,20 @@ function distance(a: Point, b: Point): number {
 function nextSegmentOrder(segments: { order_in_line: number }[]): number {
   if (segments.length === 0) return 0;
   return Math.max(...segments.map((s) => s.order_in_line)) + 1;
+}
+
+/**
+ * CITY-528: Result of checking whether a station can be safely deleted.
+ */
+export interface DeletionSafetyCheck {
+  /** Whether the deletion is safe (won't orphan other stations) */
+  safe: boolean;
+  /** Number of segments connected to this station */
+  connectedSegments: number;
+  /** Names of stations that would become orphaned */
+  wouldOrphanStations: string[];
+  /** Names of affected transit lines */
+  affectedLines: string[];
 }
 
 /**
@@ -297,8 +477,12 @@ interface TransitContextValue {
   updateLine: (lineId: string, updates: { name?: string; color?: string }) => Promise<boolean>;
   /** Delete a transit line and all its segments */
   deleteLine: (lineId: string) => Promise<boolean>;
+  /** CITY-528: Check whether a station can be safely deleted without orphaning other stations */
+  checkStationDeletionSafety: (stationId: string) => DeletionSafetyCheck;
   /** Get the count of existing lines */
   lineCount: number;
+  /** Whether a station placement is currently in progress (prevents duplicate clicks) */
+  isPlacingStation: boolean;
   /** Loading state */
   isLoading: boolean;
   /** Error state */
@@ -320,6 +504,9 @@ export function TransitProvider({ children, worldId }: TransitProviderProps) {
   // Local state for UI rendering - Rail
   const [railStations, setRailStations] = useState<RailStationData[]>([]);
   const [trackSegments, setTrackSegments] = useState<TrackSegmentData[]>([]);
+
+  // CITY-526: Guard flag to prevent concurrent station placements
+  const [isPlacingStation, setIsPlacingStation] = useState(false);
 
   // Highlighted line state (for visual emphasis when line is selected in panel)
   const [highlightedLineId, setHighlightedLineId] = useState<string | null>(null);
@@ -555,6 +742,12 @@ export function TransitProvider({ children, worldId }: TransitProviderProps) {
    */
   const placeRailStation = useCallback(
     async (position: Point, options?: { skipAutoConnect?: boolean }): Promise<TransitStation | null> => {
+      // CITY-526: Prevent concurrent station placements
+      if (isPlacingStation) {
+        toast?.addToast("Station placement in progress", "warning");
+        return null;
+      }
+
       if (!worldId) {
         toast?.addToast("Cannot place station: No world selected", "error");
         return null;
@@ -610,14 +803,22 @@ export function TransitProvider({ children, worldId }: TransitProviderProps) {
         const district = featuresContext?.features.districts.find(
           (d) => d.id === validation.districtId
         );
-        stationName = generateStationName(
-          validation.districtName || "Rail",
+        // CITY-527: Gather nearby features for context-aware naming
+        const nearbyRoads = featuresContext?.features.roads ?? [];
+        const nearbyNeighborhoods = featuresContext?.features.neighborhoods ?? [];
+        const nearbyPOIs = featuresContext?.features.pois ?? [];
+        stationName = generateStationName({
+          districtName: validation.districtName || "Rail",
           position,
-          district?.polygon.points ?? [],
-          allDistrictNames
-        );
+          districtPolygonPoints: district?.polygon.points ?? [],
+          existingNames: allDistrictNames,
+          nearbyRoads,
+          nearbyNeighborhoods,
+          nearbyPOIs,
+        });
       }
 
+      setIsPlacingStation(true);
       try {
         // Create the station
         const station = await createStation.mutateAsync({
@@ -735,10 +936,13 @@ export function TransitProvider({ children, worldId }: TransitProviderProps) {
         console.error("Failed to create rail station:", error);
         toast?.addToast("Failed to create rail station", "error");
         return null;
+      } finally {
+        setIsPlacingStation(false);
       }
     },
     [
       worldId,
+      isPlacingStation,
       validateRailStationPlacement,
       railStations,
       subwayStations,
@@ -760,6 +964,12 @@ export function TransitProvider({ children, worldId }: TransitProviderProps) {
    */
   const placeSubwayStation = useCallback(
     async (position: Point, options?: { skipAutoConnect?: boolean }): Promise<TransitStation | null> => {
+      // CITY-526: Prevent concurrent station placements
+      if (isPlacingStation) {
+        toast?.addToast("Station placement in progress", "warning");
+        return null;
+      }
+
       if (!worldId) {
         toast?.addToast("Cannot place station: No world selected", "error");
         return null;
@@ -815,14 +1025,22 @@ export function TransitProvider({ children, worldId }: TransitProviderProps) {
         const district = featuresContext?.features.districts.find(
           (d) => d.id === validation.districtId
         );
-        stationName = generateStationName(
-          validation.districtName || "Metro",
+        // CITY-527: Gather nearby features for context-aware naming
+        const nearbyRoads = featuresContext?.features.roads ?? [];
+        const nearbyNeighborhoods = featuresContext?.features.neighborhoods ?? [];
+        const nearbyPOIs = featuresContext?.features.pois ?? [];
+        stationName = generateStationName({
+          districtName: validation.districtName || "Metro",
           position,
-          district?.polygon.points ?? [],
-          allDistrictNames
-        );
+          districtPolygonPoints: district?.polygon.points ?? [],
+          existingNames: allDistrictNames,
+          nearbyRoads,
+          nearbyNeighborhoods,
+          nearbyPOIs,
+        });
       }
 
+      setIsPlacingStation(true);
       try {
         // Create the station
         const station = await createStation.mutateAsync({
@@ -940,10 +1158,13 @@ export function TransitProvider({ children, worldId }: TransitProviderProps) {
         console.error("Failed to create subway station:", error);
         toast?.addToast("Failed to create subway station", "error");
         return null;
+      } finally {
+        setIsPlacingStation(false);
       }
     },
     [
       worldId,
+      isPlacingStation,
       validateSubwayStationPlacement,
       railStations,
       subwayStations,
@@ -1246,6 +1467,77 @@ export function TransitProvider({ children, worldId }: TransitProviderProps) {
     [transitNetwork]
   );
 
+  /**
+   * CITY-528: Check whether deleting a station is safe.
+   *
+   * A station is safe to delete if:
+   * - It has no segment connections at all (isolated station), OR
+   * - It is a terminus on every line it belongs to (connected on only one side per line)
+   *
+   * It is unsafe if the station is a "middle" station on any line (2+ connections
+   * on the same line), because removing it would disconnect the line.
+   */
+  const checkStationDeletionSafety = useCallback(
+    (stationId: string): DeletionSafetyCheck => {
+      if (!transitNetwork) {
+        return { safe: true, connectedSegments: 0, wouldOrphanStations: [], affectedLines: [] };
+      }
+
+      // Gather all segments touching this station, grouped by line
+      const affectedLineNames: string[] = [];
+      const wouldOrphanStationNames: string[] = [];
+      let totalConnectedSegments = 0;
+      let isSafe = true;
+
+      for (const line of transitNetwork.lines) {
+        // Find segments on this line that involve our station
+        const touchingSegments = line.segments.filter(
+          (seg) => seg.from_station_id === stationId || seg.to_station_id === stationId
+        );
+
+        if (touchingSegments.length === 0) continue;
+
+        totalConnectedSegments += touchingSegments.length;
+        affectedLineNames.push(line.name);
+
+        // If the station has 2+ connections on the same line, it's a middle station
+        if (touchingSegments.length >= 2) {
+          isSafe = false;
+
+          // Find which neighbor stations would be orphaned
+          for (const seg of touchingSegments) {
+            const neighborId = seg.from_station_id === stationId
+              ? seg.to_station_id
+              : seg.from_station_id;
+
+            // Check if this neighbor has OTHER segments on this line (besides the one connecting to our station)
+            const neighborOtherSegments = line.segments.filter(
+              (s) =>
+                s.id !== seg.id &&
+                (s.from_station_id === neighborId || s.to_station_id === neighborId)
+            );
+
+            // If the neighbor has no other connections on this line, it becomes orphaned
+            if (neighborOtherSegments.length === 0) {
+              const neighborStation = transitNetwork.stations.find((s) => s.id === neighborId);
+              if (neighborStation && !wouldOrphanStationNames.includes(neighborStation.name)) {
+                wouldOrphanStationNames.push(neighborStation.name);
+              }
+            }
+          }
+        }
+      }
+
+      return {
+        safe: isSafe,
+        connectedSegments: totalConnectedSegments,
+        wouldOrphanStations: wouldOrphanStationNames,
+        affectedLines: affectedLineNames,
+      };
+    },
+    [transitNetwork]
+  );
+
   const lineCount = transitNetwork?.lines.length || 0;
   const isLoading = isLoadingNetwork || createStation.isPending || createLine.isPending || updateLine.isPending;
   const error = networkError || createStation.error || null;
@@ -1282,7 +1574,11 @@ export function TransitProvider({ children, worldId }: TransitProviderProps) {
     createLineSegment,
     updateLine: updateLineMethod,
     deleteLine: deleteLineMethod,
+    // CITY-528: Station deletion safety check
+    checkStationDeletionSafety,
     lineCount,
+    // Placement guard (CITY-526)
+    isPlacingStation,
     // Loading/Error
     isLoading,
     error,
@@ -1311,7 +1607,9 @@ export function TransitProvider({ children, worldId }: TransitProviderProps) {
     createLineSegment,
     updateLineMethod,
     deleteLineMethod,
+    checkStationDeletionSafety,
     lineCount,
+    isPlacingStation,
     isLoading,
     error,
   ]);

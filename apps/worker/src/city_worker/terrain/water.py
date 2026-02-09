@@ -585,6 +585,63 @@ def _classify_water_body(
         return "lake"
 
 
+def _split_beach_region(
+    region_cells: list[tuple[int, int]],
+    max_segment_cells: int,
+    gap_cells: int,
+    min_segment_cells: int,
+    seed: int,
+) -> list[list[tuple[int, int]]]:
+    """Split a large connected beach region into discrete segments.
+
+    Real-world beaches are discrete named stretches (Pacific Beach,
+    Mission Beach, etc.) separated by headlands, piers, or rocky areas.
+    This splits large continuous beach zones into realistic segments.
+
+    Args:
+        region_cells: Connected cells forming the beach region
+        max_segment_cells: Maximum cells per segment
+        gap_cells: Number of cells to skip between segments
+        min_segment_cells: Minimum cells for a viable segment
+        seed: Deterministic seed for segment length variation
+
+    Returns:
+        List of cell lists, one per discrete beach segment
+    """
+    if len(region_cells) <= max_segment_cells:
+        return [region_cells]
+
+    # Determine primary axis (direction the coastline runs)
+    cells_array = np.array(region_cells)
+    i_range = cells_array[:, 0].max() - cells_array[:, 0].min()
+    j_range = cells_array[:, 1].max() - cells_array[:, 1].min()
+
+    # Sort cells along the longer axis (coastal direction)
+    if j_range >= i_range:
+        sort_idx = np.argsort(cells_array[:, 1])
+    else:
+        sort_idx = np.argsort(cells_array[:, 0])
+
+    sorted_cells = [region_cells[idx] for idx in sort_idx]
+
+    # Split into segments with gaps
+    rng = np.random.default_rng(seed)
+    segments: list[list[tuple[int, int]]] = []
+    pos = 0
+
+    while pos < len(sorted_cells):
+        # Vary segment length for natural appearance
+        seg_len = int(rng.integers(max_segment_cells // 2, max_segment_cells + 1))
+        segment = sorted_cells[pos : pos + seg_len]
+        if len(segment) >= min_segment_cells:
+            segments.append(segment)
+        # Vary gap size too
+        gap = int(rng.integers(max(1, gap_cells // 2), gap_cells + 1))
+        pos += seg_len + gap
+
+    return segments if segments else [region_cells]
+
+
 def extract_beaches(
     heightfield: NDArray[np.float64],
     water_level: float,
@@ -592,26 +649,33 @@ def extract_beaches(
     tile_x: int,
     tile_y: int,
     tile_size: float,
-    min_length: int = 5,
-    max_slope: float = 0.15,
+    min_length: int = 3,
+    max_slope: float = 0.12,
     width_multiplier: float = 1.0,
+    max_segment_cells: int = 20,
+    gap_cells: int = 4,
+    seed: int = 0,
     lagoon_polygons: list[Polygon] | None = None,
 ) -> list[TerrainFeature]:
     """Extract beach regions where land meets water at shallow slopes.
 
     Beaches form in the narrow transition zone between water and land,
-    where the terrain slope is gradual (not cliffs). Beach width varies
-    based on slope - more gradual slopes produce wider beaches.
+    where the terrain slope is gradual (not cliffs). Large continuous
+    zones are split into discrete segments resembling real-world named
+    beaches (e.g. Pacific Beach, Mission Beach) separated by gaps.
 
     Args:
         heightfield: 2D height array normalized to [0, 1]
         water_level: Threshold below which is water
-        beach_height_band: Height range above water for beaches (e.g., 0.08)
+        beach_height_band: Height range above water for beaches (e.g., 0.025)
         tile_x, tile_y: Tile coordinates for world positioning
         tile_size: Size of tile in world units
         min_length: Minimum beach segment length in cells
         max_slope: Maximum slope gradient for beach formation
         width_multiplier: Multiplier for beach width (1.0 = normal)
+        max_segment_cells: Max cells per discrete beach segment
+        gap_cells: Cells to skip between segments (creates gaps)
+        seed: Deterministic seed for segment variation
         lagoon_polygons: Lagoon polygons from barrier islands; beaches
             mostly inside a lagoon are skipped (CITY-525)
 
@@ -632,7 +696,6 @@ def extract_beaches(
     beach_mask = (heightfield >= beach_min) & (heightfield < beach_max)
 
     # Calculate slope (gradient magnitude)
-    # Using simple finite differences
     grad_y = np.zeros_like(heightfield)
     grad_x = np.zeros_like(heightfield)
     grad_y[1:-1, :] = (heightfield[2:, :] - heightfield[:-2, :]) / 2
@@ -662,23 +725,45 @@ def extract_beaches(
 
     beach_mask = beach_mask & adjacent_to_water
 
-    # Find connected beach regions
+    # Find connected beach regions and split into discrete segments
     visited = np.zeros_like(beach_mask, dtype=bool)
     features = []
+    region_idx = 0
 
     for i in range(h):
         for j in range(w):
             if beach_mask[i, j] and not visited[i, j]:
                 region_cells = _flood_fill(beach_mask, visited, i, j)
 
-                if len(region_cells) >= min_length:
+                if len(region_cells) < min_length:
+                    continue
+
+                # Split large regions into discrete beach segments
+                segments = _split_beach_region(
+                    region_cells,
+                    max_segment_cells=max_segment_cells,
+                    gap_cells=gap_cells,
+                    min_segment_cells=min_length,
+                    seed=seed + region_idx,
+                )
+                region_idx += 1
+
+                # Classify water body once for the whole region
+                beach_type = _classify_water_body(
+                    heightfield, water_mask, region_cells[0], h, w
+                )
+
+                # Beaches only form on ocean and bay coastlines,
+                # not along rivers or small lakes (CITY-531).
+                if beach_type in ("river",):
+                    continue
+
+                for segment_cells in segments:
                     # Include adjacent water cells so the beach polygon
                     # extends to the actual water edge (CITY-520).
-                    # Without this, concave_hull approximation creates a gap
-                    # between the beach polygon and water, showing land through.
-                    region_set = set(region_cells)
+                    segment_set = set(segment_cells)
                     water_fringe: list[tuple[int, int]] = []
-                    for ci, cj in region_cells:
+                    for ci, cj in segment_cells:
                         for di in [-1, 0, 1]:
                             for dj in [-1, 0, 1]:
                                 if di == 0 and dj == 0:
@@ -688,14 +773,13 @@ def extract_beaches(
                                     0 <= ni < h
                                     and 0 <= nj < w
                                     and water_mask[ni, nj]
-                                    and (ni, nj) not in region_set
+                                    and (ni, nj) not in segment_set
                                 ):
                                     water_fringe.append((ni, nj))
-                                    region_set.add((ni, nj))
+                                    segment_set.add((ni, nj))
 
-                    extended_cells = list(region_cells) + water_fringe
+                    extended_cells = list(segment_cells) + water_fringe
 
-                    # Convert to polygon
                     poly = _cells_to_polygon(
                         extended_cells, tile_x, tile_y, tile_size, cell_size, w
                     )
@@ -714,15 +798,9 @@ def extract_beaches(
                             if skip:
                                 continue
 
-                        # Calculate average width based on original region shape
-                        area = len(region_cells) * cell_size * cell_size
+                        area = len(segment_cells) * cell_size * cell_size
                         perimeter = poly.length
                         avg_width = 2 * area / perimeter if perimeter > 0 else cell_size
-
-                        # Classify beach type based on adjacent water body
-                        beach_type = _classify_water_body(
-                            heightfield, water_mask, region_cells[0], h, w
-                        )
 
                         features.append(
                             TerrainFeature(
@@ -845,13 +923,24 @@ def extract_lakes(
     tile_x: int,
     tile_y: int,
     tile_size: float,
-    min_area_cells: int = 20,
+    min_area_cells: int = 50,
+    min_depth: float = 0.015,
 ) -> list[TerrainFeature]:
     """Extract lake polygons from heightfield depressions.
 
     Lakes form in areas below water level that are surrounded by higher terrain.
     Each lake is classified by type (glacial, crater, oxbow, etc.) based on
     shape analysis.
+
+    Args:
+        heightfield: 2D height array normalized to [0, 1]
+        water_level: Threshold below which is water
+        tile_x, tile_y: Tile coordinates for world positioning
+        tile_size: Size of tile in world units
+        min_area_cells: Minimum number of cells for a lake (CITY-529: raised
+            from 20 to 50 to filter noise-generated micro-depressions)
+        min_depth: Minimum average depth below water_level to qualify as a
+            lake. Shallow depressions from heightfield noise are filtered out.
     """
     h, w = heightfield.shape
     cell_size = tile_size / w
@@ -873,34 +962,42 @@ def extract_lakes(
                     # Check if this is landlocked (surrounded by land)
                     is_landlocked = True
                     for ci, cj in region_cells:
-                        # Check edges
                         if ci == 0 or ci == h - 1 or cj == 0 or cj == w - 1:
                             is_landlocked = False
                             break
 
-                    if is_landlocked:
-                        poly = _cells_to_polygon(
-                            region_cells, tile_x, tile_y, tile_size, cell_size, w
-                        )
-                        if poly is not None and poly.is_valid:
-                            # Classify lake type based on shape
-                            lake_type, properties = _classify_lake_type(
-                                poly,
-                                region_cells,
-                                heightfield,
-                                water_level,
-                                cell_size,
-                            )
+                    if not is_landlocked:
+                        continue
 
-                            features.append(
-                                TerrainFeature(
-                                    type="lake",
-                                    geometry={
-                                        "type": "Polygon",
-                                        "coordinates": [list(poly.exterior.coords)],
-                                    },
-                                    properties=properties,
-                                )
+                    # Filter shallow noise depressions (CITY-529)
+                    avg_depth = float(np.mean([
+                        water_level - heightfield[ci, cj]
+                        for ci, cj in region_cells
+                    ]))
+                    if avg_depth < min_depth:
+                        continue
+
+                    poly = _cells_to_polygon(
+                        region_cells, tile_x, tile_y, tile_size, cell_size, w
+                    )
+                    if poly is not None and poly.is_valid:
+                        lake_type, properties = _classify_lake_type(
+                            poly,
+                            region_cells,
+                            heightfield,
+                            water_level,
+                            cell_size,
+                        )
+
+                        features.append(
+                            TerrainFeature(
+                                type="lake",
+                                geometry={
+                                    "type": "Polygon",
+                                    "coordinates": [list(poly.exterior.coords)],
+                                },
+                                properties=properties,
                             )
+                        )
 
     return features

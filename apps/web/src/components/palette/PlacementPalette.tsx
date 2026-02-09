@@ -12,18 +12,22 @@ import { DEFAULT_DISTRICT_PERSONALITY } from "../canvas/layers/types";
 interface SeedButtonProps {
   seed: SeedType;
   isSelected: boolean;
+  disabled?: boolean;
   onClick: () => void;
 }
 
-function SeedButton({ seed, isSelected, onClick }: SeedButtonProps) {
+function SeedButton({ seed, isSelected, disabled, onClick }: SeedButtonProps) {
   return (
     <button
       onClick={onClick}
+      disabled={disabled}
       className={`
         flex flex-col items-center justify-center p-2 rounded-lg
         transition-colors duration-150
         ${
-          isSelected
+          disabled
+            ? "bg-gray-100 border border-gray-200 text-gray-400 cursor-not-allowed opacity-60"
+            : isSelected
             ? "bg-blue-100 border-2 border-blue-500 text-blue-700"
             : "bg-white border border-gray-200 text-gray-700 hover:bg-gray-50 hover:border-gray-300"
         }
@@ -48,6 +52,7 @@ export function PlacementPalette() {
     setPlacementPersonality,
     placementSeed,
     setPlacementSeed,
+    placementBusy,
   } = usePlacement();
 
   const handleSeedClick = useCallback(
@@ -87,7 +92,9 @@ export function PlacementPalette() {
               <div className="text-sm font-medium text-blue-700">
                 {selectedSeed.label}
               </div>
-              <div className="text-xs text-blue-600">Click on map to place</div>
+              <div className="text-xs text-blue-600">
+                {placementBusy ? "Placing..." : "Click on map to place"}
+              </div>
             </div>
           </div>
         </div>
@@ -131,6 +138,7 @@ export function PlacementPalette() {
                     key={seed.id}
                     seed={seed}
                     isSelected={selectedSeed?.id === seed.id}
+                    disabled={placementBusy}
                     onClick={() => handleSeedClick(seed)}
                   />
                 ))}

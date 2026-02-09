@@ -290,7 +290,7 @@ class RetrofitAnalyzer:
                     name="pr_template",
                     action_type=ActionType.ADOPT,
                     priority=ActionPriority.RECOMMENDED,
-                    description="Add PR template with risk assessment checklist",
+                    description="Add PR template with testing checklist",
                     auto_applicable=True,
                 )
             )
@@ -419,9 +419,9 @@ class RetrofitAnalyzer:
                 name="github_labels",
                 action_type=ActionType.ADOPT,
                 priority=ActionPriority.RECOMMENDED,
-                description="Create standard GitHub labels (type, risk, area)",
+                description="Create standard GitHub labels (type, area)",
                 auto_applicable=True,
-                details="Creates labels: Bug, Feature, Chore, Low/Medium/High Risk, etc.",
+                details="Creates labels: Bug, Feature, Chore, Frontend, Backend, etc.",
             )
         )
 

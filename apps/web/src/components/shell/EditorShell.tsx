@@ -46,6 +46,7 @@ import {
   SelectionProvider,
   type SelectedFeature,
 } from "../build-view";
+import { StationDeleteWarningModal } from "../build-view/StationDeleteWarningModal";
 
 interface EditorShellProps {
   children: ReactNode;
@@ -251,6 +252,13 @@ function SelectionWithFeatures({ children }: { children: ReactNode }) {
   const { updateDistrict, removeDistrict, updateRoad, removeRoad, updateNeighborhood, removeNeighborhood, updatePOI, removePOI } = useFeatures();
   const transitContext = useTransitOptional();
 
+  // CITY-528: Warning modal state for unsafe station deletion from inspector
+  const [inspectorDeleteWarning, setInspectorDeleteWarning] = useState<{
+    stationName: string;
+    orphanedStations: string[];
+    affectedLines: string[];
+  } | null>(null);
+
   const handleUpdate = useCallback(
     (feature: SelectedFeature) => {
       if (!feature) return;
@@ -296,8 +304,28 @@ function SelectionWithFeatures({ children }: { children: ReactNode }) {
       } else if (feature.type === "neighborhood") {
         removeNeighborhood(feature.id);
       } else if (feature.type === "rail_station" && transitContext) {
+        // CITY-528: Check deletion safety before removing
+        const safety = transitContext.checkStationDeletionSafety(feature.id);
+        if (!safety.safe) {
+          setInspectorDeleteWarning({
+            stationName: feature.name,
+            orphanedStations: safety.wouldOrphanStations,
+            affectedLines: safety.affectedLines,
+          });
+          return;
+        }
         transitContext.removeRailStation(feature.id);
       } else if (feature.type === "subway_station" && transitContext) {
+        // CITY-528: Check deletion safety before removing
+        const safety = transitContext.checkStationDeletionSafety(feature.id);
+        if (!safety.safe) {
+          setInspectorDeleteWarning({
+            stationName: feature.name,
+            orphanedStations: safety.wouldOrphanStations,
+            affectedLines: safety.affectedLines,
+          });
+          return;
+        }
         transitContext.removeSubwayStation(feature.id);
       } else if (feature.type === "poi") {
         removePOI(feature.id);
@@ -309,6 +337,15 @@ function SelectionWithFeatures({ children }: { children: ReactNode }) {
   return (
     <SelectionProvider onUpdate={handleUpdate} onDelete={handleDelete}>
       {children}
+      {/* CITY-528: Station deletion warning modal (triggered from inspector panel) */}
+      {inspectorDeleteWarning && (
+        <StationDeleteWarningModal
+          stationName={inspectorDeleteWarning.stationName}
+          orphanedStations={inspectorDeleteWarning.orphanedStations}
+          affectedLines={inspectorDeleteWarning.affectedLines}
+          onClose={() => setInspectorDeleteWarning(null)}
+        />
+      )}
     </SelectionProvider>
   );
 }

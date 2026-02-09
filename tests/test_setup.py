@@ -59,7 +59,7 @@ def test_ensure_pr_template_creates_file_when_missing(tmp_path: Path) -> None:
     assert template_path.exists()
     content = template_path.read_text()
     assert "## Summary" in content
-    assert "Risk Assessment" in content
+    assert "## Testing" in content
     assert "Checklist" in content
 
 

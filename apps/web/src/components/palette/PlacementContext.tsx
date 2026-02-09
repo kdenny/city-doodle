@@ -22,6 +22,8 @@ interface PlacementState {
   dragSize: number | null;
   /** Position of last placement error (for visual flash feedback) */
   placementError: { x: number; y: number } | null;
+  /** CITY-526: Whether an async placement operation is in progress */
+  placementBusy: boolean;
 }
 
 interface PlacementContextValue extends PlacementState {
@@ -46,6 +48,8 @@ interface PlacementContextValue extends PlacementState {
   isDraggingSize: boolean;
   /** Signal a placement error at the given position (triggers visual feedback) */
   setPlacementError: (position: { x: number; y: number }) => void;
+  /** CITY-526: Set the busy flag for async placement operations */
+  setPlacementBusy: (busy: boolean) => void;
 }
 
 const PlacementContext = createContext<PlacementContextValue | null>(null);
@@ -72,7 +76,12 @@ export function PlacementProvider({ children, onPlaceSeed }: PlacementProviderPr
     dragOrigin: null,
     dragSize: null,
     placementError: null,
+    placementBusy: false,
   });
+
+  const setPlacementBusy = useCallback((busy: boolean) => {
+    setState((prev) => ({ ...prev, placementBusy: busy }));
+  }, []);
 
   const selectSeed = useCallback((seed: SeedType | null) => {
     setState((prev) => ({
@@ -86,6 +95,7 @@ export function PlacementProvider({ children, onPlaceSeed }: PlacementProviderPr
       dragOrigin: null,
       dragSize: null,
       placementError: null,
+      placementBusy: false,
     }));
   }, []);
 
@@ -106,6 +116,7 @@ export function PlacementProvider({ children, onPlaceSeed }: PlacementProviderPr
       dragOrigin: null,
       dragSize: null,
       placementError: null,
+      placementBusy: false,
     });
   }, []);
 
@@ -174,17 +185,23 @@ export function PlacementProvider({ children, onPlaceSeed }: PlacementProviderPr
   const confirmPlacement = useCallback(
     async (position: { x: number; y: number }, size?: number) => {
       if (state.selectedSeed && onPlaceSeed) {
-        // Pass personality, seed, and optional size for district seeds
-        let result: boolean | void;
-        if (state.selectedSeed.category === "district") {
-          result = await onPlaceSeed(state.selectedSeed, position, state.placementPersonality, state.placementSeed, size);
-        } else {
-          result = await onPlaceSeed(state.selectedSeed, position);
-        }
+        // CITY-526: Mark as busy during async placement
+        setState((prev) => ({ ...prev, placementBusy: true }));
+        try {
+          // Pass personality, seed, and optional size for district seeds
+          let result: boolean | void;
+          if (state.selectedSeed.category === "district") {
+            result = await onPlaceSeed(state.selectedSeed, position, state.placementPersonality, state.placementSeed, size);
+          } else {
+            result = await onPlaceSeed(state.selectedSeed, position);
+          }
 
-        // If placement failed, show error flash at the position
-        if (result === false) {
-          setPlacementError(position);
+          // If placement failed, show error flash at the position
+          if (result === false) {
+            setPlacementError(position);
+          }
+        } finally {
+          setState((prev) => ({ ...prev, placementBusy: false }));
         }
       }
       // Stay in placement mode with same seed selected for quick consecutive placements
@@ -216,12 +233,13 @@ export function PlacementProvider({ children, onPlaceSeed }: PlacementProviderPr
       cancelDragSize,
       isDraggingSize,
       setPlacementError,
+      setPlacementBusy,
     }),
     [
       state, selectSeed, startPlacing, cancelPlacing, setPreviewPosition,
       confirmPlacement, setPlacementPersonality, setPlacementSeed,
       shufflePlacementSeed, startDragSize, updateDragSize, cancelDragSize,
-      isDraggingSize, setPlacementError,
+      isDraggingSize, setPlacementError, setPlacementBusy,
     ]
   );
 

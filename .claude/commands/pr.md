@@ -36,14 +36,7 @@ When the user invokes `/pr`:
      --body-file .github/PULL_REQUEST_TEMPLATE.md \
      --head <branch>
    ```
-5. Add risk label based on changes (Low/Medium/High Risk)
-6. Report the PR URL to the user
-
-## Risk Assessment
-
-- **Low Risk**: Docs, tests, minor UI tweaks, config changes
-- **Medium Risk**: New features, bug fixes, refactoring
-- **High Risk**: Auth, payments, database migrations, infrastructure
+5. Report the PR URL to the user
 
 ## Example
 
@@ -51,5 +44,5 @@ When the user invokes `/pr`:
 # From worktree or after identifying the branch
 git push -u origin PROJ-123
 gh pr create --title "PROJ-123: Add user authentication" --body "..."
-gh pr edit <number> --add-label "Medium Risk"
+gh pr edit <number> --add-label "Feature"
 ```

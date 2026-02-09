@@ -91,7 +91,7 @@ class TestShortcutTrackerGetTicket:
             "name": "Test Story",
             "description": "Description here",
             "workflow_state": {"name": "In Progress"},
-            "labels": [{"name": "Bug"}, {"name": "High Risk"}],
+            "labels": [{"name": "Bug"}, {"name": "Frontend"}],
             "app_url": "https://app.shortcut.com/test/story/123",
         }
         mock_response = MagicMock()
@@ -107,7 +107,7 @@ class TestShortcutTrackerGetTicket:
         assert ticket.title == "Test Story"
         assert ticket.description == "Description here"
         assert ticket.status == "In Progress"
-        assert ticket.labels == ["Bug", "High Risk"]
+        assert ticket.labels == ["Bug", "Frontend"]
 
     def test_get_ticket_with_sc_prefix(self) -> None:
         tracker = ShortcutTracker(api_token="sc_token")
@@ -626,7 +626,7 @@ class TestShortcutTrackerParseStory:
             "name": "Test Story",
             "description": "Test description",
             "workflow_state": {"name": "In Progress"},
-            "labels": [{"name": "Bug"}, {"name": "High Risk"}],
+            "labels": [{"name": "Bug"}, {"name": "Frontend"}],
             "app_url": "https://app.shortcut.com/test/story/123",
         }
 
@@ -636,7 +636,7 @@ class TestShortcutTrackerParseStory:
         assert ticket.title == "Test Story"
         assert ticket.description == "Test description"
         assert ticket.status == "In Progress"
-        assert ticket.labels == ["Bug", "High Risk"]
+        assert ticket.labels == ["Bug", "Frontend"]
         assert ticket.url == "https://app.shortcut.com/test/story/123"
         assert ticket.raw == story
 

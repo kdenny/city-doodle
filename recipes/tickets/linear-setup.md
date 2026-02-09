@@ -77,11 +77,6 @@ Create these labels in Linear to match the vibe conventions:
 - **Chore** - Maintenance, cleanup
 - **Refactor** - Code improvement, no behavior change
 
-### Risk Labels
-- **Low Risk** - Minimal scope, easy to revert
-- **Medium Risk** - Moderate scope, needs testing
-- **High Risk** - Large scope, critical path
-
 ### Area Labels
 - **Frontend** - UI/UX changes
 - **Backend** - Server/API changes

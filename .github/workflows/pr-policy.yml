@@ -2,7 +2,7 @@ name: PR Policy
 
 on:
   pull_request:
-    types: [opened, edited, synchronize, labeled, unlabeled]
+    types: [opened, edited, synchronize]
 
 permissions:
   contents: read
@@ -54,48 +54,6 @@ jobs:
               core.setOutput('has_ticket', 'true');
             }
 
-      - name: Check risk label
-        id: risk
-        uses: actions/github-script@v8
-        with:
-          script: |
-            const labels = context.payload.pull_request.labels.map(l => l.name);
-            const riskLabels = ['Low Risk', 'Medium Risk', 'High Risk'];
-
-            const hasRisk = labels.some(l => riskLabels.includes(l));
-
-            if (!hasRisk) {
-              core.warning('Missing risk label. Add one of: Low Risk, Medium Risk, High Risk');
-              core.setOutput('has_risk', 'false');
-            } else {
-              const riskLevel = labels.find(l => riskLabels.includes(l));
-              core.setOutput('has_risk', 'true');
-              core.setOutput('risk_level', riskLevel);
-            }
-
-      - name: Warn on high risk without tests
-        if: steps.risk.outputs.risk_level == 'High Risk'
-        uses: actions/github-script@v8
-        with:
-          script: |
-            const { data: files } = await github.rest.pulls.listFiles({
-              owner: context.repo.owner,
-              repo: context.repo.repo,
-              pull_number: context.payload.pull_request.number,
-            });
-
-            const hasTestChanges = files.some(f =>
-              f.filename.includes('test') ||
-              f.filename.includes('spec') ||
-              f.filename.endsWith('_test.py') ||
-              f.filename.endsWith('.test.ts') ||
-              f.filename.endsWith('.spec.ts')
-            );
-
-            if (!hasTestChanges) {
-              core.warning('High Risk PR without test changes. Consider adding tests.');
-            }
-
       - name: Check branch naming
         uses: actions/github-script@v8
         with:
@@ -137,11 +95,9 @@ jobs:
         with:
           script: |
             const hasTicket = '${{ steps.ticket.outputs.has_ticket }}' === 'true';
-            const hasRisk = '${{ steps.risk.outputs.has_risk }}' === 'true';
 
             let issues = [];
             if (!hasTicket) issues.push('- Missing ticket reference in title, body, or branch');
-            if (!hasRisk) issues.push('- Missing risk label (Low Risk, Medium Risk, or High Risk)');
 
             if (issues.length > 0) {
               const body = `## PR Policy Check

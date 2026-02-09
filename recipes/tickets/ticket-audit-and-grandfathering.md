@@ -16,7 +16,7 @@ This is tracked in GitHub issue #2.
 ## What is Grandfathering?
 
 When adopting this boilerplate, your existing tickets may not follow the new conventions:
-- Missing risk labels
+- Missing labels (type, area)
 - Non-standard branch naming
 - Missing ticket references in old PRs
 
@@ -38,7 +38,6 @@ bin/ticket list --status "Backlog"
 
 For each ticket, check:
 - [ ] Has a type label (Bug, Feature, etc.)
-- [ ] Has a risk label (Low/Medium/High Risk)
 - [ ] Has an area label (Frontend/Backend/Infra)
 - [ ] Title follows format: "Verb + Object"
 
@@ -73,9 +72,9 @@ For all new tickets:
 ### Add Missing Labels
 
 In Linear, use bulk edit:
-1. Filter to tickets without risk labels
+1. Filter to tickets without type or area labels
 2. Select all
-3. Add "Low Risk" as default
+3. Add appropriate labels
 4. Review and adjust individually
 
 ### Via API (when implemented)
@@ -110,7 +109,7 @@ Generate audit report:
 ### Summary
 - Total open tickets: 47
 - Missing type label: 12 (25%)
-- Missing risk label: 23 (49%)
+- Missing area label: 23 (49%)
 - Non-standard titles: 8 (17%)
 
 ### Grandfathered
@@ -118,10 +117,10 @@ Generate audit report:
 
 ### Actions Taken
 - Added type labels to 12 tickets
-- Added risk labels to 18 tickets (5 need review)
+- Added area labels to 18 tickets
 
 ### Remaining Work
-- 5 tickets need risk assessment
+- 5 tickets need area labels
 - 8 titles need cleanup
 ```
 
@@ -137,7 +136,7 @@ bin/ticket audit
 bin/ticket grandfather ENG-42 --reason "Pre-dates conventions"
 
 # Bulk apply defaults
-bin/ticket audit --fix --default-risk "Low Risk"
+bin/ticket audit --fix
 ```
 
 ## Best Practices
