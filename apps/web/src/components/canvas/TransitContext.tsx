@@ -1180,21 +1180,47 @@ export function TransitProvider({ children, worldId }: TransitProviderProps) {
   );
 
   /**
+   * CITY-479: Remove transit POIs that were auto-generated near a station.
+   * Uses proximity matching since POIs don't store a back-reference to
+   * their originating station.
+   */
+  const cleanupTransitPOIs = useCallback(
+    (stationPosition: Point) => {
+      if (!featuresContext) return;
+      const CLEANUP_RADIUS = 120; // slightly larger than TRANSIT_POI_OFFSET_MAX (100)
+      const transitPOIs = featuresContext.features.pois.filter((poi) => {
+        if (poi.type !== "transit") return false;
+        const dx = poi.position.x - stationPosition.x;
+        const dy = poi.position.y - stationPosition.y;
+        return Math.sqrt(dx * dx + dy * dy) <= CLEANUP_RADIUS;
+      });
+      for (const poi of transitPOIs) {
+        featuresContext.removePOI(poi.id);
+      }
+    },
+    [featuresContext]
+  );
+
+  /**
    * Remove a rail station.
    */
   const removeRailStation = useCallback(
     async (stationId: string): Promise<void> => {
       if (!worldId) return;
 
+      // CITY-479: Find station position before deletion for POI cleanup
+      const station = railStations.find((s) => s.id === stationId);
+
       try {
         await deleteStation.mutateAsync({ stationId, worldId });
+        if (station) cleanupTransitPOIs(station.position);
         toast?.addToast("Rail station removed", "success");
       } catch (error) {
         console.error("Failed to remove rail station:", error);
         toast?.addToast("Failed to remove station", "error");
       }
     },
-    [worldId, deleteStation, toast]
+    [worldId, deleteStation, toast, railStations, cleanupTransitPOIs]
   );
 
   /**
@@ -1204,15 +1230,19 @@ export function TransitProvider({ children, worldId }: TransitProviderProps) {
     async (stationId: string): Promise<void> => {
       if (!worldId) return;
 
+      // CITY-479: Find station position before deletion for POI cleanup
+      const station = subwayStations.find((s) => s.id === stationId);
+
       try {
         await deleteStation.mutateAsync({ stationId, worldId });
+        if (station) cleanupTransitPOIs(station.position);
         toast?.addToast("Subway station removed", "success");
       } catch (error) {
         console.error("Failed to remove subway station:", error);
         toast?.addToast("Failed to remove station", "error");
       }
     },
-    [worldId, deleteStation, toast]
+    [worldId, deleteStation, toast, subwayStations, cleanupTransitPOIs]
   );
 
   /**
