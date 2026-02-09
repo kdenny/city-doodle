@@ -77,7 +77,7 @@ GEOGRAPHIC_PRESETS: dict[str, dict[str, Any]] = {
     # City on an island surrounded by water.  Higher water level
     # so more of the terrain is submerged, creating an island feel.
     "island": {
-        "water_level": 0.45,
+        "water_level": 0.42,
         "beach_enabled": True,
         "beach_height_band": 0.03,
         "beach_width_multiplier": 1.3,
