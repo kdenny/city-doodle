@@ -46,79 +46,207 @@ class SeededRandom {
   }
 }
 
-// City name components
-const CITY_PREFIXES = [
-  "North",
-  "South",
-  "East",
-  "West",
-  "New",
-  "Old",
-  "Lake",
-  "River",
-  "Oak",
-  "Pine",
-  "Cedar",
-  "Mill",
-  "Harbor",
-  "Green",
-  "Fair",
-  "Spring",
-  "Bay",
-  "Hill",
-  "Stone",
-  "Silver",
-  "Golden",
-  "Maple",
-  "Willow",
-  "Crystal",
-  "Sun",
-  "Moon",
+import type { GeographicSetting } from "../api/types";
+
+// ============================================================
+// Shared name pools — diverse sources for city name generation
+// ============================================================
+
+/** US presidents (last names) */
+const PRESIDENTS = [
+  "Washington", "Adams", "Jefferson", "Madison", "Monroe", "Jackson",
+  "Harrison", "Tyler", "Polk", "Taylor", "Pierce", "Lincoln", "Grant",
+  "Hayes", "Garfield", "Cleveland", "McKinley", "Roosevelt", "Wilson",
+  "Coolidge", "Truman", "Eisenhower", "Kennedy", "Reagan",
 ];
 
-const CITY_SUFFIXES = [
-  "ville",
-  "ton",
-  "wood",
-  "view",
-  "dale",
-  "field",
-  "brook",
-  "port",
-  "gate",
-  "haven",
-  "ridge",
-  "ford",
-  "bury",
-  "mont",
-  "land",
-  "crest",
+/** Famous historical figures */
+const HISTORICAL_FIGURES = [
+  "Bolivar", "Columbus", "Magellan", "Drake", "Cortez", "Raleigh",
+  "Franklin", "Hamilton", "Lafayette", "Revere", "Edison", "Carnegie",
+  "Whitman", "Thoreau", "Emerson", "Audubon", "Boone", "Carson",
+  "Crockett", "Sequoia", "Coronado", "DeSoto", "Champlain", "Hudson",
 ];
 
-const CITY_STANDALONE = [
-  "Riverside",
-  "Lakeview",
-  "Harborview",
-  "Millbrook",
-  "Greenfield",
-  "Fairview",
-  "Springfield",
-  "Oakdale",
-  "Cedarville",
-  "Pinewood",
-  "Stonegate",
-  "Bayview",
-  "Hillcrest",
-  "Silverton",
-  "Maplewood",
-  "Willowbrook",
-  "Sundale",
-  "Northgate",
-  "Southfield",
-  "Eastwood",
-  "Westport",
-  "Newport",
-  "Newbury",
+/** Biblical / classical names */
+const BIBLICAL_NAMES = [
+  "Salem", "Bethel", "Shiloh", "Zion", "Canaan", "Galilee",
+  "Hebron", "Antioch", "Corinth", "Eden", "Jericho", "Sinai",
+  "Bethany", "Carmel", "Sharon", "Jordan", "Goshen", "Gilead",
+  "Lebanon", "Ephraim", "Tabor", "Moriah", "Mizpah", "Pisgah",
+];
+
+/** English vocabulary words usable as city names */
+const ENGLISH_WORDS = [
+  "Summit", "Haven", "Crest", "Glen", "Ridge", "Vale", "Brook",
+  "Arbor", "Hollow", "Meadow", "Prairie", "Vista", "Bluff",
+  "Grove", "Dell", "Cliff", "Beacon", "Forge", "Quarry",
+  "Terrace", "Landing", "Crossing", "Junction", "Bend",
+];
+
+/** Spanish-influenced place names */
+const SPANISH_WORDS = [
+  "Sierra", "Mesa", "Bonita", "Dorado", "Paloma", "Esperanza",
+  "Alameda", "Hermosa", "Cascada", "Estrella", "Alma", "Sereno",
+  "Bello", "Camino", "Cielo", "Plata", "Piedra", "Brisa",
+  "Llano", "Cumbre", "Bahia", "Arroyo", "Colina", "Laguna",
+];
+
+// ============================================================
+// Geography-specific name pools
+// ============================================================
+
+type GeoNamePool = {
+  /** Full standalone names */
+  standalone: string[];
+  /** Prefixes that combine with generic suffixes */
+  prefixes: string[];
+  /** Suffixes biased toward this geography */
+  suffixes: string[];
+};
+
+const GEO_NAME_POOLS: Record<GeographicSetting, GeoNamePool> = {
+  coastal: {
+    standalone: [
+      "Brighton", "Monterey", "Savannah", "Galveston", "Pacifica",
+      "Oceanside", "Surfside", "Seabreeze", "Tideland", "Sandcastle",
+      "Clearwater", "Coral Bay", "Driftwood", "Margate", "Seaside",
+      "Costa Serena", "Playa Dorada", "Bahia Blanca",
+    ],
+    prefixes: [
+      "Sea", "Coral", "Tide", "Surf", "Shore", "Breeze", "Dune",
+      "Sandy", "Cliff", "Wave", "Shell", "Anchor", "Salt", "Coastal",
+    ],
+    suffixes: [
+      "shore", "coast", "beach", "haven", "port", "cove", "bay",
+      "point", "cliff", "bluff", "side",
+    ],
+  },
+  bay_harbor: {
+    standalone: [
+      "Harborview", "Port Royal", "Anchorage", "Safe Haven", "Baytown",
+      "Portsmith", "Dockhaven", "Bayshore", "Shelter Cove", "Calm Harbor",
+      "Puerto Sereno", "Bahia Linda", "Porto Bello",
+    ],
+    prefixes: [
+      "Harbor", "Port", "Bay", "Anchor", "Dock", "Wharf", "Marina",
+      "Beacon", "Cove", "Shelter", "Pier", "Quay",
+    ],
+    suffixes: [
+      "harbor", "port", "bay", "cove", "haven", "landing", "wharf",
+      "dock", "point", "head",
+    ],
+  },
+  river_valley: {
+    standalone: [
+      "Riverside", "Millbrook", "Riverbend", "Clearwater", "Fording",
+      "Bridgewater", "Shallowford", "Creekside", "Brookhaven",
+      "Riverton", "Stonebridge", "Valleyside", "Rio Piedra",
+      "Arroyo Grande", "Rio Sereno",
+    ],
+    prefixes: [
+      "River", "Mill", "Bridge", "Creek", "Brook", "Falls", "Valley",
+      "Ford", "Shallow", "Meadow", "Bend", "Crossing",
+    ],
+    suffixes: [
+      "ford", "bridge", "brook", "creek", "dale", "vale", "falls",
+      "bend", "crossing", "mill", "field",
+    ],
+  },
+  lakefront: {
+    standalone: [
+      "Lakeview", "Lakewood", "Crystal Lake", "Silver Lake", "Mirror Lake",
+      "Clearwater", "Lake Haven", "Shorewood", "Lakeside", "Stillwater",
+      "Laguna Verde", "Lago Sereno", "Agua Clara",
+    ],
+    prefixes: [
+      "Lake", "Crystal", "Mirror", "Silver", "Clear", "Shore", "Willow",
+      "Pine", "Cedar", "Deep", "Still", "Blue",
+    ],
+    suffixes: [
+      "lake", "shore", "waters", "wood", "view", "haven", "side",
+      "pond", "cove", "basin",
+    ],
+  },
+  inland: {
+    standalone: [
+      "Springfield", "Fairfield", "Greenfield", "Oakdale", "Maplewood",
+      "Cedarville", "Pinewood", "Hillcrest", "Stonegate", "Sundale",
+      "Northgate", "Southfield", "Eastwood", "Westport", "Newbury",
+      "Llano Verde", "Campo Bello", "Prado Alto",
+    ],
+    prefixes: [
+      "Oak", "Pine", "Cedar", "Maple", "Elm", "Willow", "Hill",
+      "Stone", "Spring", "Green", "Fair", "Meadow", "Prairie",
+      "Golden", "Silver", "Iron",
+    ],
+    suffixes: [
+      "ville", "ton", "wood", "dale", "field", "gate", "ridge",
+      "bury", "mont", "land", "crest", "haven", "grove",
+    ],
+  },
+  island: {
+    standalone: [
+      "Santiago", "Trinidad", "Catalina", "Coronado", "Bermuda",
+      "Coral Isle", "Palm Key", "Emerald Atoll", "Isla Bonita",
+      "Windward", "Leeward", "Havana", "Nassau", "Barbuda",
+      "Isle of Pines", "Key Largo", "Isla Verde", "Isla Paloma",
+      "Porto Nuevo", "Estrella del Mar",
+    ],
+    prefixes: [
+      "Palm", "Coral", "Tropic", "Isle", "Emerald", "Azure",
+      "Lagoon", "Reef", "Windward", "Leeward", "Tide", "Sun",
+      "Shell", "Pearl", "Coconut",
+    ],
+    suffixes: [
+      "isle", "key", "cay", "haven", "cove", "bay", "lagoon",
+      "reef", "atoll", "point", "shore",
+    ],
+  },
+  peninsula: {
+    standalone: [
+      "Cape Haven", "Point Royal", "Headlands", "Promontory",
+      "Peninsula Bay", "The Narrows", "Land's End", "Cape Horn",
+      "Cabo Sereno", "Punta Estrella", "Punta Esperanza",
+      "Cabo Bonito", "Cape Coral", "Baypoint", "Seaside Point",
+    ],
+    prefixes: [
+      "Cape", "Point", "Punta", "Headland", "Narrows", "Peninsula",
+      "Promontory", "Cliff", "Spit", "Bluff", "Ridge", "Wind",
+    ],
+    suffixes: [
+      "point", "cape", "head", "bluff", "cliff", "shore", "haven",
+      "view", "side", "reach", "narrows",
+    ],
+  },
+  delta: {
+    standalone: [
+      "Delta City", "Marshfield", "Wetlands", "Bayou", "Estuaria",
+      "Confluence", "Floodplain", "Rivermouth", "Tideland",
+      "Boca Serena", "Rio Delta", "Pantano Verde",
+      "Reedport", "Brackwater", "Fenwick",
+    ],
+    prefixes: [
+      "Marsh", "Reed", "Delta", "Bayou", "Tide", "Estuary", "Flood",
+      "Sedge", "Brack", "Channel", "Levee", "Fen",
+    ],
+    suffixes: [
+      "marsh", "delta", "mouth", "water", "haven", "port", "landing",
+      "field", "fen", "mire", "channel",
+    ],
+  },
+};
+
+// Generic fallback pools (used when no geography or for blending)
+const GENERIC_PREFIXES = [
+  "North", "South", "East", "West", "New", "Old", "Green", "Fair",
+  "Spring", "Sun", "Moon", "Silver", "Golden", "Crystal",
+];
+
+const GENERIC_SUFFIXES = [
+  "ville", "ton", "wood", "view", "dale", "field", "brook",
+  "port", "gate", "haven", "ridge", "ford", "bury", "mont",
+  "land", "crest",
 ];
 
 // Neighborhood name components by context
@@ -193,6 +321,8 @@ export interface NameGeneratorOptions {
   seed?: number;
   /** Nearby feature types for context-aware naming */
   nearbyContexts?: NearbyContext[];
+  /** Geographic setting for geography-aware city naming (CITY-544) */
+  geographicSetting?: GeographicSetting;
 }
 
 /**
@@ -211,22 +341,56 @@ export interface NamingContext {
 }
 
 /**
- * Generate a random city name.
+ * Generate a random city name, optionally influenced by geography type.
+ *
+ * When a geographic setting is provided, ~70% of names draw from the
+ * geography-specific pool and ~30% from the diverse shared pools
+ * (presidents, historical figures, biblical, English/Spanish words).
+ * This keeps names geography-flavored but varied.
  */
 export function generateCityName(options: NameGeneratorOptions = {}): string {
   const seed = options.seed ?? getRandomSeed();
   const rng = new SeededRandom(seed);
+  const geo = options.geographicSetting;
 
-  // 30% chance of using a standalone name
+  const pool = geo ? GEO_NAME_POOLS[geo] : null;
+
+  // Build a merged standalone list: geography-specific + shared diverse names
+  const geoStandalone = pool?.standalone ?? [];
+  const sharedStandalone = [
+    ...PRESIDENTS, ...HISTORICAL_FIGURES, ...BIBLICAL_NAMES,
+    ...ENGLISH_WORDS, ...SPANISH_WORDS,
+  ];
+
+  // 30% chance of a standalone name
   if (rng.next() < 0.3) {
-    return rng.pick(CITY_STANDALONE);
+    // When we have geography, 60% geo-standalone, 40% shared-standalone
+    if (pool && geoStandalone.length > 0 && rng.next() < 0.6) {
+      return rng.pick(geoStandalone);
+    }
+    // Use a shared name as a city-style name (e.g., "Jefferson", "Salem")
+    return rng.pick(sharedStandalone);
   }
 
-  // Otherwise, combine prefix + suffix
-  const prefix = rng.pick(CITY_PREFIXES);
-  const suffix = rng.pick(CITY_SUFFIXES);
+  // 70% combine prefix + suffix
+  const roll = rng.next();
 
-  return `${prefix}${suffix}`;
+  if (pool && roll < 0.6) {
+    // Geography-specific prefix + suffix
+    const prefix = rng.pick(pool.prefixes);
+    const suffix = rng.pick(pool.suffixes);
+    return `${prefix}${suffix}`;
+  } else if (roll < 0.8) {
+    // Shared name as prefix + geography or generic suffix
+    const prefix = rng.pick(sharedStandalone);
+    const suffix = pool ? rng.pick(pool.suffixes) : rng.pick(GENERIC_SUFFIXES);
+    return `${prefix}${suffix}`;
+  } else {
+    // Generic prefix + suffix (fallback variety)
+    const prefix = pool ? rng.pick(pool.prefixes) : rng.pick(GENERIC_PREFIXES);
+    const suffix = rng.pick(GENERIC_SUFFIXES);
+    return `${prefix}${suffix}`;
+  }
 }
 
 /**
@@ -327,12 +491,16 @@ export function generateDistrictName(
 /**
  * Generate multiple unique city name suggestions.
  */
-export function generateCityNameSuggestions(count: number = 5, baseSeed?: number): string[] {
+export function generateCityNameSuggestions(
+  count: number = 5,
+  baseSeed?: number,
+  geographicSetting?: GeographicSetting,
+): string[] {
   const seed = baseSeed ?? getRandomSeed();
   const names = new Set<string>();
 
   for (let i = 0; names.size < count && i < count * 3; i++) {
-    names.add(generateCityName({ seed: seed + i * 7919 }));
+    names.add(generateCityName({ seed: seed + i * 7919, geographicSetting }));
   }
 
   return Array.from(names);

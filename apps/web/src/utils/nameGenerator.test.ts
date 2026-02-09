@@ -40,6 +40,43 @@ describe("nameGenerator", () => {
       // (there's a tiny chance they match by coincidence)
       expect(name1 !== name2 || name1 !== name2).toBe(true);
     });
+
+    it("generates geography-influenced names for island setting", () => {
+      const names: string[] = [];
+      for (let i = 0; i < 30; i++) {
+        names.push(generateCityName({ seed: i * 1000, geographicSetting: "island" }));
+      }
+      // At least some names should contain island-related words
+      const islandRelated = names.filter(
+        (n) =>
+          n.includes("Palm") || n.includes("Coral") || n.includes("Isle") ||
+          n.includes("Reef") || n.includes("Key") || n.includes("Lagoon") ||
+          n.includes("Santiago") || n.includes("Trinidad") || n.includes("Catalina") ||
+          n.includes("isle") || n.includes("cay") || n.includes("atoll")
+      );
+      expect(islandRelated.length).toBeGreaterThan(0);
+    });
+
+    it("generates geography-influenced names for coastal setting", () => {
+      const names: string[] = [];
+      for (let i = 0; i < 30; i++) {
+        names.push(generateCityName({ seed: i * 1000, geographicSetting: "coastal" }));
+      }
+      const coastalRelated = names.filter(
+        (n) =>
+          n.includes("Sea") || n.includes("Shore") || n.includes("Surf") ||
+          n.includes("Tide") || n.includes("Coral") || n.includes("Brighton") ||
+          n.includes("Monterey") || n.includes("shore") || n.includes("coast") ||
+          n.includes("beach") || n.includes("port") || n.includes("cove")
+      );
+      expect(coastalRelated.length).toBeGreaterThan(0);
+    });
+
+    it("is deterministic with same seed and geography", () => {
+      const name1 = generateCityName({ seed: 42, geographicSetting: "peninsula" });
+      const name2 = generateCityName({ seed: 42, geographicSetting: "peninsula" });
+      expect(name1).toBe(name2);
+    });
   });
 
   describe("generateNeighborhoodName", () => {
@@ -117,6 +154,13 @@ describe("nameGenerator", () => {
       const suggestions = generateCityNameSuggestions(5, 12345);
       const uniqueNames = new Set(suggestions);
       expect(uniqueNames.size).toBe(5);
+    });
+
+    it("accepts geography parameter and produces geography-flavored names", () => {
+      const suggestions = generateCityNameSuggestions(5, 12345, "island");
+      expect(suggestions.length).toBe(5);
+      // Should produce non-empty strings
+      suggestions.forEach((s) => expect(s).toBeTruthy());
     });
   });
 
