@@ -5,7 +5,7 @@
  * and personality sliders (CITY-323 + CITY-324).
  */
 
-import { useState, useCallback, FormEvent } from "react";
+import { useState, useCallback, useEffect, useRef, FormEvent } from "react";
 import { useCreateWorld } from "../api";
 import {
   DEFAULT_WORLD_SETTINGS,
@@ -21,13 +21,6 @@ interface CreateWorldModalProps {
 }
 
 export function CreateWorldModal({ onClose, onCreated }: CreateWorldModalProps) {
-  const [name, setName] = useState(() => generateCityName({ seed: Date.now() }));
-  const [seed, setSeed] = useState("");
-  const [error, setError] = useState<string | null>(null);
-  const [suggestions, setSuggestions] = useState<string[]>([]);
-  const [showSuggestions, setShowSuggestions] = useState(false);
-  const [showAdvanced, setShowAdvanced] = useState(false);
-
   // World settings state
   const [settingsValues, setSettingsValues] = useState<WorldSettingsValues>({
     geographic_setting: DEFAULT_WORLD_SETTINGS.geographic_setting,
@@ -38,11 +31,31 @@ export function CreateWorldModal({ onClose, onCreated }: CreateWorldModalProps) 
     transit_car: DEFAULT_WORLD_SETTINGS.transit_car,
   });
 
+  const [name, setName] = useState(() =>
+    generateCityName({ seed: Date.now(), geographicSetting: DEFAULT_WORLD_SETTINGS.geographic_setting })
+  );
+  const [seed, setSeed] = useState("");
+  const [error, setError] = useState<string | null>(null);
+  const [suggestions, setSuggestions] = useState<string[]>([]);
+  const [showSuggestions, setShowSuggestions] = useState(false);
+  const [showAdvanced, setShowAdvanced] = useState(false);
+
+  // CITY-544: Regenerate city name when geography type changes
+  const prevGeoRef = useRef(settingsValues.geographic_setting);
+  useEffect(() => {
+    if (settingsValues.geographic_setting !== prevGeoRef.current) {
+      prevGeoRef.current = settingsValues.geographic_setting;
+      setName(generateCityName({ seed: Date.now(), geographicSetting: settingsValues.geographic_setting }));
+      setSuggestions([]);
+      setShowSuggestions(false);
+    }
+  }, [settingsValues.geographic_setting]);
+
   const handleGenerateNew = useCallback(() => {
-    const newSuggestions = generateCityNameSuggestions(5, Date.now());
+    const newSuggestions = generateCityNameSuggestions(5, Date.now(), settingsValues.geographic_setting);
     setSuggestions(newSuggestions);
     setShowSuggestions(true);
-  }, []);
+  }, [settingsValues.geographic_setting]);
 
   const handleSelectSuggestion = useCallback((suggestion: string) => {
     setName(suggestion);
