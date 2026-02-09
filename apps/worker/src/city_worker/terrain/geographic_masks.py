@@ -125,12 +125,17 @@ def inland_mask(
 def island_mask(
     heightfield: NDArray[np.float64], ctx: MaskContext
 ) -> NDArray[np.float64]:
-    """Radial falloff mask for island worlds (CITY-387).
+    """Radial falloff mask for island worlds (CITY-387, CITY-545).
 
     Multiplies the heightfield by a smooth radial falloff centered on
     the world origin (middle of tile 0, 0).  The falloff edge is
     perturbed by angle-dependent noise for an organic coastline, and
     the island shape is slightly elliptical based on the seed.
+
+    The radius is scaled to the full 3x3 tile world so the island
+    fills ~60% of the world area and is clearly surrounded by water.
+    Occasionally (seed-dependent) small satellite islands appear near
+    the main island.
     """
     res = ctx.resolution
     ts = ctx.tile_size
@@ -139,9 +144,9 @@ def island_mask(
     cx = ts * 0.5
     cy = ts * 0.5
 
-    # Base radius and transition band
-    base_radius = ts * 0.7
-    falloff_width = ts * 0.35
+    # Base radius and transition band — sized relative to 3*ts world
+    base_radius = ts * 1.3
+    falloff_width = ts * 0.45
 
     # Seed-derived eccentricity for variety
     aspect = 0.85 + _seeded_hash(ctx.seed, 0) * 0.30  # 0.85 – 1.15
@@ -165,13 +170,34 @@ def island_mask(
     # Angle-dependent noise for organic shoreline
     angles = np.arctan2(dy, dx)
     noise = _angle_noise(angles, ctx.seed)
-    perturbed_radius = np.maximum(base_radius + noise * ts * 0.15, ts * 0.2)
+    perturbed_radius = np.maximum(base_radius + noise * ts * 0.25, ts * 0.5)
 
     # Smooth radial falloff
     inner = perturbed_radius - falloff_width * 0.5
     outer = perturbed_radius + falloff_width * 0.5
     t = (dist - inner) / np.maximum(outer - inner, 1e-10)
     mask = 1.0 - _smoothstep(t)
+
+    # ── Satellite islands (~20% of worlds) ──
+    if _seeded_hash(ctx.seed, 5) > 0.8:
+        num_satellites = 1 + int(_seeded_hash(ctx.seed, 6) * 3)  # 1-3
+        for i in range(num_satellites):
+            sat_angle = _seeded_hash(ctx.seed, 10 + i) * 2.0 * math.pi
+            sat_dist = base_radius + ts * (0.3 + _seeded_hash(ctx.seed, 20 + i) * 0.4)
+            sat_cx = cx + sat_dist * math.cos(sat_angle)
+            sat_cy = cy + sat_dist * math.sin(sat_angle)
+            sat_radius = ts * (0.15 + _seeded_hash(ctx.seed, 30 + i) * 0.15)
+            sat_falloff = sat_radius * 0.5
+
+            sat_dx = xx - sat_cx
+            sat_dy = yy - sat_cy
+            sat_d = np.sqrt(sat_dx * sat_dx + sat_dy * sat_dy)
+
+            sat_inner = sat_radius - sat_falloff * 0.5
+            sat_outer = sat_radius + sat_falloff * 0.5
+            sat_t = (sat_d - sat_inner) / np.maximum(sat_outer - sat_inner, 1e-10)
+            sat_mask = 1.0 - _smoothstep(sat_t)
+            mask = np.maximum(mask, sat_mask)
 
     return heightfield * mask
 
