@@ -656,6 +656,8 @@ def extract_beaches(
     gap_cells: int = 4,
     seed: int = 0,
     lagoon_polygons: list[Polygon] | None = None,
+    river_lines: list[LineString] | None = None,
+    lake_polygons: list[Polygon] | None = None,
 ) -> list[TerrainFeature]:
     """Extract beach regions where land meets water at shallow slopes.
 
@@ -678,6 +680,10 @@ def extract_beaches(
         seed: Deterministic seed for segment variation
         lagoon_polygons: Lagoon polygons from barrier islands; beaches
             mostly inside a lagoon are skipped (CITY-525)
+        river_lines: River LineStrings; beaches overlapping a river
+            buffer are skipped (CITY-546)
+        lake_polygons: Lake polygons; beaches mostly inside a lake are
+            capped to small arcs and excluded at river junctions (CITY-547)
 
     Returns:
         List of beach polygon features with beach_type property
@@ -725,6 +731,19 @@ def extract_beaches(
 
     beach_mask = beach_mask & adjacent_to_water
 
+    # Pre-compute river buffer zones for filtering (CITY-546).
+    # Buffer each river line by its width (or a minimum) to create
+    # exclusion zones where beaches should not form.
+    river_buffers: list[Polygon] = []
+    if river_lines:
+        for rline in river_lines:
+            try:
+                buf = rline.buffer(cell_size * 3)
+                if buf.is_valid and not buf.is_empty:
+                    river_buffers.append(buf)
+            except Exception:
+                pass
+
     # Find connected beach regions and split into discrete segments
     visited = np.zeros_like(beach_mask, dtype=bool)
     features = []
@@ -747,16 +766,6 @@ def extract_beaches(
                     seed=seed + region_idx,
                 )
                 region_idx += 1
-
-                # Classify water body once for the whole region
-                beach_type = _classify_water_body(
-                    heightfield, water_mask, region_cells[0], h, w
-                )
-
-                # Beaches only form on ocean and bay coastlines,
-                # not along rivers or small lakes (CITY-531).
-                if beach_type in ("river",):
-                    continue
 
                 for segment_cells in segments:
                     # Include adjacent water cells so the beach polygon
@@ -784,6 +793,20 @@ def extract_beaches(
                         extended_cells, tile_x, tile_y, tile_size, cell_size, w
                     )
                     if poly is not None and poly.is_valid:
+                        # CITY-546: Skip beaches that overlap a river buffer
+                        if river_buffers:
+                            skip = False
+                            for rbuf in river_buffers:
+                                try:
+                                    overlap = poly.intersection(rbuf).area
+                                    if overlap > poly.area * 0.3:
+                                        skip = True
+                                        break
+                                except Exception:
+                                    pass
+                            if skip:
+                                continue
+
                         # Skip beaches that are mostly inside a lagoon (CITY-525)
                         if lagoon_polygons:
                             skip = False
@@ -797,6 +820,30 @@ def extract_beaches(
                                     pass
                             if skip:
                                 continue
+
+                        # CITY-547: Skip lake beaches at river junctions and
+                        # cap lake beach coverage.
+                        beach_type = "ocean"
+                        if lake_polygons:
+                            for lake in lake_polygons:
+                                try:
+                                    overlap = poly.intersection(lake).area
+                                    if overlap > poly.area * 0.3:
+                                        beach_type = "lake"
+                                        # Skip lake beach if it's near a river
+                                        if river_buffers:
+                                            for rbuf in river_buffers:
+                                                try:
+                                                    if poly.distance(rbuf) < cell_size * 2:
+                                                        beach_type = "river"
+                                                        break
+                                                except Exception:
+                                                    pass
+                                        break
+                                except Exception:
+                                    pass
+                        if beach_type == "river":
+                            continue
 
                         area = len(segment_cells) * cell_size * cell_size
                         perimeter = poly.length

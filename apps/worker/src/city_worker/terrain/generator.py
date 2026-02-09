@@ -188,6 +188,43 @@ class TerrainGenerator:
                     from shapely.geometry import shape
                     lagoon_polygons.append(shape(f.geometry))
 
+        # Rivers (moved before beaches so river geometries can be used
+        # to filter out river-adjacent beaches — CITY-546)
+        rivers = extract_rivers(
+            heightfield=heightfield,
+            water_level=cfg.water_level,
+            tile_x=tx,
+            tile_y=ty,
+            tile_size=cfg.tile_size,
+            flow_threshold=cfg.resolution * 0.8,  # Scale with resolution
+            min_length=cfg.min_river_length,
+            flow_accumulation=flow_accumulation,
+        )
+        features.extend(rivers)
+
+        # Collect river geometries for beach filtering (CITY-546)
+        river_lines: list = []
+        for f in rivers:
+            from shapely.geometry import shape as _shape
+            river_lines.append(_shape(f.geometry))
+
+        # Lakes (moved before beaches so lake polygons can be used
+        # to cap lake beach coverage — CITY-547)
+        lakes = extract_lakes(
+            heightfield=heightfield,
+            water_level=cfg.water_level,
+            tile_x=tx,
+            tile_y=ty,
+            tile_size=cfg.tile_size,
+        )
+        features.extend(lakes)
+
+        # Collect lake polygons for beach filtering (CITY-547)
+        lake_polygons: list = []
+        for f in lakes:
+            from shapely.geometry import shape as _shape
+            lake_polygons.append(_shape(f.geometry))
+
         # Beaches (transition zones between water and land)
         if cfg.beach_enabled:
             beach_seed = abs(cfg.world_seed ^ (tx * 5413 + ty * 5417))
@@ -205,32 +242,10 @@ class TerrainGenerator:
                 gap_cells=cfg.beach_gap_cells,
                 seed=beach_seed,
                 lagoon_polygons=lagoon_polygons,
+                river_lines=river_lines,
+                lake_polygons=lake_polygons,
             )
             features.extend(beaches)
-
-        # Rivers (CITY-508: pass pre-computed flow accumulation)
-        rivers = extract_rivers(
-            heightfield=heightfield,
-            water_level=cfg.water_level,
-            tile_x=tx,
-            tile_y=ty,
-            tile_size=cfg.tile_size,
-            flow_threshold=cfg.resolution * 0.8,  # Scale with resolution
-            min_length=cfg.min_river_length,
-            flow_accumulation=flow_accumulation,
-        )
-        features.extend(rivers)
-
-        # Lakes
-        lakes = extract_lakes(
-            heightfield=heightfield,
-            water_level=cfg.water_level,
-            tile_x=tx,
-            tile_y=ty,
-            tile_size=cfg.tile_size,
-            min_area_cells=20,
-        )
-        features.extend(lakes)
 
         # Generate contour lines
         contours = self._generate_contours(
