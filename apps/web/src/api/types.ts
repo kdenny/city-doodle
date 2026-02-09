@@ -367,6 +367,7 @@ export interface POICreate {
   name: string;
   position_x: number;
   position_y: number;
+  footprint?: Array<{ x: number; y: number }>;
 }
 
 export interface POIUpdate {
@@ -374,6 +375,7 @@ export interface POIUpdate {
   name?: string;
   position_x?: number;
   position_y?: number;
+  footprint?: Array<{ x: number; y: number }>;
 }
 
 export interface POIBulkCreate {
@@ -387,6 +389,7 @@ export interface POI {
   name: string;
   position_x: number;
   position_y: number;
+  footprint?: Array<{ x: number; y: number }>;
   created_at: DateTime;
   updated_at: DateTime;
 }

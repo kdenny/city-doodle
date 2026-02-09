@@ -16,6 +16,10 @@ class POICreate(BaseModel):
     name: str = Field(..., min_length=1, max_length=255, description="Display name for the POI")
     position_x: float = Field(..., description="X coordinate in world space")
     position_y: float = Field(..., description="Y coordinate in world space")
+    footprint: list[dict] | None = Field(
+        default=None,
+        description="Optional polygon footprint as array of {x, y} points",
+    )
 
 
 class POIUpdate(BaseModel):
@@ -25,6 +29,7 @@ class POIUpdate(BaseModel):
     name: str | None = Field(default=None, min_length=1, max_length=255)
     position_x: float | None = None
     position_y: float | None = None
+    footprint: list[dict] | None = None
 
 
 class POI(BaseModel):
@@ -36,6 +41,7 @@ class POI(BaseModel):
     name: str
     position_x: float
     position_y: float
+    footprint: list[dict] | None = None
     created_at: datetime
     updated_at: datetime
 

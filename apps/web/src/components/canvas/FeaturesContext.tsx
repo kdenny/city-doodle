@@ -405,12 +405,16 @@ function fromApiPOI(apiPOI: ApiPOI): POI {
     x: apiPOI.position_x,
     y: apiPOI.position_y,
   };
+  // Use persisted footprint if available, otherwise generate from type+position (CITY-440)
+  const footprint = apiPOI.footprint
+    ? apiPOI.footprint.map((p) => ({ x: p.x, y: p.y }))
+    : generatePOIFootprint(type, position);
   return {
     id: apiPOI.id,
     name: apiPOI.name,
     type,
     position,
-    footprint: generatePOIFootprint(type, position),
+    footprint,
   };
 }
 
@@ -1367,6 +1371,7 @@ export function FeaturesProvider({
                             name: poi.name,
                             position_x: poi.position.x,
                             position_y: poi.position.y,
+                            footprint: poi.footprint,
                           })),
                         },
                       },
@@ -1560,6 +1565,7 @@ export function FeaturesProvider({
             name: poi.name,
             position_x: poi.position.x,
             position_y: poi.position.y,
+            footprint: poi.footprint,
           },
         });
       }
@@ -1727,6 +1733,10 @@ export function FeaturesProvider({
         if (updates.position !== undefined) {
           apiUpdate.position_x = updates.position.x;
           apiUpdate.position_y = updates.position.y;
+        }
+        // Persist regenerated footprint when type/position changes (CITY-440)
+        if (effectiveUpdates.footprint !== undefined) {
+          apiUpdate.footprint = effectiveUpdates.footprint;
         }
 
         // Only call API if there are fields to update

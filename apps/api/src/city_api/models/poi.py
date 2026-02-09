@@ -9,7 +9,7 @@ from sqlalchemy import DateTime, Float, ForeignKey, Index, String, Uuid, func
 from sqlalchemy.dialects.postgresql import ENUM as PGEnum
 from sqlalchemy.orm import Mapped, mapped_column, relationship
 
-from city_api.database import Base
+from city_api.database import Base, JSONVariant
 
 if TYPE_CHECKING:
     from city_api.models.world import World
@@ -62,6 +62,8 @@ class POI(Base):
     # Position coordinates
     position_x: Mapped[float] = mapped_column(Float, nullable=False)
     position_y: Mapped[float] = mapped_column(Float, nullable=False)
+    # Optional polygon footprint for campus/compound POIs (CITY-440)
+    footprint: Mapped[list | None] = mapped_column(JSONVariant, nullable=True)
     # Timestamps
     created_at: Mapped[datetime] = mapped_column(
         DateTime(timezone=True), server_default=func.now(), nullable=False
