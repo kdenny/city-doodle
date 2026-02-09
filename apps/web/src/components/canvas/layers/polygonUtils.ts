@@ -6,6 +6,7 @@
 
 import type { Point, WaterFeature } from "./types";
 import { metersToWorldUnits } from "./districtGenerator";
+import { WORLD_SIZE } from "../../../utils/worldConstants";
 
 /**
  * Check if a point is inside a polygon using ray casting algorithm.
@@ -205,6 +206,34 @@ export function sutherlandHodgmanClip(
   }
 
   return output;
+}
+
+/**
+ * CITY-537: Clip a polygon to the world boundary (0,0)→(WORLD_SIZE,WORLD_SIZE).
+ *
+ * Districts placed near the edge of the world can extend beyond the tile grid.
+ * This clips them to the valid world coordinate range using Sutherland-Hodgman.
+ *
+ * Returns the clipped polygon, or empty array if the polygon is entirely outside.
+ */
+export function clipPolygonToWorldBounds(polygon: Point[]): Point[] {
+  if (polygon.length < 3) return polygon;
+
+  // Quick check: if all points are already inside bounds, skip clipping
+  const allInside = polygon.every(
+    (p) => p.x >= 0 && p.x <= WORLD_SIZE && p.y >= 0 && p.y <= WORLD_SIZE
+  );
+  if (allInside) return polygon;
+
+  // Define world boundary as a clockwise rectangle
+  const worldBounds: Point[] = [
+    { x: 0, y: 0 },
+    { x: WORLD_SIZE, y: 0 },
+    { x: WORLD_SIZE, y: WORLD_SIZE },
+    { x: 0, y: WORLD_SIZE },
+  ];
+
+  return sutherlandHodgmanClip(polygon, worldBounds);
 }
 
 /**

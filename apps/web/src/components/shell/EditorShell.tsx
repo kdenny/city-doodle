@@ -1,7 +1,6 @@
 import { ReactNode, useCallback, useEffect, useRef, useState } from "react";
 import { useToastOptional } from "../../contexts";
-import { useWorld } from "../../api";
-import { useDeleteTransitLineSegment } from "../../api/hooks";
+import { useWorld, useDeleteTransitLineSegment } from "../../api";
 import { WorldSettingsModal } from "../WorldSettingsModal";
 import { ViewModeProvider, useViewMode, ViewMode } from "./ViewModeContext";
 import { ZoomProvider, useZoom } from "./ZoomContext";

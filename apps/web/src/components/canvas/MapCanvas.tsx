@@ -20,6 +20,7 @@ import {
   SubwayStationLayer,
   RoadEndpointLayer,
   TransitLineDrawingLayer,
+  WalkabilityOverlayLayer,
   generateMockTerrain,
   generateMockFeatures,
   generateMockLabels,
@@ -104,6 +105,7 @@ export const MapCanvas = forwardRef<MapCanvasHandle, MapCanvasProps>(
   const railStationLayerRef = useRef<RailStationLayer | null>(null);
   const subwayStationLayerRef = useRef<SubwayStationLayer | null>(null);
   const roadEndpointLayerRef = useRef<RoadEndpointLayer | null>(null);
+  const walkabilityOverlayLayerRef = useRef<WalkabilityOverlayLayer | null>(null);
   const transitLineDrawingLayerRef = useRef<TransitLineDrawingLayer | null>(null);
   const gridContainerRef = useRef<Container | null>(null);
   const [isReady, setIsReady] = useState(false);
@@ -449,6 +451,10 @@ export const MapCanvas = forwardRef<MapCanvasHandle, MapCanvasProps>(
       const seedsLayer = new SeedsLayer();
       viewport.addChild(seedsLayer.getContainer());
 
+      // Create and add walkability overlay layer (below rail stations, only visible in density mode)
+      const walkabilityOverlayLayer = new WalkabilityOverlayLayer();
+      viewport.addChild(walkabilityOverlayLayer.container);
+
       // Create and add rail station layer (above seeds, below subway stations)
       const railStationLayer = new RailStationLayer();
       viewport.addChild(railStationLayer.getContainer());
@@ -506,6 +512,7 @@ export const MapCanvas = forwardRef<MapCanvasHandle, MapCanvasProps>(
         roadEndpointLayer.destroy();
         seedsLayer.destroy();
         railStationLayer.destroy();
+        walkabilityOverlayLayer.destroy();
         subwayStationLayer.destroy();
         transitLineDrawingLayer.destroy();
         drawingLayer.destroy();
@@ -522,6 +529,7 @@ export const MapCanvas = forwardRef<MapCanvasHandle, MapCanvasProps>(
       roadEndpointLayerRef.current = roadEndpointLayer;
       seedsLayerRef.current = seedsLayer;
       railStationLayerRef.current = railStationLayer;
+      walkabilityOverlayLayerRef.current = walkabilityOverlayLayer;
       subwayStationLayerRef.current = subwayStationLayer;
       transitLineDrawingLayerRef.current = transitLineDrawingLayer;
       drawingLayerRef.current = drawingLayer;
@@ -587,6 +595,10 @@ export const MapCanvas = forwardRef<MapCanvasHandle, MapCanvasProps>(
       if (railStationLayerRef.current) {
         railStationLayerRef.current.destroy();
         railStationLayerRef.current = null;
+      }
+      if (walkabilityOverlayLayerRef.current) {
+        walkabilityOverlayLayerRef.current.destroy();
+        walkabilityOverlayLayerRef.current = null;
       }
       if (subwayStationLayerRef.current) {
         subwayStationLayerRef.current.destroy();
@@ -942,6 +954,28 @@ export const MapCanvas = forwardRef<MapCanvasHandle, MapCanvasProps>(
     drawingContext?.state.isDrawing,
     drawingContext?.state.isFreehandActive,
   ]);
+
+  // CITY-259: Show/hide walkability overlay based on view mode
+  useEffect(() => {
+    if (!walkabilityOverlayLayerRef.current) return;
+    walkabilityOverlayLayerRef.current.setVisible(viewMode === "density");
+  }, [viewMode, isReady]);
+
+  // CITY-259: Update walkability overlay with transit station positions
+  useEffect(() => {
+    if (!walkabilityOverlayLayerRef.current || viewMode !== "density") return;
+    const stations: { x: number; y: number; stationType: "rail" | "subway" }[] = [];
+    if (transitContext?.transitNetwork) {
+      for (const s of transitContext.transitNetwork.stations) {
+        stations.push({
+          x: s.position_x,
+          y: s.position_y,
+          stationType: s.station_type as "rail" | "subway",
+        });
+      }
+    }
+    walkabilityOverlayLayerRef.current.update(stations);
+  }, [transitContext?.transitNetwork, viewMode, isReady]);
 
   // Update rail station layer when transit context changes
   useEffect(() => {

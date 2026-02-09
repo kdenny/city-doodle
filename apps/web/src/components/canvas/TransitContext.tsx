@@ -43,6 +43,7 @@ import type {
 import { useFeaturesOptional } from "./FeaturesContext";
 import { generateTransitPOIs } from "./layers/poiAutoGenerator";
 import { useToastOptional } from "../../contexts";
+import { RAIL_LINE_HEX, SUBWAY_LINE_HEX } from "./transitColors";
 
 // Auto-connection distance for nearby stations (in world units)
 const AUTO_CONNECT_DISTANCE = 200;
@@ -53,27 +54,6 @@ const TRANSFER_STATION_DISTANCE = 60;
 // Minimum distance between stations of the same type to prevent duplicates
 export const MINIMUM_STATION_DISTANCE = 30;
 
-// Default colors for rail lines
-const RAIL_LINE_COLORS = [
-  "#B22222", // Firebrick Red
-  "#2E8B57", // Sea Green
-  "#4169E1", // Royal Blue
-  "#DAA520", // Goldenrod
-  "#8B4513", // Saddle Brown
-  "#663399", // Rebecca Purple
-];
-
-// Default colors for subway lines (more vibrant metro colors)
-const SUBWAY_LINE_COLORS = [
-  "#0066CC", // Blue (like NYC A/C/E)
-  "#FF6600", // Orange (like NYC B/D/F/M)
-  "#00933C", // Green (like NYC 4/5/6)
-  "#FCCC0A", // Yellow (like NYC N/Q/R/W)
-  "#EE352E", // Red (like NYC 1/2/3)
-  "#A626AA", // Purple (like NYC 7)
-  "#6CBE45", // Lime (like NYC G)
-  "#996633", // Brown (like NYC J/Z)
-];
 
 /**
  * Find the first unused color from a palette, given existing line colors.
@@ -890,7 +870,7 @@ export function TransitProvider({ children, worldId }: TransitProviderProps) {
             const existingRailLines = transitNetwork?.lines.filter((l) => l.line_type === "rail") || [];
             const usedColors = new Set(existingRailLines.map((l) => l.color));
             const usedNames = new Set(existingRailLines.map((l) => l.name));
-            const lineColor = nextUnusedColor(RAIL_LINE_COLORS, usedColors);
+            const lineColor = nextUnusedColor(RAIL_LINE_HEX, usedColors);
             const lineName = nextUnusedName("Rail Line", usedNames);
 
             const line = await createLine.mutateAsync({
@@ -1112,7 +1092,7 @@ export function TransitProvider({ children, worldId }: TransitProviderProps) {
             const existingSubwayLines = transitNetwork?.lines.filter((l) => l.line_type === "subway") || [];
             const usedColors = new Set(existingSubwayLines.map((l) => l.color));
             const usedNames = new Set(existingSubwayLines.map((l) => l.name));
-            const lineColor = nextUnusedColor(SUBWAY_LINE_COLORS, usedColors);
+            const lineColor = nextUnusedColor(SUBWAY_LINE_HEX, usedColors);
             const lineName = nextUnusedName("Subway Line", usedNames);
 
             const line = await createLine.mutateAsync({
@@ -1180,21 +1160,47 @@ export function TransitProvider({ children, worldId }: TransitProviderProps) {
   );
 
   /**
+   * CITY-479: Remove transit POIs that were auto-generated near a station.
+   * Uses proximity matching since POIs don't store a back-reference to
+   * their originating station.
+   */
+  const cleanupTransitPOIs = useCallback(
+    (stationPosition: Point) => {
+      if (!featuresContext) return;
+      const CLEANUP_RADIUS = 120; // slightly larger than TRANSIT_POI_OFFSET_MAX (100)
+      const transitPOIs = featuresContext.features.pois.filter((poi) => {
+        if (poi.type !== "transit") return false;
+        const dx = poi.position.x - stationPosition.x;
+        const dy = poi.position.y - stationPosition.y;
+        return Math.sqrt(dx * dx + dy * dy) <= CLEANUP_RADIUS;
+      });
+      for (const poi of transitPOIs) {
+        featuresContext.removePOI(poi.id);
+      }
+    },
+    [featuresContext]
+  );
+
+  /**
    * Remove a rail station.
    */
   const removeRailStation = useCallback(
     async (stationId: string): Promise<void> => {
       if (!worldId) return;
 
+      // CITY-479: Find station position before deletion for POI cleanup
+      const station = railStations.find((s) => s.id === stationId);
+
       try {
         await deleteStation.mutateAsync({ stationId, worldId });
+        if (station) cleanupTransitPOIs(station.position);
         toast?.addToast("Rail station removed", "success");
       } catch (error) {
         console.error("Failed to remove rail station:", error);
         toast?.addToast("Failed to remove station", "error");
       }
     },
-    [worldId, deleteStation, toast]
+    [worldId, deleteStation, toast, railStations, cleanupTransitPOIs]
   );
 
   /**
@@ -1204,15 +1210,19 @@ export function TransitProvider({ children, worldId }: TransitProviderProps) {
     async (stationId: string): Promise<void> => {
       if (!worldId) return;
 
+      // CITY-479: Find station position before deletion for POI cleanup
+      const station = subwayStations.find((s) => s.id === stationId);
+
       try {
         await deleteStation.mutateAsync({ stationId, worldId });
+        if (station) cleanupTransitPOIs(station.position);
         toast?.addToast("Subway station removed", "success");
       } catch (error) {
         console.error("Failed to remove subway station:", error);
         toast?.addToast("Failed to remove station", "error");
       }
     },
-    [worldId, deleteStation, toast]
+    [worldId, deleteStation, toast, subwayStations, cleanupTransitPOIs]
   );
 
   /**
@@ -1446,25 +1456,40 @@ export function TransitProvider({ children, worldId }: TransitProviderProps) {
   );
 
   /**
+   * CITY-246: Pre-compute station→lines lookup map so getLinesForStation
+   * is O(1) instead of O(lines × segments) per call.
+   */
+  const stationToLinesMap = useMemo(() => {
+    const map = new Map<string, { id: string; name: string; color: string; lineType: string }[]>();
+    if (!transitNetwork) return map;
+    for (const line of transitNetwork.lines) {
+      const lineInfo = { id: line.id, name: line.name, color: line.color, lineType: line.line_type };
+      const stationIds = new Set<string>();
+      for (const seg of line.segments) {
+        stationIds.add(seg.from_station_id);
+        stationIds.add(seg.to_station_id);
+      }
+      for (const sid of stationIds) {
+        const existing = map.get(sid);
+        if (existing) {
+          existing.push(lineInfo);
+        } else {
+          map.set(sid, [lineInfo]);
+        }
+      }
+    }
+    return map;
+  }, [transitNetwork]);
+
+  /**
    * CITY-376: Get all transit lines that serve a given station.
+   * Uses pre-computed lookup map (CITY-246).
    */
   const getLinesForStation = useCallback(
     (stationId: string): { id: string; name: string; color: string; lineType: string }[] => {
-      if (!transitNetwork) return [];
-      return transitNetwork.lines
-        .filter((line) =>
-          line.segments.some(
-            (seg) => seg.from_station_id === stationId || seg.to_station_id === stationId
-          )
-        )
-        .map((line) => ({
-          id: line.id,
-          name: line.name,
-          color: line.color,
-          lineType: line.line_type,
-        }));
+      return stationToLinesMap.get(stationId) ?? [];
     },
-    [transitNetwork]
+    [stationToLinesMap]
   );
 
   /**

@@ -1,5 +1,6 @@
 import { ReactNode } from "react";
 import { LandUseLegend } from "./LandUseLegend";
+import { WalkabilityLegend } from "./WalkabilityLegend";
 import { DensityStats, DensityStatistics, defaultDensityStats } from "./DensityStats";
 
 interface DensityViewProps {
@@ -18,9 +19,10 @@ export function DensityView({
         {children}
       </div>
 
-      {/* Land Use legend (right) */}
-      <div className="absolute top-4 right-4">
+      {/* Legends (right) */}
+      <div className="absolute top-4 right-4 space-y-2">
         <LandUseLegend />
+        <WalkabilityLegend />
       </div>
 
       {/* Statistics panel (bottom-right) */}
