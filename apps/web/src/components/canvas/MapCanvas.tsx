@@ -329,6 +329,14 @@ export const MapCanvas = forwardRef<MapCanvasHandle, MapCanvasProps>(
       if (subwayStationLayerRef.current) {
         subwayStationLayerRef.current.setTunnelsVisible(visibility.subwayTunnels);
       }
+
+      // CITY-534: Update station label visibility
+      if (railStationLayerRef.current) {
+        railStationLayerRef.current.setLabelsVisible(visibility.labels);
+      }
+      if (subwayStationLayerRef.current) {
+        subwayStationLayerRef.current.setLabelsVisible(visibility.labels);
+      }
     },
     []
   );
@@ -635,6 +643,14 @@ export const MapCanvas = forwardRef<MapCanvasHandle, MapCanvasProps>(
       // Update subway tunnel visibility (CITY-196)
       if (subwayStationLayerRef.current) {
         subwayStationLayerRef.current.setTunnelsVisible(layerVisibility.subwayTunnels);
+      }
+
+      // CITY-534: Update station label visibility
+      if (railStationLayerRef.current) {
+        railStationLayerRef.current.setLabelsVisible(layerVisibility.labels);
+      }
+      if (subwayStationLayerRef.current) {
+        subwayStationLayerRef.current.setLabelsVisible(layerVisibility.labels);
       }
     }
   }, [layerVisibility, isReady]);
