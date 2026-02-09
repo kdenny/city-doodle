@@ -1,6 +1,6 @@
 import { ReactNode, useCallback, useEffect, useRef, useState } from "react";
 import { useToastOptional } from "../../contexts";
-import { useWorld } from "../../api";
+import { useWorld, useDeleteTransitLineSegment } from "../../api";
 import { WorldSettingsModal } from "../WorldSettingsModal";
 import { ViewModeProvider, useViewMode, ViewMode } from "./ViewModeContext";
 import { ZoomProvider, useZoom } from "./ZoomContext";
@@ -556,6 +556,7 @@ function DrawingWithFeatures({ children }: { children: ReactNode }) {
  */
 function TransitLineDrawingWithTransit({ children }: { children: ReactNode }) {
   const transitContext = useTransit();
+  const deleteSegmentMutation = useDeleteTransitLineSegment();
 
   const handleSegmentCreate = useCallback(
     async (
@@ -599,6 +600,29 @@ function TransitLineDrawingWithTransit({ children }: { children: ReactNode }) {
     // Drawing context resets its own lineId on complete
   }, []);
 
+  // CITY-538: Delete the segment from the database when undo is triggered
+  const handleSegmentUndo = useCallback(
+    async (fromStationId: string, toStationId: string, lineId: string | null) => {
+      if (!lineId || !transitContext.transitNetwork) return;
+      const line = transitContext.transitNetwork.lines.find((l) => l.id === lineId);
+      if (!line) return;
+      // Find the segment matching these stations (either direction)
+      const segment = line.segments.find(
+        (seg) =>
+          (seg.from_station_id === fromStationId && seg.to_station_id === toStationId) ||
+          (seg.from_station_id === toStationId && seg.to_station_id === fromStationId)
+      );
+      if (segment) {
+        try {
+          await deleteSegmentMutation.mutateAsync({ segmentId: segment.id, lineId });
+        } catch (err) {
+          console.error("Failed to undo segment:", err);
+        }
+      }
+    },
+    [transitContext.transitNetwork, deleteSegmentMutation]
+  );
+
   const existingLineNames = transitContext.transitNetwork?.lines.map((l) => l.name) ?? [];
   const existingLineColors = transitContext.transitNetwork?.lines.map((l) => l.color) ?? [];
 
@@ -606,6 +630,7 @@ function TransitLineDrawingWithTransit({ children }: { children: ReactNode }) {
     <TransitLineDrawingProvider
       onSegmentCreate={handleSegmentCreate}
       onLineComplete={handleLineComplete}
+      onSegmentUndo={handleSegmentUndo}
       existingLineCount={transitContext.lineCount}
       existingLineNames={existingLineNames}
       existingLineColors={existingLineColors}
