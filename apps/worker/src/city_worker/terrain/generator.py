@@ -6,6 +6,7 @@ from typing import Any
 import numpy as np
 
 from city_worker.terrain.bays import BayConfig, apply_bay_erosion, extract_bays
+from city_worker.terrain.clip import clip_features_to_tile
 from city_worker.terrain.geographic_masks import apply_geographic_mask
 from city_worker.terrain.noise import apply_erosion, generate_heightfield
 from city_worker.terrain.types import (
@@ -231,6 +232,9 @@ class TerrainGenerator:
             levels=[0.3, 0.4, 0.5, 0.6, 0.7, 0.8],
         )
         features.extend(contours)
+
+        # Clip all features to tile boundaries (CITY-530)
+        features = clip_features_to_tile(features, tx, ty, cfg.tile_size)
 
         return TileTerrainData(
             tx=tx,
