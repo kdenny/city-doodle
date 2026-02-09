@@ -25,6 +25,7 @@ async def create_poi(db: AsyncSession, poi_create: POICreate) -> POI:
         name=poi_create.name,
         position_x=poi_create.position_x,
         position_y=poi_create.position_y,
+        footprint=poi_create.footprint,
     )
     db.add(poi)
     await db.commit()
@@ -43,6 +44,7 @@ async def create_pois_bulk(db: AsyncSession, pois: list[POICreate]) -> list[POI]
                 name=p.name,
                 position_x=p.position_x,
                 position_y=p.position_y,
+                footprint=p.footprint,
             )
         )
     db.add_all(models)
@@ -92,6 +94,8 @@ async def update_poi(
         poi.position_x = poi_update.position_x
     if poi_update.position_y is not None:
         poi.position_y = poi_update.position_y
+    if poi_update.footprint is not None:
+        poi.footprint = poi_update.footprint
 
     await db.commit()
     await db.refresh(poi)
@@ -125,6 +129,7 @@ def _to_schema(poi: POIModel) -> POI:
         name=poi.name,
         position_x=poi.position_x,
         position_y=poi.position_y,
+        footprint=poi.footprint,
         created_at=_ensure_utc(poi.created_at),
         updated_at=_ensure_utc(poi.updated_at),
     )
