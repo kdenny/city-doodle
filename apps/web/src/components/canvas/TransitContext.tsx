@@ -1446,25 +1446,40 @@ export function TransitProvider({ children, worldId }: TransitProviderProps) {
   );
 
   /**
+   * CITY-246: Pre-compute station→lines lookup map so getLinesForStation
+   * is O(1) instead of O(lines × segments) per call.
+   */
+  const stationToLinesMap = useMemo(() => {
+    const map = new Map<string, { id: string; name: string; color: string; lineType: string }[]>();
+    if (!transitNetwork) return map;
+    for (const line of transitNetwork.lines) {
+      const lineInfo = { id: line.id, name: line.name, color: line.color, lineType: line.line_type };
+      const stationIds = new Set<string>();
+      for (const seg of line.segments) {
+        stationIds.add(seg.from_station_id);
+        stationIds.add(seg.to_station_id);
+      }
+      for (const sid of stationIds) {
+        const existing = map.get(sid);
+        if (existing) {
+          existing.push(lineInfo);
+        } else {
+          map.set(sid, [lineInfo]);
+        }
+      }
+    }
+    return map;
+  }, [transitNetwork]);
+
+  /**
    * CITY-376: Get all transit lines that serve a given station.
+   * Uses pre-computed lookup map (CITY-246).
    */
   const getLinesForStation = useCallback(
     (stationId: string): { id: string; name: string; color: string; lineType: string }[] => {
-      if (!transitNetwork) return [];
-      return transitNetwork.lines
-        .filter((line) =>
-          line.segments.some(
-            (seg) => seg.from_station_id === stationId || seg.to_station_id === stationId
-          )
-        )
-        .map((line) => ({
-          id: line.id,
-          name: line.name,
-          color: line.color,
-          lineType: line.line_type,
-        }));
+      return stationToLinesMap.get(stationId) ?? [];
     },
-    [transitNetwork]
+    [stationToLinesMap]
   );
 
   /**
