@@ -1,6 +1,7 @@
 import { ReactNode, useCallback, useEffect, useRef, useState } from "react";
 import { useToastOptional } from "../../contexts";
 import { useWorld } from "../../api";
+import { useDeleteTransitLineSegment } from "../../api/hooks";
 import { WorldSettingsModal } from "../WorldSettingsModal";
 import { ViewModeProvider, useViewMode, ViewMode } from "./ViewModeContext";
 import { ZoomProvider, useZoom } from "./ZoomContext";
@@ -556,6 +557,7 @@ function DrawingWithFeatures({ children }: { children: ReactNode }) {
  */
 function TransitLineDrawingWithTransit({ children }: { children: ReactNode }) {
   const transitContext = useTransit();
+  const deleteSegment = useDeleteTransitLineSegment();
 
   const handleSegmentCreate = useCallback(
     async (
@@ -563,7 +565,7 @@ function TransitLineDrawingWithTransit({ children }: { children: ReactNode }) {
       toStation: RailStationData,
       lineProperties: TransitLineProperties,
       lineId: string | null
-    ): Promise<string | null> => {
+    ): Promise<{ lineId: string; segmentId: string } | null> => {
       // If no line exists yet, create one
       let actualLineId = lineId;
       if (!actualLineId) {
@@ -582,17 +584,33 @@ function TransitLineDrawingWithTransit({ children }: { children: ReactNode }) {
 
       // Create the segment
       const isUnderground = lineProperties.type === "subway";
-      await transitContext.createLineSegment(
+      const segmentId = await transitContext.createLineSegment(
         actualLineId,
         fromStation.id,
         toStation.id,
         isUnderground
       );
 
-      // Return the line ID so the drawing context can track it
-      return actualLineId;
+      if (!segmentId) return null;
+
+      return { lineId: actualLineId, segmentId };
     },
     [transitContext]
+  );
+
+  // CITY-538: Delete a segment when the user undoes a connection during line drawing
+  const handleSegmentUndo = useCallback(
+    async (segmentId: string) => {
+      const lineId = transitContext.transitNetwork?.lines.find((l) =>
+        l.segments.some((s) => s.id === segmentId)
+      )?.id;
+      await deleteSegment.mutateAsync({
+        segmentId,
+        lineId: lineId ?? "",
+        worldId: transitContext.transitNetwork?.stations[0]?.world_id,
+      });
+    },
+    [transitContext.transitNetwork, deleteSegment]
   );
 
   const handleLineComplete = useCallback(() => {
@@ -605,6 +623,7 @@ function TransitLineDrawingWithTransit({ children }: { children: ReactNode }) {
   return (
     <TransitLineDrawingProvider
       onSegmentCreate={handleSegmentCreate}
+      onSegmentUndo={handleSegmentUndo}
       onLineComplete={handleLineComplete}
       existingLineCount={transitContext.lineCount}
       existingLineNames={existingLineNames}
