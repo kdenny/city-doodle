@@ -103,7 +103,7 @@ const ROAD_STYLES: Record<RoadClass, RoadStyle> = {
     casingWidth: 1.5,
     casingColor: 0x777777, // Gray outline
     dashed: false,
-    minZoom: 0, // CITY-500: Always visible (was 0.15)
+    minZoom: 0.1, // CITY-557: Hide when zoomed out (was 0, CITY-500)
   },
   local: {
     width: 2,
@@ -111,7 +111,7 @@ const ROAD_STYLES: Record<RoadClass, RoadStyle> = {
     casingWidth: 1,
     casingColor: 0x888888, // Gray outline
     dashed: false,
-    minZoom: 0.05, // CITY-500: Visible at nearly all zoom levels (was 0.3)
+    minZoom: 0.25, // CITY-557: Only at moderate zoom (was 0.05, CITY-500)
   },
   trail: {
     width: 2,
@@ -119,7 +119,7 @@ const ROAD_STYLES: Record<RoadClass, RoadStyle> = {
     casingWidth: 0,
     casingColor: 0x000000,
     dashed: true,
-    minZoom: 0.15, // CITY-500: Visible at most zoom levels (was 0.6)
+    minZoom: 0.4, // CITY-557: Only when zoomed in (was 0.15, CITY-500)
   },
 };
 
@@ -700,8 +700,8 @@ setVisibility(visibility: LayerVisibility & { neighborhoods?: boolean; cityLimit
 
     const avgDiameter = totalDiameter / districts.length;
     const referenceDiameter = 40;
-    // Clamp between 0.5x and 3x to avoid extreme values
-    return Math.max(0.5, Math.min(3, avgDiameter / referenceDiameter));
+    // CITY-557: Clamp to [0.5, 1.5] — old max of 3 caused oversized roads
+    return Math.max(0.5, Math.min(1.5, avgDiameter / referenceDiameter));
   }
 
 
@@ -1008,12 +1008,16 @@ setVisibility(visibility: LayerVisibility & { neighborhoods?: boolean; cityLimit
     }
     const renderStart = performance.now();
 
-    // Scale road widths with zoom (thinner when zoomed out) and district size
-    const zoomScale = Math.max(0.5, Math.min(1.5, this.currentZoom)) * this.districtScale;
+    // CITY-557: Scale road widths with zoom — lower floor so roads actually
+    // shrink when zoomed out, and cap districtScale to prevent oversized strokes.
+    const zoomFactor = Math.max(0.1, Math.min(1.5, this.currentZoom));
+    const scaleFactor = Math.max(0.5, Math.min(1.5, this.districtScale));
+    const zoomScale = zoomFactor * scaleFactor;
 
     // CITY-377: Enforce minimum widths so streets never become sub-pixel invisible
-    const MIN_ROAD_WIDTH = 0.8;
-    const MIN_CASING_WIDTH = 1.5;
+    // CITY-557: Lowered minimums — the LOD filtering now handles visibility instead.
+    const MIN_ROAD_WIDTH = 0.3;
+    const MIN_CASING_WIDTH = 0.5;
 
     // Draw road casings first (outlines) - only for roads that have casings
     for (const road of visibleRoads) {
