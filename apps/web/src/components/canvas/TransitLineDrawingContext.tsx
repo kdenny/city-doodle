@@ -135,6 +135,10 @@ export function TransitLineDrawingProvider({
   const stateRef = useRef(state);
   stateRef.current = state;
 
+  // CITY-535: Refs to prevent race condition during rapid station clicks
+  const segmentCreatingRef = useRef(false);
+  const lineIdRef = useRef<string | null>(null);
+
   const startDrawing = useCallback((properties?: TransitLineProperties) => {
     // Find first unused color and name to avoid collisions after deletions
     const usedColors = new Set(existingLineColors);
@@ -155,6 +159,9 @@ export function TransitLineDrawingProvider({
       color,
       type: "rail",
     };
+
+    lineIdRef.current = null;
+    segmentCreatingRef.current = false;
 
     setState({
       isDrawing: true,
@@ -185,9 +192,14 @@ export function TransitLineDrawingProvider({
       // Can't connect to the same station
       if (station.id === current.firstStation.id) return;
 
+      // CITY-535: Prevent concurrent segment creation (race condition)
+      if (segmentCreatingRef.current) return;
+
       // Capture values before updating state
       const fromStation = current.firstStation;
-      const { lineProperties, lineId } = current;
+      const { lineProperties } = current;
+      // Use ref for lineId to get the most up-to-date value
+      const lineId = lineIdRef.current;
 
       // Update state: move to next station
       setState((prev) => ({
@@ -198,13 +210,17 @@ export function TransitLineDrawingProvider({
 
       // Create segment (side effect outside of setState updater)
       if (lineProperties && onSegmentCreate) {
+        segmentCreatingRef.current = true;
         try {
           const returnedLineId = await onSegmentCreate(fromStation, station, lineProperties, lineId);
           if (returnedLineId) {
+            lineIdRef.current = returnedLineId;
             setState((s) => ({ ...s, lineId: returnedLineId }));
           }
         } catch (err) {
           console.error("Failed to create transit line segment:", err);
+        } finally {
+          segmentCreatingRef.current = false;
         }
       }
     },
@@ -256,10 +272,14 @@ export function TransitLineDrawingProvider({
     }
 
     // Reset state
+    lineIdRef.current = null;
+    segmentCreatingRef.current = false;
     setState(INITIAL_STATE);
   }, [state.connectedStations, state.lineProperties, state.lineId, canComplete, onLineComplete]);
 
   const cancelDrawing = useCallback(() => {
+    lineIdRef.current = null;
+    segmentCreatingRef.current = false;
     setState(INITIAL_STATE);
   }, []);
 
@@ -270,6 +290,9 @@ export function TransitLineDrawingProvider({
    */
   const extendLine = useCallback(
     (lineId: string, terminus: RailStationData, properties: TransitLineProperties) => {
+      lineIdRef.current = lineId;
+      segmentCreatingRef.current = false;
+
       setState({
         isDrawing: true,
         firstStation: terminus,
