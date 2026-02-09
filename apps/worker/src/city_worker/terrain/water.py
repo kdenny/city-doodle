@@ -595,6 +595,7 @@ def extract_beaches(
     min_length: int = 5,
     max_slope: float = 0.15,
     width_multiplier: float = 1.0,
+    lagoon_polygons: list[Polygon] | None = None,
 ) -> list[TerrainFeature]:
     """Extract beach regions where land meets water at shallow slopes.
 
@@ -611,6 +612,8 @@ def extract_beaches(
         min_length: Minimum beach segment length in cells
         max_slope: Maximum slope gradient for beach formation
         width_multiplier: Multiplier for beach width (1.0 = normal)
+        lagoon_polygons: Lagoon polygons from barrier islands; beaches
+            mostly inside a lagoon are skipped (CITY-525)
 
     Returns:
         List of beach polygon features with beach_type property
@@ -697,6 +700,20 @@ def extract_beaches(
                         extended_cells, tile_x, tile_y, tile_size, cell_size, w
                     )
                     if poly is not None and poly.is_valid:
+                        # Skip beaches that are mostly inside a lagoon (CITY-525)
+                        if lagoon_polygons:
+                            skip = False
+                            for lagoon in lagoon_polygons:
+                                try:
+                                    overlap = poly.intersection(lagoon).area
+                                    if overlap > poly.area * 0.5:
+                                        skip = True
+                                        break
+                                except Exception:
+                                    pass
+                            if skip:
+                                continue
+
                         # Calculate average width based on original region shape
                         area = len(region_cells) * cell_size * cell_size
                         perimeter = poly.length
