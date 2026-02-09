@@ -346,11 +346,15 @@ class JobRunner:
         # Load water regions from terrain for expansion constraints
         water_regions = await self._load_water_regions(world_id)
 
+        # Load transit stations for TOD growth (CITY-314)
+        transit_stations = await self._load_transit_stations(world_id)
+
         # Run simulation
         config = GrowthConfig(world_id=world_id, years=years)
         simulator = GrowthSimulator(config, seed=world_seed)
         changelog = simulator.simulate(
             districts, road_nodes, road_edges, pois, water_regions,
+            transit_stations,
         )
 
         # Persist changes back to DB
@@ -451,6 +455,29 @@ class JobRunner:
             ]
 
             return districts, road_nodes, road_edges, pois, world_seed
+        finally:
+            await session.close()
+
+    async def _load_transit_stations(self, world_id: UUID) -> list[dict]:
+        """Load transit station positions for TOD growth calculations."""
+        session = await get_session()
+        try:
+            result = await session.execute(
+                text("""
+                    SELECT id, position_x, position_y, station_type
+                    FROM transit_stations WHERE world_id = :wid
+                """),
+                {"wid": world_id},
+            )
+            return [
+                {
+                    "id": str(r[0]),
+                    "position_x": float(r[1]),
+                    "position_y": float(r[2]),
+                    "station_type": r[3],
+                }
+                for r in result.fetchall()
+            ]
         finally:
             await session.close()
 
