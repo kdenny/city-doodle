@@ -247,18 +247,18 @@ class TestTicketCLI:
             title="Labeled",
             description="",
             status="Backlog",
-            labels=["Bug", "High Risk"],
+            labels=["Bug", "Frontend"],
             url="",
             raw={},
         )
         mock_tracker.create_ticket.return_value = mock_ticket
 
         with patch("lib.vibe.cli.ticket.ensure_tracker_configured", return_value=mock_tracker):
-            result = runner.invoke(main, ["create", "Labeled", "-l", "Bug", "-l", "High Risk"])
+            result = runner.invoke(main, ["create", "Labeled", "-l", "Bug", "-l", "Frontend"])
 
         assert result.exit_code == 0
         mock_tracker.create_ticket.assert_called_once_with(
-            title="Labeled", description="", labels=["Bug", "High Risk"]
+            title="Labeled", description="", labels=["Bug", "Frontend"]
         )
 
     def test_update_command_success(self) -> None:
@@ -420,7 +420,7 @@ class TestPrintFunctions:
             title="Test Title",
             description="Test description content",
             status="In Progress",
-            labels=["Bug", "High Risk"],
+            labels=["Bug", "Frontend"],
             url="https://example.com/TEST-1",
             raw={},
         )
@@ -431,7 +431,7 @@ class TestPrintFunctions:
         assert "TEST-1" in captured.out
         assert "Test Title" in captured.out
         assert "In Progress" in captured.out
-        assert "Bug, High Risk" in captured.out
+        assert "Bug, Frontend" in captured.out
         assert "Test description content" in captured.out
 
     def test_print_ticket_no_description(self, capsys) -> None:

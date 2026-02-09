@@ -506,7 +506,7 @@ class TestRetrofitApplier:
 
         template_path = temp_project / ".github" / "PULL_REQUEST_TEMPLATE.md"
         assert template_path.exists()
-        assert "Risk Assessment" in template_path.read_text()
+        assert "## Testing" in template_path.read_text()
 
     def test_apply_pr_template_already_exists(self, temp_project: Path) -> None:
         """Test PR template not overwritten if exists."""

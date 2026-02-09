@@ -392,7 +392,6 @@ def tickets_cmd(figma_link: str, description: str, project_path: str, dry_run: b
         click.echo()
         click.secho(f"Ticket {i}: {ticket['title']}", fg="green", bold=True)
         click.echo(f"  Type: {ticket['type']}")
-        click.echo(f"  Risk: {ticket['risk']}")
         click.echo(f"  Area: {ticket['area']}")
         if ticket.get("blocked_by"):
             click.echo(f"  Blocked by: Ticket {ticket['blocked_by']}")
@@ -421,7 +420,6 @@ def _generate_tickets(figma_link: str, description: str, analysis) -> list[dict]
         {
             "title": f"Implement layout structure for {description}",
             "type": "Feature",
-            "risk": "Low Risk",
             "area": "Frontend",
             "description": f"""## Summary
 Implement the layout structure as shown in the Figma design.
@@ -446,7 +444,6 @@ Implement the layout structure as shown in the Figma design.
         {
             "title": f"Create UI components for {description}",
             "type": "Feature",
-            "risk": "Low Risk",
             "area": "Frontend",
             "blocked_by": 1,
             "description": f"""## Summary
@@ -476,7 +473,6 @@ These components already exist and should be reused:
         {
             "title": f"Integrate {description} feature",
             "type": "Feature",
-            "risk": "Medium Risk",
             "area": "Frontend",
             "blocked_by": 2,
             "description": f"""## Summary
@@ -516,8 +512,6 @@ def _create_tickets(tickets: list[dict]) -> None:
             ticket["title"],
             "--label",
             ticket["type"],
-            "--label",
-            ticket["risk"],
             "--label",
             ticket["area"],
         ]

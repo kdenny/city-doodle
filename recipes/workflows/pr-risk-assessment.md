@@ -1,15 +1,14 @@
-# PR Risk Assessment
+# PR Review Guidelines
 
 ## When to Use This Recipe
 
 Use this recipe when you need to:
-- Classify PRs by risk level
-- Determine appropriate review requirements
+- Determine appropriate review requirements for PRs
 - Guide testing and rollback planning
 
-## Risk Levels
+## Review Guidelines
 
-### Low Risk
+### Minimal Changes
 Changes unlikely to cause issues in production.
 
 **Characteristics:**
@@ -25,19 +24,7 @@ Changes unlikely to cause issues in production.
 - Standard CI passing
 - Can merge without manual testing
 
-**Example:**
-```markdown
-## Risk: Low
-
-Changes:
-- Fixed typo in error message
-- Updated README with new setup instructions
-- Added unit tests for existing function
-
-No production code logic changes.
-```
-
-### Medium Risk
+### Moderate Changes
 Changes that could cause issues but are contained.
 
 **Characteristics:**
@@ -54,22 +41,7 @@ Changes that could cause issues but are contained.
 - Manual testing in staging recommended
 - Rollback plan identified
 
-**Example:**
-```markdown
-## Risk: Medium
-
-Changes:
-- Added new notification preferences endpoint
-- Refactored email service (no behavior change)
-- Updated authentication library
-
-Testing:
-- Unit tests added
-- Tested in staging environment
-- Rollback: Revert commit and redeploy
-```
-
-### High Risk
+### Significant Changes
 Changes that could significantly impact production.
 
 **Characteristics:**
@@ -90,34 +62,9 @@ Changes that could significantly impact production.
 - Detailed rollback plan
 - Consider phased rollout
 
-**Example:**
-```markdown
-## Risk: High
+## Review Assessment Checklist
 
-Changes:
-- Modified user authentication flow
-- Added new database migration
-- Changed payment retry logic
-
-Mitigation:
-- Feature flag: `NEW_AUTH_FLOW`
-- Database migration is additive (backward compatible)
-- Tested with subset of staging users
-
-Rollback Plan:
-1. Disable feature flag
-2. Run reverse migration (sql/rollback_20240101.sql)
-3. Redeploy previous version
-
-Monitoring:
-- Watch auth failure rates
-- Monitor payment success rates
-- Alert if login latency > 2s
-```
-
-## Risk Assessment Checklist
-
-Ask these questions to determine risk:
+Ask these questions to determine review scope:
 
 ### Impact Questions
 - [ ] Does this touch authentication/authorization?
@@ -138,57 +85,8 @@ Ask these questions to determine risk:
 - [ ] Do we understand all the edge cases?
 - [ ] Are dependencies well understood?
 
-## Label Guidelines
-
-| Risk Level | Changes Required | Testing Required |
-|------------|-----------------|------------------|
-| Low Risk | 1 reviewer | CI passing |
-| Medium Risk | 1-2 reviewers | CI + staging |
-| High Risk | 2+ reviewers | CI + staging + load testing |
-
-## PR Template Integration
-
-Add risk to your PR template:
-
-```markdown
-## Risk Assessment
-
-- [ ] **Low Risk** - Docs, tests, typos
-- [ ] **Medium Risk** - New features (flagged), refactoring
-- [ ] **High Risk** - Auth, payments, data, infrastructure
-
-<!-- For Medium/High Risk, fill out: -->
-
-### Testing Performed
--
-
-### Rollback Plan
--
-
-### Monitoring
--
-```
-
-## GitHub Actions Integration
-
-The PR policy workflow checks for risk labels:
-
-```yaml
-- name: Check risk label
-  uses: actions/github-script@v7
-  with:
-    script: |
-      const labels = context.payload.pull_request.labels;
-      const hasRisk = labels.some(l =>
-        ['Low Risk', 'Medium Risk', 'High Risk'].includes(l.name)
-      );
-      if (!hasRisk) {
-        core.setFailed('PR must have a risk label');
-      }
-```
-
 ## Extension Points
 
-- Add automated risk scoring based on files changed
-- Require additional approvers for high risk
-- Block high-risk merges without staging test
+- Add automated review scope scoring based on files changed
+- Require additional approvers for significant changes
+- Block merges for significant changes without staging test

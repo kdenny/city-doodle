@@ -43,9 +43,6 @@ ALL_WORKFLOWS = (
 
 # Required labels for PR policy
 REQUIRED_LABELS = [
-    ("Low Risk", "0e8a16", "Minimal scope, well-tested, low blast radius"),
-    ("Medium Risk", "fbca04", "Moderate scope, may affect multiple components"),
-    ("High Risk", "d93f0b", "Large scope, critical path, or infrastructure changes"),
     ("Bug", "d73a4a", "Something isn't working"),
     ("Feature", "a2eeef", "New feature or request"),
     ("Chore", "fef2c0", "Maintenance, dependencies, cleanup"),

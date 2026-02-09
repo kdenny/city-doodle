@@ -46,7 +46,7 @@ Create a new ticket.
 **Usage**: `bin/ticket create "<title>"`
 **Examples:**
 - `bin/ticket create "Add user authentication"`
-- `bin/ticket create "Fix login bug" --label Bug --label "High Risk"`
+- `bin/ticket create "Fix login bug" --label Bug --label Backend`
 
 ### ticket link
 Create or remove blocking relationships between tickets.

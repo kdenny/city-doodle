@@ -110,7 +110,7 @@ Each recipe = one focused problem. **Markdown, copy-paste friendly.** No prose f
 - `git-worktrees.md` — Why they exist; how `vibe do <ticket>` works; how cleanup happens
 - `branching-and-rebasing.md` — Always rebase main; no merge commits
 - `stacked-vs-milestone-prs.md` — When 1 PR per subtask is okay; when 1 PR per milestone is better
-- `pr-risk-assessment.md` — How Low / Medium / High risk is determined; examples
+- `pr-risk-assessment.md` — PR review guidelines and assessment checklist
 - `testing-instructions-writing.md` — How to write instructions a non-technical reviewer can follow
 
 **`/recipes/tickets/`**
@@ -212,10 +212,6 @@ If ambiguous → STOP and ask clarifying questions.
 
 ### On PR Creation
 - Open PR via GitHub
-- Apply risk label:
-  - Low Risk
-  - Medium Risk (review recommended)
-  - High Risk (review required)
 - Add:
   - Entry-level testing instructions
   - Confirmation of acceptance criteria
@@ -224,10 +220,8 @@ If ambiguous → STOP and ask clarifying questions.
 
 ### Enforcement
 - **Only applies when tests are configured to run in CI.** If tests are not in CI, do not block merge on coverage.
-- High Risk PRs (when tests run in CI):
-  - Must have unit test coverage if tests exist
-  - Block merge otherwise
-- If tests don’t exist:
+- PRs touching critical paths (auth, payments, database) should have unit test coverage
+- If tests don't exist:
   - Warn
   - Include copy-paste test proposals
 
