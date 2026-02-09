@@ -744,6 +744,11 @@ def extract_beaches(
             except Exception:
                 pass
 
+    # Track per-lake beach coverage so we can cap it (CITY-547).
+    # Key = index into lake_polygons, value = accumulated beach perimeter.
+    lake_beach_perimeter: dict[int, float] = {}
+    lake_perimeter_cap = 0.20  # Max 20% of lake perimeter covered by beaches
+
     # Find connected beach regions and split into discrete segments
     visited = np.zeros_like(beach_mask, dtype=bool)
     features = []
@@ -822,14 +827,16 @@ def extract_beaches(
                                 continue
 
                         # CITY-547: Skip lake beaches at river junctions and
-                        # cap lake beach coverage.
+                        # cap lake beach coverage to ~20% of lake perimeter.
                         beach_type = "ocean"
+                        matched_lake_idx: int | None = None
                         if lake_polygons:
-                            for lake in lake_polygons:
+                            for li, lake in enumerate(lake_polygons):
                                 try:
                                     overlap = poly.intersection(lake).area
                                     if overlap > poly.area * 0.3:
                                         beach_type = "lake"
+                                        matched_lake_idx = li
                                         # Skip lake beach if it's near a river
                                         if river_buffers:
                                             for rbuf in river_buffers:
@@ -844,6 +851,15 @@ def extract_beaches(
                                     pass
                         if beach_type == "river":
                             continue
+
+                        # Cap lake beach coverage (CITY-547)
+                        if beach_type == "lake" and matched_lake_idx is not None:
+                            lake_perim = lake_polygons[matched_lake_idx].length
+                            used = lake_beach_perimeter.get(matched_lake_idx, 0.0)
+                            if lake_perim > 0 and used >= lake_perim * lake_perimeter_cap:
+                                continue
+                            # Track how much perimeter this beach consumes
+                            lake_beach_perimeter[matched_lake_idx] = used + poly.length
 
                         area = len(segment_cells) * cell_size * cell_size
                         perimeter = poly.length
