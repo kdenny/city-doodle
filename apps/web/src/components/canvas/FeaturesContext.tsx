@@ -716,7 +716,12 @@ export function FeaturesProvider({
         polygon,
         apiDistrict.id,
         districtType,
-        centroid
+        centroid,
+        0.5, // default sprawlCompact
+        undefined, // gridAngle
+        undefined, // transitOptions
+        undefined, // adjacentGridOrigin
+        undefined // eraYear — legacy districts default to 2024
       );
       backfilledRoads.push(...gridResult.roads);
 
@@ -1140,7 +1145,8 @@ export function FeaturesProvider({
           transitStations.length > 0
             ? { transitStations, transitCar: personality.transit_car }
             : undefined,
-          adjacentGridOrigin
+          adjacentGridOrigin,
+          personality.era_year
         );
         generated.roads = clippedGridResult.roads;
         generated.district.gridAngle = clippedGridResult.gridAngle;
@@ -1189,7 +1195,9 @@ export function FeaturesProvider({
           generated.district.gridAngle,
           transitStations.length > 0
             ? { transitStations, transitCar: personality.transit_car }
-            : undefined
+            : undefined,
+          undefined, // adjacentGridOrigin
+          personality.era_year
         );
         generated.roads = clippedGridResult.roads;
         generated.district.gridAngle = clippedGridResult.gridAngle;
@@ -1816,7 +1824,8 @@ export function FeaturesProvider({
         const { roads: newRoads, gridAngle: actualAngle } = regenerateStreetGridWithAngle(
           updatedDistrictForGrid,
           currentDistrict.gridAngle ?? 0,
-          updatedPersonality.sprawl_compact ?? 0.5
+          updatedPersonality.sprawl_compact ?? 0.5,
+          updatedPersonality.era_year
         );
 
         // Update district with new type, personality, and regenerated roads
@@ -1882,7 +1891,8 @@ export function FeaturesProvider({
         const { roads: newRoads, gridAngle: actualAngle } = regenerateStreetGridWithAngle(
           currentDistrict,
           updates.gridAngle,
-          currentDistrict.personality?.sprawl_compact ?? 0.5
+          currentDistrict.personality?.sprawl_compact ?? 0.5,
+          currentDistrict.personality?.era_year
         );
 
         // Update district with new gridAngle and replace its roads

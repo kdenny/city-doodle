@@ -665,7 +665,9 @@ export function regenerateStreetGridForClippedDistrict(
   gridAngle?: number,
   transitOptions?: { transitStations?: Point[]; transitCar?: number },
   /** CITY-384: Grid origin from adjacent district for street alignment */
-  adjacentGridOrigin?: Point
+  adjacentGridOrigin?: Point,
+  /** CITY-555: Era year for block size scaling */
+  eraYear?: number
 ): { roads: Road[]; gridAngle: number } {
   // Don't generate streets for parks or airports
   if (districtType === "park" || districtType === "airport") {
@@ -684,7 +686,12 @@ export function regenerateStreetGridForClippedDistrict(
   // Calculate type-specific block size with density multiplier
   const baseBlockSize = getBaseBlockSize(districtType);
   const densityMultiplier = calculateDensityMultiplier(sprawlCompact);
-  const effectiveBlockSize = metersToWorldUnits(baseBlockSize * densityMultiplier);
+  // CITY-555: Apply same era-based multiplier as initial generation
+  const era = eraYear ?? 2024;
+  const eraMultiplier = era <= 1940
+    ? 0.7 + 0.3 * ((era - 1200) / 740)
+    : 1.0 + 0.2 * ((era - 1940) / 84);
+  const effectiveBlockSize = metersToWorldUnits(baseBlockSize * densityMultiplier * eraMultiplier);
 
   return generateStreetGrid(
     clippedPolygon,
@@ -712,7 +719,9 @@ export function regenerateStreetGridForClippedDistrict(
 export function regenerateStreetGridWithAngle(
   district: District,
   newGridAngle: number,
-  sprawlCompact: number = 0.5
+  sprawlCompact: number = 0.5,
+  /** CITY-555: Era year for block size scaling */
+  eraYear?: number
 ): { roads: Road[]; gridAngle: number } {
   // Don't generate streets for parks or airports
   if (district.type === "park" || district.type === "airport") {
@@ -734,7 +743,12 @@ export function regenerateStreetGridWithAngle(
   // Calculate type-specific block size with density multiplier
   const baseBlockSize = getBaseBlockSize(district.type);
   const densityMultiplier = calculateDensityMultiplier(sprawlCompact);
-  const effectiveBlockSize = metersToWorldUnits(baseBlockSize * densityMultiplier);
+  // CITY-555: Apply same era-based multiplier as initial generation
+  const era = eraYear ?? district.personality?.era_year ?? 2024;
+  const eraMultiplier = era <= 1940
+    ? 0.7 + 0.3 * ((era - 1200) / 740)
+    : 1.0 + 0.2 * ((era - 1940) / 84);
+  const effectiveBlockSize = metersToWorldUnits(baseBlockSize * densityMultiplier * eraMultiplier);
 
   // Explicit grid angle overrides transit orientation, so no transit options needed
   return generateStreetGrid(
