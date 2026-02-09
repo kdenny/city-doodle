@@ -536,17 +536,19 @@ export class RailStationLayer {
    * Returns the station data if hit, null otherwise.
    */
   hitTest(x: number, y: number): RailStationData | null {
+    let closest: RailStationData | null = null;
+    let closestDist = Infinity;
     for (const station of this.currentStations) {
       const dx = x - station.position.x;
       const dy = y - station.position.y;
-      const distance = Math.sqrt(dx * dx + dy * dy);
-      // Use slightly larger hit radius for easier clicking
+      const dist = Math.sqrt(dx * dx + dy * dy);
       const hitRadius = (station.isHub ? HUB_STATION_RADIUS : STATION_RADIUS) + 4;
-      if (distance <= hitRadius) {
-        return station;
+      if (dist <= hitRadius && dist < closestDist) {
+        closest = station;
+        closestDist = dist;
       }
     }
-    return null;
+    return closest;
   }
 
   /**

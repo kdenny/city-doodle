@@ -7,6 +7,7 @@
 import { useState, useCallback, useEffect, useRef } from "react";
 import type { TransitLineProperties } from "../canvas/TransitLineDrawingContext";
 import type { LineType } from "../../api/types";
+import { RAIL_LINE_COLORS, SUBWAY_LINE_COLORS } from "../canvas/transitColors";
 
 // CITY-362: Validate hex color format (#RRGGBB)
 const HEX_COLOR_RE = /^#[0-9A-Fa-f]{6}$/;
@@ -14,17 +15,6 @@ function isValidHexColor(value: string): boolean {
   return HEX_COLOR_RE.test(value);
 }
 
-// Predefined color palette for transit lines
-const LINE_COLORS = [
-  { name: "Red", value: "#B22222" },
-  { name: "Green", value: "#2E8B57" },
-  { name: "Blue", value: "#4169E1" },
-  { name: "Gold", value: "#DAA520" },
-  { name: "Brown", value: "#8B4513" },
-  { name: "Purple", value: "#663399" },
-  { name: "Orange", value: "#FF6600" },
-  { name: "Teal", value: "#008080" },
-];
 
 const LINE_TYPES: { label: string; value: LineType }[] = [
   { label: "Rail (Heavy Rail)", value: "rail" },
@@ -52,12 +42,15 @@ export function TransitLinePropertiesDialog({
   onCancel,
 }: TransitLinePropertiesDialogProps) {
   const [name, setName] = useState(initialProperties?.name || "New Line");
-  const [color, setColor] = useState(initialProperties?.color || LINE_COLORS[0].value);
+  const [color, setColor] = useState(initialProperties?.color || RAIL_LINE_COLORS[0].hex);
   const [lineType, setLineType] = useState<LineType>(initialProperties?.type || "rail");
   const [customColor, setCustomColor] = useState("");
   const [colorError, setColorError] = useState("");
   const [nameError, setNameError] = useState("");
   const nameInputRef = useRef<HTMLInputElement>(null);
+
+  // Derive color palette from line type, mapped to { name, value } for the UI
+  const colorPalette = (lineType === "subway" ? SUBWAY_LINE_COLORS : RAIL_LINE_COLORS).map(c => ({ name: c.name, value: c.hex }));
 
   // Reset form when dialog opens
   useEffect(() => {
@@ -69,7 +62,7 @@ export function TransitLinePropertiesDialog({
       setNameError("");
 
       // Check if color is custom (not in palette)
-      const isCustomColor = !LINE_COLORS.some((c) => c.value === initialProperties.color);
+      const isCustomColor = !colorPalette.some((c) => c.value === initialProperties.color);
       if (isCustomColor) {
         setCustomColor(initialProperties.color);
       } else {
@@ -196,7 +189,7 @@ export function TransitLinePropertiesDialog({
             Line Color
           </label>
           <div className="flex flex-wrap gap-2 mb-2">
-            {LINE_COLORS.map((c) => (
+            {colorPalette.map((c) => (
               <button
                 key={c.value}
                 type="button"

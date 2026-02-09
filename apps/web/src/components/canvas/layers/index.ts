@@ -98,3 +98,4 @@ export type {
 } from "./poiArterialValidator";
 export { generatePOIsForDistrict } from "./poiAutoGenerator";
 
+export { WalkabilityOverlayLayer } from "./WalkabilityOverlayLayer";

@@ -159,6 +159,35 @@ class TerrainGenerator:
                     tile_size=cfg.tile_size,
                 )
 
+        # Barrier islands (moved before beaches so lagoon polygons can
+        # be used to exclude lagoon-side beaches — CITY-525)
+        lagoon_polygons: list = []
+        if cfg.barrier_islands_enabled:
+            barrier_island_config = BarrierIslandConfig(
+                island_offset_min=cfg.barrier_island_offset_min,
+                island_offset_max=cfg.barrier_island_offset_max,
+                island_width_min=cfg.barrier_island_width_min,
+                island_width_max=cfg.barrier_island_width_max,
+                island_length_min=cfg.barrier_island_length_min,
+                inlet_spacing_min=cfg.barrier_inlet_spacing_min,
+                inlet_spacing_max=cfg.barrier_inlet_spacing_max,
+            )
+            barrier_islands = extract_barrier_islands(
+                heightfield=heightfield,
+                water_level=cfg.water_level,
+                tile_x=tx,
+                tile_y=ty,
+                tile_size=cfg.tile_size,
+                seed=cfg.world_seed,
+                config=barrier_island_config,
+            )
+            features.extend(barrier_islands)
+            # Collect lagoon polygons for beach filtering
+            for f in barrier_islands:
+                if f.type == "lagoon":
+                    from shapely.geometry import shape
+                    lagoon_polygons.append(shape(f.geometry))
+
         # Beaches (transition zones between water and land)
         if cfg.beach_enabled:
             beach_seed = abs(cfg.world_seed ^ (tx * 5413 + ty * 5417))
@@ -175,6 +204,7 @@ class TerrainGenerator:
                 max_segment_cells=cfg.beach_max_segment_cells,
                 gap_cells=cfg.beach_gap_cells,
                 seed=beach_seed,
+                lagoon_polygons=lagoon_polygons,
             )
             features.extend(beaches)
 
@@ -201,28 +231,6 @@ class TerrainGenerator:
             min_area_cells=20,
         )
         features.extend(lakes)
-
-        # Barrier islands (along gradual coastal slopes)
-        if cfg.barrier_islands_enabled:
-            barrier_island_config = BarrierIslandConfig(
-                island_offset_min=cfg.barrier_island_offset_min,
-                island_offset_max=cfg.barrier_island_offset_max,
-                island_width_min=cfg.barrier_island_width_min,
-                island_width_max=cfg.barrier_island_width_max,
-                island_length_min=cfg.barrier_island_length_min,
-                inlet_spacing_min=cfg.barrier_inlet_spacing_min,
-                inlet_spacing_max=cfg.barrier_inlet_spacing_max,
-            )
-            barrier_islands = extract_barrier_islands(
-                heightfield=heightfield,
-                water_level=cfg.water_level,
-                tile_x=tx,
-                tile_y=ty,
-                tile_size=cfg.tile_size,
-                seed=cfg.world_seed,
-                config=barrier_island_config,
-            )
-            features.extend(barrier_islands)
 
         # Generate contour lines
         contours = self._generate_contours(

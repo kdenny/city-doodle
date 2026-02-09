@@ -85,6 +85,7 @@ class GrowthSimulator:
         road_edges: list[dict[str, Any]],
         pois: list[dict[str, Any]],
         terrain_water_regions: list[dict[str, Any]] | None = None,
+        transit_stations: list[dict[str, Any]] | None = None,
     ) -> GrowthChangelog:
         """Run growth simulation and return changelog with mutations.
 
@@ -99,7 +100,7 @@ class GrowthSimulator:
         for year in range(self.config.years):
             self._simulate_year(
                 districts, road_nodes, road_edges, pois,
-                terrain_water_regions, changelog,
+                terrain_water_regions, transit_stations, changelog,
             )
 
         return changelog
@@ -111,9 +112,32 @@ class GrowthSimulator:
         road_edges: list[dict],
         pois: list[dict],
         water_regions: list[dict] | None,
+        transit_stations: list[dict] | None,
         changelog: GrowthChangelog,
     ) -> None:
         """Simulate one year of growth."""
+        # CITY-314: Auto-compute transit_access from actual station positions
+        if transit_stations:
+            for district in districts:
+                geometry = district.get("geometry")
+                if not geometry:
+                    continue
+                ring = _get_outer_ring(geometry)
+                if not ring or len(ring) < 3:
+                    continue
+                # Calculate district centroid
+                valid_pts = [p for p in ring if isinstance(p, list) and len(p) >= 2]
+                if not valid_pts:
+                    continue
+                cx = sum(p[0] for p in valid_pts) / len(valid_pts)
+                cy = sum(p[1] for p in valid_pts) / len(valid_pts)
+                # Check if any transit station is within TOD radius (1200m ~ 15 min walk)
+                has_transit = any(
+                    math.hypot(s["position_x"] - cx, s["position_y"] - cy) < 1200
+                    for s in transit_stations
+                )
+                district["transit_access"] = has_transit
+
         for district in districts:
             if district.get("historic", False):
                 changelog.districts_skipped_historic += 1
@@ -122,7 +146,7 @@ class GrowthSimulator:
             d_type = district["type"]
 
             # 1. Infill development
-            self._infill_district(district, changelog)
+            self._infill_district(district, changelog, transit_stations)
 
             # 2. Expansion at edges (constrained by other districts and water,
             #    biased toward road corridors)
@@ -144,6 +168,7 @@ class GrowthSimulator:
 
     def _infill_district(
         self, district: dict, changelog: GrowthChangelog,
+        transit_stations: list[dict] | None = None,
     ) -> None:
         """Increase density in an existing district."""
         d_type = district["type"]
@@ -152,6 +177,21 @@ class GrowthSimulator:
         # Transit-accessible districts grow faster (CITY-429)
         if district.get("transit_access", False):
             rate *= TRANSIT_ACCESS_GROWTH_MULTIPLIER
+
+        # CITY-314: Extra density boost for districts with station within core TOD zone (400m)
+        if transit_stations:
+            ring = _get_outer_ring(district.get("geometry", {}))
+            if ring and len(ring) >= 3:
+                valid_pts = [p for p in ring if isinstance(p, list) and len(p) >= 2]
+                if valid_pts:
+                    cx = sum(p[0] for p in valid_pts) / len(valid_pts)
+                    cy = sum(p[1] for p in valid_pts) / len(valid_pts)
+                    min_dist = min(
+                        (math.hypot(s["position_x"] - cx, s["position_y"] - cy) for s in transit_stations),
+                        default=float("inf"),
+                    )
+                    if min_dist < 400:  # Core TOD zone
+                        rate *= 1.2  # Additional 20% on top of transit_access bonus
 
         max_density = self.config.max_density.get(d_type, 10.0)
         old_density = district.get("density", 1.0)
