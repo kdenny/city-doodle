@@ -74,6 +74,7 @@ export class RailStationLayer {
   private trackGraphics: Map<string, Graphics> = new Map();
   private previewGraphics: Graphics | null = null;
   private previewText: Text | null = null;
+  private labelsVisible: boolean = true;
   private currentStations: RailStationData[] = [];
   private highlightedStationIds: Set<string> = new Set();
   private highlightedSegmentIds: Set<string> = new Set();
@@ -320,8 +321,10 @@ export class RailStationLayer {
       fontWeight: isHub ? "bold" : "500",
     });
     const labelText = new Text({ text: name, style: labelStyle });
+    labelText.label = "station-label";
     labelText.anchor.set(0.5, 0);
     labelText.position.set(position.x, position.y + radius + 4);
+    labelText.visible = this.labelsVisible;
     container.addChild(labelText);
   }
 
@@ -504,6 +507,21 @@ export class RailStationLayer {
    */
   setVisible(visible: boolean): void {
     this.container.visible = visible;
+  }
+
+  /**
+   * Toggle station name label visibility (CITY-534).
+   * When false, station markers remain but name labels are hidden.
+   */
+  setLabelsVisible(visible: boolean): void {
+    this.labelsVisible = visible;
+    for (const [, container] of this.stationGraphics) {
+      for (const child of container.children) {
+        if (child.label === "station-label") {
+          child.visible = visible;
+        }
+      }
+    }
   }
 
   setStationOffset(stationId: string, dx: number, dy: number): void {

@@ -91,6 +91,7 @@ export class SubwayStationLayer {
   private previewText: Text | null = null;
   private previewLabel: Text | null = null;
   private tunnelsVisible: boolean = false;
+  private labelsVisible: boolean = true;
   private currentStations: SubwayStationData[] = [];
   private highlightedStationIds: Set<string> = new Set();
   private highlightedSegmentIds: Set<string> = new Set();
@@ -189,6 +190,21 @@ export class SubwayStationLayer {
   setTunnelsVisible(visible: boolean): void {
     this.tunnelsVisible = visible;
     this.tunnelsContainer.visible = visible;
+  }
+
+  /**
+   * Toggle station name label visibility (CITY-534).
+   * When false, station markers remain but name labels are hidden.
+   */
+  setLabelsVisible(visible: boolean): void {
+    this.labelsVisible = visible;
+    for (const [, container] of this.stationGraphics) {
+      for (const child of container.children) {
+        if (child.label === "station-label") {
+          child.visible = visible;
+        }
+      }
+    }
   }
 
   /**
@@ -337,8 +353,10 @@ export class SubwayStationLayer {
       fontWeight: isHub ? "bold" : "500",
     });
     const labelText = new Text({ text: name, style: labelStyle });
+    labelText.label = "station-label";
     labelText.anchor.set(0.5, 0);
     labelText.position.set(position.x, position.y + radius + 4);
+    labelText.visible = this.labelsVisible;
     container.addChild(labelText);
   }
 
