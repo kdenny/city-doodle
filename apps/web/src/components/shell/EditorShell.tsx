@@ -556,7 +556,7 @@ function DrawingWithFeatures({ children }: { children: ReactNode }) {
  */
 function TransitLineDrawingWithTransit({ children }: { children: ReactNode }) {
   const transitContext = useTransit();
-  const deleteSegmentMutation = useDeleteTransitLineSegment();
+  const deleteSegment = useDeleteTransitLineSegment();
 
   const handleSegmentCreate = useCallback(
     async (
@@ -564,7 +564,7 @@ function TransitLineDrawingWithTransit({ children }: { children: ReactNode }) {
       toStation: RailStationData,
       lineProperties: TransitLineProperties,
       lineId: string | null
-    ): Promise<string | null> => {
+    ): Promise<{ lineId: string; segmentId: string } | null> => {
       // If no line exists yet, create one
       let actualLineId = lineId;
       if (!actualLineId) {
@@ -583,45 +583,38 @@ function TransitLineDrawingWithTransit({ children }: { children: ReactNode }) {
 
       // Create the segment
       const isUnderground = lineProperties.type === "subway";
-      await transitContext.createLineSegment(
+      const segmentId = await transitContext.createLineSegment(
         actualLineId,
         fromStation.id,
         toStation.id,
         isUnderground
       );
 
-      // Return the line ID so the drawing context can track it
-      return actualLineId;
+      if (!segmentId) return null;
+
+      return { lineId: actualLineId, segmentId };
     },
     [transitContext]
+  );
+
+  // CITY-538: Delete a segment when the user undoes a connection during line drawing
+  const handleSegmentUndo = useCallback(
+    async (segmentId: string) => {
+      const lineId = transitContext.transitNetwork?.lines.find((l) =>
+        l.segments.some((s) => s.id === segmentId)
+      )?.id;
+      await deleteSegment.mutateAsync({
+        segmentId,
+        lineId: lineId ?? "",
+        worldId: transitContext.transitNetwork?.stations[0]?.world_id,
+      });
+    },
+    [transitContext.transitNetwork, deleteSegment]
   );
 
   const handleLineComplete = useCallback(() => {
     // Drawing context resets its own lineId on complete
   }, []);
-
-  // CITY-538: Delete the segment from the database when undo is triggered
-  const handleSegmentUndo = useCallback(
-    async (fromStationId: string, toStationId: string, lineId: string | null) => {
-      if (!lineId || !transitContext.transitNetwork) return;
-      const line = transitContext.transitNetwork.lines.find((l) => l.id === lineId);
-      if (!line) return;
-      // Find the segment matching these stations (either direction)
-      const segment = line.segments.find(
-        (seg) =>
-          (seg.from_station_id === fromStationId && seg.to_station_id === toStationId) ||
-          (seg.from_station_id === toStationId && seg.to_station_id === fromStationId)
-      );
-      if (segment) {
-        try {
-          await deleteSegmentMutation.mutateAsync({ segmentId: segment.id, lineId });
-        } catch (err) {
-          console.error("Failed to undo segment:", err);
-        }
-      }
-    },
-    [transitContext.transitNetwork, deleteSegmentMutation]
-  );
 
   const existingLineNames = transitContext.transitNetwork?.lines.map((l) => l.name) ?? [];
   const existingLineColors = transitContext.transitNetwork?.lines.map((l) => l.color) ?? [];
@@ -629,8 +622,8 @@ function TransitLineDrawingWithTransit({ children }: { children: ReactNode }) {
   return (
     <TransitLineDrawingProvider
       onSegmentCreate={handleSegmentCreate}
-      onLineComplete={handleLineComplete}
       onSegmentUndo={handleSegmentUndo}
+      onLineComplete={handleLineComplete}
       existingLineCount={transitContext.lineCount}
       existingLineNames={existingLineNames}
       existingLineColors={existingLineColors}

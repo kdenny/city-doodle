@@ -65,8 +65,8 @@ interface TransitLineDrawingContextValue {
   completeDrawing: () => void;
   /** Cancel the current drawing */
   cancelDrawing: () => void;
-  /** Undo the last connection */
-  undoLastConnection: () => void;
+  /** Undo the last connection (deletes the segment from the database) */
+  undoLastConnection: () => Promise<void>;
   /** Check if a station is already connected in the current line */
   isStationConnected: (stationId: string) => boolean;
   /** Check if drawing can be completed (has at least one segment) */
@@ -95,26 +95,22 @@ const TransitLineDrawingContext = createContext<TransitLineDrawingContextValue |
 interface TransitLineDrawingProviderProps {
   children: ReactNode;
   /** Callback when a segment is created (station A -> station B).
-   *  Returns the line ID (existing or newly created) so the drawing
-   *  context can track which line subsequent segments belong to. */
+   *  Returns the line ID and segment ID so the drawing context can
+   *  track which line subsequent segments belong to, and undo them. */
   onSegmentCreate?: (
     fromStation: RailStationData,
     toStation: RailStationData,
     lineProperties: TransitLineProperties,
     lineId: string | null
-  ) => Promise<string | null> | void;
+  ) => Promise<{ lineId: string; segmentId: string } | null> | void;
+  /** CITY-538: Callback to delete a segment (for undo support) */
+  onSegmentUndo?: (segmentId: string) => Promise<void>;
   /** Callback when line drawing is completed */
   onLineComplete?: (
     stations: RailStationData[],
     lineProperties: TransitLineProperties,
     lineId: string | null
   ) => void;
-  /** CITY-538: Callback when a segment is undone (should delete from DB) */
-  onSegmentUndo?: (
-    fromStationId: string,
-    toStationId: string,
-    lineId: string | null
-  ) => Promise<void> | void;
   /** Number of existing lines (for auto-naming) */
   existingLineCount?: number;
   /** Names of existing lines (to avoid collisions) */
@@ -126,8 +122,8 @@ interface TransitLineDrawingProviderProps {
 export function TransitLineDrawingProvider({
   children,
   onSegmentCreate,
-  onLineComplete,
   onSegmentUndo,
+  onLineComplete,
   existingLineNames = [],
   existingLineColors = [],
 }: TransitLineDrawingProviderProps) {
@@ -138,6 +134,8 @@ export function TransitLineDrawingProvider({
   // CITY-535: Refs to prevent race condition during rapid station clicks
   const segmentCreatingRef = useRef(false);
   const lineIdRef = useRef<string | null>(null);
+  // CITY-538: Track created segment IDs for undo support
+  const createdSegmentIdsRef = useRef<string[]>([]);
 
   const startDrawing = useCallback((properties?: TransitLineProperties) => {
     // Find first unused color and name to avoid collisions after deletions
@@ -162,6 +160,7 @@ export function TransitLineDrawingProvider({
 
     lineIdRef.current = null;
     segmentCreatingRef.current = false;
+    createdSegmentIdsRef.current = [];
 
     setState({
       isDrawing: true,
@@ -212,10 +211,11 @@ export function TransitLineDrawingProvider({
       if (lineProperties && onSegmentCreate) {
         segmentCreatingRef.current = true;
         try {
-          const returnedLineId = await onSegmentCreate(fromStation, station, lineProperties, lineId);
-          if (returnedLineId) {
-            lineIdRef.current = returnedLineId;
-            setState((s) => ({ ...s, lineId: returnedLineId }));
+          const result = await onSegmentCreate(fromStation, station, lineProperties, lineId);
+          if (result) {
+            lineIdRef.current = result.lineId;
+            createdSegmentIdsRef.current.push(result.segmentId);
+            setState((s) => ({ ...s, lineId: result.lineId }));
           }
         } catch (err) {
           console.error("Failed to create transit line segment:", err);
@@ -274,12 +274,14 @@ export function TransitLineDrawingProvider({
     // Reset state
     lineIdRef.current = null;
     segmentCreatingRef.current = false;
+    createdSegmentIdsRef.current = [];
     setState(INITIAL_STATE);
   }, [state.connectedStations, state.lineProperties, state.lineId, canComplete, onLineComplete]);
 
   const cancelDrawing = useCallback(() => {
     lineIdRef.current = null;
     segmentCreatingRef.current = false;
+    createdSegmentIdsRef.current = [];
     setState(INITIAL_STATE);
   }, []);
 
@@ -292,6 +294,7 @@ export function TransitLineDrawingProvider({
     (lineId: string, terminus: RailStationData, properties: TransitLineProperties) => {
       lineIdRef.current = lineId;
       segmentCreatingRef.current = false;
+      createdSegmentIdsRef.current = [];
 
       setState({
         isDrawing: true,
@@ -306,20 +309,21 @@ export function TransitLineDrawingProvider({
     []
   );
 
-  const undoLastConnection = useCallback(() => {
+  const undoLastConnection = useCallback(async () => {
     const current = stateRef.current;
     if (!current.isDrawing || current.connectedStations.length <= 1) return;
 
-    const stations = current.connectedStations;
-    const lastStation = stations[stations.length - 1];
-    const prevStation = stations[stations.length - 2];
-
-    // CITY-538: Delete the segment from the database
-    if (onSegmentUndo && prevStation && lastStation) {
-      onSegmentUndo(prevStation.id, lastStation.id, lineIdRef.current);
+    // CITY-538: Delete the last created segment from the database
+    const segmentId = createdSegmentIdsRef.current.pop();
+    if (segmentId && onSegmentUndo) {
+      try {
+        await onSegmentUndo(segmentId);
+      } catch (err) {
+        console.error("Failed to undo segment:", err);
+      }
     }
 
-    const newConnectedStations = stations.slice(0, -1);
+    const newConnectedStations = current.connectedStations.slice(0, -1);
     const newFirstStation = newConnectedStations[newConnectedStations.length - 1] || null;
 
     setState((prev) => ({

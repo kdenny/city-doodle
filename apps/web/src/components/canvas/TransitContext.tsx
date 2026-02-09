@@ -446,13 +446,13 @@ interface TransitContextValue {
   getNearbySubwayStations: (position: Point, excludeId?: string) => SubwayStationData[];
   /** Create a new transit line manually */
   createLine: (params: CreateLineParams) => Promise<TransitLine | null>;
-  /** Create a segment connecting two stations on a line */
+  /** Create a segment connecting two stations on a line. Returns the segment ID on success, null on failure. */
   createLineSegment: (
     lineId: string,
     fromStationId: string,
     toStationId: string,
     isUnderground?: boolean
-  ) => Promise<boolean>;
+  ) => Promise<string | null>;
   /** Update a transit line (name, color) */
   updateLine: (lineId: string, updates: { name?: string; color?: string }) => Promise<boolean>;
   /** Delete a transit line and all its segments */
@@ -1326,10 +1326,10 @@ export function TransitProvider({ children, worldId }: TransitProviderProps) {
       fromStationId: string,
       toStationId: string,
       isUnderground: boolean = false
-    ): Promise<boolean> => {
+    ): Promise<string | null> => {
       if (!worldId) {
         toast?.addToast("Cannot create segment: No world selected", "error");
-        return false;
+        return null;
       }
 
       try {
@@ -1337,7 +1337,7 @@ export function TransitProvider({ children, worldId }: TransitProviderProps) {
         const existingLine = transitNetwork?.lines.find((l) => l.id === lineId);
         const segmentOrder = nextSegmentOrder(existingLine?.segments || []);
 
-        await createSegment.mutateAsync({
+        const segment = await createSegment.mutateAsync({
           lineId,
           worldId,
           data: {
@@ -1349,11 +1349,11 @@ export function TransitProvider({ children, worldId }: TransitProviderProps) {
           },
         });
 
-        return true;
+        return segment.id;
       } catch (error) {
         console.error("Failed to create line segment:", error);
         toast?.addToast("Failed to connect stations", "error");
-        return false;
+        return null;
       }
     },
     [worldId, transitNetwork, createSegment, toast]
