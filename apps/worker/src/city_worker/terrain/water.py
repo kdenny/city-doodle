@@ -438,22 +438,30 @@ def extract_rivers(
                                 break
 
                 if next_cell is None:
-                    # Snap the river endpoint to the coastline by finding
-                    # the nearest water neighbor and adding a point on
-                    # the land/water boundary (CITY-522).
+                    # Extend the river downhill to the coastline even
+                    # if cells are not part of river_mask (CITY-553).
+                    # Walk up to 6 cells downhill to reach water.
                     if heightfield[ci, cj] >= water_level:
-                        best_water = None
-                        best_h = float("inf")
-                        for di, dj in directions:
-                            ni, nj = ci + di, cj + dj
-                            if 0 <= ni < h and 0 <= nj < w:
-                                if heightfield[ni, nj] < water_level:
-                                    if heightfield[ni, nj] < best_h:
+                        ei, ej = ci, cj
+                        for _step in range(6):
+                            best_next = None
+                            best_h = heightfield[ei, ej]
+                            for di, dj in directions:
+                                ni, nj = ei + di, ej + dj
+                                if 0 <= ni < h and 0 <= nj < w:
+                                    if (
+                                        not visited[ni, nj]
+                                        and heightfield[ni, nj] < best_h
+                                    ):
                                         best_h = heightfield[ni, nj]
-                                        best_water = (ni, nj)
-                        if best_water is not None:
-                            # Add the water cell as the terminal point
-                            path.append(best_water)
+                                        best_next = (ni, nj)
+                            if best_next is None:
+                                break
+                            visited[best_next[0], best_next[1]] = True
+                            path.append(best_next)
+                            ei, ej = best_next
+                            if heightfield[ei, ej] < water_level:
+                                break
                     break
 
                 ci, cj = next_cell
