@@ -655,6 +655,7 @@ def extract_beaches(
     max_segment_cells: int = 20,
     gap_cells: int = 4,
     seed: int = 0,
+    lagoon_polygons: list[Polygon] | None = None,
 ) -> list[TerrainFeature]:
     """Extract beach regions where land meets water at shallow slopes.
 
@@ -675,6 +676,8 @@ def extract_beaches(
         max_segment_cells: Max cells per discrete beach segment
         gap_cells: Cells to skip between segments (creates gaps)
         seed: Deterministic seed for segment variation
+        lagoon_polygons: Lagoon polygons from barrier islands; beaches
+            mostly inside a lagoon are skipped (CITY-525)
 
     Returns:
         List of beach polygon features with beach_type property
@@ -781,6 +784,20 @@ def extract_beaches(
                         extended_cells, tile_x, tile_y, tile_size, cell_size, w
                     )
                     if poly is not None and poly.is_valid:
+                        # Skip beaches that are mostly inside a lagoon (CITY-525)
+                        if lagoon_polygons:
+                            skip = False
+                            for lagoon in lagoon_polygons:
+                                try:
+                                    overlap = poly.intersection(lagoon).area
+                                    if overlap > poly.area * 0.5:
+                                        skip = True
+                                        break
+                                except Exception:
+                                    pass
+                            if skip:
+                                continue
+
                         area = len(segment_cells) * cell_size * cell_size
                         perimeter = poly.length
                         avg_width = 2 * area / perimeter if perimeter > 0 else cell_size
