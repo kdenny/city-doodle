@@ -36,6 +36,8 @@ interface TransitLinePropertiesDialogProps {
   isOpen: boolean;
   /** Initial properties to populate the form */
   initialProperties?: TransitLineProperties;
+  /** Existing line names in this world (for uniqueness validation) */
+  existingLineNames?: string[];
   /** Callback when properties are confirmed */
   onConfirm: (properties: TransitLineProperties) => void;
   /** Callback when dialog is cancelled */
@@ -45,6 +47,7 @@ interface TransitLinePropertiesDialogProps {
 export function TransitLinePropertiesDialog({
   isOpen,
   initialProperties,
+  existingLineNames = [],
   onConfirm,
   onCancel,
 }: TransitLinePropertiesDialogProps) {
@@ -53,6 +56,7 @@ export function TransitLinePropertiesDialog({
   const [lineType, setLineType] = useState<LineType>(initialProperties?.type || "rail");
   const [customColor, setCustomColor] = useState("");
   const [colorError, setColorError] = useState("");
+  const [nameError, setNameError] = useState("");
   const nameInputRef = useRef<HTMLInputElement>(null);
 
   // Reset form when dialog opens
@@ -62,6 +66,7 @@ export function TransitLinePropertiesDialog({
       setColor(initialProperties.color);
       setLineType(initialProperties.type);
       setColorError("");
+      setNameError("");
 
       // Check if color is custom (not in palette)
       const isCustomColor = !LINE_COLORS.some((c) => c.value === initialProperties.color);
@@ -89,12 +94,19 @@ export function TransitLinePropertiesDialog({
       return;
     }
     setColorError("");
+    // CITY-536: Validate name uniqueness within the world
+    const trimmedName = name.trim() || "Unnamed Line";
+    if (existingLineNames.includes(trimmedName)) {
+      setNameError(`A line named "${trimmedName}" already exists.`);
+      return;
+    }
+    setNameError("");
     onConfirm({
-      name: name.trim() || "Unnamed Line",
+      name: trimmedName,
       color: finalColor,
       type: lineType,
     });
-  }, [name, color, customColor, lineType, onConfirm]);
+  }, [name, color, customColor, lineType, existingLineNames, onConfirm]);
 
   const handleKeyDown = useCallback(
     (e: React.KeyboardEvent) => {
@@ -139,10 +151,18 @@ export function TransitLinePropertiesDialog({
             id="line-name"
             type="text"
             value={name}
-            onChange={(e) => setName(e.target.value)}
-            className="w-full px-3 py-2 border border-gray-300 rounded-md shadow-sm focus:outline-none focus:ring-2 focus:ring-blue-500 focus:border-blue-500"
+            onChange={(e) => {
+              setName(e.target.value);
+              setNameError("");
+            }}
+            className={`w-full px-3 py-2 border rounded-md shadow-sm focus:outline-none focus:ring-2 focus:ring-blue-500 focus:border-blue-500 ${
+              nameError ? "border-red-400" : "border-gray-300"
+            }`}
             placeholder="Enter line name"
           />
+          {nameError && (
+            <p className="text-xs text-red-600 mt-1">{nameError}</p>
+          )}
         </div>
 
         {/* Line type selector */}

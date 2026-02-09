@@ -259,6 +259,13 @@ async def create_line(
     await _verify_world_ownership(db, world_id, user_id)
     # Override world_id from path
     line_create.world_id = world_id
+    # CITY-536: Check for duplicate line name within this world
+    existing_lines = await transit_repo.list_lines_by_world(db, world_id)
+    if any(line.name == line_create.name for line in existing_lines):
+        raise HTTPException(
+            status_code=status.HTTP_409_CONFLICT,
+            detail=f"A transit line named \"{line_create.name}\" already exists in this world",
+        )
     return await transit_repo.create_line(db, line_create)
 
 
@@ -313,6 +320,15 @@ async def update_line(
             detail=f"Transit line {line_id} not found",
         )
     await _verify_world_ownership(db, line.world_id, user_id)
+
+    # CITY-536: Check for duplicate line name within this world on rename
+    if line_update.name is not None and line_update.name != line.name:
+        existing_lines = await transit_repo.list_lines_by_world(db, line.world_id)
+        if any(l.name == line_update.name for l in existing_lines if l.id != line_id):
+            raise HTTPException(
+                status_code=status.HTTP_409_CONFLICT,
+                detail=f"A transit line named \"{line_update.name}\" already exists in this world",
+            )
 
     updated = await transit_repo.update_line(db, line_id, line_update)
     if updated is None:

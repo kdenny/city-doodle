@@ -141,6 +141,7 @@ class TransitLine(Base):
     __table_args__ = (
         Index("ix_transit_lines_world_id", "world_id"),
         Index("ix_transit_lines_line_type", "line_type"),
+        UniqueConstraint("world_id", "name", name="uq_transit_line_world_name"),
     )
 
 

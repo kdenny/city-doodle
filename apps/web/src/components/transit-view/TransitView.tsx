@@ -563,6 +563,7 @@ export function TransitView({
         initialProperties={
           transitLineDrawingContext?.state.lineProperties || undefined
         }
+        existingLineNames={transitContext?.transitNetwork?.lines.map((l) => l.name) ?? []}
         onConfirm={handleLinePropertiesConfirm}
         onCancel={handleLinePropertiesCancel}
       />
