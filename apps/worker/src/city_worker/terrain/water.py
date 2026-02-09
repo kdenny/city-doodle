@@ -656,6 +656,7 @@ def extract_beaches(
     gap_cells: int = 4,
     seed: int = 0,
     lagoon_polygons: list[Polygon] | None = None,
+    bay_polygons: list[Polygon] | None = None,
     river_lines: list[LineString] | None = None,
     lake_polygons: list[Polygon] | None = None,
 ) -> list[TerrainFeature]:
@@ -680,6 +681,8 @@ def extract_beaches(
         seed: Deterministic seed for segment variation
         lagoon_polygons: Lagoon polygons from barrier islands; beaches
             mostly inside a lagoon are skipped (CITY-525)
+        bay_polygons: Bay polygons; beaches mostly inside a bay are
+            skipped to keep harbors open (CITY-548)
         river_lines: River LineStrings; beaches overlapping a river
             buffer are skipped (CITY-546)
         lake_polygons: Lake polygons; beaches mostly inside a lake are
@@ -819,6 +822,21 @@ def extract_beaches(
                                 try:
                                     overlap = poly.intersection(lagoon).area
                                     if overlap > poly.area * 0.5:
+                                        skip = True
+                                        break
+                                except Exception:
+                                    pass
+                            if skip:
+                                continue
+
+                        # CITY-548: Skip beaches inside bays to keep
+                        # harbors open to water
+                        if bay_polygons:
+                            skip = False
+                            for bay in bay_polygons:
+                                try:
+                                    overlap = poly.intersection(bay).area
+                                    if overlap > poly.area * 0.4:
                                         skip = True
                                         break
                                 except Exception:

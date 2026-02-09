@@ -126,6 +126,7 @@ class TerrainGenerator:
         features.extend(coastlines)
 
         # Bays (concave coastline formations)
+        bays: list[TerrainFeature] = []
         if cfg.bay_enabled:
             bay_config = BayConfig(
                 min_concavity_angle=cfg.bay_min_concavity_angle,
@@ -157,7 +158,16 @@ class TerrainGenerator:
                     tile_x=tx,
                     tile_y=ty,
                     tile_size=cfg.tile_size,
+                    erosion_strength=cfg.bay_erosion_strength,
                 )
+
+        # Collect bay polygons for beach exclusion (CITY-548)
+        bay_polygons: list = []
+        if cfg.bay_enabled and bays:
+            for f in bays:
+                if f.type == "bay":
+                    from shapely.geometry import shape as _shape
+                    bay_polygons.append(_shape(f.geometry))
 
         # Barrier islands (moved before beaches so lagoon polygons can
         # be used to exclude lagoon-side beaches — CITY-525)
@@ -242,6 +252,7 @@ class TerrainGenerator:
                 gap_cells=cfg.beach_gap_cells,
                 seed=beach_seed,
                 lagoon_polygons=lagoon_polygons,
+                bay_polygons=bay_polygons,
                 river_lines=river_lines,
                 lake_polygons=lake_polygons,
             )
