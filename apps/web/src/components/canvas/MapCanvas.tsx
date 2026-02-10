@@ -41,6 +41,9 @@ import { useTerrainOptional } from "./TerrainContext";
 import { useTransitOptional } from "./TransitContext";
 import { StationContextMenu } from "../build-view/StationContextMenu";
 import { StationDeleteWarningModal } from "../build-view/StationDeleteWarningModal";
+import { RoadContextMenu } from "../build-view/RoadContextMenu";
+import type { RoadContextMenuState } from "./hooks/useCanvasEventHandlers";
+import type { RoadClass } from "./layers/types";
 import { useZoomOptional } from "../shell/ZoomContext";
 import { usePlacementOptional, usePlacedSeedsOptional } from "../palette";
 import { useSelectionContextOptional } from "../build-view/SelectionContext";
@@ -130,6 +133,9 @@ export const MapCanvas = forwardRef<MapCanvasHandle, MapCanvasProps>(
     stationName: string;
     stationType: "rail" | "subway";
   } | null>(null);
+
+  // CITY-567: Right-click context menu state for roads
+  const [roadContextMenu, setRoadContextMenu] = useState<RoadContextMenuState | null>(null);
 
   // CITY-528: Warning modal state for unsafe station deletion
   const [deleteWarning, setDeleteWarning] = useState<{
@@ -370,6 +376,7 @@ export const MapCanvas = forwardRef<MapCanvasHandle, MapCanvasProps>(
     drawingLayerRef,
     seedsLayerRef,
     setStationContextMenu,
+    setRoadContextMenu,
   });
 
   // CITY-528: Handle station deletion from context menu with orphan protection
@@ -398,6 +405,32 @@ export const MapCanvas = forwardRef<MapCanvasHandle, MapCanvasProps>(
       transitContext.removeSubwayStation(stationId);
     }
   }, [stationContextMenu, transitContext]);
+
+  // CITY-567: Handle road context menu actions
+  const handleRoadChangeClass = useCallback(
+    (newClass: RoadClass) => {
+      if (!roadContextMenu || !featuresDispatch) return;
+      featuresDispatch.updateRoad(roadContextMenu.roadId, { roadClass: newClass });
+    },
+    [roadContextMenu, featuresDispatch]
+  );
+
+  const handleRoadRename = useCallback(
+    (newName: string) => {
+      if (!roadContextMenu || !featuresDispatch) return;
+      featuresDispatch.updateRoad(roadContextMenu.roadId, { name: newName });
+    },
+    [roadContextMenu, featuresDispatch]
+  );
+
+  const handleRoadDelete = useCallback(() => {
+    if (!roadContextMenu || !featuresDispatch) return;
+    featuresDispatch.removeRoad(roadContextMenu.roadId);
+    // Clear selection if this road was selected
+    if (selectionContext?.selection?.type === "road" && selectionContext.selection.id === roadContextMenu.roadId) {
+      selectionContext.clearSelection();
+    }
+  }, [roadContextMenu, featuresDispatch, selectionContext]);
 
   // --- Render ---
   return (
@@ -473,6 +506,19 @@ export const MapCanvas = forwardRef<MapCanvasHandle, MapCanvasProps>(
           stationType={stationContextMenu.stationType}
           onDelete={handleContextMenuDelete}
           onClose={() => setStationContextMenu(null)}
+        />
+      )}
+      {/* CITY-567: Road right-click context menu */}
+      {roadContextMenu && (
+        <RoadContextMenu
+          x={roadContextMenu.x}
+          y={roadContextMenu.y}
+          roadName={roadContextMenu.roadName}
+          roadClass={roadContextMenu.roadClass}
+          onChangeClass={handleRoadChangeClass}
+          onRename={handleRoadRename}
+          onDelete={handleRoadDelete}
+          onClose={() => setRoadContextMenu(null)}
         />
       )}
       {/* CITY-528: Station deletion warning modal */}

@@ -40,6 +40,7 @@ import { generateNeighborhoodName, generateCityName } from "../../utils/nameGene
 import { generateId } from "../../utils/idGenerator";
 import polygonClipping from "polygon-clipping";
 import { CityCreateDialog } from "../build-view/CityCreateDialog";
+import { generateRoadName } from "../canvas/utils/roadNaming";
 import { ExportView } from "../export-view";
 import { TimelapseView } from "../timelapse-view";
 import { DensityView } from "../density-view";
@@ -538,9 +539,15 @@ function DrawingWithFeatures({ children, worldId }: { children: ReactNode; world
         // Read road class from drawing callback (CITY-413)
         const roadClass = drawingRoadClass ?? "arterial";
 
+        // CITY-567: Auto-generate a name based on the road class
+        const existingNames = new Set(
+          features.roads.map((r) => r.name).filter((n): n is string => !!n)
+        );
+        const autoName = generateRoadName(roadClass, existingNames);
+
         const road = {
           id: generateId("road"),
-          name: undefined,
+          name: autoName,
           roadClass,
           line: { points },
         };

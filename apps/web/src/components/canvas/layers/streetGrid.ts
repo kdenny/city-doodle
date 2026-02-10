@@ -41,6 +41,7 @@ import {
   getPolygonCentroid,
   rotatePoint,
 } from "./geometry";
+import { generateRoadName } from "../utils/roadNaming";
 
 /**
  * Seeded random number generator for deterministic district generation.
@@ -413,6 +414,16 @@ export function generateStreetGrid(
       producedSegment = true;
     }
     if (producedSegment) vStreetCount++;
+  }
+
+  // CITY-567: Auto-name generated roads using deterministic seeding
+  // Use the centroid as a seed for deterministic naming within a district
+  const namingSeed = Math.abs(Math.floor(centroid.x * 1000 + centroid.y * 7));
+  const usedNames = new Set<string>();
+  for (const road of roads) {
+    const name = generateRoadName(road.roadClass, usedNames, namingSeed + usedNames.size);
+    road.name = name;
+    usedNames.add(name);
   }
 
   return { roads, gridAngle: rotationAngle };

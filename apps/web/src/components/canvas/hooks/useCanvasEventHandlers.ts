@@ -145,6 +145,15 @@ interface StationContextMenuState {
   stationType: "rail" | "subway";
 }
 
+/** CITY-567: Right-click context menu state for roads */
+export interface RoadContextMenuState {
+  x: number;
+  y: number;
+  roadId: string;
+  roadName?: string;
+  roadClass: string;
+}
+
 interface UseCanvasEventHandlersParams {
   isReady: boolean;
   containerRef: MutableRefObject<HTMLDivElement | null>;
@@ -159,6 +168,8 @@ interface UseCanvasEventHandlersParams {
   seedsLayerRef: MutableRefObject<SeedsLayer | null>;
   // State setters for context menu
   setStationContextMenu: Dispatch<SetStateAction<StationContextMenuState | null>>;
+  /** CITY-567: State setter for road context menu */
+  setRoadContextMenu: Dispatch<SetStateAction<RoadContextMenuState | null>>;
 }
 
 /**
@@ -178,6 +189,7 @@ export function useCanvasEventHandlers({
   drawingLayerRef,
   seedsLayerRef,
   setStationContextMenu,
+  setRoadContextMenu,
 }: UseCanvasEventHandlersParams) {
   // Main pointer + keyboard event handler
   useEffect(() => {
@@ -339,13 +351,17 @@ export function useCanvasEventHandlers({
         return;
       }
 
-      // Update hover state on endpoint layer (CITY-147)
+      // Update hover state on endpoint layer (CITY-147) and midpoint layer (CITY-567)
       if (roadEndpointLayerRef.current && !isEndpointDragging) {
         const endpointHit = roadEndpointLayerRef.current.hitTest(worldPos.x, worldPos.y);
         if (endpointHit) {
           roadEndpointLayerRef.current.setHoveredEndpoint(endpointHit.endpointIndex);
+          roadEndpointLayerRef.current.setHoveredMidpoint(-1);
         } else {
           roadEndpointLayerRef.current.setHoveredEndpoint(null);
+          // CITY-567: Check midpoint hover
+          const midpointHit = roadEndpointLayerRef.current.midpointHitTest(worldPos.x, worldPos.y);
+          roadEndpointLayerRef.current.setHoveredMidpoint(midpointHit ? midpointHit.segmentIndex : -1);
         }
       }
 
@@ -629,6 +645,25 @@ export function useCanvasEventHandlers({
         return;
       }
 
+      // CITY-567: Handle midpoint click to insert a new vertex
+      if (s.isEditingAllowed && roadEndpointLayerRef.current && s.featuresContext) {
+        const midpointHit = roadEndpointLayerRef.current.midpointHitTest(worldPos.x, worldPos.y);
+        if (midpointHit) {
+          const road = s.featuresContext.features.roads.find(
+            (r) => r.id === midpointHit.road.id
+          );
+          if (road) {
+            const newPoints = [...road.line.points];
+            // Insert the midpoint position after segmentIndex
+            newPoints.splice(midpointHit.segmentIndex + 1, 0, midpointHit.position);
+            s.featuresContext.updateRoad(midpointHit.road.id, {
+              line: { points: newPoints },
+            });
+          }
+          return;
+        }
+      }
+
       // Handle feature selection (default mode - always allowed)
       s.setHoveredStationTooltip(null);
       if (s.onFeatureSelect) {
@@ -728,6 +763,12 @@ export function useCanvasEventHandlers({
         }
         return;
       }
+
+      // CITY-567: Escape deselects the current feature (road or other)
+      if (event.key === "Escape" && s.onFeatureSelect) {
+        event.preventDefault();
+        s.onFeatureSelect(null);
+      }
     };
 
     viewport.on("pointerdown", handlePointerDown);
@@ -784,6 +825,23 @@ export function useCanvasEventHandlers({
             stationId: subwayHit.id,
             stationName: subwayHit.name,
             stationType: "subway",
+          });
+          return;
+        }
+      }
+
+      // CITY-567: Right-click context menu for roads
+      if (featuresLayerRef.current) {
+        const hitResult = featuresLayerRef.current.hitTest(worldPos.x, worldPos.y);
+        if (hitResult && hitResult.type === "road") {
+          e.preventDefault();
+          const road = hitResult.feature as Road;
+          setRoadContextMenu({
+            x: e.clientX,
+            y: e.clientY,
+            roadId: road.id,
+            roadName: road.name,
+            roadClass: road.roadClass,
           });
           return;
         }

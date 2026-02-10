@@ -175,7 +175,9 @@ describe("RoadEndpointLayer", () => {
 
     it("returns false when not near any handle", () => {
       layer.setSelectedRoad(testRoad);
-      expect(layer.isNearHandle(50, 50)).toBe(false);
+      // (50,50) is the midpoint of the segment so it would be near a midpoint handle.
+      // Use a point far from all vertices and midpoints.
+      expect(layer.isNearHandle(-50, -50)).toBe(false);
     });
   });
 
