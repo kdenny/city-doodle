@@ -929,33 +929,36 @@ export function FeaturesProvider({
 
   // Auto-detect bridges when roads or terrain change (CITY-148)
   useEffect(() => {
-    const terrainData = terrainContext?.terrainData ?? null;
+    const timer = setTimeout(() => {
+      const terrainData = terrainContext?.terrainData ?? null;
 
-    // Get current roads from state
-    setFeaturesState((prev) => {
-      if (prev.roads.length === 0) {
-        // No roads, no bridges
-        if (prev.bridges.length === 0) {
-          return prev; // No change needed
+      // Get current roads from state
+      setFeaturesState((prev) => {
+        if (prev.roads.length === 0) {
+          // No roads, no bridges
+          if (prev.bridges.length === 0) {
+            return prev; // No change needed
+          }
+          return { ...prev, bridges: [] };
         }
-        return { ...prev, bridges: [] };
-      }
 
-      // Detect bridges for all roads
-      const { bridges } = detectBridges(prev.roads, terrainData);
+        // Detect bridges for all roads
+        const { bridges } = detectBridges(prev.roads, terrainData);
 
-      // CITY-493: Bridge IDs are now deterministic (roadId + waterFeatureId + segment),
-      // so we can compare IDs directly for a reliable equality check.
-      if (bridges.length === prev.bridges.length) {
-        const newIds = bridges.map((b) => b.id).sort().join(",");
-        const prevIds = prev.bridges.map((b) => b.id).sort().join(",");
-        if (newIds === prevIds) {
-          return prev; // No change needed
+        // CITY-493: Bridge IDs are now deterministic (roadId + waterFeatureId + segment),
+        // so we can compare IDs directly for a reliable equality check.
+        if (bridges.length === prev.bridges.length) {
+          const newIds = bridges.map((b) => b.id).sort().join(",");
+          const prevIds = prev.bridges.map((b) => b.id).sort().join(",");
+          if (newIds === prevIds) {
+            return prev; // No change needed
+          }
         }
-      }
 
-      return { ...prev, bridges };
-    });
+        return { ...prev, bridges };
+      });
+    }, 150);
+    return () => clearTimeout(timer);
   }, [features.roads, terrainContext?.terrainData]);
 
   // Helper to update features and notify
