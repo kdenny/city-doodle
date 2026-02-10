@@ -415,6 +415,67 @@ def bay_harbor_mask(
     return result - depression
 
 
+def coastal_mask(
+    heightfield: NDArray[np.float64], ctx: MaskContext
+) -> NDArray[np.float64]:
+    """Directional gradient mask for coastal worlds (CITY-575).
+
+    Creates an organic coastline by applying a directional gradient
+    (ocean on one side, land on the other) with multi-octave noise
+    perturbation for natural-looking bays and headlands.
+
+    The ocean direction is seed-deterministic, producing visually
+    distinct coastline shapes for different seeds.
+    """
+    res = ctx.resolution
+    ts = ctx.tile_size
+    cx, cy = ts * 0.5, ts * 0.5
+
+    # Seed-based ocean direction (one of 4 cardinal-ish directions
+    # with some randomness so it isn't always perfectly axis-aligned)
+    base_dir = int(_seeded_hash(ctx.seed, 60) * 4)  # 0-3
+    dir_offsets = [0.0, math.pi * 0.5, math.pi, math.pi * 1.5]
+    ocean_dir = dir_offsets[base_dir] + (_seeded_hash(ctx.seed, 61) - 0.5) * 0.4
+    cos_d, sin_d = math.cos(ocean_dir), math.sin(ocean_dir)
+
+    # Build world-coordinate grids
+    step = ts / res
+    xs = ctx.tx * ts + np.arange(res, dtype=np.float64) * step
+    ys = ctx.ty * ts + np.arange(res, dtype=np.float64) * step
+    xx, yy = np.meshgrid(xs, ys)
+    dx, dy = xx - cx, yy - cy
+
+    # Project onto ocean direction: u = toward ocean
+    u = dx * cos_d + dy * sin_d
+
+    # ── Step 1: Directional gradient ──
+    # Smoothly transitions from low (ocean) to high (land).
+    # The coastline sits roughly at u=0 (world center).
+    grad_scale = ts * 1.4
+    gradient = np.clip(0.5 - u / grad_scale * 0.5, 0.15, 1.0)
+
+    # ── Step 2: Coastline noise for organic shape ──
+    # Use angle-based noise along the coast direction to create
+    # bays and headlands rather than a straight line.
+    v = -dx * sin_d + dy * cos_d  # Along-coast coordinate
+    coast_angles = np.arctan2(v, np.full_like(v, ts))  # Pseudo-angle along coast
+
+    # Multi-frequency noise for varied coastline features
+    noise = _angle_noise(coast_angles, ctx.seed + 700, octaves=5)
+
+    # Additional low-frequency noise for major bay features
+    bay_phase = _seeded_hash(ctx.seed, 62) * 2.0 * math.pi
+    bay_noise = 0.4 * np.sin(v / ts * 2.5 * math.pi + bay_phase)
+    bay_noise += 0.2 * np.sin(v / ts * 4.0 * math.pi + bay_phase * 1.7)
+
+    # Combine: perturb the gradient transition zone
+    perturbation = (noise * 0.12 + bay_noise * 0.08)
+    gradient = gradient + perturbation
+    gradient = np.clip(gradient, 0.0, 1.0)
+
+    return heightfield * gradient
+
+
 def delta_mask(
     heightfield: NDArray[np.float64], ctx: MaskContext
 ) -> NDArray[np.float64]:
@@ -528,7 +589,7 @@ def delta_mask(
 # ── Mask registry ────────────────────────────────────────────────
 
 _MASK_REGISTRY: dict[str, MaskFn] = {
-    "coastal": identity_mask,
+    "coastal": coastal_mask,
     "bay_harbor": bay_harbor_mask,
     "river_valley": river_valley_mask,
     "lakefront": identity_mask,
