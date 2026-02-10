@@ -228,8 +228,9 @@ export function useLayerSync(params: UseLayerSyncParams) {
   }, [isReady, selectedFeature]);
 
   // Update features layer when context features change
-  // CITY-231: Guard with ref to skip redundant merges when features reference hasn't changed
-  const prevFeaturesRef = useRef(featuresContext?.features);
+  // CITY-231: Guard with ref to skip redundant merges when features reference hasn't changed.
+  // Initialized to undefined (not current features) so the first sync always runs.
+  const prevFeaturesRef = useRef<FeaturesData | undefined>(undefined);
   useEffect(() => {
     if (!isReady || !featuresLayerRef.current || !featuresContext) return;
 

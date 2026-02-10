@@ -36,7 +36,7 @@ import {
   type ExportResult,
 } from "./useCanvasExport";
 import { MapCanvasContextInternal } from "./MapCanvasContext";
-import { useFeaturesOptional } from "./FeaturesContext";
+import { useFeaturesStateOptional, useFeaturesDispatchOptional } from "./FeaturesContext";
 import { useTerrainOptional } from "./TerrainContext";
 import { useTransitOptional } from "./TransitContext";
 import { StationContextMenu } from "../build-view/StationContextMenu";
@@ -147,7 +147,8 @@ export const MapCanvas = forwardRef<MapCanvasHandle, MapCanvasProps>(
   const placedSeedsContext = usePlacedSeedsOptional();
   const selectionContext = useSelectionContextOptional();
   const onFeatureSelect = onFeatureSelectProp ?? selectionContext?.selectFeature;
-  const featuresContext = useFeaturesOptional();
+  const featuresState = useFeaturesStateOptional();
+  const featuresDispatch = useFeaturesDispatchOptional();
   const terrainContext = useTerrainOptional();
   const transitContext = useTransitOptional();
   const transitLineDrawingContext = useTransitLineDrawingOptional();
@@ -205,7 +206,7 @@ export const MapCanvas = forwardRef<MapCanvasHandle, MapCanvasProps>(
     endpointDragContext,
     transitLineDrawingContext,
     transitContext,
-    featuresContext,
+    featuresContext: featuresState && featuresDispatch ? { features: featuresState.features, updateRoad: featuresDispatch.updateRoad } : null,
     onFeatureSelect,
     isEditingAllowed,
     viewMode,
@@ -220,7 +221,7 @@ export const MapCanvas = forwardRef<MapCanvasHandle, MapCanvasProps>(
     endpointDragContext,
     transitLineDrawingContext,
     transitContext,
-    featuresContext,
+    featuresContext: featuresState && featuresDispatch ? { features: featuresState.features, updateRoad: featuresDispatch.updateRoad } : null,
     onFeatureSelect,
     isEditingAllowed,
     viewMode,
@@ -343,7 +344,7 @@ export const MapCanvas = forwardRef<MapCanvasHandle, MapCanvasProps>(
     layerVisibility,
     setLayerVisibility,
     viewMode,
-    featuresContext,
+    featuresContext: featuresState,
     transitContext,
     drawingContext,
     endpointDragContext,
