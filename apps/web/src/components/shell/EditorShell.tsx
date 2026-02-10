@@ -19,7 +19,7 @@ import {
 import { getParkSizeFromSeedId } from "../canvas/layers/parkGenerator";
 import { AIRPORT_SIZE_WORLD_UNITS } from "../canvas/layers/airportGenerator";
 import type { DistrictPersonality, Point } from "../canvas/layers/types";
-import { MapCanvasProvider, FeaturesProvider, useFeatures, TerrainProvider, TransitProvider, useTransitOptional, useTransit, TransitLineDrawingProvider, useTransitLineDrawingOptional } from "../canvas";
+import { MapCanvasProvider, FeaturesProvider, useFeatures, useFeaturesDispatch, TerrainProvider, TransitProvider, useTransitOptional, useTransit, TransitLineDrawingProvider, useTransitLineDrawingOptional } from "../canvas";
 import { useEndpointDragOptional } from "../canvas/EndpointDragContext";
 import { useDrawingOptional } from "../canvas/DrawingContext";
 import { usePlacementOptional } from "../palette/PlacementContext";
@@ -175,7 +175,7 @@ function EditorShellContent({
  */
 function PlacementWithSeeds({ children }: { children: ReactNode }) {
   const { addSeed } = usePlacedSeeds();
-  const { addDistrict } = useFeatures();
+  const { addDistrict } = useFeaturesDispatch();
   const transitContext = useTransitOptional();
   const toast = useToastOptional();
 
@@ -249,7 +249,7 @@ function PlacementWithSeeds({ children }: { children: ReactNode }) {
  * This allows the inspector panel to persist edits to the database.
  */
 function SelectionWithFeatures({ children }: { children: ReactNode }) {
-  const { updateDistrict, removeDistrict, updateRoad, removeRoad, updateNeighborhood, removeNeighborhood, updatePOI, removePOI } = useFeatures();
+  const { updateDistrict, removeDistrict, updateRoad, removeRoad, updateNeighborhood, removeNeighborhood, updatePOI, removePOI } = useFeaturesDispatch();
   const transitContext = useTransitOptional();
 
   // CITY-528: Warning modal state for unsafe station deletion from inspector
