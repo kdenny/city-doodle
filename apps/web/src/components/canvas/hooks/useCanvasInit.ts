@@ -135,6 +135,20 @@ export function useCanvasInit({
       const terrainData = tileWithFeatures
         ? transformTileFeatures(tileWithFeatures.features as unknown)
         : generateMockTerrain(WORLD_SIZE, seed, geographicSetting);
+
+      // CITY-573: Log terrain source for debugging fallback detection
+      if (tileWithFeatures) {
+        console.info(
+          '[Terrain] Using backend-generated terrain from tile features',
+          { seed, geographicSetting: geographicSetting ?? 'default' }
+        );
+      } else {
+        console.warn(
+          '[Terrain] Falling back to mock terrain generation (no valid tile features found)',
+          { seed, geographicSetting: geographicSetting ?? 'default', tilesProvided: !!tiles, tileCount: tiles?.length ?? 0 }
+        );
+      }
+
       terrainLayer.setData(terrainData);
       terrainLayer.setVisibility(layerVisibilityRef.current);
       setTerrainDataRef.current?.(terrainData);

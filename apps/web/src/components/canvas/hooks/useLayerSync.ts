@@ -201,6 +201,17 @@ export function useLayerSync(params: UseLayerSyncParams) {
 
     const terrainData = transformTileFeatures(tileWithFeatures.features as unknown);
     if (terrainData.water.length > 0 || terrainData.coastlines.length > 0 || terrainData.rivers.length > 0) {
+      // CITY-573: Log when real terrain replaces mock terrain
+      console.info(
+        '[Terrain] Real terrain replacing mock terrain from API tile data',
+        {
+          waterFeatures: terrainData.water.length,
+          coastlines: terrainData.coastlines.length,
+          rivers: terrainData.rivers.length,
+          contours: terrainData.contours.length,
+          beaches: terrainData.beaches.length,
+        }
+      );
       terrainLayerRef.current.setData(terrainData);
       setTerrainDataRef.current?.(terrainData);
     }
