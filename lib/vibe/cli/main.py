@@ -195,7 +195,10 @@ def _build_pr_body(branch: str, main_branch: str) -> str | None:
     if ticket_title:
         parts.append(ticket_title)
     if ticket_id:
-        parts.append(f"\nCloses {ticket_id}")
+        if ticket_url:
+            parts.append(f"\nCloses [{ticket_id}]({ticket_url})")
+        else:
+            parts.append(f"\nCloses {ticket_id}")
 
     # Build changes section from commits
     parts.append("\n## Changes\n")
