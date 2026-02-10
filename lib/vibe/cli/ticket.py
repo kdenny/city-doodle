@@ -123,9 +123,19 @@ def list_tickets(status: str | None, label: tuple, limit: int) -> None:
 
 @main.command()
 @click.argument("title")
-@click.option("--description", "-d", default="", help="Ticket description (required — tickets without descriptions are rejected)")
+@click.option(
+    "--description",
+    "-d",
+    default="",
+    help="Ticket description (required — tickets without descriptions are rejected)",
+)
 @click.option("--label", "-l", multiple=True, help="Labels to add")
-@click.option("--allow-empty-description", is_flag=True, hidden=True, help="Skip description requirement (not recommended)")
+@click.option(
+    "--allow-empty-description",
+    is_flag=True,
+    hidden=True,
+    help="Skip description requirement (not recommended)",
+)
 def create(title: str, description: str, label: tuple, allow_empty_description: bool) -> None:
     """Create a new ticket.
 
@@ -133,8 +143,12 @@ def create(title: str, description: str, label: tuple, allow_empty_description: 
     the issue, root cause, affected code, and acceptance criteria.
     """
     if not description.strip() and not allow_empty_description:
-        click.echo("Error: --description is required. Tickets without descriptions are useless.", err=True)
-        click.echo('Usage: bin/ticket create "Title" --description "Detailed description"', err=True)
+        click.echo(
+            "Error: --description is required. Tickets without descriptions are useless.", err=True
+        )
+        click.echo(
+            'Usage: bin/ticket create "Title" --description "Detailed description"', err=True
+        )
         sys.exit(1)
 
     tracker = ensure_tracker_configured()
