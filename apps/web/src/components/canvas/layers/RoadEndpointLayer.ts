@@ -22,6 +22,12 @@ const VERTEX_HANDLE_RADIUS = 5;
 const VERTEX_HANDLE_HIT_RADIUS = 10;
 const VERTEX_HANDLE_COLOR = 0x7e57c2; // Purple for intermediate vertices
 
+// Midpoint insertion handle styling (CITY-567)
+const MIDPOINT_HANDLE_RADIUS = 4;
+const MIDPOINT_HANDLE_HIT_RADIUS = 10;
+const MIDPOINT_HANDLE_COLOR = 0x4caf50; // Green for midpoint "+" handles
+const MIDPOINT_HANDLE_HOVER_COLOR = 0x66bb6a; // Lighter green on hover
+
 // Ghost line styling (shown during drag)
 const GHOST_LINE_COLOR = 0x2196f3;
 const GHOST_LINE_WIDTH = 3;
@@ -42,6 +48,19 @@ export interface EndpointHitResult {
   /** Index of the endpoint (0 for start, length-1 for end) */
   endpointIndex: number;
   /** Position of the endpoint */
+  position: Point;
+}
+
+/**
+ * Result of a midpoint hit test (CITY-567).
+ * When a midpoint handle is clicked, a new vertex should be inserted.
+ */
+export interface MidpointHitResult {
+  /** The road that was hit */
+  road: Road;
+  /** Index of the segment (the midpoint is between points[segmentIndex] and points[segmentIndex+1]) */
+  segmentIndex: number;
+  /** Position of the midpoint */
   position: Point;
 }
 
@@ -67,6 +86,8 @@ export class RoadEndpointLayer {
 
   private selectedRoad: Road | null = null;
   private hoveredEndpoint: number | null = null;
+  /** CITY-567: Which midpoint segment index is hovered (-1 = none) */
+  private hoveredMidpoint: number = -1;
   private dragPreview: EndpointDragPreview | null = null;
   private allRoads: Road[] = [];
 
@@ -187,10 +208,47 @@ export class RoadEndpointLayer {
   }
 
   /**
+   * Set which midpoint is being hovered (for visual feedback, CITY-567).
+   */
+  setHoveredMidpoint(segmentIndex: number): void {
+    if (this.hoveredMidpoint !== segmentIndex) {
+      this.hoveredMidpoint = segmentIndex;
+      this.render();
+    }
+  }
+
+  /**
+   * Hit test for midpoint insertion handles (CITY-567).
+   * Checks the midpoints between each pair of adjacent vertices.
+   * Returns the midpoint hit, or null if no midpoint was hit.
+   */
+  midpointHitTest(worldX: number, worldY: number): MidpointHitResult | null {
+    if (!this.selectedRoad) return null;
+
+    const points = this.selectedRoad.line.points;
+    if (points.length < 2) return null;
+
+    for (let i = 0; i < points.length - 1; i++) {
+      const mx = (points[i].x + points[i + 1].x) / 2;
+      const my = (points[i].y + points[i + 1].y) / 2;
+      const dist = Math.sqrt((worldX - mx) ** 2 + (worldY - my) ** 2);
+      if (dist <= MIDPOINT_HANDLE_HIT_RADIUS) {
+        return {
+          road: this.selectedRoad,
+          segmentIndex: i,
+          position: { x: mx, y: my },
+        };
+      }
+    }
+
+    return null;
+  }
+
+  /**
    * Check if a point is near any endpoint handle (for cursor changes).
    */
   isNearHandle(worldX: number, worldY: number): boolean {
-    return this.hitTest(worldX, worldY) !== null;
+    return this.hitTest(worldX, worldY) !== null || this.midpointHitTest(worldX, worldY) !== null;
   }
 
   private render(): void {
@@ -207,7 +265,14 @@ export class RoadEndpointLayer {
     const points = this.selectedRoad.line.points;
     if (points.length < 2) return;
 
-    // Render intermediate vertex handles first (below endpoints) (CITY-255)
+    // CITY-567: Render midpoint insertion handles first (lowest z)
+    for (let i = 0; i < points.length - 1; i++) {
+      const mx = (points[i].x + points[i + 1].x) / 2;
+      const my = (points[i].y + points[i + 1].y) / 2;
+      this.renderMidpointHandle({ x: mx, y: my }, i);
+    }
+
+    // Render intermediate vertex handles (below endpoints) (CITY-255)
     const endIndex = points.length - 1;
     for (let i = 1; i < endIndex; i++) {
       this.renderVertexHandle(points[i], i);
@@ -248,6 +313,37 @@ export class RoadEndpointLayer {
     this.handlesGraphics.lineTo(position.x - r, position.y);
     this.handlesGraphics.closePath();
     this.handlesGraphics.fill({ color: fillColor });
+    this.handlesGraphics.stroke();
+  }
+
+  /**
+   * Render a small "+" handle at a segment midpoint for vertex insertion (CITY-567).
+   */
+  private renderMidpointHandle(position: Point, segmentIndex: number): void {
+    const isHovered = this.hoveredMidpoint === segmentIndex;
+    const fillColor = isHovered ? MIDPOINT_HANDLE_HOVER_COLOR : MIDPOINT_HANDLE_COLOR;
+    const r = MIDPOINT_HANDLE_RADIUS;
+
+    // Draw circle background
+    this.handlesGraphics.setStrokeStyle({
+      width: 1.5,
+      color: HANDLE_STROKE_COLOR,
+    });
+    this.handlesGraphics.circle(position.x, position.y, r);
+    this.handlesGraphics.fill({ color: fillColor });
+    this.handlesGraphics.stroke();
+
+    // Draw "+" icon
+    const crossSize = r * 0.6;
+    this.handlesGraphics.setStrokeStyle({
+      width: 1.5,
+      color: HANDLE_STROKE_COLOR,
+    });
+    this.handlesGraphics.moveTo(position.x - crossSize, position.y);
+    this.handlesGraphics.lineTo(position.x + crossSize, position.y);
+    this.handlesGraphics.stroke();
+    this.handlesGraphics.moveTo(position.x, position.y - crossSize);
+    this.handlesGraphics.lineTo(position.x, position.y + crossSize);
     this.handlesGraphics.stroke();
   }
 

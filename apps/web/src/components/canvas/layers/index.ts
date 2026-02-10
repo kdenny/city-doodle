@@ -8,7 +8,7 @@ export { RailStationLayer } from "./RailStationLayer";
 export { SubwayStationLayer, toSubwayStationData } from "./SubwayStationLayer";
 export { TransitLineDrawingLayer } from "./TransitLineDrawingLayer";
 export { RoadEndpointLayer } from "./RoadEndpointLayer";
-export type { EndpointHitResult, EndpointDragPreview } from "./RoadEndpointLayer";
+export type { EndpointHitResult, EndpointDragPreview, MidpointHitResult } from "./RoadEndpointLayer";
 export type { PlacedSeedData, PreviewSeedData } from "./SeedsLayer";
 export type { RailStationData, TrackSegmentData, RailStationPreviewData } from "./RailStationLayer";
 export type { SubwayStationData, SubwayStationPreviewData, SubwayTunnelData } from "./SubwayStationLayer";
