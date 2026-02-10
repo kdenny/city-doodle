@@ -41,7 +41,6 @@ const TYPE_SUFFIXES: Partial<Record<POIType, string[]>> = {
   shopping: ["Market", "Cafe", "Bakery", "Deli", "Grocery", "Bistro", "Shop", "Eatery"],
   civic: ["Community Center", "Library", "Center", "Plaza", "Hall"],
   university: ["Hall", "Building", "Center", "Institute", "Pavilion"],
-  school: ["School", "Academy", "Preparatory", "Learning Center"],
   industrial: ["Works", "Facility", "Plant", "Warehouse", "Depot"],
   transit: ["Station", "Terminal", "Hub", "Stop"],
   park: ["Park", "Gardens", "Green", "Commons"],
@@ -113,7 +112,6 @@ const DISTRICT_POI_TYPES: Partial<Record<DistrictType, POIType[]>> = {
   downtown: ["civic", "shopping", "civic"],
   university: ["university", "university", "civic"],
   industrial: ["industrial", "industrial"],
-  k12: ["school", "civic"],
   residential: ["shopping", "civic"],
   commercial: ["shopping", "civic", "shopping"],
   airport: ["transit", "shopping"],
@@ -129,7 +127,6 @@ const POI_COUNT_RANGE: Partial<Record<DistrictType, [number, number]>> = {
   downtown: [2, 3],
   university: [2, 3],
   industrial: [1, 2],
-  k12: [1, 2],
   residential: [1, 2],
   commercial: [2, 3],
   airport: [1, 2],
@@ -313,33 +310,40 @@ function generateSpreadPositions(
 }
 
 // ============================================================================
-// Footprint generation (CITY-440)
+// Footprint generation (CITY-440, CITY-441, CITY-442)
 // ============================================================================
 
 /**
- * Footprint size configs by POI type.
- * halfWidth/halfHeight are base half-extents in world units;
- * actual values vary ±variation via seeded RNG for organic feel.
+ * Campus/compound footprint configs by POI type.
+ *
+ * - baseRadius: average radius of the organic polygon in world units
+ * - numPoints: number of vertices for the polygon boundary
+ * - organicFactor: 0-1 controlling how much radial/angular variation (higher = more organic)
+ * - elongation: >1 stretches horizontally, <1 stretches vertically (1 = circular)
  */
-const FOOTPRINT_CONFIGS: Partial<
-  Record<POIType, { halfWidth: number; halfHeight: number; variation: number }>
-> = {
-  university: { halfWidth: 4.0, halfHeight: 3.5, variation: 0.5 },
-  hospital: { halfWidth: 3.0, halfHeight: 2.5, variation: 0.5 },
-  shopping: { halfWidth: 2.25, halfHeight: 1.75, variation: 0.25 },
+interface FootprintConfig {
+  baseRadius: number;
+  numPoints: number;
+  organicFactor: number;
+  elongation: number;
+}
+
+const FOOTPRINT_CONFIGS: Partial<Record<POIType, FootprintConfig>> = {
+  university: { baseRadius: 5.0, numPoints: 14, organicFactor: 0.35, elongation: 1.2 },
+  hospital:   { baseRadius: 3.5, numPoints: 10, organicFactor: 0.25, elongation: 1.1 },
+  shopping:   { baseRadius: 2.5, numPoints: 8,  organicFactor: 0.2,  elongation: 1.3 },
 };
 
 /**
- * Generate a small irregular polygon footprint for campus/compound POI types.
+ * Generate an organic polygon footprint for campus/compound POI types.
  *
  * Returns `undefined` for POI types that don't get footprints (civic, transit,
- * park, school, industrial). For university/hospital/shopping, generates a
- * slightly irregular rectangle centered on the POI position using seeded RNG
- * for determinism (same position + type always produces the same shape).
+ * park, school, industrial). For university/hospital/shopping, generates an
+ * organic polygon with radial variation — modeled on park polygon generation.
  *
  * @param type - POI type
  * @param position - Center position of the POI
- * @returns Array of polygon corner points, or undefined if type has no footprint
+ * @returns Array of polygon points, or undefined if type has no footprint
  */
 export function generatePOIFootprint(
   type: POIType,
@@ -352,29 +356,178 @@ export function generatePOIFootprint(
   const seed = Math.floor(position.x * 1000 + position.y * 7919 + type.charCodeAt(0) * 31);
   const rng = new SeededRandom(seed);
 
-  const { halfWidth, halfHeight, variation } = config;
+  const { baseRadius, numPoints, organicFactor, elongation } = config;
 
-  // Generate 4 corners with slight per-corner variation for organic feel
-  const corners: Point[] = [
-    { // top-left
-      x: position.x - halfWidth + (rng.next() - 0.5) * variation * 2,
-      y: position.y - halfHeight + (rng.next() - 0.5) * variation * 2,
-    },
-    { // top-right
-      x: position.x + halfWidth + (rng.next() - 0.5) * variation * 2,
-      y: position.y - halfHeight + (rng.next() - 0.5) * variation * 2,
-    },
-    { // bottom-right
-      x: position.x + halfWidth + (rng.next() - 0.5) * variation * 2,
-      y: position.y + halfHeight + (rng.next() - 0.5) * variation * 2,
-    },
-    { // bottom-left
-      x: position.x - halfWidth + (rng.next() - 0.5) * variation * 2,
-      y: position.y + halfHeight + (rng.next() - 0.5) * variation * 2,
-    },
-  ];
+  // Random rotation so campuses aren't all axis-aligned
+  const rotationAngle = rng.next() * Math.PI * 2;
 
-  return corners;
+  // Slight size variation per instance
+  const radiusScale = 0.85 + rng.next() * 0.3; // 0.85 to 1.15
+
+  const points: Point[] = [];
+  for (let i = 0; i < numPoints; i++) {
+    const angle = (i / numPoints) * Math.PI * 2;
+
+    // Radial variation for organic boundary
+    const radiusVariation = 1 - organicFactor / 2 + rng.next() * organicFactor;
+    const radius = baseRadius * radiusScale * radiusVariation;
+
+    // Angular offset for organic feel
+    const angleOffset = (rng.next() - 0.5) * organicFactor * (Math.PI / numPoints) * 1.5;
+    const finalAngle = angle + angleOffset;
+
+    // Apply elongation (stretch along one axis) then rotate
+    const rawX = Math.cos(finalAngle) * radius * elongation;
+    const rawY = Math.sin(finalAngle) * radius;
+
+    // Rotate by the random angle
+    const rotatedX = rawX * Math.cos(rotationAngle) - rawY * Math.sin(rotationAngle);
+    const rotatedY = rawX * Math.sin(rotationAngle) + rawY * Math.cos(rotationAngle);
+
+    points.push({
+      x: position.x + rotatedX,
+      y: position.y + rotatedY,
+    });
+  }
+
+  return points;
+}
+
+// ============================================================================
+// Campus internal path generation (CITY-441, CITY-442)
+// ============================================================================
+
+/**
+ * Path density configs by POI type.
+ * numPaths: base number of internal paths to generate.
+ * Campus POIs (university, hospital) get internal trail-class paths;
+ * shopping compounds don't get paths.
+ */
+const CAMPUS_PATH_CONFIGS: Partial<Record<POIType, { numPaths: number }>> = {
+  university: { numPaths: 4 },
+  hospital:   { numPaths: 2 },
+};
+
+/**
+ * Check if a point is inside a convex-ish polygon using ray casting.
+ * (Local copy to avoid circular dependency on polygonUtils.)
+ */
+function pointInsidePolygon(point: Point, polygon: Point[]): boolean {
+  if (polygon.length < 3) return false;
+  let inside = false;
+  for (let i = 0, j = polygon.length - 1; i < polygon.length; j = i++) {
+    const xi = polygon[i].x, yi = polygon[i].y;
+    const xj = polygon[j].x, yj = polygon[j].y;
+    if (
+      yi > point.y !== yj > point.y &&
+      point.x < ((xj - xi) * (point.y - yi)) / (yj - yi) + xi
+    ) {
+      inside = !inside;
+    }
+  }
+  return inside;
+}
+
+/**
+ * Generate internal campus paths (walkways) within a POI footprint polygon.
+ *
+ * Creates trail-class roads that run through the campus, from near the edge
+ * toward the center. Path shape uses curved waypoints for a natural look,
+ * following the same pattern as park internal path generation.
+ *
+ * @param footprint - The campus footprint polygon
+ * @param position - Center position of the POI
+ * @param poiType - Type of POI (determines path count)
+ * @param poiId - POI ID used for generating path IDs
+ * @param districtId - Optional district ID for ownership tracking
+ * @returns Array of trail-class Road objects
+ */
+export function generateCampusPaths(
+  footprint: Point[],
+  position: Point,
+  poiType: POIType,
+  poiId: string,
+  districtId?: string,
+): Road[] {
+  const config = CAMPUS_PATH_CONFIGS[poiType];
+  if (!config || footprint.length < 3) return [];
+
+  // Seed from position for determinism
+  const seed = Math.floor(position.x * 1000 + position.y * 7919 + poiType.charCodeAt(0) * 31 + 17);
+  const rng = new SeededRandom(seed);
+
+  // Estimate radius from footprint for path generation
+  const maxDist = Math.max(...footprint.map(
+    p => Math.sqrt((p.x - position.x) ** 2 + (p.y - position.y) ** 2)
+  ));
+  const avgRadius = maxDist * 0.8;
+
+  const paths: Road[] = [];
+
+  for (let i = 0; i < config.numPaths; i++) {
+    // Generate path from near edge to near center (or across)
+    const startAngle = rng.next() * Math.PI * 2;
+    const endAngle = startAngle + (0.5 + rng.next()) * Math.PI; // 90-270 degrees apart
+
+    const startRadius = avgRadius * (0.6 + rng.next() * 0.3);
+    const endRadius = avgRadius * (0.2 + rng.next() * 0.4);
+
+    const start: Point = {
+      x: position.x + Math.cos(startAngle) * startRadius,
+      y: position.y + Math.sin(startAngle) * startRadius,
+    };
+
+    const end: Point = {
+      x: position.x + Math.cos(endAngle) * endRadius,
+      y: position.y + Math.sin(endAngle) * endRadius,
+    };
+
+    // Skip if start or end falls outside the footprint
+    if (!pointInsidePolygon(start, footprint) || !pointInsidePolygon(end, footprint)) {
+      continue;
+    }
+
+    // Build curved path with 1-2 intermediate waypoints
+    const pathPoints: Point[] = [start];
+
+    const numWaypoints = 1 + Math.floor(rng.next() * 2); // 1 or 2
+    for (let j = 0; j < numWaypoints; j++) {
+      const t = (j + 1) / (numWaypoints + 1);
+      const midX = start.x + (end.x - start.x) * t;
+      const midY = start.y + (end.y - start.y) * t;
+
+      // Perpendicular offset for curve
+      const perpX = -(end.y - start.y);
+      const perpY = end.x - start.x;
+      const perpLen = Math.sqrt(perpX * perpX + perpY * perpY);
+      if (perpLen === 0) continue;
+
+      const offset = (rng.next() - 0.5) * avgRadius * 0.3;
+
+      const waypoint: Point = {
+        x: midX + (perpX / perpLen) * offset,
+        y: midY + (perpY / perpLen) * offset,
+      };
+
+      if (pointInsidePolygon(waypoint, footprint)) {
+        pathPoints.push(waypoint);
+      }
+    }
+
+    pathPoints.push(end);
+
+    if (pathPoints.length >= 2) {
+      paths.push({
+        id: generateId(`${poiId}-path-${i}`),
+        roadClass: "trail",
+        line: { points: pathPoints },
+        name: i === 0 ? "Main Walk" : "Campus Walk",
+        districtId,
+      });
+    }
+  }
+
+  return paths;
 }
 
 // ============================================================================
@@ -382,24 +535,39 @@ export function generatePOIFootprint(
 // ============================================================================
 
 /**
+ * Result of generating POIs for a district.
+ * Includes both the POI objects and any campus paths (trail roads)
+ * generated inside campus-type POI footprints.
+ */
+export interface GeneratedDistrictPOIs {
+  pois: POI[];
+  campusPaths: Road[];
+}
+
+/**
  * Auto-generate POIs for a newly placed district.
+ *
+ * For campus-type POIs (university, hospital), also generates internal
+ * trail-class paths within the footprint polygon (CITY-441, CITY-442).
  *
  * @param districtType - The type of district being placed
  * @param polygon - The district polygon vertices
  * @param _districtName - District name (reserved, not used in naming)
  * @param roads - Optional roads within/near the district; POIs prefer road-adjacent locations (CITY-406)
  * @param existingPOIs - Existing POIs to avoid overlapping with (CITY-409)
- * @returns Array of POI objects ready to be added via addPOI / bulk create
+ * @param districtId - District ID for ownership tracking on POIs and campus paths
+ * @returns Object with POI array and campus path roads
  */
 export function generatePOIsForDistrict(
   districtType: DistrictType,
   polygon: Point[],
   _districtName: string,
   roads?: Road[],
-  existingPOIs?: POI[]
-): POI[] {
+  existingPOIs?: POI[],
+  districtId?: string,
+): GeneratedDistrictPOIs {
   const poiTypes = DISTRICT_POI_TYPES[districtType];
-  if (!poiTypes || poiTypes.length === 0) return [];
+  if (!poiTypes || poiTypes.length === 0) return { pois: [], campusPaths: [] };
 
   const countRange = POI_COUNT_RANGE[districtType] ?? [1, 2];
 
@@ -431,23 +599,34 @@ export function generatePOIsForDistrict(
     .filter((n): n is string => !!n)
     ?? [];
 
-  // Build POI objects with contextual names
+  // Build POI objects with contextual names, plus campus paths
   const usedNames = new Set<string>();
   const pois: POI[] = [];
+  const campusPaths: Road[] = [];
+
   for (let i = 0; i < Math.min(selected.length, positions.length); i++) {
     const poiType = selected[i];
     const name = generateContextualName(poiType, rng, usedNames, roadNames);
+    const poiId = generateId("poi");
+    const footprint = generatePOIFootprint(poiType, positions[i]);
 
     pois.push({
-      id: generateId("poi"),
+      id: poiId,
       name,
       type: poiType,
       position: positions[i],
-      footprint: generatePOIFootprint(poiType, positions[i]),
+      footprint,
+      districtId,
     });
+
+    // Generate campus paths inside the footprint (CITY-441, CITY-442)
+    if (footprint && footprint.length >= 3) {
+      const paths = generateCampusPaths(footprint, positions[i], poiType, poiId, districtId);
+      campusPaths.push(...paths);
+    }
   }
 
-  return pois;
+  return { pois, campusPaths };
 }
 
 // ============================================================================

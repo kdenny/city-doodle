@@ -130,7 +130,6 @@ const ROAD_STYLES: Record<RoadClass, RoadStyle> = {
 // POI colors by type
 const POI_COLORS: Record<POIType, number> = {
   hospital: 0xff4444,
-  school: 0xffaa00,
   university: 0x9966ff,
   park: 0x44aa44,
   transit: 0x0066cc,
@@ -145,7 +144,6 @@ const POI_MIN_ZOOM: Record<POIType, number> = {
   university: 0.15,
   transit: 0.15,
   civic: 0.2,
-  school: 0.3,       // Medium importance, like local roads
   shopping: 0.3,
   park: 0.3,
   industrial: 0.3,
@@ -617,7 +615,7 @@ setVisibility(visibility: LayerVisibility & { neighborhoods?: boolean; cityLimit
   /** CITY-495: Compute a bitmask of which POI types are visible at a given zoom. */
   private computePoiTypeMask(zoom: number): number {
     let mask = 0;
-    const types: POIType[] = ["hospital", "school", "university", "park", "transit", "shopping", "civic", "industrial"];
+    const types: POIType[] = ["hospital", "university", "park", "transit", "shopping", "civic", "industrial"];
     for (let i = 0; i < types.length; i++) {
       if (zoom >= (POI_MIN_ZOOM[types[i]] ?? 0.3)) mask |= 1 << i;
     }
@@ -1710,8 +1708,6 @@ export function generateMockFeatures(
   // Generate POIs (CITY-474: hydrate footprints for types that support them)
   const mockPOIData: { id: string; name: string; type: POIType; position: Point }[] = [
     { id: "poi-hospital", name: "City Hospital", type: "hospital", position: { x: worldSize * 0.3, y: worldSize * 0.3 } },
-    { id: "poi-school-1", name: "Lincoln Elementary", type: "school", position: { x: worldSize * 0.2, y: worldSize * 0.5 } },
-    { id: "poi-school-2", name: "Washington High", type: "school", position: { x: worldSize * 0.7, y: worldSize * 0.6 } },
     { id: "poi-university", name: "State University", type: "university", position: { x: worldSize * 0.8, y: worldSize * 0.2 } },
     { id: "poi-park", name: "Central Park", type: "park", position: { x: worldSize * 0.5, y: worldSize * 0.5 } },
     { id: "poi-transit-1", name: "Central Station", type: "transit", position: { x: worldSize * 0.5, y: worldSize * 0.4 } },

@@ -219,7 +219,6 @@ export interface Bridge {
 // POI types
 export type POIType =
   | "hospital"
-  | "school"
   | "university"
   | "park"
   | "transit"
@@ -234,6 +233,8 @@ export interface POI {
   position: Point;
   /** Optional polygon footprint for campus/compound POIs (university, hospital, shopping) */
   footprint?: Point[];
+  /** District that owns this POI (for cleanup on district deletion) */
+  districtId?: string;
 }
 
 export interface Neighborhood {

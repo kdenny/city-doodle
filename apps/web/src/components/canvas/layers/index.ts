@@ -96,6 +96,7 @@ export type {
   ConnectionCandidate,
   ArterialGenerationResult,
 } from "./poiArterialValidator";
-export { generatePOIsForDistrict } from "./poiAutoGenerator";
+export { generatePOIsForDistrict, generateCampusPaths } from "./poiAutoGenerator";
+export type { GeneratedDistrictPOIs } from "./poiAutoGenerator";
 
 export { WalkabilityOverlayLayer } from "./WalkabilityOverlayLayer";
