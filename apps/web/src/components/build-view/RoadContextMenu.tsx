@@ -31,7 +31,7 @@ interface RoadContextMenuProps {
   /** Current road name */
   roadName?: string;
   /** Current road class */
-  roadClass: string;
+  roadClass: RoadClass;
   /** Called when the user changes the road class */
   onChangeClass: (newClass: RoadClass) => void;
   /** Called when the user renames the road */
@@ -114,7 +114,7 @@ export function RoadContextMenu({
   };
 
   const displayName = roadName || "Unnamed Road";
-  const classLabel = ROAD_CLASS_LABELS[roadClass as RoadClass] || roadClass;
+  const classLabel = ROAD_CLASS_LABELS[roadClass] || roadClass;
 
   return (
     <div

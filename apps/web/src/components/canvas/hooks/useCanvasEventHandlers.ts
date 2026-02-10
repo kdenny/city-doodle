@@ -22,6 +22,7 @@ import type {
   RailStationData,
   District,
   Road,
+  RoadClass,
   POI,
   Neighborhood,
   CityLimits,
@@ -151,7 +152,7 @@ export interface RoadContextMenuState {
   y: number;
   roadId: string;
   roadName?: string;
-  roadClass: string;
+  roadClass: RoadClass;
 }
 
 interface UseCanvasEventHandlersParams {
