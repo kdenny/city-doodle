@@ -80,41 +80,45 @@ interface RoadStyle {
   minZoom: number;
 }
 
+// CITY-557: Widths are in world units (1 world unit ≈ 105m ≈ 1px at zoom 1).
+// Street grid spacing is ~0.7 world units for residential, so road widths must
+// be well below that to avoid merging into a solid fill.  Old widths (2-8) were
+// far larger than the spacing, guaranteeing overlapping roads at every zoom.
 const ROAD_STYLES: Record<RoadClass, RoadStyle> = {
   highway: {
-    width: 8,
+    width: 1.8,
     color: 0xf9dc5c, // Yellow
-    casingWidth: 2,
+    casingWidth: 0.4,
     casingColor: 0x000000, // Black outline
     dashed: false,
     minZoom: 0, // Always visible
   },
   arterial: {
-    width: 6,
+    width: 1.2,
     color: 0xaaaaaa, // Medium gray — visible on all district fills
-    casingWidth: 1,
+    casingWidth: 0.3,
     casingColor: 0x666666, // Dark gray outline
     dashed: false,
     minZoom: 0, // Always visible
   },
   collector: {
-    width: 4,
+    width: 0.8,
     color: 0xbbbbbb, // Light-medium gray
-    casingWidth: 1.5,
+    casingWidth: 0.2,
     casingColor: 0x777777, // Gray outline
     dashed: false,
     minZoom: 0.1, // CITY-557: Hide when zoomed out (was 0, CITY-500)
   },
   local: {
-    width: 2,
+    width: 0.4,
     color: 0xcccccc, // Light gray — subtle but visible on district fills
-    casingWidth: 1,
+    casingWidth: 0.1,
     casingColor: 0x888888, // Gray outline
     dashed: false,
     minZoom: 0.25, // CITY-557: Only at moderate zoom (was 0.05, CITY-500)
   },
   trail: {
-    width: 2,
+    width: 0.4,
     color: 0xa8d5a2, // Light green
     casingWidth: 0,
     casingColor: 0x000000,
