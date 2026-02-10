@@ -1,4 +1,4 @@
-import { ReactNode, useCallback, useEffect, useMemo, useRef, useState } from "react";
+import { ReactNode, useCallback, useEffect, useMemo, useRef, useState, type KeyboardEvent as ReactKeyboardEvent } from "react";
 import { useToastOptional } from "../../contexts";
 import { useWorld, useDeleteTransitLineSegment, useWorldCities, useCreateCity } from "../../api";
 import type { City, CityClassification } from "../../api/types";
@@ -23,6 +23,7 @@ import type { DistrictPersonality, Point } from "../canvas/layers/types";
 import { MapCanvasProvider, FeaturesProvider, useFeatures, useFeaturesDispatch, TerrainProvider, TransitProvider, useTransitOptional, useTransit, TransitLineDrawingProvider, useTransitLineDrawingOptional } from "../canvas";
 import { useEndpointDragOptional } from "../canvas/EndpointDragContext";
 import { useDrawingOptional } from "../canvas/DrawingContext";
+import { useTerrainOptional } from "../canvas/TerrainContext";
 import { usePlacementOptional } from "../palette/PlacementContext";
 import { useSelectionContextOptional } from "../build-view/SelectionContext";
 import { EditLockProvider, useEditLockOptional } from "./EditLockContext";
@@ -100,14 +101,17 @@ function EditorShellContent({
   const { data: world } = useWorld(worldId || "", { enabled: !!worldId });
   const [showSettings, setShowSettings] = useState(false);
   const isEditing = editLock?.isEditing ?? true;
-  const showPalette = viewMode === "build" && isEditing;
-  const showZoomControls = viewMode !== "export"; // Export view has its own controls
 
   // CITY-423/424/425/426/427: Clean up all editing states when view mode changes.
   // This prevents state leaks (active drawing, placement, drag, selection, highlighting)
   // from persisting into the wrong view mode.
   const placementCtx = usePlacementOptional();
   const drawingCtx = useDrawingOptional();
+
+  // CITY-562: Hide palette when a drawing tool is active to reduce UI clutter
+  const isDrawingActive = drawingCtx?.state.isDrawing ?? false;
+  const showPalette = viewMode === "build" && isEditing && !isDrawingActive;
+  const showZoomControls = viewMode !== "export"; // Export view has its own controls
   const transitLineDrawingCtx = useTransitLineDrawingOptional();
   const endpointDragCtx = useEndpointDragOptional();
   const selectionCtx = useSelectionContextOptional();
@@ -355,6 +359,73 @@ function SelectionWithFeatures({ children }: { children: ReactNode }) {
 }
 
 /**
+ * CITY-562: Inline rename overlay for newly created neighborhoods.
+ * Renders a floating text input above the toolbar area.
+ * User can type a custom name and press Enter to confirm, or Escape to keep the default.
+ */
+function NeighborhoodRenameOverlay({
+  defaultName,
+  onConfirm,
+  onCancel,
+}: {
+  defaultName: string;
+  onConfirm: (name: string) => void;
+  onCancel: () => void;
+}) {
+  const [name, setName] = useState(defaultName);
+  const inputRef = useRef<HTMLInputElement>(null);
+  const confirmedRef = useRef(false);
+
+  useEffect(() => {
+    // Auto-focus and select the text on mount
+    const input = inputRef.current;
+    if (input) {
+      input.focus();
+      input.select();
+    }
+  }, []);
+
+  const handleKeyDown = (e: ReactKeyboardEvent<HTMLInputElement>) => {
+    if (e.key === "Enter") {
+      e.preventDefault();
+      confirmedRef.current = true;
+      onConfirm(name);
+    } else if (e.key === "Escape") {
+      e.preventDefault();
+      confirmedRef.current = true;
+      onCancel();
+    }
+  };
+
+  return (
+    <div className="fixed inset-0 z-50 flex items-center justify-center pointer-events-none">
+      <div className="pointer-events-auto bg-white/95 backdrop-blur-sm rounded-lg shadow-lg px-4 py-3 flex flex-col items-center gap-2">
+        <label className="text-xs font-medium text-gray-500 uppercase tracking-wide">
+          Neighborhood Name
+        </label>
+        <input
+          ref={inputRef}
+          type="text"
+          value={name}
+          onChange={(e) => setName(e.target.value)}
+          onKeyDown={handleKeyDown}
+          onBlur={() => {
+            if (!confirmedRef.current) onConfirm(name);
+          }}
+          className="w-56 px-3 py-1.5 text-sm border border-gray-300 rounded-md focus:outline-none focus:ring-2 focus:ring-blue-500 focus:border-blue-500 text-center"
+          placeholder="Enter neighborhood name"
+        />
+        <div className="text-[10px] text-gray-400">
+          Press <kbd className="px-1 py-0.5 bg-gray-100 rounded text-[10px] font-mono">Enter</kbd> to confirm
+          {" "}or{" "}
+          <kbd className="px-1 py-0.5 bg-gray-100 rounded text-[10px] font-mono">Esc</kbd> to keep default
+        </div>
+      </div>
+    </div>
+  );
+}
+
+/**
  * Inner component that connects DrawingProvider to FeaturesContext.
  * Handles polygon completion to create neighborhoods, city limits, and split districts.
  *
@@ -363,8 +434,18 @@ function SelectionWithFeatures({ children }: { children: ReactNode }) {
  * then creates a City via the API. Boundary trimming auto-clips overlapping cities.
  */
 function DrawingWithFeatures({ children, worldId }: { children: ReactNode; worldId?: string }) {
-  const { addNeighborhood, removeNeighborhood, setCityLimits, features, removeDistrict, addDistrictWithGeometry, addRoads, removeRoad, addInterchanges } = useFeatures();
+  const { addNeighborhood, updateNeighborhood, removeNeighborhood, setCityLimits, features, removeDistrict, addDistrictWithGeometry, addRoads, removeRoad, addInterchanges } = useFeatures();
   const toast = useToastOptional();
+
+  // CITY-562: Terrain context for water auto-clipping of neighborhoods
+  const terrainContext = useTerrainOptional();
+
+  // CITY-562: Inline rename state for newly created neighborhoods
+  const [renamingNeighborhood, setRenamingNeighborhood] = useState<{
+    id: string;
+    name: string;
+    centroid: Point;
+  } | null>(null);
 
   // CITY-564: City creation state
   const { data: cities = [] } = useWorldCities(worldId);
@@ -518,14 +599,82 @@ function DrawingWithFeatures({ children, worldId }: { children: ReactNode; world
   const handlePolygonComplete = useCallback(
     (points: Point[], mode: DrawingMode, drawingRoadClass?: import("../canvas/layers/types").RoadClass, splitTarget?: SplitTarget | null) => {
       if (mode === "neighborhood") {
-        // Create a new neighborhood from the drawn polygon
+        // CITY-562: Auto-clip neighborhood polygon against water features
+        let clippedPoints = points;
+
+        const waterFeatures = terrainContext?.getWaterFeatures() ?? [];
+        if (waterFeatures.length > 0) {
+          const toRing = (pts: Point[]): [number, number][] =>
+            pts.map((p) => [p.x, p.y]);
+
+          let result: [number, number][][][] = [[toRing(points)]];
+
+          for (const water of waterFeatures) {
+            if (water.polygon.points.length < 3) continue;
+            const waterRing: [number, number][][][] = [[toRing(water.polygon.points)]];
+            result = polygonClipping.difference(result, waterRing) as [number, number][][][];
+            if (result.length === 0) break;
+          }
+
+          if (result.length > 0) {
+            // Pick the largest polygon if multiple result
+            let bestPoly: [number, number][] = result[0][0];
+            if (result.length > 1) {
+              let bestArea = 0;
+              for (const multiPoly of result) {
+                const ring = multiPoly[0];
+                let area = 0;
+                for (let i = 0; i < ring.length; i++) {
+                  const j = (i + 1) % ring.length;
+                  area += ring[i][0] * ring[j][1] - ring[j][0] * ring[i][1];
+                }
+                area = Math.abs(area) / 2;
+                if (area > bestArea) {
+                  bestArea = area;
+                  bestPoly = ring;
+                }
+              }
+            }
+
+            // Convert back to Point[] and strip closing duplicate (CITY-554)
+            let trimmed = bestPoly.map(([x, y]) => ({ x, y }));
+            if (
+              trimmed.length > 1 &&
+              trimmed[0].x === trimmed[trimmed.length - 1].x &&
+              trimmed[0].y === trimmed[trimmed.length - 1].y
+            ) {
+              trimmed = trimmed.slice(0, -1);
+            }
+
+            if (trimmed.length >= 3) {
+              clippedPoints = trimmed;
+            } else {
+              toast?.addToast("Neighborhood polygon is entirely within water", "warning");
+              return;
+            }
+          } else {
+            toast?.addToast("Neighborhood polygon is entirely within water", "warning");
+            return;
+          }
+        }
+
+        // Create the neighborhood
+        const neighborhoodId = generateId("neighborhood");
+        const neighborhoodName = generateNeighborhoodName();
         const neighborhood = {
-          id: generateId("neighborhood"),
-          name: generateNeighborhoodName(),
-          polygon: { points },
+          id: neighborhoodId,
+          name: neighborhoodName,
+          polygon: { points: clippedPoints },
           accentColor: "#4a90d9", // Default blue color
         };
         addNeighborhood(neighborhood);
+
+        // CITY-562: Show inline rename input at centroid
+        const centroid = {
+          x: clippedPoints.reduce((sum, p) => sum + p.x, 0) / clippedPoints.length,
+          y: clippedPoints.reduce((sum, p) => sum + p.y, 0) / clippedPoints.length,
+        };
+        setRenamingNeighborhood({ id: neighborhoodId, name: neighborhoodName, centroid });
       } else if (mode === "cityLimits") {
         // CITY-564: Show city creation dialog instead of directly creating city limits
         setPendingCityPolygon(points);
@@ -724,8 +873,24 @@ function DrawingWithFeatures({ children, worldId }: { children: ReactNode; world
         }
       }
     },
-    [addNeighborhood, features.districts, features.neighborhoods, features.roads, toast, removeDistrict, addDistrictWithGeometry, addRoads, removeRoad, addInterchanges, removeNeighborhood]
+    [addNeighborhood, terrainContext, features.districts, features.neighborhoods, features.roads, toast, removeDistrict, addDistrictWithGeometry, addRoads, removeRoad, addInterchanges, removeNeighborhood]
   );
+
+  // CITY-562: Handle inline rename confirmation
+  const handleRenameConfirm = useCallback(
+    (newName: string) => {
+      if (!renamingNeighborhood) return;
+      if (newName.trim() && newName.trim() !== renamingNeighborhood.name) {
+        updateNeighborhood(renamingNeighborhood.id, { name: newName.trim() });
+      }
+      setRenamingNeighborhood(null);
+    },
+    [renamingNeighborhood, updateNeighborhood]
+  );
+
+  const handleRenameCancel = useCallback(() => {
+    setRenamingNeighborhood(null);
+  }, []);
 
   return (
     <DrawingProvider onPolygonComplete={handlePolygonComplete}>
@@ -738,6 +903,14 @@ function DrawingWithFeatures({ children, worldId }: { children: ReactNode; world
           onConfirm={handleCityConfirm}
           onCancel={handleCityCancel}
           isCreating={isCreatingCity}
+        />
+      )}
+      {/* CITY-562: Inline rename overlay shown after neighborhood creation */}
+      {renamingNeighborhood && (
+        <NeighborhoodRenameOverlay
+          defaultName={renamingNeighborhood.name}
+          onConfirm={handleRenameConfirm}
+          onCancel={handleRenameCancel}
         />
       )}
     </DrawingProvider>

@@ -41,8 +41,15 @@ const tools: { id: Tool; label: string; icon: JSX.Element }[] = [
     label: "Draw Neighborhood",
     icon: (
       <svg className="w-5 h-5" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-        {/* Pencil/pen icon for drawing */}
-        <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M15.232 5.232l3.536 3.536m-2.036-5.036a2.5 2.5 0 113.536 3.536L6.5 21.036H3v-3.572L16.732 3.732z" />
+        {/* Polygon boundary icon for neighborhood drawing */}
+        <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M12 3l7 4v6l-4 7H9l-4-7v-6l7-4z" />
+        <circle cx="12" cy="3" r="1" fill="currentColor" stroke="none" />
+        <circle cx="19" cy="7" r="1" fill="currentColor" stroke="none" />
+        <circle cx="19" cy="13" r="1" fill="currentColor" stroke="none" />
+        <circle cx="15" cy="20" r="1" fill="currentColor" stroke="none" />
+        <circle cx="9" cy="20" r="1" fill="currentColor" stroke="none" />
+        <circle cx="5" cy="13" r="1" fill="currentColor" stroke="none" />
+        <circle cx="5" cy="7" r="1" fill="currentColor" stroke="none" />
       </svg>
     ),
   },
