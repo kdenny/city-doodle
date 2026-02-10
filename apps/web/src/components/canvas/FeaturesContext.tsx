@@ -714,6 +714,9 @@ export function FeaturesProvider({
       return;
     }
 
+    // CITY-488: Set guard immediately to prevent duplicate runs if effect re-fires
+    initialLoadDone.current = true;
+
     // --- Districts + street grid roads ---
     const loadedDistricts = apiDistricts.map(fromApiDistrict);
     const streetGridRoads = apiDistricts.flatMap(roadsFromApiStreetGrid);
@@ -824,7 +827,6 @@ export function FeaturesProvider({
     };
 
     setIsInitialized(true);
-    initialLoadDone.current = true;
   }, [worldId, apiDistricts, apiNeighborhoods, apiCityLimits, apiPOIs, apiRoadNetwork]);
 
   // Post-init individual update effects for live editing (React Query refetches).
