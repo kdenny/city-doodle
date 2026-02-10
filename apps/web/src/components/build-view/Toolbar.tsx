@@ -12,6 +12,8 @@ interface ToolbarProps {
   isGrowing?: boolean;
   selectedRoadClass?: RoadClass;
   onRoadClassChange?: (roadClass: RoadClass) => void;
+  /** When false, the neighborhood draw tool is disabled (no cities exist yet) */
+  citiesExist?: boolean;
 }
 
 const tools: { id: Tool; label: string; icon: JSX.Element }[] = [
@@ -25,22 +27,22 @@ const tools: { id: Tool; label: string; icon: JSX.Element }[] = [
     ),
   },
   {
-    id: "draw",
-    label: "Draw Neighborhood",
-    icon: (
-      <svg className="w-5 h-5" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-        {/* Pencil/pen icon for drawing */}
-        <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M15.232 5.232l3.536 3.536m-2.036-5.036a2.5 2.5 0 113.536 3.536L6.5 21.036H3v-3.572L16.732 3.732z" />
-      </svg>
-    ),
-  },
-  {
     id: "city-limits",
     label: "Draw City Limits",
     icon: (
       <svg className="w-5 h-5" fill="none" stroke="currentColor" viewBox="0 0 24 24">
         {/* Map/boundary icon for city limits */}
         <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M9 20l-5.447-2.724A1 1 0 013 16.382V5.618a1 1 0 011.447-.894L9 7m0 13l6-3m-6 3V7m6 10l4.553 2.276A1 1 0 0021 18.382V7.618a1 1 0 00-.553-.894L15 4m0 13V4m0 0L9 7" />
+      </svg>
+    ),
+  },
+  {
+    id: "draw",
+    label: "Draw Neighborhood",
+    icon: (
+      <svg className="w-5 h-5" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+        {/* Pencil/pen icon for drawing */}
+        <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M15.232 5.232l3.536 3.536m-2.036-5.036a2.5 2.5 0 113.536 3.536L6.5 21.036H3v-3.572L16.732 3.732z" />
       </svg>
     ),
   },
@@ -80,7 +82,7 @@ const TIME_STEPS = [
   { value: 10, label: "10 yr" },
 ];
 
-export function Toolbar({ activeTool, onToolChange, disabled, onGrow, growDisabled, isGrowing, selectedRoadClass = "arterial", onRoadClassChange }: ToolbarProps) {
+export function Toolbar({ activeTool, onToolChange, disabled, onGrow, growDisabled, isGrowing, selectedRoadClass = "arterial", onRoadClassChange, citiesExist = true }: ToolbarProps) {
   const [showGrowPopover, setShowGrowPopover] = useState(false);
   const [showRoadClassPopover, setShowRoadClassPopover] = useState(false);
 
@@ -101,7 +103,8 @@ export function Toolbar({ activeTool, onToolChange, disabled, onGrow, growDisabl
   return (
     <div className="flex flex-row gap-1 bg-white rounded-lg shadow-lg p-1">
       {tools.map(({ id, label, icon }) => {
-        const isDisabled = disabled && id !== "pan";
+        const isNeighborhoodGated = id === "draw" && !citiesExist;
+        const isDisabled = (disabled && id !== "pan") || isNeighborhoodGated;
         const isRoadTool = id === "draw-road";
         return (
           <div key={id} className={isRoadTool ? "relative" : undefined}>
@@ -123,7 +126,7 @@ export function Toolbar({ activeTool, onToolChange, disabled, onGrow, growDisabl
                     ? "bg-blue-600 text-white"
                     : "text-gray-600 hover:bg-gray-100"
               }`}
-              title={isDisabled ? "Enter edit mode to use this tool" : label}
+              title={isNeighborhoodGated ? "Draw city limits first" : isDisabled ? "Enter edit mode to use this tool" : label}
               aria-label={label}
             >
               {icon}

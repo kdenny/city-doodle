@@ -131,8 +131,10 @@ import {
   useWorldCityLimits,
   useUpsertCityLimits,
   useDeleteCityLimits,
+  useWorldCities,
 } from "../../api/hooks";
 import type {
+  City,
   District as ApiDistrict,
   DistrictType as ApiDistrictType,
   Neighborhood as ApiNeighborhood,
@@ -171,6 +173,8 @@ export interface FeaturesStateValue {
   isLoading: boolean;
   /** Error state */
   error: Error | null;
+  /** CITY-564: Cities in this world (sourced from API via React Query) */
+  cities: City[];
 }
 
 /**
@@ -667,6 +671,11 @@ export function FeaturesProvider({
   });
   const upsertCityLimitsMutation = useUpsertCityLimits();
   const deleteCityLimitsMutation = useDeleteCityLimits();
+
+  // CITY-564: Cities query
+  const { data: apiCities = [] } = useWorldCities(worldId, {
+    enabled: !!worldId,
+  });
 
   // POI queries and mutations
   const {
@@ -2271,12 +2280,13 @@ export function FeaturesProvider({
   const isLoading = !isInitialized || (!!worldId && (isLoadingDistricts || isLoadingNeighborhoods || isLoadingPOIs || isLoadingRoads));
   const error = loadDistrictsError || loadNeighborhoodsError || loadPOIsError || loadRoadsError || null;
 
-  // State context — changes whenever features, isLoading, or error change.
+  // State context — changes whenever features, isLoading, error, or cities change.
   const stateValue: FeaturesStateValue = useMemo(() => ({
     features,
     isLoading,
     error,
-  }), [features, isLoading, error]);
+    cities: apiCities,
+  }), [features, isLoading, error, apiCities]);
 
   // Dispatch context — only changes when callback identities change (rare).
   const dispatchValue: FeaturesDispatchValue = useMemo(() => ({

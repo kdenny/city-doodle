@@ -1,6 +1,7 @@
-import { ReactNode, useCallback, useEffect, useRef, useState } from "react";
+import { ReactNode, useCallback, useEffect, useMemo, useRef, useState } from "react";
 import { useToastOptional } from "../../contexts";
-import { useWorld, useDeleteTransitLineSegment } from "../../api";
+import { useWorld, useDeleteTransitLineSegment, useWorldCities, useCreateCity } from "../../api";
+import type { City, CityClassification } from "../../api/types";
 import { WorldSettingsModal } from "../WorldSettingsModal";
 import { ViewModeProvider, useViewMode, ViewMode } from "./ViewModeContext";
 import { ZoomProvider, useZoom } from "./ZoomContext";
@@ -37,6 +38,8 @@ import {
 import { detectInterchanges } from "../canvas/layers/interchangeDetection";
 import { generateNeighborhoodName, generateCityName } from "../../utils/nameGenerator";
 import { generateId } from "../../utils/idGenerator";
+import polygonClipping from "polygon-clipping";
+import { CityCreateDialog } from "../build-view/CityCreateDialog";
 import { ExportView } from "../export-view";
 import { TimelapseView } from "../timelapse-view";
 import { DensityView } from "../density-view";
@@ -353,10 +356,163 @@ function SelectionWithFeatures({ children }: { children: ReactNode }) {
 /**
  * Inner component that connects DrawingProvider to FeaturesContext.
  * Handles polygon completion to create neighborhoods, city limits, and split districts.
+ *
+ * CITY-564: cityLimits mode now opens a CityCreateDialog instead of directly
+ * creating a legacy city-limits polygon. The dialog collects name + classification,
+ * then creates a City via the API. Boundary trimming auto-clips overlapping cities.
  */
-function DrawingWithFeatures({ children }: { children: ReactNode }) {
+function DrawingWithFeatures({ children, worldId }: { children: ReactNode; worldId?: string }) {
   const { addNeighborhood, setCityLimits, features, removeDistrict, addDistrictWithGeometry, addRoads, removeRoad, addInterchanges } = useFeatures();
   const toast = useToastOptional();
+
+  // CITY-564: City creation state
+  const { data: cities = [] } = useWorldCities(worldId);
+  const createCityMutation = useCreateCity();
+  const [pendingCityPolygon, setPendingCityPolygon] = useState<Point[] | null>(null);
+  const [isCreatingCity, setIsCreatingCity] = useState(false);
+
+  const existingCoreCount = useMemo(
+    () => cities.filter((c) => c.classification === "core").length,
+    [cities]
+  );
+
+  /**
+   * CITY-564: Trim a new city boundary against all existing city boundaries.
+   * Uses polygon-clipping.difference to subtract existing boundaries from the new one.
+   */
+  const trimBoundary = useCallback(
+    (newPoints: Point[], existingCities: City[]): Point[] | null => {
+      if (existingCities.length === 0) return newPoints;
+
+      const toRing = (pts: Point[]): [number, number][] =>
+        pts.map((p) => [p.x, p.y]);
+
+      let result: [number, number][][][] = [[toRing(newPoints)]];
+
+      for (const city of existingCities) {
+        // Extract points from city boundary (GeoJSON-style)
+        const boundary = city.boundary as { points?: Array<{ x: number; y: number }>; type?: string; coordinates?: number[][][] };
+        let existingPoints: Point[];
+        if (boundary.points && Array.isArray(boundary.points)) {
+          existingPoints = boundary.points.map((p) => ({ x: p.x, y: p.y }));
+        } else if (boundary.type === "Polygon" && Array.isArray(boundary.coordinates)) {
+          const coords = boundary.coordinates[0] as number[][];
+          existingPoints = coords.map((c) => ({ x: c[0], y: c[1] }));
+          // Remove closing point if present
+          if (existingPoints.length > 1 &&
+            existingPoints[0].x === existingPoints[existingPoints.length - 1].x &&
+            existingPoints[0].y === existingPoints[existingPoints.length - 1].y) {
+            existingPoints = existingPoints.slice(0, -1);
+          }
+        } else {
+          continue;
+        }
+
+        if (existingPoints.length < 3) continue;
+
+        const clipPoly: [number, number][][][] = [[toRing(existingPoints)]];
+        result = polygonClipping.difference(result, clipPoly) as [number, number][][][];
+        if (result.length === 0) return null;
+      }
+
+      // Pick the largest polygon if multiple result
+      let bestPoly: [number, number][] = result[0][0];
+      if (result.length > 1) {
+        let bestArea = 0;
+        for (const multiPoly of result) {
+          const ring = multiPoly[0];
+          let area = 0;
+          for (let i = 0; i < ring.length; i++) {
+            const j = (i + 1) % ring.length;
+            area += ring[i][0] * ring[j][1] - ring[j][0] * ring[i][1];
+          }
+          area = Math.abs(area) / 2;
+          if (area > bestArea) {
+            bestArea = area;
+            bestPoly = ring;
+          }
+        }
+      }
+
+      // Convert back to Point[] and strip closing duplicate
+      let trimmedPoints = bestPoly.map(([x, y]) => ({ x, y }));
+      if (
+        trimmedPoints.length > 1 &&
+        trimmedPoints[0].x === trimmedPoints[trimmedPoints.length - 1].x &&
+        trimmedPoints[0].y === trimmedPoints[trimmedPoints.length - 1].y
+      ) {
+        trimmedPoints = trimmedPoints.slice(0, -1);
+      }
+
+      return trimmedPoints.length >= 3 ? trimmedPoints : null;
+    },
+    []
+  );
+
+  /**
+   * CITY-564: Handle city creation dialog confirmation.
+   * Trims boundary, creates city via API, and auto-links districts by centroid.
+   */
+  const handleCityConfirm = useCallback(
+    (name: string, classification: CityClassification) => {
+      if (!pendingCityPolygon || !worldId) return;
+
+      // Trim boundary against existing cities
+      const trimmedPoints = trimBoundary(pendingCityPolygon, cities);
+      if (!trimmedPoints) {
+        toast?.addToast("New city boundary is entirely inside existing cities", "warning");
+        setPendingCityPolygon(null);
+        return;
+      }
+
+      setIsCreatingCity(true);
+
+      // Convert points to boundary format (same as CityCreate expects)
+      const boundaryPoints = trimmedPoints.map((p) => ({ x: p.x, y: p.y }));
+      // Close the polygon for GeoJSON
+      const coords = trimmedPoints.map((p) => [p.x, p.y]);
+      if (coords.length > 0 && (coords[0][0] !== coords[coords.length - 1][0] || coords[0][1] !== coords[coords.length - 1][1])) {
+        coords.push([coords[0][0], coords[0][1]]);
+      }
+
+      createCityMutation.mutate(
+        {
+          worldId,
+          data: {
+            name,
+            classification,
+            boundary: { type: "Polygon", coordinates: [coords] },
+            established: new Date().getFullYear(),
+          },
+        },
+        {
+          onSuccess: () => {
+            toast?.addToast(`Created ${classification} city "${name}"`, "info");
+            setPendingCityPolygon(null);
+            setIsCreatingCity(false);
+
+            // Also create legacy city limits for backward compatibility with rendering
+            const cityLimits = {
+              id: generateId("city-limits"),
+              boundary: { points: boundaryPoints },
+              name,
+              established: new Date().getFullYear(),
+            };
+            setCityLimits(cityLimits);
+          },
+          onError: (error) => {
+            toast?.addToast(`Failed to create city: ${error.message}`, "error");
+            setIsCreatingCity(false);
+          },
+        }
+      );
+    },
+    [pendingCityPolygon, worldId, cities, trimBoundary, createCityMutation, toast, setCityLimits]
+  );
+
+  const handleCityCancel = useCallback(() => {
+    setPendingCityPolygon(null);
+  }, []);
 
   const handlePolygonComplete = useCallback(
     (points: Point[], mode: DrawingMode, drawingRoadClass?: import("../canvas/layers/types").RoadClass) => {
@@ -370,20 +526,8 @@ function DrawingWithFeatures({ children }: { children: ReactNode }) {
         };
         addNeighborhood(neighborhood);
       } else if (mode === "cityLimits") {
-        // Only one city limits per world - check if one already exists
-        if (features.cityLimits) {
-          toast?.addToast("City limits already exists. Remove existing limits first.", "warning");
-          return;
-        }
-
-        // Create the city limits boundary
-        const cityLimits = {
-          id: generateId("city-limits"),
-          boundary: { points },
-          name: generateCityName(),
-          established: new Date().getFullYear(),
-        };
-        setCityLimits(cityLimits);
+        // CITY-564: Show city creation dialog instead of directly creating city limits
+        setPendingCityPolygon(points);
       } else if (mode === "road") {
         // Road mode: create a user-drawn road from the polyline points (CITY-253, CITY-413)
         if (points.length < 2) {
@@ -540,12 +684,22 @@ function DrawingWithFeatures({ children }: { children: ReactNode }) {
         toast?.addToast(`Split "${targetDistrict.name}" into two districts`, "info");
       }
     },
-    [addNeighborhood, setCityLimits, features.cityLimits, features.districts, features.roads, toast, removeDistrict, addDistrictWithGeometry, addRoads, removeRoad, addInterchanges]
+    [addNeighborhood, features.districts, features.roads, toast, removeDistrict, addDistrictWithGeometry, addRoads, removeRoad, addInterchanges]
   );
 
   return (
     <DrawingProvider onPolygonComplete={handlePolygonComplete}>
       {children}
+      {/* CITY-564: City creation dialog shown when city-limits polygon is completed */}
+      {pendingCityPolygon && (
+        <CityCreateDialog
+          defaultName={generateCityName()}
+          existingCoreCount={existingCoreCount}
+          onConfirm={handleCityConfirm}
+          onCancel={handleCityCancel}
+          isCreating={isCreatingCity}
+        />
+      )}
     </DrawingProvider>
   );
 }
@@ -661,7 +815,7 @@ export function EditorShell({
                     <PlacedSeedsProvider worldId={worldId}>
                       <PlacementWithSeeds>
                         <SelectionWithFeatures>
-                          <DrawingWithFeatures>
+                          <DrawingWithFeatures worldId={worldId}>
                             <MapCanvasProvider>
                               <EditorShellContent worldId={worldId} onHelp={handleHelp}>
                                 {children}
