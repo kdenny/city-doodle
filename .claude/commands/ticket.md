@@ -39,10 +39,12 @@ Shows: title, description, status, labels, assignee, blocking relationships.
 ### create
 Create a new ticket.
 
+**IMPORTANT:** A `--description` flag is REQUIRED. Never create a ticket without a description. Tickets without descriptions are useless and waste everyone's time. The description should include: what the problem/feature is, root cause (for bugs), affected code, and acceptance criteria.
+
 **IMPORTANT:** Each label must be passed as a separate `--label` flag. Do NOT combine labels into a single comma-separated string, as this will create one label with the combined name.
 
 ```
-/ticket create "Title" --description "Details" --label Feature --label Backend
+/ticket create "Title" --description "Detailed description of the issue, root cause, and acceptance criteria" --label Feature --label Backend
 ```
 
 ### update
@@ -79,8 +81,8 @@ bin/ticket list
 # Get ticket details
 bin/ticket get PROJ-123
 
-# Create ticket with labels (each label is a separate --label flag)
-bin/ticket create "Add login button" --label Feature --label Frontend
+# Create ticket (description is REQUIRED, each label is a separate --label flag)
+bin/ticket create "Add login button" --description "Add a login button to the header nav that redirects to /auth/login. Visible only when user is not authenticated." --label Feature --label Frontend
 
 # Update status
 bin/ticket update PROJ-123 --status "Done"

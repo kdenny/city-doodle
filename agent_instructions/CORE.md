@@ -28,6 +28,8 @@ These rules MUST be followed by all AI assistants:
 - Handle errors gracefully - don't leave code in broken states
 - Test your changes - verify code works before marking task complete
 - Document non-obvious code - add comments only where the logic isn't self-evident
+- **Always open a PR** - every fix, feature, or change MUST be pushed and have a PR opened before considering the work done. No exceptions. Use `bin/vibe pr` or `gh pr create`.
+- **Never create empty tickets** - every ticket MUST have a description with context, root cause (for bugs), and acceptance criteria. Use `--description` flag.
 
 ## Anti-Patterns
 
