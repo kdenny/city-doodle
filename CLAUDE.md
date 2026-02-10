@@ -1,6 +1,6 @@
 # AI Agent Instructions
 # Format: Claude Code
-# Generated: 2026-02-04
+# Generated: 2026-02-09
 # Source: agent_instructions/
 #
 # DO NOT EDIT DIRECTLY - regenerate with: bin/vibe generate-agent-instructions
@@ -31,6 +31,8 @@
 - Handle errors gracefully - don't leave code in broken states
 - Test your changes - verify code works before marking task complete
 - Document non-obvious code - add comments only where the logic isn't self-evident
+- **Always open a PR** - every fix, feature, or change MUST be pushed and have a PR opened before considering the work done. No exceptions. Use `bin/vibe pr` or `gh pr create`.
+- **Never create empty tickets** - every ticket MUST have a description with context, root cause (for bugs), and acceptance criteria. Use `--description` flag.
 
 ---
 
@@ -43,7 +45,7 @@
 | `bin/vibe do <ticket-id>` | Start working on a ticket (creates worktree and branch). |
 | `bin/ticket list` | List tickets from the tracker. |
 | `bin/ticket get <ticket-id>` | Get details for a specific ticket. |
-| `bin/ticket create "<title>"` | Create a new ticket. |
+| `bin/ticket create "<title>" --description "<description>"` | Create a new ticket. **A description is REQUIRED** — never create a ticket without one. |
 | `bin/ticket link <blocker-id> <blocked-id>` | Create or remove blocking relationships between tickets. |
 | `bin/ticket relations <ticket-id>` | Show blocking relationships for a ticket. |
 | `bin/vibe pr` | Create a pull request for the current branch. |
@@ -84,9 +86,9 @@ Get details for a specific ticket.
 
 #### ticket create
 
-Create a new ticket.
+Create a new ticket. **A description is REQUIRED** — never create a ticket without one.
 
-**Usage:** `bin/ticket create "<title>"`
+**Usage:** `bin/ticket create "<title>" --description "<description>"`
 
 #### ticket link
 
