@@ -198,6 +198,13 @@ class TerrainGenerator:
                     from shapely.geometry import shape
                     lagoon_polygons.append(shape(f.geometry))
 
+        # CITY-576: Collect coastline polygons for river endpoint snapping
+        coastline_polys: list = []
+        for f in coastlines:
+            if f.type == "coastline":
+                from shapely.geometry import shape as _shape_coast
+                coastline_polys.append(_shape_coast(f.geometry))
+
         # Rivers (moved before beaches so river geometries can be used
         # to filter out river-adjacent beaches — CITY-546)
         rivers = extract_rivers(
@@ -209,6 +216,7 @@ class TerrainGenerator:
             flow_threshold=cfg.resolution * 0.8,  # Scale with resolution
             min_length=cfg.min_river_length,
             flow_accumulation=flow_accumulation,
+            coastline_polys=coastline_polys if coastline_polys else None,
         )
         features.extend(rivers)
 

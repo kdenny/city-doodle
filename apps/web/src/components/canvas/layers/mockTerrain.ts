@@ -87,6 +87,49 @@ function fractalCoast(
 }
 
 // ---------------------------------------------------------------------------
+// Nearest point on polyline — for snapping rivers to coastline (CITY-576)
+// ---------------------------------------------------------------------------
+function nearestPointOnPolyline(
+  point: Point,
+  polylinePoints: Point[]
+): Point {
+  if (polylinePoints.length === 0) return point; // Return the input point as fallback
+
+  let bestPoint: Point = polylinePoints[0];
+  let bestDist = Infinity;
+
+  for (let i = 0; i < polylinePoints.length - 1; i++) {
+    const a = polylinePoints[i];
+    const b = polylinePoints[i + 1];
+    const abx = b.x - a.x;
+    const aby = b.y - a.y;
+    const segLenSq = abx * abx + aby * aby;
+
+    let closest: Point;
+    if (segLenSq < 1e-10) {
+      // Degenerate segment — just use the endpoint
+      closest = a;
+    } else {
+      // Project point onto the line defined by (a, b), clamped to [0, 1]
+      const t = Math.max(0, Math.min(1,
+        ((point.x - a.x) * abx + (point.y - a.y) * aby) / segLenSq
+      ));
+      closest = { x: a.x + t * abx, y: a.y + t * aby };
+    }
+
+    const dx = point.x - closest.x;
+    const dy = point.y - closest.y;
+    const dist = dx * dx + dy * dy;
+    if (dist < bestDist) {
+      bestDist = dist;
+      bestPoint = closest;
+    }
+  }
+
+  return bestPoint;
+}
+
+// ---------------------------------------------------------------------------
 // Terrain archetypes — expanded set
 // ---------------------------------------------------------------------------
 type TerrainArchetype =
@@ -634,45 +677,76 @@ function generateRiver(
   source: Point,
   archetype: TerrainArchetype,
   worldSize: number,
-  random: () => number
+  random: () => number,
+  coastlinePoints?: Point[]
 ): Point[] {
-  let target: Point;
-  switch (archetype) {
-    case "west_coast":
-      target = { x: worldSize * 0.3, y: source.y + (random() - 0.5) * worldSize * 0.3 };
-      break;
-    case "east_coast":
-      target = { x: worldSize * 0.7, y: source.y + (random() - 0.5) * worldSize * 0.3 };
-      break;
-    case "south_coast":
-    case "delta":
-      target = { x: source.x + (random() - 0.5) * worldSize * 0.3, y: worldSize * 0.7 };
-      break;
-    case "north_coast":
-      target = { x: source.x + (random() - 0.5) * worldSize * 0.3, y: worldSize * 0.3 };
-      break;
-    case "island":
-      target = { x: random() < 0.5 ? 0 : worldSize, y: source.y + (random() - 0.5) * worldSize * 0.4 };
-      break;
-    case "peninsula":
-    case "bay_harbor":
-      target = { x: worldSize * (0.2 + random() * 0.6), y: worldSize * (0.2 + random() * 0.6) };
-      break;
-    case "river_valley":
-      // River flows across the map (main river feature)
-      target = { x: random() < 0.5 ? 0 : worldSize, y: source.y + (random() - 0.5) * worldSize * 0.3 };
-      break;
-    case "lakefront":
-    case "inland":
-      // Flow toward nearest edge
-      target = { x: random() < 0.5 ? 0 : worldSize, y: source.y + (random() - 0.5) * worldSize * 0.4 };
-      break;
+  let target: Point = { x: worldSize * 0.5, y: worldSize * 0.5 };
+
+  // CITY-576: If we have coastline geometry, snap the river target to the
+  // nearest coastline point instead of using hardcoded positions.
+  // However, if the snapped target is too close to the source (< worldSize * 0.1),
+  // fall back to the archetype-based target to avoid zero-length or backward rivers.
+  let useArchetypeFallback = false;
+  if (coastlinePoints && coastlinePoints.length >= 2) {
+    const snappedTarget = nearestPointOnPolyline(source, coastlinePoints);
+    const dx = snappedTarget.x - source.x;
+    const dy = snappedTarget.y - source.y;
+    const dist = Math.sqrt(dx * dx + dy * dy);
+    if (dist < worldSize * 0.1) {
+      useArchetypeFallback = true;
+    } else {
+      target = snappedTarget;
+    }
+  } else {
+    useArchetypeFallback = true;
   }
 
-  target.x = Math.max(0, Math.min(worldSize, target.x));
-  target.y = Math.max(0, Math.min(worldSize, target.y));
+  if (useArchetypeFallback) {
+    // Fallback for archetypes without an ocean/coastline, or when snap target is too close
+    switch (archetype) {
+      case "west_coast":
+        target = { x: worldSize * 0.3, y: source.y + (random() - 0.5) * worldSize * 0.3 };
+        break;
+      case "east_coast":
+        target = { x: worldSize * 0.7, y: source.y + (random() - 0.5) * worldSize * 0.3 };
+        break;
+      case "south_coast":
+      case "delta":
+        target = { x: source.x + (random() - 0.5) * worldSize * 0.3, y: worldSize * 0.7 };
+        break;
+      case "north_coast":
+        target = { x: source.x + (random() - 0.5) * worldSize * 0.3, y: worldSize * 0.3 };
+        break;
+      case "island":
+        target = { x: random() < 0.5 ? 0 : worldSize, y: source.y + (random() - 0.5) * worldSize * 0.4 };
+        break;
+      case "peninsula":
+      case "bay_harbor":
+        target = { x: worldSize * (0.2 + random() * 0.6), y: worldSize * (0.2 + random() * 0.6) };
+        break;
+      case "river_valley":
+        target = { x: random() < 0.5 ? 0 : worldSize, y: source.y + (random() - 0.5) * worldSize * 0.3 };
+        break;
+      case "lakefront":
+      case "inland":
+        target = { x: random() < 0.5 ? 0 : worldSize, y: source.y + (random() - 0.5) * worldSize * 0.4 };
+        break;
+    }
 
-  return generateSmoothLine(source, target, 12 + Math.floor(random() * 8), worldSize * 0.025, random);
+    target.x = Math.max(0, Math.min(worldSize, target.x));
+    target.y = Math.max(0, Math.min(worldSize, target.y));
+  }
+
+  const points = generateSmoothLine(source, target, 12 + Math.floor(random() * 8), worldSize * 0.025, random);
+
+  // CITY-576: Snap the final point exactly onto the coastline so there is
+  // no visible gap between the river endpoint and the coast.
+  if (coastlinePoints && coastlinePoints.length >= 2) {
+    const snapped = nearestPointOnPolyline(points[points.length - 1], coastlinePoints);
+    points[points.length - 1] = snapped;
+  }
+
+  return points;
 }
 
 // ---------------------------------------------------------------------------
@@ -859,6 +933,10 @@ export function generateMockTerrain(
     }
   }
 
+  // CITY-576: Use ocean polygon points as coastline geometry so rivers
+  // can snap their endpoints to the actual coast.
+  const oceanCoastPoints = oceanResult ? oceanResult.polygon.points : undefined;
+
   // Rivers from lakes
   for (let i = 0; i < lakes.length; i++) {
     const lake = lakes[i];
@@ -866,7 +944,7 @@ export function generateMockTerrain(
       x: lake.center.x + (random() - 0.5) * lake.radius,
       y: lake.center.y + (random() - 0.5) * lake.radius,
     };
-    const riverPoints = generateRiver(riverStart, archetype, worldSize, random);
+    const riverPoints = generateRiver(riverStart, archetype, worldSize, random, oceanCoastPoints);
     rivers.push({
       points: riverPoints,
       name: generateRiverName({ seed: seed + 2000 + i }),
@@ -879,7 +957,7 @@ export function generateMockTerrain(
       x: worldSize * (0.4 + random() * 0.2),
       y: worldSize * (0.4 + random() * 0.2),
     };
-    const riverPoints = generateRiver(highlandStart, archetype, worldSize, random);
+    const riverPoints = generateRiver(highlandStart, archetype, worldSize, random, oceanCoastPoints);
     rivers.push({
       points: riverPoints,
       name: generateRiverName({ seed: seed + 2000 }),

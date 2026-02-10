@@ -350,6 +350,7 @@ def extract_rivers(
     flow_threshold: float = 100.0,
     min_length: int = 10,
     flow_accumulation: NDArray[np.float64] | None = None,
+    coastline_polys: list[Polygon] | None = None,
 ) -> list[TerrainFeature]:
     """Extract river linestrings from heightfield.
 
@@ -361,6 +362,8 @@ def extract_rivers(
         flow_threshold: Minimum flow accumulation for river
         min_length: Minimum river length in cells
         flow_accumulation: Pre-computed flow accumulation array (avoids recomputation)
+        coastline_polys: Optional coastline polygons for snapping river
+            endpoints to the actual coastline geometry (CITY-576)
 
     Returns:
         List of river LineString features
@@ -440,10 +443,12 @@ def extract_rivers(
                 if next_cell is None:
                     # Extend the river downhill to the coastline even
                     # if cells are not part of river_mask (CITY-553).
-                    # Walk up to 6 cells downhill to reach water.
+                    # Walk up to 12 cells downhill to reach water
+                    # (CITY-576: increased from 6 to traverse gentle
+                    # coastal slopes).
                     if heightfield[ci, cj] >= water_level:
                         ei, ej = ci, cj
-                        for _step in range(6):
+                        for _step in range(12):
                             best_next = None
                             best_h = heightfield[ei, ej]
                             for di, dj in directions:
@@ -497,6 +502,33 @@ def extract_rivers(
                     )
                     for i, j in path
                 ]
+
+                # CITY-576: Snap the river endpoint to the nearest
+                # coastline if it ends within a threshold distance but
+                # not exactly on the coast.  This bridges the gap
+                # between the water_level contour and the actual
+                # (simplified/fractalled) coastline geometry.
+                if coastline_polys and coords:
+                    snap_threshold = cell_size * 12
+                    end_pt = coords[-1]
+                    from shapely.geometry import Point as _Point
+
+                    end_point = _Point(end_pt)
+                    best_dist = snap_threshold + 1
+                    best_snap: tuple[float, float] | None = None
+                    for cpoly in coastline_polys:
+                        try:
+                            d = cpoly.exterior.distance(end_point)
+                            if d < best_dist:
+                                best_dist = d
+                                nearest = cpoly.exterior.interpolate(
+                                    cpoly.exterior.project(end_point)
+                                )
+                                best_snap = (nearest.x, nearest.y)
+                        except Exception:
+                            pass
+                    if best_snap is not None and best_dist <= snap_threshold:
+                        coords[-1] = best_snap
 
                 # Simplify then apply Chaikin subdivision for smoother curves
                 line = LineString(coords)
