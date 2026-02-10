@@ -6,8 +6,9 @@
 
 ## Summary
 
-- **Total open tickets audited:** 38 (35 Backlog + 3 In Review)
+- **Total open tickets audited:** 41 (38 Backlog + 3 In Review)
 - **Updated directly in Linear:** 34
+- **Already had adequate descriptions:** 3 (CITY-556, CITY-543, CITY-471)
 - **Need human clarification:** 2
 - **Low-quality descriptions flagged:** 1
 - **Tickets with <90% confidence (marked with warning):** 3
@@ -68,6 +69,7 @@ These tickets were updated with descriptions (>=80% confidence). Tickets marked 
 
 | Ticket | Title | Confidence | Key Files |
 |--------|-------|------------|-----------|
+| CITY-556 | Excessive bridges near water features | ✅ | `bridgeDetection.ts` (pre-existing description) |
 | CITY-507 | Dashed line per-dash GPU draw calls | 95% | `FeaturesLayer.ts` lines 1142-1183 |
 | CITY-488 | Street grid backfill fires multiple times | 90% | `FeaturesContext.tsx` lines 681-808 |
 | CITY-487 | Cross-boundary roads stale after reshape | 95% | `FeaturesContext.tsx`, `interDistrictRoads.ts` |
@@ -111,6 +113,7 @@ These tickets were updated with descriptions (>=80% confidence). Tickets marked 
 | CITY-468 | Create shared Input/Select components | 95% | `ui/Input.tsx`, `ui/Select.tsx`, `ui/index.ts` |
 | CITY-467 | Create shared Modal wrapper | 95% | `ui/Modal.tsx`, 6 modals with duplicated boilerplate |
 | CITY-466 | Create shared Button component | 95% | `ui/Button.tsx`, `ui/index.ts` |
+| CITY-543 | Cmd+Z undo support + Delete shortcut | ✅ | `MapCanvas.tsx`, `DrawingContext.tsx` (pre-existing description) |
 | ⚠️ CITY-502 | District polygon vertex editing | 85% | `FeaturesLayer.ts`, `RoadEndpointLayer.ts`, `MapCanvas.tsx` |
 
 ### Infrastructure / Refactoring
@@ -121,6 +124,7 @@ These tickets were updated with descriptions (>=80% confidence). Tickets marked 
 | CITY-461 | Shared package never imported (type drift) | 95% | `packages/shared/`, `apps/web/`, `apps/api/` |
 | CITY-460 | API client lacks AbortController | 95% | `api/client.ts` lines 104-169 |
 | CITY-464 | GET lock endpoint missing ownership check | 98% | `routes/locks.py`, `routes/tiles.py` |
+| CITY-471 | Set up production infrastructure | ✅ | N/A — human-only task (pre-existing description, tagged HUMAN) |
 
 ---
 
