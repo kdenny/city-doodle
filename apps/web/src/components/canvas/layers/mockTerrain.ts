@@ -59,7 +59,8 @@ function fractalCoast(
   points: Point[],
   depth: number,
   roughness: number,
-  random: () => number
+  random: () => number,
+  seawardBias: number = 0
 ): Point[] {
   if (depth <= 0 || points.length < 2) return points;
   const result: Point[] = [];
@@ -75,12 +76,14 @@ function fractalCoast(
     // Displace perpendicular to the segment
     const nx = -dy / len;
     const ny = dx / len;
-    const displacement = (random() - 0.5) * roughness * len;
+    // Bias displacement toward the ocean side (negative = seaward)
+    // seawardBias shifts the center: 0 = symmetric, positive = more seaward
+    const displacement = (random() - 0.5 - seawardBias * 0.2) * roughness * len;
     result.push(a);
     result.push({ x: mx + nx * displacement, y: my + ny * displacement });
   }
   result.push(points[points.length - 1]);
-  return fractalCoast(result, depth - 1, roughness * 0.65, random);
+  return fractalCoast(result, depth - 1, roughness * 0.65, random, seawardBias);
 }
 
 // ---------------------------------------------------------------------------
@@ -295,7 +298,14 @@ function generateOcean(
         { x: depth + edgeJitter(), y: worldSize },
         { x: 0, y: worldSize },
       ];
-      const points = fractalCoast(rawPoints, 3, 0.20, random);
+      const points = fractalCoast(rawPoints, 3, 0.20, random, 1);
+      // Clamp coastline points so water doesn't bleed inland past depth
+      const maxCoastX = depth * 1.15;
+      for (const p of points) {
+        if (p.x > 0 && p.y > 0 && p.y < worldSize) {
+          p.x = Math.min(p.x, maxCoastX);
+        }
+      }
       return {
         polygon: { points },
         coastlineStart: { x: depth, y: 0 },
@@ -328,7 +338,14 @@ function generateOcean(
         { x: coastX - edgeJitter(), y: worldSize },
         { x: worldSize, y: worldSize },
       ];
-      const points = fractalCoast(rawPoints, 3, 0.20, random);
+      const points = fractalCoast(rawPoints, 3, 0.20, random, 1);
+      // Clamp coastline points so water doesn't bleed inland past coastX
+      const minCoastX = coastX - depth * 0.15;
+      for (const p of points) {
+        if (p.x < worldSize && p.y > 0 && p.y < worldSize) {
+          p.x = Math.max(p.x, minCoastX);
+        }
+      }
       return {
         polygon: { points },
         coastlineStart: { x: coastX, y: 0 },
@@ -361,7 +378,14 @@ function generateOcean(
         { x: worldSize, y: coastY - edgeJitter() },
         { x: worldSize, y: worldSize },
       ];
-      const points = fractalCoast(rawPoints, 3, 0.20, random);
+      const points = fractalCoast(rawPoints, 3, 0.20, random, 1);
+      // Clamp coastline points so water doesn't bleed inland (upward) past coastY
+      const minCoastY = coastY - depth * 0.15;
+      for (const p of points) {
+        if (p.y < worldSize && p.x > 0 && p.x < worldSize) {
+          p.y = Math.max(p.y, minCoastY);
+        }
+      }
       return {
         polygon: { points },
         coastlineStart: { x: 0, y: coastY },
@@ -393,7 +417,14 @@ function generateOcean(
         { x: worldSize, y: depth + edgeJitter() },
         { x: worldSize, y: 0 },
       ];
-      const points = fractalCoast(rawPoints, 3, 0.20, random);
+      const points = fractalCoast(rawPoints, 3, 0.20, random, 1);
+      // Clamp coastline points so water doesn't bleed inland (downward) past depth
+      const maxCoastY = depth * 1.15;
+      for (const p of points) {
+        if (p.y > 0 && p.x > 0 && p.x < worldSize) {
+          p.y = Math.min(p.y, maxCoastY);
+        }
+      }
       return {
         polygon: { points },
         coastlineStart: { x: 0, y: depth },
@@ -731,9 +762,10 @@ function generateCoastBeach(
   }
   for (let i = coastlinePoints.length - 1; i >= 0; i--) {
     const point = coastlinePoints[i];
+    // Jitter only in the inland direction to prevent beach bleeding into water
     beachPoints.push({
-      x: point.x + inlandDirection.dx * beachWidth + (random() - 0.5) * beachWidth * 0.3,
-      y: point.y + inlandDirection.dy * beachWidth + (random() - 0.5) * beachWidth * 0.3,
+      x: point.x + inlandDirection.dx * beachWidth + inlandDirection.dx * random() * beachWidth * 0.3,
+      y: point.y + inlandDirection.dy * beachWidth + inlandDirection.dy * random() * beachWidth * 0.3,
     });
   }
   return beachPoints;
