@@ -646,8 +646,8 @@ function DrawingWithFeatures({ children, worldId }: { children: ReactNode; world
           const ddx = c2.x - c1.x;
           let label1: string, label2: string;
           if (Math.abs(ddy) > Math.abs(ddx)) {
-            label1 = ddy > 0 ? "North" : "South";
-            label2 = ddy > 0 ? "South" : "North";
+            label1 = ddy > 0 ? "South" : "North";
+            label2 = ddy > 0 ? "North" : "South";
           } else {
             label1 = ddx > 0 ? "West" : "East";
             label2 = ddx > 0 ? "East" : "West";
