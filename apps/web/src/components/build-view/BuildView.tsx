@@ -13,7 +13,7 @@ import { useDrawingOptional } from "../canvas/DrawingContext";
 import { usePopulationStats } from "../canvas";
 import { useEditLockOptional } from "../shell/EditLockContext";
 import { usePlacementOptional } from "../palette/PlacementContext";
-import { useCreateJob, useJobPolling } from "../../api/hooks";
+import { useCreateJob, useJobPolling, useWorldCities } from "../../api/hooks";
 import type { RoadClass } from "../canvas/layers/types";
 
 interface BuildViewProps {
@@ -83,8 +83,12 @@ export function BuildView({
     [drawingContext]
   );
 
-  // City growth simulation
+  // CITY-564: Check if cities exist for neighborhood gating
   const { worldId } = useParams<{ worldId: string }>();
+  const { data: cities = [] } = useWorldCities(worldId);
+  const citiesExist = cities.length > 0;
+
+  // City growth simulation
   const createJob = useCreateJob();
   const [growthJobId, setGrowthJobId] = useState<string | null>(null);
   const { status: growthStatus } = useJobPolling(growthJobId);
@@ -216,6 +220,7 @@ export function BuildView({
           isGrowing={isGrowing}
           selectedRoadClass={selectedRoadClass}
           onRoadClassChange={handleRoadClassChange}
+          citiesExist={citiesExist}
         />
       </div>
 
