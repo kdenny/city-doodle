@@ -10,6 +10,7 @@ from sqlalchemy.orm import Mapped, mapped_column, relationship
 from city_api.database import Base, JSONVariant
 
 if TYPE_CHECKING:
+    from city_api.models.city import City
     from city_api.models.city_limits import CityLimits
     from city_api.models.district import District
     from city_api.models.neighborhood import Neighborhood
@@ -42,6 +43,9 @@ class World(Base):
     tiles: Mapped[list["Tile"]] = relationship("Tile", back_populates="world")
     placed_seeds: Mapped[list["PlacedSeed"]] = relationship(
         "PlacedSeed", back_populates="world", cascade="all, delete-orphan"
+    )
+    cities: Mapped[list["City"]] = relationship(
+        "City", back_populates="world", cascade="all, delete-orphan"
     )
     districts: Mapped[list["District"]] = relationship(
         "District", back_populates="world", cascade="all, delete-orphan"

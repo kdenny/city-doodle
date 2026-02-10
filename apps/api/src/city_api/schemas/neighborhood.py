@@ -11,6 +11,7 @@ class NeighborhoodCreate(BaseModel):
     """Request model for creating a new neighborhood."""
 
     world_id: UUID
+    city_id: UUID | None = None
     name: str = Field(..., min_length=1, max_length=255, description="Display name for the neighborhood")
     geometry: dict[str, Any] = Field(
         ...,
@@ -32,6 +33,7 @@ class NeighborhoodUpdate(BaseModel):
     """Request model for updating a neighborhood."""
 
     name: str | None = Field(default=None, min_length=1, max_length=255)
+    city_id: UUID | None = None
     geometry: dict[str, Any] | None = None
     label_color: str | None = Field(
         default=None,
@@ -48,6 +50,7 @@ class Neighborhood(BaseModel):
 
     id: UUID
     world_id: UUID
+    city_id: UUID | None = None
     name: str
     geometry: dict[str, Any] = Field(
         ...,

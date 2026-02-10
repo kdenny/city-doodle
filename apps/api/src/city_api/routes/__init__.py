@@ -1,5 +1,6 @@
 """API routes for City Doodle."""
 
+from city_api.routes.cities import router as cities_router
 from city_api.routes.city_limits import router as city_limits_router
 from city_api.routes.districts import router as districts_router
 from city_api.routes.jobs import router as jobs_router
@@ -13,6 +14,7 @@ from city_api.routes.transit import router as transit_router
 from city_api.routes.worlds import router as worlds_router
 
 __all__ = [
+    "cities_router",
     "city_limits_router",
     "districts_router",
     "jobs_router",

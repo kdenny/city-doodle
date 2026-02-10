@@ -12,9 +12,12 @@ import {
 import { api } from "./client";
 import {
   AuthResponse,
+  City,
+  CityCreate,
   CityLimitsCreate,
   CityLimitsResponse,
   CityLimitsUpdate,
+  CityUpdate,
   District,
   DistrictBulkCreate,
   DistrictCreate,
@@ -105,6 +108,10 @@ export const queryKeys = {
 
   // City Limits (CITY-407)
   worldCityLimits: (worldId: string) => ["worlds", worldId, "city-limits"] as const,
+
+  // Cities (CITY-563)
+  worldCities: (worldId: string) => ["worlds", worldId, "cities"] as const,
+  city: (id: string) => ["cities", id] as const,
 
   // POIs
   worldPOIs: (worldId: string, poiType?: string) =>
@@ -800,6 +807,90 @@ export function useDeleteCityLimits(
     onSuccess: (_, worldId) => {
       queryClient.invalidateQueries({
         queryKey: queryKeys.worldCityLimits(worldId),
+      });
+    },
+    ...options,
+  });
+}
+
+// ============================================================================
+// City Hooks (CITY-563)
+// ============================================================================
+
+export function useWorldCities(
+  worldId: string | undefined,
+  options?: Omit<UseQueryOptions<City[]>, "queryKey" | "queryFn">
+) {
+  return useQuery({
+    queryKey: queryKeys.worldCities(worldId ?? ""),
+    queryFn: () => api.cities.list(worldId!),
+    enabled: !!worldId,
+    ...options,
+  });
+}
+
+export function useCity(
+  cityId: string,
+  options?: Omit<UseQueryOptions<City>, "queryKey" | "queryFn">
+) {
+  return useQuery({
+    queryKey: queryKeys.city(cityId),
+    queryFn: () => api.cities.get(cityId),
+    enabled: !!cityId,
+    ...options,
+  });
+}
+
+export function useCreateCity(
+  options?: UseMutationOptions<City, Error, { worldId: string; data: CityCreate }>
+) {
+  const queryClient = useQueryClient();
+  return useMutation({
+    mutationFn: ({ worldId, data }) => api.cities.create(worldId, data),
+    onSuccess: (_, { worldId }) => {
+      queryClient.invalidateQueries({
+        queryKey: queryKeys.worldCities(worldId),
+      });
+    },
+    ...options,
+  });
+}
+
+export function useUpdateCity(
+  options?: UseMutationOptions<City, Error, { cityId: string; data: CityUpdate; worldId?: string }>
+) {
+  const queryClient = useQueryClient();
+  return useMutation({
+    mutationFn: ({ cityId, data }) => api.cities.update(cityId, data),
+    onSuccess: (city, { worldId }) => {
+      queryClient.setQueryData(queryKeys.city(city.id), city);
+      if (worldId) {
+        queryClient.invalidateQueries({
+          queryKey: queryKeys.worldCities(worldId),
+        });
+      }
+    },
+    ...options,
+  });
+}
+
+export function useDeleteCity(
+  options?: UseMutationOptions<void, Error, { cityId: string; worldId: string }>
+) {
+  const queryClient = useQueryClient();
+  return useMutation({
+    mutationFn: ({ cityId }) => api.cities.delete(cityId),
+    onSuccess: (_, { cityId, worldId }) => {
+      queryClient.removeQueries({ queryKey: queryKeys.city(cityId) });
+      queryClient.invalidateQueries({
+        queryKey: queryKeys.worldCities(worldId),
+      });
+      // Deleting a city cascades neighborhoods and unlinks districts
+      queryClient.invalidateQueries({
+        queryKey: queryKeys.worldNeighborhoods(worldId),
+      });
+      queryClient.invalidateQueries({
+        queryKey: queryKeys.worldDistricts(worldId),
       });
     },
     ...options,
