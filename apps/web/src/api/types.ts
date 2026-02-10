@@ -306,6 +306,7 @@ export interface DistrictBulkCreate {
 export interface District {
   id: UUID;
   world_id: UUID;
+  city_id?: UUID;
   type: DistrictType;
   name?: string;
   geometry: Record<string, unknown>;
@@ -345,6 +346,7 @@ export interface NeighborhoodBulkCreate {
 export interface Neighborhood {
   id: UUID;
   world_id: UUID;
+  city_id?: UUID;
   name: string;
   geometry: Record<string, unknown>;
   label_color?: string;
@@ -390,6 +392,37 @@ export interface POI {
   position_x: number;
   position_y: number;
   footprint?: Array<{ x: number; y: number }>;
+  created_at: DateTime;
+  updated_at: DateTime;
+}
+
+// ============================================================================
+// City Types (CITY-563)
+// ============================================================================
+
+export type CityClassification = "core" | "suburb" | "town";
+
+export interface CityCreate {
+  name: string;
+  classification: CityClassification;
+  boundary: Record<string, unknown>;
+  established?: number;
+}
+
+export interface CityUpdate {
+  name?: string;
+  classification?: CityClassification;
+  boundary?: Record<string, unknown>;
+  established?: number;
+}
+
+export interface City {
+  id: UUID;
+  world_id: UUID;
+  name: string;
+  classification: CityClassification;
+  boundary: Record<string, unknown>;
+  established?: number;
   created_at: DateTime;
   updated_at: DateTime;
 }

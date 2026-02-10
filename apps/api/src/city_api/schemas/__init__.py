@@ -1,5 +1,11 @@
 """Pydantic schemas for API request/response models."""
 
+from city_api.schemas.city import (
+    CityClassification,
+    CityCreate,
+    CityResponse,
+    CityUpdate,
+)
 from city_api.schemas.district import (
     District,
     DistrictBulkCreate,
@@ -87,6 +93,11 @@ from city_api.schemas.user import (
 from city_api.schemas.world import World, WorldCreate, WorldSettings, WorldUpdate
 
 __all__ = [
+    # City
+    "CityClassification",
+    "CityCreate",
+    "CityResponse",
+    "CityUpdate",
     # World
     "World",
     "WorldCreate",

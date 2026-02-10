@@ -12,6 +12,7 @@ from sqlalchemy.orm import Mapped, mapped_column, relationship
 from city_api.database import Base, JSONVariant
 
 if TYPE_CHECKING:
+    from city_api.models.city import City
     from city_api.models.transit import TransitStation
     from city_api.models.world import World
 
@@ -41,6 +42,10 @@ class District(Base):
     id: Mapped[uuid.UUID] = mapped_column(Uuid, primary_key=True, default=uuid.uuid4)
     world_id: Mapped[uuid.UUID] = mapped_column(
         Uuid, ForeignKey("worlds.id", ondelete="CASCADE"), nullable=False
+    )
+    # Optional link to a city within this world (SET NULL on city delete)
+    city_id: Mapped[uuid.UUID | None] = mapped_column(
+        Uuid, ForeignKey("cities.id", ondelete="SET NULL"), nullable=True
     )
     # Use PostgreSQL native enum with explicit lowercase values
     # create_type=False since the enum is managed by migrations
@@ -85,6 +90,7 @@ class District(Base):
 
     # Relationships
     world: Mapped["World"] = relationship("World", back_populates="districts")
+    city: Mapped["City | None"] = relationship("City", back_populates="districts")
     transit_stations: Mapped[list["TransitStation"]] = relationship(
         "TransitStation", back_populates="district"
     )
@@ -93,6 +99,7 @@ class District(Base):
         Index("ix_districts_world_id", "world_id"),
         Index("ix_districts_type", "type"),
         Index("ix_districts_historic", "historic"),
+        Index("ix_districts_city_id", "city_id"),
     )
 
 

@@ -6,9 +6,12 @@
 import {
   ApiClientError,
   AuthResponse,
+  City,
+  CityCreate,
   CityLimitsCreate,
   CityLimitsResponse,
   CityLimitsUpdate,
+  CityUpdate,
   District,
   DistrictBulkCreate,
   DistrictCreate,
@@ -739,6 +742,37 @@ export const cityLimits = {
 };
 
 // ============================================================================
+// City Endpoints (CITY-563)
+// ============================================================================
+
+export const cities = {
+  /** List all cities in a world */
+  async list(worldId: string): Promise<City[]> {
+    return request<City[]>("GET", `/worlds/${worldId}/cities`);
+  },
+
+  /** Create a new city */
+  async create(worldId: string, data: CityCreate): Promise<City> {
+    return request<City>("POST", `/worlds/${worldId}/cities`, { body: data });
+  },
+
+  /** Get a city by ID */
+  async get(cityId: string): Promise<City> {
+    return request<City>("GET", `/cities/${cityId}`);
+  },
+
+  /** Update a city */
+  async update(cityId: string, data: CityUpdate): Promise<City> {
+    return request<City>("PATCH", `/cities/${cityId}`, { body: data });
+  },
+
+  /** Delete a city (cascade: neighborhoods deleted, districts unlinked) */
+  async delete(cityId: string): Promise<void> {
+    return request<void>("DELETE", `/cities/${cityId}`);
+  },
+};
+
+// ============================================================================
 // Default Export
 // ============================================================================
 
@@ -754,6 +788,7 @@ export const api = {
   roads,
   transit,
   cityLimits,
+  cities,
 };
 
 export default api;

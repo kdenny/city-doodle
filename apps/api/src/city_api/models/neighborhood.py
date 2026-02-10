@@ -10,6 +10,7 @@ from sqlalchemy.orm import Mapped, mapped_column, relationship
 from city_api.database import Base, JSONVariant
 
 if TYPE_CHECKING:
+    from city_api.models.city import City
     from city_api.models.world import World
 
 
@@ -26,6 +27,10 @@ class Neighborhood(Base):
     id: Mapped[uuid.UUID] = mapped_column(Uuid, primary_key=True, default=uuid.uuid4)
     world_id: Mapped[uuid.UUID] = mapped_column(
         Uuid, ForeignKey("worlds.id", ondelete="CASCADE"), nullable=False
+    )
+    # TODO: Make nullable=False once all neighborhoods are linked to a city
+    city_id: Mapped[uuid.UUID | None] = mapped_column(
+        Uuid, ForeignKey("cities.id", ondelete="CASCADE"), nullable=True
     )
     # Name for the neighborhood (e.g., "Arts Quarter", "Riverside")
     name: Mapped[str] = mapped_column(String(255), nullable=False)
@@ -47,7 +52,9 @@ class Neighborhood(Base):
 
     # Relationships
     world: Mapped["World"] = relationship("World", back_populates="neighborhoods")
+    city: Mapped["City | None"] = relationship("City", back_populates="neighborhoods")
 
     __table_args__ = (
         Index("ix_neighborhoods_world_id", "world_id"),
+        Index("ix_neighborhoods_city_id", "city_id"),
     )
