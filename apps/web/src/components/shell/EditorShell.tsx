@@ -28,8 +28,8 @@ import { useSelectionContextOptional } from "../build-view/SelectionContext";
 import { EditLockProvider, useEditLockOptional } from "./EditLockContext";
 import type { TransitLineProperties } from "../canvas";
 import type { RailStationData } from "../canvas/layers";
-import { DrawingProvider, type DrawingMode } from "../canvas/DrawingContext";
-import { splitPolygonWithLine, findDistrictAtPoint } from "../canvas/layers/polygonUtils";
+import { DrawingProvider, type DrawingMode, type SplitTarget } from "../canvas/DrawingContext";
+import { splitPolygonByLine, validateSplitLine, polygonCentroid } from "../canvas/utils/polygonSplit";
 import {
   findDistrictsCrossedByArterial,
   validateDiagonalForDistrict,
@@ -363,7 +363,7 @@ function SelectionWithFeatures({ children }: { children: ReactNode }) {
  * then creates a City via the API. Boundary trimming auto-clips overlapping cities.
  */
 function DrawingWithFeatures({ children, worldId }: { children: ReactNode; worldId?: string }) {
-  const { addNeighborhood, setCityLimits, features, removeDistrict, addDistrictWithGeometry, addRoads, removeRoad, addInterchanges } = useFeatures();
+  const { addNeighborhood, removeNeighborhood, setCityLimits, features, removeDistrict, addDistrictWithGeometry, addRoads, removeRoad, addInterchanges } = useFeatures();
   const toast = useToastOptional();
 
   // CITY-564: City creation state
@@ -516,7 +516,7 @@ function DrawingWithFeatures({ children, worldId }: { children: ReactNode; world
   }, []);
 
   const handlePolygonComplete = useCallback(
-    (points: Point[], mode: DrawingMode, drawingRoadClass?: import("../canvas/layers/types").RoadClass) => {
+    (points: Point[], mode: DrawingMode, drawingRoadClass?: import("../canvas/layers/types").RoadClass, splitTarget?: SplitTarget | null) => {
       if (mode === "neighborhood") {
         // Create a new neighborhood from the drawn polygon
         const neighborhood = {
@@ -605,93 +605,126 @@ function DrawingWithFeatures({ children, worldId }: { children: ReactNode; world
           toast?.addToast("Road created", "info");
         }
       } else if (mode === "split") {
-        // Split mode: points is a line (2 points) that divides a district
+        // CITY-565: Split mode — split the pre-selected feature with the drawn line
         if (points.length < 2) {
-          toast?.addToast("Draw a line to split a district", "warning");
+          toast?.addToast("Draw a line to split a feature", "warning");
           return;
         }
 
-        const lineStart = points[0];
-        const lineEnd = points[1];
-
-        // Find which district the line crosses (check midpoint)
-        const midpoint = {
-          x: (lineStart.x + lineEnd.x) / 2,
-          y: (lineStart.y + lineEnd.y) / 2,
-        };
-
-        const districtsForSearch = features.districts.map((d) => ({
-          id: d.id,
-          polygon: d.polygon,
-        }));
-
-        const targetDistrictId = findDistrictAtPoint(midpoint, districtsForSearch);
-
-        if (!targetDistrictId) {
-          toast?.addToast("Line must cross a district to split it", "warning");
+        if (!splitTarget) {
+          toast?.addToast("No feature selected to split", "warning");
           return;
         }
 
-        const targetDistrict = features.districts.find((d) => d.id === targetDistrictId);
-        if (!targetDistrict) {
-          toast?.addToast("District not found", "error");
-          return;
+        if (splitTarget.type === "district") {
+          // --- District split ---
+          const targetDistrict = features.districts.find((d) => d.id === splitTarget.id);
+          if (!targetDistrict) {
+            toast?.addToast("District not found", "error");
+            return;
+          }
+
+          if (!validateSplitLine(targetDistrict.polygon.points, points)) {
+            toast?.addToast("Split line must cross the feature boundary on both sides", "warning");
+            return;
+          }
+
+          const districtResult = splitPolygonByLine(targetDistrict.polygon.points, points);
+          if (!districtResult) {
+            toast?.addToast("Failed to split district — line may not fully cross the boundary", "warning");
+            return;
+          }
+
+          const [dp1, dp2] = districtResult;
+
+          // Both new districts inherit the original's properties
+          const baseProps = {
+            type: targetDistrict.type,
+            isHistoric: targetDistrict.isHistoric,
+            personality: targetDistrict.personality,
+            gridAngle: targetDistrict.gridAngle,
+            fillColor: targetDistrict.fillColor,
+          };
+
+          // Determine directional labels based on centroid positions
+          const c1 = polygonCentroid(dp1);
+          const c2 = polygonCentroid(dp2);
+          const ddy = c2.y - c1.y;
+          const ddx = c2.x - c1.x;
+          let label1: string, label2: string;
+          if (Math.abs(ddy) > Math.abs(ddx)) {
+            label1 = ddy > 0 ? "South" : "North";
+            label2 = ddy > 0 ? "North" : "South";
+          } else {
+            label1 = ddx > 0 ? "West" : "East";
+            label2 = ddx > 0 ? "East" : "West";
+          }
+
+          const newDistrict1 = {
+            ...baseProps,
+            id: generateId("district"),
+            name: `${targetDistrict.name} (${label1})`,
+            polygon: { points: dp1 },
+          };
+
+          const newDistrict2 = {
+            ...baseProps,
+            id: generateId("district"),
+            name: `${targetDistrict.name} (${label2})`,
+            polygon: { points: dp2 },
+          };
+
+          removeDistrict(splitTarget.id);
+          addDistrictWithGeometry(newDistrict1);
+          addDistrictWithGeometry(newDistrict2);
+
+          toast?.addToast(`Split "${targetDistrict.name}" into two districts`, "info");
+        } else if (splitTarget.type === "neighborhood") {
+          // --- Neighborhood split ---
+          const targetNeighborhood = features.neighborhoods.find((n) => n.id === splitTarget.id);
+          if (!targetNeighborhood) {
+            toast?.addToast("Neighborhood not found", "error");
+            return;
+          }
+
+          if (!validateSplitLine(targetNeighborhood.polygon.points, points)) {
+            toast?.addToast("Split line must cross the feature boundary on both sides", "warning");
+            return;
+          }
+
+          const neighborhoodResult = splitPolygonByLine(targetNeighborhood.polygon.points, points);
+          if (!neighborhoodResult) {
+            toast?.addToast("Failed to split neighborhood — line may not fully cross the boundary", "warning");
+            return;
+          }
+
+          const [np1, np2] = neighborhoodResult;
+
+          const neighborhood1 = {
+            id: generateId("neighborhood"),
+            name: targetNeighborhood.name,
+            polygon: { points: np1 },
+            accentColor: targetNeighborhood.accentColor,
+            labelColor: targetNeighborhood.labelColor,
+          };
+
+          const neighborhood2 = {
+            id: generateId("neighborhood"),
+            name: generateNeighborhoodName(),
+            polygon: { points: np2 },
+            accentColor: targetNeighborhood.accentColor,
+            labelColor: targetNeighborhood.labelColor,
+          };
+
+          removeNeighborhood(splitTarget.id);
+          addNeighborhood(neighborhood1);
+          addNeighborhood(neighborhood2);
+
+          toast?.addToast(`Split "${targetNeighborhood.name}" into two neighborhoods`, "info");
         }
-
-        // Attempt to split the district polygon
-        const splitResult = splitPolygonWithLine(
-          targetDistrict.polygon.points,
-          lineStart,
-          lineEnd
-        );
-
-        if (!splitResult.success || !splitResult.polygons) {
-          toast?.addToast(splitResult.error || "Failed to split district", "warning");
-          return;
-        }
-
-        const [polygon1Points, polygon2Points] = splitResult.polygons;
-
-        // Create two new districts from the split
-        const baseProps = {
-          type: targetDistrict.type,
-          name: targetDistrict.name,
-          isHistoric: targetDistrict.isHistoric,
-          personality: targetDistrict.personality,
-          gridAngle: targetDistrict.gridAngle,
-        };
-
-        const newDistrict1 = {
-          ...baseProps,
-          id: generateId("district"),
-          name: `${targetDistrict.name} (North)`,
-          polygon: { points: polygon1Points },
-          center: {
-            x: polygon1Points.reduce((sum, p) => sum + p.x, 0) / polygon1Points.length,
-            y: polygon1Points.reduce((sum, p) => sum + p.y, 0) / polygon1Points.length,
-          },
-        };
-
-        const newDistrict2 = {
-          ...baseProps,
-          id: generateId("district"),
-          name: `${targetDistrict.name} (South)`,
-          polygon: { points: polygon2Points },
-          center: {
-            x: polygon2Points.reduce((sum, p) => sum + p.x, 0) / polygon2Points.length,
-            y: polygon2Points.reduce((sum, p) => sum + p.y, 0) / polygon2Points.length,
-          },
-        };
-
-        // Remove the original district and add the two new ones
-        removeDistrict(targetDistrictId);
-        addDistrictWithGeometry(newDistrict1);
-        addDistrictWithGeometry(newDistrict2);
-
-        toast?.addToast(`Split "${targetDistrict.name}" into two districts`, "info");
       }
     },
-    [addNeighborhood, features.districts, features.roads, toast, removeDistrict, addDistrictWithGeometry, addRoads, removeRoad, addInterchanges]
+    [addNeighborhood, features.districts, features.neighborhoods, features.roads, toast, removeDistrict, addDistrictWithGeometry, addRoads, removeRoad, addInterchanges, removeNeighborhood]
   );
 
   return (

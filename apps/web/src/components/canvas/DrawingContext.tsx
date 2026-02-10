@@ -23,6 +23,19 @@ export type DrawingMode = "neighborhood" | "cityLimits" | "split" | "road" | nul
 /** Input mode for drawing: click-to-place or freehand */
 export type DrawingInputMode = "click" | "freehand";
 
+/** Feature type that can be split */
+export type SplitTargetType = "district" | "neighborhood";
+
+/** Information about the feature selected for splitting */
+export interface SplitTarget {
+  /** Type of feature being split */
+  type: SplitTargetType;
+  /** ID of the feature being split */
+  id: string;
+  /** Name of the feature (for toast messages) */
+  name: string;
+}
+
 interface DrawingState {
   /** Current drawing mode */
   mode: DrawingMode;
@@ -38,6 +51,8 @@ interface DrawingState {
   isFreehandActive: boolean;
   /** Selected road class for road drawing mode */
   roadClass: RoadClass;
+  /** CITY-565: Feature selected for splitting (null = waiting for selection) */
+  splitTarget: SplitTarget | null;
 }
 
 interface DrawingContextValue {
@@ -67,6 +82,8 @@ interface DrawingContextValue {
   endFreehand: () => Point[] | null;
   /** Set the road class for road drawing mode */
   setRoadClass: (roadClass: RoadClass) => void;
+  /** CITY-565: Set the split target feature */
+  setSplitTarget: (target: SplitTarget) => void;
 }
 
 const INITIAL_STATE: DrawingState = {
@@ -77,6 +94,7 @@ const INITIAL_STATE: DrawingState = {
   previewPoint: null,
   isFreehandActive: false,
   roadClass: "arterial",
+  splitTarget: null,
 };
 
 const DrawingContext = createContext<DrawingContextValue | null>(null);
@@ -84,7 +102,7 @@ const DrawingContext = createContext<DrawingContextValue | null>(null);
 interface DrawingProviderProps {
   children: ReactNode;
   /** Callback when a polygon is completed */
-  onPolygonComplete?: (points: Point[], mode: DrawingMode, roadClass?: RoadClass) => void;
+  onPolygonComplete?: (points: Point[], mode: DrawingMode, roadClass?: RoadClass, splitTarget?: SplitTarget | null) => void;
 }
 
 export function DrawingProvider({ children, onPolygonComplete }: DrawingProviderProps) {
@@ -99,6 +117,7 @@ export function DrawingProvider({ children, onPolygonComplete }: DrawingProvider
       previewPoint: null,
       isFreehandActive: false,
       roadClass: prev.roadClass,
+      splitTarget: null,
     }));
   }, []);
 
@@ -141,17 +160,18 @@ export function DrawingProvider({ children, onPolygonComplete }: DrawingProvider
     const completedPolygon = [...state.vertices];
     const completedMode = state.mode;
     const completedRoadClass = state.roadClass;
+    const completedSplitTarget = state.splitTarget;
 
     // Reset state
     setState(INITIAL_STATE);
 
     // Notify callback
     if (onPolygonComplete && completedMode) {
-      onPolygonComplete(completedPolygon, completedMode, completedRoadClass);
+      onPolygonComplete(completedPolygon, completedMode, completedRoadClass, completedSplitTarget);
     }
 
     return completedPolygon;
-  }, [state.vertices, state.mode, state.roadClass, canComplete, onPolygonComplete]);
+  }, [state.vertices, state.mode, state.roadClass, state.splitTarget, canComplete, onPolygonComplete]);
 
   const cancelDrawing = useCallback(() => {
     setState(INITIAL_STATE);
@@ -172,6 +192,16 @@ export function DrawingProvider({ children, onPolygonComplete }: DrawingProvider
       ...prev,
       roadClass,
     }));
+  }, []);
+
+  const setSplitTarget = useCallback((target: SplitTarget) => {
+    setState((prev) => {
+      if (!prev.isDrawing || prev.mode !== "split") return prev;
+      return {
+        ...prev,
+        splitTarget: target,
+      };
+    });
   }, []);
 
   const startFreehand = useCallback((point: Point) => {
@@ -236,11 +266,13 @@ export function DrawingProvider({ children, onPolygonComplete }: DrawingProvider
       addFreehandPoint,
       endFreehand,
       setRoadClass,
+      setSplitTarget,
     }),
     [
       state, startDrawing, addVertex, setPreviewPoint, completeDrawing,
       cancelDrawing, undoLastVertex, canComplete, setInputMode,
       startFreehand, addFreehandPoint, endFreehand, setRoadClass,
+      setSplitTarget,
     ]
   );
 

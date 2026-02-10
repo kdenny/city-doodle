@@ -271,10 +271,12 @@ export function BuildView({
             ) : drawingContext.state.mode === "split" ? (
               <div className="flex items-center gap-3">
                 <span>
-                  {drawingContext.state.vertices.length === 0 ? (
-                    <>Click to place the start of the split line</>
+                  {!drawingContext.state.splitTarget ? (
+                    <>Click on a district or neighborhood to select it for splitting</>
+                  ) : drawingContext.state.vertices.length === 0 ? (
+                    <>Splitting <strong>{drawingContext.state.splitTarget.name}</strong> — click to place the start of the split line</>
                   ) : (
-                    <>Click to place the end of the split line • Press <kbd className="px-1.5 py-0.5 bg-gray-100 rounded text-xs font-mono">Enter</kbd> to confirm</>
+                    <>Click to add split line points • Press <kbd className="px-1.5 py-0.5 bg-gray-100 rounded text-xs font-mono">Enter</kbd> to confirm</>
                   )}
                 </span>
                 <span className="text-gray-400">|</span>

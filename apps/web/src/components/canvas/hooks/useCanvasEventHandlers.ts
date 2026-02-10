@@ -53,6 +53,7 @@ export interface EventStateRef {
       inputMode?: string;
       previewPoint?: { x: number; y: number } | null;
       vertices?: Array<{ x: number; y: number }>;
+      splitTarget?: { type: string; id: string; name: string } | null;
     };
     addVertex?: (pos: { x: number; y: number }) => void;
     canComplete?: () => boolean;
@@ -62,6 +63,7 @@ export interface EventStateRef {
     addFreehandPoint?: (pos: { x: number; y: number }) => void;
     endFreehand?: () => void;
     setPreviewPoint?: (pos: { x: number; y: number }) => void;
+    setSplitTarget?: (target: { type: string; id: string; name: string }) => void;
   } | null;
   endpointDragContext: {
     isDragging: boolean;
@@ -572,6 +574,24 @@ export function useCanvasEventHandlers({
       // Handle drawing mode (only if editing)
       if (s.isEditingAllowed && isDrawing && addVertex) {
         const drawingMode = s.drawingContext?.state.mode;
+
+        // CITY-565: Split mode — if no target is selected yet, click selects a feature
+        if (drawingMode === "split" && !s.drawingContext?.state.splitTarget) {
+          const setSplitTarget = s.drawingContext?.setSplitTarget;
+          if (featuresLayerRef.current && setSplitTarget) {
+            const hitResult = featuresLayerRef.current.hitTest(worldPos.x, worldPos.y);
+            if (hitResult && (hitResult.type === "district" || hitResult.type === "neighborhood")) {
+              const feature = hitResult.feature as { id: string; name: string };
+              setSplitTarget({
+                type: hitResult.type,
+                id: feature.id,
+                name: feature.name ?? hitResult.type,
+              });
+            }
+          }
+          return;
+        }
+
         if (drawingMode !== "road" && drawingMode !== "split" &&
             canComplete && canComplete() && drawingLayerRef.current?.isNearFirstVertex(worldPos)) {
           completeDrawing?.();
