@@ -4,7 +4,7 @@
  * Used for clipping districts against water features.
  */
 
-import type { Point, WaterFeature } from "./types";
+import type { Point, WaterFeature, RiverFeature } from "./types";
 import { metersToWorldUnits } from "./districtGenerator";
 import { WORLD_SIZE } from "../../../utils/worldConstants";
 
@@ -755,5 +755,73 @@ export function clipAndValidateDistrict(
     tooSmall,
     clippedArea,
     originalArea,
+  };
+}
+
+/**
+ * CITY-552: Convert a river centerline + width into a closed polygon
+ * by offsetting perpendicular to each segment.
+ *
+ * Uses averaged normals at interior points for smooth corners.
+ * Adds a 0.5 world-unit buffer to prevent pixel-thin slivers at clip boundaries.
+ */
+export function riverToPolygon(river: RiverFeature): Point[] {
+  const pts = river.line.points;
+  if (pts.length < 2) return [];
+
+  const halfWidth = (river.width || 1) / 2 + 0.5;
+  const leftPoints: Point[] = [];
+  const rightPoints: Point[] = [];
+
+  for (let i = 0; i < pts.length; i++) {
+    let nx: number, ny: number;
+
+    if (i === 0) {
+      const dx = pts[1].x - pts[0].x;
+      const dy = pts[1].y - pts[0].y;
+      const len = Math.sqrt(dx * dx + dy * dy);
+      if (len < 0.0001) { nx = 0; ny = 1; } else { nx = -dy / len; ny = dx / len; }
+    } else if (i === pts.length - 1) {
+      const dx = pts[i].x - pts[i - 1].x;
+      const dy = pts[i].y - pts[i - 1].y;
+      const len = Math.sqrt(dx * dx + dy * dy);
+      if (len < 0.0001) { nx = 0; ny = 1; } else { nx = -dy / len; ny = dx / len; }
+    } else {
+      // Average the normals of adjacent segments for smooth corners
+      const dx1 = pts[i].x - pts[i - 1].x;
+      const dy1 = pts[i].y - pts[i - 1].y;
+      const len1 = Math.sqrt(dx1 * dx1 + dy1 * dy1);
+      const dx2 = pts[i + 1].x - pts[i].x;
+      const dy2 = pts[i + 1].y - pts[i].y;
+      const len2 = Math.sqrt(dx2 * dx2 + dy2 * dy2);
+
+      const n1x = len1 > 0.0001 ? -dy1 / len1 : 0;
+      const n1y = len1 > 0.0001 ? dx1 / len1 : 1;
+      const n2x = len2 > 0.0001 ? -dy2 / len2 : 0;
+      const n2y = len2 > 0.0001 ? dx2 / len2 : 1;
+
+      const avgX = n1x + n2x;
+      const avgY = n1y + n2y;
+      const avgLen = Math.sqrt(avgX * avgX + avgY * avgY);
+      if (avgLen < 0.0001) { nx = n1x; ny = n1y; } else { nx = avgX / avgLen; ny = avgY / avgLen; }
+    }
+
+    leftPoints.push({ x: pts[i].x + nx * halfWidth, y: pts[i].y + ny * halfWidth });
+    rightPoints.push({ x: pts[i].x - nx * halfWidth, y: pts[i].y - ny * halfWidth });
+  }
+
+  return [...leftPoints, ...rightPoints.reverse()];
+}
+
+/**
+ * CITY-552: Wrap a RiverFeature as a WaterFeature so it can be passed
+ * to the existing clipAndValidateDistrict() pipeline.
+ */
+export function riverFeatureToWaterFeature(river: RiverFeature): WaterFeature {
+  return {
+    id: river.id,
+    type: "lake",
+    polygon: { points: riverToPolygon(river) },
+    name: river.name,
   };
 }

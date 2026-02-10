@@ -85,6 +85,7 @@ class TerrainConfig:
     bay_cove_max_area: float = 50000.0  # Max area for "cove" classification
     bay_harbor_min_area: float = 200000.0  # Min area for "harbor" classification
     bay_river_mouth_factor: float = 2.0  # River flow multiplier for bay likelihood
+    bay_erosion_strength: float = 0.5  # How aggressively to erode bay depth (0-1)
 
     # Barrier island parameters
     barrier_islands_enabled: bool = True  # Whether to generate barrier islands

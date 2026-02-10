@@ -619,6 +619,63 @@ class TestBeachGeneration:
             assert feature.properties["beach_type"] in ["ocean", "bay", "lake", "river"]
 
 
+    def test_lake_beach_coverage_capped(self):
+        """Lake beaches should cover at most ~20% of the lake perimeter (CITY-547)."""
+        import numpy as np
+        from shapely.geometry import box
+
+        # Create a heightfield with a central depression (lake)
+        # surrounded by beach-height terrain
+        heightfield = np.full((32, 32), 0.40)
+        # Lake in the center
+        heightfield[10:22, 10:22] = 0.20
+        # Beach-height ring around the lake
+        for i in range(8, 24):
+            for j in range(8, 24):
+                if heightfield[i, j] > 0.30:
+                    if any(
+                        0 <= i + di < 32 and 0 <= j + dj < 32
+                        and heightfield[i + di, j + dj] < 0.30
+                        for di in [-1, 0, 1]
+                        for dj in [-1, 0, 1]
+                    ):
+                        heightfield[i, j] = 0.32
+
+        # Create a lake polygon matching the depression
+        tile_size = 1000.0
+        cell_size = tile_size / 32
+        lake_poly = box(
+            10 * cell_size, 10 * cell_size,
+            22 * cell_size, 22 * cell_size,
+        )
+
+        features = extract_beaches(
+            heightfield=heightfield,
+            water_level=0.30,
+            beach_height_band=0.05,
+            tile_x=0,
+            tile_y=0,
+            tile_size=tile_size,
+            min_length=2,
+            max_slope=0.15,
+            lake_polygons=[lake_poly],
+        )
+
+        lake_beaches = [f for f in features if f.properties.get("beach_type") == "lake"]
+        total_beach_perim = sum(
+            f.properties.get("area", 0) / max(f.properties.get("width", 1), 0.01)
+            for f in lake_beaches
+        )
+
+        # Total beach "length" should be well under 50% of lake perimeter
+        lake_perim = lake_poly.length
+        if lake_beaches:
+            assert total_beach_perim < lake_perim * 0.5, (
+                f"Lake beach coverage {total_beach_perim:.0f} exceeds 50% of "
+                f"lake perimeter {lake_perim:.0f}"
+            )
+
+
 class TestBayGeneration:
     """Tests for bay generation along coastlines."""
 
