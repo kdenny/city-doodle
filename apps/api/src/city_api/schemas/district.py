@@ -58,6 +58,7 @@ class DistrictCreate(BaseModel):
     )
     density: float = Field(default=1.0, ge=0.0, le=10.0)
     max_height: int = Field(default=4, ge=1, le=100)
+    city_id: UUID | None = None
     transit_access: bool = False
     historic: bool = Field(
         default=False,
@@ -77,6 +78,7 @@ class DistrictUpdate(BaseModel):
     geometry: dict[str, Any] | None = None
     density: float | None = Field(default=None, ge=0.0, le=10.0)
     max_height: int | None = Field(default=None, ge=1, le=100)
+    city_id: UUID | None = None
     transit_access: bool | None = None
     historic: bool | None = None
     street_grid: dict[str, Any] | None = None
@@ -87,6 +89,7 @@ class District(BaseModel):
 
     id: UUID
     world_id: UUID
+    city_id: UUID | None = None
     type: DistrictType
     name: str | None = None
     geometry: dict[str, Any] = Field(

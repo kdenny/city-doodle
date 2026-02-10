@@ -19,10 +19,9 @@ from alembic import op
 from sqlalchemy.dialects import postgresql
 
 revision: str = "022"
-down_revision: str | None = None
+down_revision: str | None = "021"
 branch_labels: str | Sequence[str] | None = None
-# Depends on both 021 migrations (footprint + unique line name)
-depends_on: str | Sequence[str] | None = ("021",)
+depends_on: str | Sequence[str] | None = None
 
 
 def upgrade() -> None:
