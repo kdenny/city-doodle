@@ -435,6 +435,10 @@ export class FeaturesLayer {
   private poiIndex: POISpatialIndex = new POISpatialIndex();
   /** Spatial index for fast district hit testing */
   private districtIndex: DistrictSpatialIndex = new DistrictSpatialIndex();
+  /** CITY-571: Dirty flags — defer spatial index rebuild to hitTest() */
+  private districtIndexDirty = false;
+  private roadIndexDirty = false;
+  private poiIndexDirty = false;
   /** CITY-421: Viewport bounds in world coordinates for spatial culling */
   private viewportBounds: { minX: number; minY: number; maxX: number; maxY: number } | null = null;
   /** CITY-495: Bitmask of visible road classes at current zoom (for skip-render optimization) */
@@ -516,10 +520,10 @@ export class FeaturesLayer {
     // Only rebuild indexes and recompute scale for changed data
     if (districtsChanged) {
       this.districtScale = this.computeDistrictScale(data.districts);
-      this.districtIndex.build(data.districts);
+      this.districtIndexDirty = true;  // CITY-571: defer rebuild to hitTest()
     }
-    if (roadsChanged) this.roadIndex.build(data.roads);
-    if (poisChanged) this.poiIndex.build(data.pois);
+    if (roadsChanged) this.roadIndexDirty = true;  // CITY-571: defer rebuild to hitTest()
+    if (poisChanged) this.poiIndexDirty = true;  // CITY-571: defer rebuild to hitTest()
 
     // CITY-377 diagnostic: log road stats on data load
     if (roadsChanged && data.roads.length > 0) {
@@ -1393,6 +1397,20 @@ setVisibility(visibility: LayerVisibility & { neighborhoods?: boolean; cityLimit
    */
   hitTest(worldX: number, worldY: number): HitTestResult | null {
     if (!this.data) return null;
+
+    // CITY-571: Lazily rebuild stale spatial indices on demand
+    if (this.districtIndexDirty) {
+      this.districtIndex.build(this.data.districts);
+      this.districtIndexDirty = false;
+    }
+    if (this.roadIndexDirty) {
+      this.roadIndex.build(this.data.roads);
+      this.roadIndexDirty = false;
+    }
+    if (this.poiIndexDirty) {
+      this.poiIndex.build(this.data.pois);
+      this.poiIndexDirty = false;
+    }
 
     // Check POIs first (they're on top, using spatial index for O(1) lookup)
     if (this.poisGraphics.visible) {
