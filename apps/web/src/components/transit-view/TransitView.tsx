@@ -65,19 +65,8 @@ export function TransitView({
     if (!selection) return null;
     if (selection.type !== "rail_station" && selection.type !== "subway_station") return null;
 
-    const network = transitContext?.transitNetwork;
-    const stationLines: { id: string; name: string; color: string }[] = [];
-
-    if (network) {
-      for (const line of network.lines) {
-        const servesStation = line.segments.some(
-          (seg) => seg.from_station_id === selection.id || seg.to_station_id === selection.id
-        );
-        if (servesStation) {
-          stationLines.push({ id: line.id, name: line.name, color: line.color });
-        }
-      }
-    }
+    const stationLines = (transitContext?.getLinesForStation(selection.id) ?? [])
+      .map(l => ({ id: l.id, name: l.name, color: l.color }));
 
     return {
       id: selection.id,
@@ -86,7 +75,7 @@ export function TransitView({
       isTerminus: selection.isTerminus,
       lines: stationLines,
     };
-  }, [selectionContext?.selection, transitContext?.transitNetwork]);
+  }, [selectionContext?.selection, transitContext?.getLinesForStation]);
 
   // Station placement via PlacementContext
   const subwaySeed = SEED_TYPES.find((s) => s.id === "subway") ?? null;
