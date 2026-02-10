@@ -41,7 +41,6 @@ const TYPE_SUFFIXES: Partial<Record<POIType, string[]>> = {
   shopping: ["Market", "Cafe", "Bakery", "Deli", "Grocery", "Bistro", "Shop", "Eatery"],
   civic: ["Community Center", "Library", "Center", "Plaza", "Hall"],
   university: ["Hall", "Building", "Center", "Institute", "Pavilion"],
-  school: ["School", "Academy", "Preparatory", "Learning Center"],
   industrial: ["Works", "Facility", "Plant", "Warehouse", "Depot"],
   transit: ["Station", "Terminal", "Hub", "Stop"],
   park: ["Park", "Gardens", "Green", "Commons"],
@@ -113,7 +112,6 @@ const DISTRICT_POI_TYPES: Partial<Record<DistrictType, POIType[]>> = {
   downtown: ["civic", "shopping", "civic"],
   university: ["university", "university", "civic"],
   industrial: ["industrial", "industrial"],
-  k12: ["school", "civic"],
   residential: ["shopping", "civic"],
   commercial: ["shopping", "civic", "shopping"],
   airport: ["transit", "shopping"],
@@ -129,7 +127,6 @@ const POI_COUNT_RANGE: Partial<Record<DistrictType, [number, number]>> = {
   downtown: [2, 3],
   university: [2, 3],
   industrial: [1, 2],
-  k12: [1, 2],
   residential: [1, 2],
   commercial: [2, 3],
   airport: [1, 2],
@@ -442,6 +439,7 @@ function pointInsidePolygon(point: Point, polygon: Point[]): boolean {
  * @param position - Center position of the POI
  * @param poiType - Type of POI (determines path count)
  * @param poiId - POI ID used for generating path IDs
+ * @param districtId - Optional district ID for ownership tracking
  * @returns Array of trail-class Road objects
  */
 export function generateCampusPaths(
@@ -449,6 +447,7 @@ export function generateCampusPaths(
   position: Point,
   poiType: POIType,
   poiId: string,
+  districtId?: string,
 ): Road[] {
   const config = CAMPUS_PATH_CONFIGS[poiType];
   if (!config || footprint.length < 3) return [];
@@ -523,6 +522,7 @@ export function generateCampusPaths(
         roadClass: "trail",
         line: { points: pathPoints },
         name: i === 0 ? "Main Walk" : "Campus Walk",
+        districtId,
       });
     }
   }
@@ -555,6 +555,7 @@ export interface GeneratedDistrictPOIs {
  * @param _districtName - District name (reserved, not used in naming)
  * @param roads - Optional roads within/near the district; POIs prefer road-adjacent locations (CITY-406)
  * @param existingPOIs - Existing POIs to avoid overlapping with (CITY-409)
+ * @param districtId - District ID for ownership tracking on POIs and campus paths
  * @returns Object with POI array and campus path roads
  */
 export function generatePOIsForDistrict(
@@ -562,7 +563,8 @@ export function generatePOIsForDistrict(
   polygon: Point[],
   _districtName: string,
   roads?: Road[],
-  existingPOIs?: POI[]
+  existingPOIs?: POI[],
+  districtId?: string,
 ): GeneratedDistrictPOIs {
   const poiTypes = DISTRICT_POI_TYPES[districtType];
   if (!poiTypes || poiTypes.length === 0) return { pois: [], campusPaths: [] };
@@ -614,11 +616,12 @@ export function generatePOIsForDistrict(
       type: poiType,
       position: positions[i],
       footprint,
+      districtId,
     });
 
     // Generate campus paths inside the footprint (CITY-441, CITY-442)
     if (footprint && footprint.length >= 3) {
-      const paths = generateCampusPaths(footprint, positions[i], poiType, poiId);
+      const paths = generateCampusPaths(footprint, positions[i], poiType, poiId, districtId);
       campusPaths.push(...paths);
     }
   }

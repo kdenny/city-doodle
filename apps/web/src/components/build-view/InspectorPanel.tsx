@@ -155,7 +155,6 @@ const ROAD_CLASS_LABELS: Record<string, string> = {
 // POI type display names
 const POI_TYPE_LABELS: Record<string, string> = {
   hospital: "Hospital",
-  school: "School",
   university: "University",
   park: "Park",
   transit: "Transit Station",
@@ -783,7 +782,6 @@ interface POIInspectorProps {
 // POI types available for selection
 const POI_TYPE_OPTIONS: POIType[] = [
   "hospital",
-  "school",
   "university",
   "park",
   "transit",

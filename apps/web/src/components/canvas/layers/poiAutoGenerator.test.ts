@@ -51,7 +51,6 @@ describe("generatePOIFootprint", () => {
     expect(generatePOIFootprint("civic", { x: 0, y: 0 })).toBeUndefined();
     expect(generatePOIFootprint("transit", { x: 0, y: 0 })).toBeUndefined();
     expect(generatePOIFootprint("park", { x: 0, y: 0 })).toBeUndefined();
-    expect(generatePOIFootprint("school", { x: 0, y: 0 })).toBeUndefined();
     expect(generatePOIFootprint("industrial", { x: 0, y: 0 })).toBeUndefined();
   });
 
@@ -229,5 +228,26 @@ describe("generatePOIsForDistrict", () => {
     const result = generatePOIsForDistrict("nonexistent" as any, polygon, "None");
     expect(result.pois.length).toBe(0);
     expect(result.campusPaths.length).toBe(0);
+  });
+
+  it("does not generate POIs for k12 districts", () => {
+    const polygon = makeSquare(400, 400, 15);
+    const result = generatePOIsForDistrict("k12", polygon, "Test K12");
+    expect(result.pois.length).toBe(0);
+    expect(result.campusPaths.length).toBe(0);
+  });
+
+  it("sets districtId on POIs and campus paths when provided", () => {
+    const polygon = makeSquare(100, 100, 20);
+    const result = generatePOIsForDistrict(
+      "university", polygon, "Test Uni", undefined, undefined, "dist-123"
+    );
+
+    for (const poi of result.pois) {
+      expect(poi.districtId).toBe("dist-123");
+    }
+    for (const path of result.campusPaths) {
+      expect(path.districtId).toBe("dist-123");
+    }
   });
 });
