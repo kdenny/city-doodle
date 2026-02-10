@@ -374,6 +374,7 @@ function NeighborhoodRenameOverlay({
 }) {
   const [name, setName] = useState(defaultName);
   const inputRef = useRef<HTMLInputElement>(null);
+  const confirmedRef = useRef(false);
 
   useEffect(() => {
     // Auto-focus and select the text on mount
@@ -387,9 +388,11 @@ function NeighborhoodRenameOverlay({
   const handleKeyDown = (e: ReactKeyboardEvent<HTMLInputElement>) => {
     if (e.key === "Enter") {
       e.preventDefault();
+      confirmedRef.current = true;
       onConfirm(name);
     } else if (e.key === "Escape") {
       e.preventDefault();
+      confirmedRef.current = true;
       onCancel();
     }
   };
@@ -406,7 +409,9 @@ function NeighborhoodRenameOverlay({
           value={name}
           onChange={(e) => setName(e.target.value)}
           onKeyDown={handleKeyDown}
-          onBlur={() => onConfirm(name)}
+          onBlur={() => {
+            if (!confirmedRef.current) onConfirm(name);
+          }}
           className="w-56 px-3 py-1.5 text-sm border border-gray-300 rounded-md focus:outline-none focus:ring-2 focus:ring-blue-500 focus:border-blue-500 text-center"
           placeholder="Enter neighborhood name"
         />
