@@ -30,6 +30,8 @@ export interface PreviewSeedData {
   position: { x: number; y: number };
   /** Optional size override for drag-to-size district preview */
   size?: number;
+  /** CITY-560: First corner of drag-to-define rectangle (position is the second corner) */
+  dragOrigin?: { x: number; y: number };
 }
 
 // Colors for different seed categories
@@ -144,8 +146,8 @@ export class SeedsLayer {
     this.previewGraphics.clear();
     this.previewGraphics.visible = true;
 
-    if (category === "district") {
-      // For districts, show a polygon preview representing the district area.
+    if (category === "park" || category === "airport") {
+      // Parks and airports keep organic blob preview
       const size = preview.size ?? 34;
       const baseRadius = size / 2;
       const numPoints = 8;
@@ -186,17 +188,88 @@ export class SeedsLayer {
       this.previewGraphics.moveTo(position.x, position.y - crossSize);
       this.previewGraphics.lineTo(position.x, position.y + crossSize);
       this.previewGraphics.stroke();
+    } else if (category === "district") {
+      // CITY-560: Districts use rectangle preview
+      const { dragOrigin } = preview;
 
-      // Draw preview street grid lines within the polygon area
-      this.previewGraphics.setStrokeStyle({ width: 1, color: 0xaaaaaa, alpha: 0.3 });
-      const gridSpacing = Math.max(6, baseRadius / 3);
-      for (let offset = -baseRadius + gridSpacing; offset < baseRadius; offset += gridSpacing) {
-        this.previewGraphics.moveTo(position.x - baseRadius * 0.7, position.y + offset);
-        this.previewGraphics.lineTo(position.x + baseRadius * 0.7, position.y + offset);
+      if (dragOrigin) {
+        // Active drag: draw rectangle from dragOrigin to position (two corners)
+        const minX = Math.min(dragOrigin.x, position.x);
+        const minY = Math.min(dragOrigin.y, position.y);
+        const maxX = Math.max(dragOrigin.x, position.x);
+        const maxY = Math.max(dragOrigin.y, position.y);
+        const w = maxX - minX;
+        const h = maxY - minY;
+
+        // Draw rectangle fill
+        this.previewGraphics.rect(minX, minY, w, h);
+        this.previewGraphics.fill({ color: bgColor, alpha: 0.4 });
+
+        // Draw rectangle border
+        this.previewGraphics.setStrokeStyle({ width: 2, color, alpha: 0.7 });
+        this.previewGraphics.rect(minX, minY, w, h);
         this.previewGraphics.stroke();
-        this.previewGraphics.moveTo(position.x + offset, position.y - baseRadius * 0.7);
-        this.previewGraphics.lineTo(position.x + offset, position.y + baseRadius * 0.7);
+
+        // Draw preview grid lines inside the rectangle
+        const gridSpacing = Math.max(6, Math.min(w, h) / 6);
+        this.previewGraphics.setStrokeStyle({ width: 1, color: 0xaaaaaa, alpha: 0.3 });
+        for (let x = minX + gridSpacing; x < maxX; x += gridSpacing) {
+          this.previewGraphics.moveTo(x, minY);
+          this.previewGraphics.lineTo(x, maxY);
+          this.previewGraphics.stroke();
+        }
+        for (let y = minY + gridSpacing; y < maxY; y += gridSpacing) {
+          this.previewGraphics.moveTo(minX, y);
+          this.previewGraphics.lineTo(maxX, y);
+          this.previewGraphics.stroke();
+        }
+
+        // Draw crosshair at center
+        const cx = (minX + maxX) / 2;
+        const cy = (minY + maxY) / 2;
+        const crossSize = 8;
+        this.previewGraphics.setStrokeStyle({ width: 1, color, alpha: 0.8 });
+        this.previewGraphics.moveTo(cx - crossSize, cy);
+        this.previewGraphics.lineTo(cx + crossSize, cy);
         this.previewGraphics.stroke();
+        this.previewGraphics.moveTo(cx, cy - crossSize);
+        this.previewGraphics.lineTo(cx, cy + crossSize);
+        this.previewGraphics.stroke();
+      } else {
+        // Hover preview (no drag): draw a default-sized square at cursor
+        const size = preview.size ?? 34;
+        const halfSize = size / 2;
+
+        // Draw square fill
+        this.previewGraphics.rect(position.x - halfSize, position.y - halfSize, size, size);
+        this.previewGraphics.fill({ color: bgColor, alpha: 0.4 });
+
+        // Draw square border
+        this.previewGraphics.setStrokeStyle({ width: 2, color, alpha: 0.7 });
+        this.previewGraphics.rect(position.x - halfSize, position.y - halfSize, size, size);
+        this.previewGraphics.stroke();
+
+        // Draw crosshair at center
+        const crossSize = 8;
+        this.previewGraphics.setStrokeStyle({ width: 1, color, alpha: 0.8 });
+        this.previewGraphics.moveTo(position.x - crossSize, position.y);
+        this.previewGraphics.lineTo(position.x + crossSize, position.y);
+        this.previewGraphics.stroke();
+        this.previewGraphics.moveTo(position.x, position.y - crossSize);
+        this.previewGraphics.lineTo(position.x, position.y + crossSize);
+        this.previewGraphics.stroke();
+
+        // Draw preview street grid lines within the square
+        this.previewGraphics.setStrokeStyle({ width: 1, color: 0xaaaaaa, alpha: 0.3 });
+        const gridSpacing = Math.max(6, halfSize / 3);
+        for (let offset = -halfSize + gridSpacing; offset < halfSize; offset += gridSpacing) {
+          this.previewGraphics.moveTo(position.x - halfSize, position.y + offset);
+          this.previewGraphics.lineTo(position.x + halfSize, position.y + offset);
+          this.previewGraphics.stroke();
+          this.previewGraphics.moveTo(position.x + offset, position.y - halfSize);
+          this.previewGraphics.lineTo(position.x + offset, position.y + halfSize);
+          this.previewGraphics.stroke();
+        }
       }
     } else {
       // For POIs and transit, show the standard circular marker

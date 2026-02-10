@@ -193,7 +193,8 @@ function PlacementWithSeeds({ children }: { children: ReactNode }) {
       position: { x: number; y: number },
       personality?: DistrictPersonality,
       generationSeed?: number,
-      fixedSize?: number
+      fixedSize?: number,
+      fixedBounds?: { width: number; height: number }
     ): Promise<boolean> => {
       if (seed.category === "district" || seed.category === "park" || seed.category === "airport") {
         // For district, park, and airport seeds, generate actual district geometry
@@ -208,7 +209,7 @@ function PlacementWithSeeds({ children }: { children: ReactNode }) {
         } else if (seed.category === "airport" && !fixedSize) {
           districtSize = AIRPORT_SIZE_WORLD_UNITS;
         }
-        const result = addDistrict(position, seed.id, { personality, seed: generationSeed, size: districtSize });
+        const result = addDistrict(position, seed.id, { personality, seed: generationSeed, size: districtSize, fixedBounds });
         if (!result.generated) {
           // District overlapped, in water, or failed — return false to trigger visual error flash
           toast?.addToast(result.error || "Failed to place district", "warning");

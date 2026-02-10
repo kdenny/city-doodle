@@ -152,9 +152,14 @@ export interface DistrictGenerationConfig {
    * Provides world name, adjacent district names, and nearby water feature names.
    */
   namingContext?: NamingContext;
+  /**
+   * CITY-560: Fixed rectangle bounds from drag-to-define (width × height in world units).
+   * When provided, the district polygon is an axis-aligned rectangle instead of an organic shape.
+   */
+  fixedBounds?: { width: number; height: number };
 }
 
-const DEFAULT_CONFIG: Required<Omit<DistrictGenerationConfig, "scaleSettings" | "seed" | "transitStations" | "transitCar" | "eraYear" | "namingContext">> & {
+const DEFAULT_CONFIG: Required<Omit<DistrictGenerationConfig, "scaleSettings" | "seed" | "transitStations" | "transitCar" | "eraYear" | "namingContext" | "fixedBounds">> & {
   scaleSettings: ScaleSettings;
 } = {
   size: 120,
@@ -172,7 +177,7 @@ const DEFAULT_CONFIG: Required<Omit<DistrictGenerationConfig, "scaleSettings" | 
  */
 export function getEffectiveDistrictConfig(
   config: DistrictGenerationConfig = {}
-): Required<Omit<DistrictGenerationConfig, "scaleSettings" | "seed" | "transitStations" | "transitCar" | "eraYear" | "namingContext">> & {
+): Required<Omit<DistrictGenerationConfig, "scaleSettings" | "seed" | "transitStations" | "transitCar" | "eraYear" | "namingContext" | "fixedBounds">> & {
   scaleSettings: ScaleSettings;
 } {
   const scaleSettings = config.scaleSettings ?? DEFAULT_SCALE_SETTINGS;
@@ -282,44 +287,22 @@ function generateOrganicPolygon(
 }
 
 /**
- * Generate a rounded rectangle polygon.
+ * CITY-560: Generate a simple axis-aligned rectangle polygon.
  */
-function generateRoundedRectangle(
+function generateRectangle(
   centerX: number,
   centerY: number,
   width: number,
-  height: number,
-  cornerRadius: number,
-  pointsPerCorner: number = 3
+  height: number
 ): Point[] {
-  const points: Point[] = [];
-  const halfWidth = width / 2;
-  const halfHeight = height / 2;
-
-  // Ensure corner radius doesn't exceed half the smaller dimension
-  const maxRadius = Math.min(halfWidth, halfHeight);
-  const r = Math.min(cornerRadius, maxRadius);
-
-  // Generate points for each corner
-  const corners = [
-    { cx: centerX + halfWidth - r, cy: centerY - halfHeight + r, startAngle: -Math.PI / 2, endAngle: 0 },
-    { cx: centerX + halfWidth - r, cy: centerY + halfHeight - r, startAngle: 0, endAngle: Math.PI / 2 },
-    { cx: centerX - halfWidth + r, cy: centerY + halfHeight - r, startAngle: Math.PI / 2, endAngle: Math.PI },
-    { cx: centerX - halfWidth + r, cy: centerY - halfHeight + r, startAngle: Math.PI, endAngle: 3 * Math.PI / 2 },
+  const hw = width / 2;
+  const hh = height / 2;
+  return [
+    { x: centerX - hw, y: centerY - hh },
+    { x: centerX + hw, y: centerY - hh },
+    { x: centerX + hw, y: centerY + hh },
+    { x: centerX - hw, y: centerY + hh },
   ];
-
-  for (const corner of corners) {
-    for (let i = 0; i <= pointsPerCorner; i++) {
-      const t = i / pointsPerCorner;
-      const angle = corner.startAngle + (corner.endAngle - corner.startAngle) * t;
-      points.push({
-        x: corner.cx + Math.cos(angle) * r,
-        y: corner.cy + Math.sin(angle) * r,
-      });
-    }
-  }
-
-  return points;
 }
 
 /**
@@ -366,44 +349,16 @@ export function generateDistrictGeometry(
       Math.max(cfg.organicFactor, 0.3) + 0.2,
       rng
     );
+  } else if (config.fixedBounds) {
+    // CITY-560: Drag-to-define rectangle
+    // Enforce minimum 2×2 blocks
+    const minDim = metersToWorldUnits(getBaseBlockSize(districtType) * 2) || 30;
+    const w = Math.max(config.fixedBounds.width, minDim);
+    const h = Math.max(config.fixedBounds.height, minDim);
+    polygonPoints = generateRectangle(position.x, position.y, w, h);
   } else {
-    // For all other district types, use organicFactor to blend shape.
-    // Downtown/commercial get a bias toward rectangular (subtract 0.2).
-    const typeBias = (districtType === "downtown" || districtType === "commercial") ? -0.2 : 0;
-    const effectiveOrganic = Math.max(0, Math.min(1, cfg.organicFactor + typeBias));
-
-    if (effectiveOrganic < 0.3) {
-      // Grid-dominant: rectangular shape with slight rounding
-      const width = size * rng.range(0.8, 1.2);
-      const height = size * rng.range(0.7, 1.0);
-      polygonPoints = generateRoundedRectangle(
-        position.x,
-        position.y,
-        width,
-        height,
-        size * (0.05 + effectiveOrganic * 0.15)
-      );
-    } else if (effectiveOrganic < 0.6) {
-      // Blended: organic polygon with fewer points and less variation
-      polygonPoints = generateOrganicPolygon(
-        position.x,
-        position.y,
-        size / 2,
-        cfg.polygonPoints - 2 + rng.intRange(0, 2),
-        effectiveOrganic * 0.6,
-        rng
-      );
-    } else {
-      // Organic-dominant: full organic shape with more variation
-      polygonPoints = generateOrganicPolygon(
-        position.x,
-        position.y,
-        size / 2,
-        cfg.polygonPoints + rng.intRange(0, 3),
-        effectiveOrganic,
-        rng
-      );
-    }
+    // CITY-560: Default square for non-park/airport districts (no drag / click-to-place)
+    polygonPoints = generateRectangle(position.x, position.y, size, size);
   }
 
   // Determine if district is historic based on era_year

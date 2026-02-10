@@ -16,10 +16,12 @@ interface PlacementState {
   placementPersonality: DistrictPersonality;
   /** Seed for deterministic procedural generation */
   placementSeed: number;
-  /** Drag-to-size: center position where drag started */
+  /** Drag-to-size: corner position where drag started */
   dragOrigin: { x: number; y: number } | null;
   /** Drag-to-size: current radius from drag distance */
   dragSize: number | null;
+  /** CITY-560: Drag-to-define: second corner position during drag */
+  dragCorner: { x: number; y: number } | null;
   /** Position of last placement error (for visual flash feedback) */
   placementError: { x: number; y: number } | null;
   /** CITY-526: Whether an async placement operation is in progress */
@@ -31,17 +33,19 @@ interface PlacementContextValue extends PlacementState {
   startPlacing: () => void;
   cancelPlacing: () => void;
   setPreviewPosition: (position: { x: number; y: number } | null) => void;
-  confirmPlacement: (position: { x: number; y: number }, size?: number) => void;
+  confirmPlacement: (position: { x: number; y: number }, size?: number, fixedBounds?: { width: number; height: number }) => void;
   /** Update the personality settings for district placement */
   setPlacementPersonality: (personality: DistrictPersonality) => void;
   /** Update the seed for deterministic procedural generation */
   setPlacementSeed: (seed: number) => void;
   /** Generate a new random seed for placement */
   shufflePlacementSeed: () => void;
-  /** Start drag-to-size: record the center position */
+  /** Start drag-to-size: record the first corner position */
   startDragSize: (origin: { x: number; y: number }) => void;
   /** Update drag-to-size: set the current size from drag distance */
   updateDragSize: (size: number) => void;
+  /** CITY-560: Update drag-to-define: set the second corner position */
+  updateDragCorner: (corner: { x: number; y: number }) => void;
   /** Cancel drag-to-size without placing */
   cancelDragSize: () => void;
   /** Whether a drag-to-size operation is in progress */
@@ -62,7 +66,8 @@ interface PlacementProviderProps {
     position: { x: number; y: number },
     personality?: DistrictPersonality,
     generationSeed?: number,
-    fixedSize?: number
+    fixedSize?: number,
+    fixedBounds?: { width: number; height: number }
   ) => Promise<boolean> | boolean | void;
 }
 
@@ -75,6 +80,7 @@ export function PlacementProvider({ children, onPlaceSeed }: PlacementProviderPr
     placementSeed: generateRandomSeed(),
     dragOrigin: null,
     dragSize: null,
+    dragCorner: null,
     placementError: null,
     placementBusy: false,
   });
@@ -94,6 +100,7 @@ export function PlacementProvider({ children, onPlaceSeed }: PlacementProviderPr
       placementSeed: generateRandomSeed(),
       dragOrigin: null,
       dragSize: null,
+      dragCorner: null,
       placementError: null,
       placementBusy: false,
     }));
@@ -115,6 +122,7 @@ export function PlacementProvider({ children, onPlaceSeed }: PlacementProviderPr
       placementSeed: generateRandomSeed(),
       dragOrigin: null,
       dragSize: null,
+      dragCorner: null,
       placementError: null,
       placementBusy: false,
     });
@@ -153,6 +161,7 @@ export function PlacementProvider({ children, onPlaceSeed }: PlacementProviderPr
       ...prev,
       dragOrigin: origin,
       dragSize: null,
+      dragCorner: null,
       previewPosition: origin,
     }));
   }, []);
@@ -164,11 +173,19 @@ export function PlacementProvider({ children, onPlaceSeed }: PlacementProviderPr
     }));
   }, []);
 
+  const updateDragCorner = useCallback((corner: { x: number; y: number }) => {
+    setState((prev) => ({
+      ...prev,
+      dragCorner: corner,
+    }));
+  }, []);
+
   const cancelDragSize = useCallback(() => {
     setState((prev) => ({
       ...prev,
       dragOrigin: null,
       dragSize: null,
+      dragCorner: null,
     }));
   }, []);
 
@@ -183,15 +200,15 @@ export function PlacementProvider({ children, onPlaceSeed }: PlacementProviderPr
   }, []);
 
   const confirmPlacement = useCallback(
-    async (position: { x: number; y: number }, size?: number) => {
+    async (position: { x: number; y: number }, size?: number, fixedBounds?: { width: number; height: number }) => {
       if (state.selectedSeed && onPlaceSeed) {
         // CITY-526: Mark as busy during async placement
         setState((prev) => ({ ...prev, placementBusy: true }));
         try {
-          // Pass personality, seed, and optional size for district seeds
+          // Pass personality, seed, optional size, and optional fixedBounds for district seeds
           let result: boolean | void;
           if (state.selectedSeed.category === "district") {
-            result = await onPlaceSeed(state.selectedSeed, position, state.placementPersonality, state.placementSeed, size);
+            result = await onPlaceSeed(state.selectedSeed, position, state.placementPersonality, state.placementSeed, size, fixedBounds);
           } else {
             result = await onPlaceSeed(state.selectedSeed, position);
           }
@@ -212,6 +229,7 @@ export function PlacementProvider({ children, onPlaceSeed }: PlacementProviderPr
         placementSeed: generateRandomSeed(),
         dragOrigin: null,
         dragSize: null,
+        dragCorner: null,
       }));
     },
     [state.selectedSeed, state.placementPersonality, state.placementSeed, onPlaceSeed, setPlacementError]
@@ -230,6 +248,7 @@ export function PlacementProvider({ children, onPlaceSeed }: PlacementProviderPr
       shufflePlacementSeed,
       startDragSize,
       updateDragSize,
+      updateDragCorner,
       cancelDragSize,
       isDraggingSize,
       setPlacementError,
@@ -238,8 +257,8 @@ export function PlacementProvider({ children, onPlaceSeed }: PlacementProviderPr
     [
       state, selectSeed, startPlacing, cancelPlacing, setPreviewPosition,
       confirmPlacement, setPlacementPersonality, setPlacementSeed,
-      shufflePlacementSeed, startDragSize, updateDragSize, cancelDragSize,
-      isDraggingSize, setPlacementError, setPlacementBusy,
+      shufflePlacementSeed, startDragSize, updateDragSize, updateDragCorner,
+      cancelDragSize, isDraggingSize, setPlacementError, setPlacementBusy,
     ]
   );
 

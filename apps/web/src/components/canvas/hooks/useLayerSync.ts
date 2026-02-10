@@ -84,6 +84,12 @@ interface PlacementContextSlice {
   previewPosition: { x: number; y: number } | null;
   selectedSeed: { id: string; category: SeedCategory; icon: string; label?: string } | null;
   dragSize: number | null;
+  /** CITY-560: Whether a drag-to-define operation is in progress */
+  isDraggingSize?: boolean;
+  /** CITY-560: First corner of the drag-to-define rectangle */
+  dragOrigin?: { x: number; y: number } | null;
+  /** CITY-560: Second corner of the drag-to-define rectangle */
+  dragCorner?: { x: number; y: number } | null;
   placementPersonality?: { sprawl_compact?: number } | null;
   placementError?: { x: number; y: number } | null;
 }
@@ -382,6 +388,8 @@ export function useLayerSync(params: UseLayerSyncParams) {
         icon: placementContext.selectedSeed.icon,
         position: placementContext.previewPosition,
         size: previewSize,
+        // CITY-560: Pass dragOrigin so SeedsLayer can draw the rectangle preview
+        dragOrigin: placementContext.isDraggingSize ? placementContext.dragOrigin ?? undefined : undefined,
       });
     } else {
       seedsLayerRef.current.setPreview(null);
@@ -392,7 +400,10 @@ export function useLayerSync(params: UseLayerSyncParams) {
     placementContext?.previewPosition,
     placementContext?.selectedSeed,
     placementContext?.dragSize,
+    placementContext?.dragCorner,
     placementContext?.placementPersonality,
+    placementContext?.isDraggingSize,
+    placementContext?.dragOrigin,
   ]);
 
   // Show placement error flash
