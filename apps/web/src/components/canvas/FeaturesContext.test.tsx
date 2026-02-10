@@ -1,7 +1,7 @@
 import { describe, it, expect, vi } from "vitest";
 import { render, act } from "@testing-library/react";
 import { QueryClient, QueryClientProvider } from "@tanstack/react-query";
-import { FeaturesProvider, useFeatures, useFeaturesOptional } from "./FeaturesContext";
+import { FeaturesProvider, useFeatures, useFeaturesOptional, useFeaturesState, useFeaturesStateOptional, useFeaturesDispatch, useFeaturesDispatchOptional } from "./FeaturesContext";
 import type { District, Road, POI } from "./layers";
 import type { ReactNode } from "react";
 
@@ -159,6 +159,108 @@ describe("FeaturesContext", () => {
       expect(capturedContext).not.toBeNull();
       expect(capturedContext!).toBeDefined();
       expect(capturedContext!.features).toBeDefined();
+    });
+  });
+
+  describe("useFeaturesState", () => {
+    it("throws when used outside provider", () => {
+      function TestComponent() {
+        useFeaturesState();
+        return null;
+      }
+
+      expect(() => render(<TestComponent />)).toThrow(
+        "useFeaturesState must be used within a FeaturesProvider"
+      );
+    });
+
+    it("returns state when used inside provider", () => {
+      let capturedState: ReturnType<typeof useFeaturesState> | undefined;
+      const Wrapper = createTestWrapper();
+
+      function TestComponent() {
+        capturedState = useFeaturesState();
+        return null;
+      }
+
+      render(
+        <Wrapper>
+          <FeaturesProvider>
+            <TestComponent />
+          </FeaturesProvider>
+        </Wrapper>
+      );
+
+      expect(capturedState).toBeDefined();
+      expect(capturedState!.features).toBeDefined();
+      expect(capturedState!.isLoading).toBe(false);
+      expect(capturedState!.error).toBeNull();
+    });
+  });
+
+  describe("useFeaturesStateOptional", () => {
+    it("returns null when used outside provider", () => {
+      let state: ReturnType<typeof useFeaturesStateOptional> | undefined;
+
+      function TestComponent() {
+        state = useFeaturesStateOptional();
+        return null;
+      }
+
+      render(<TestComponent />);
+      expect(state).toBeNull();
+    });
+  });
+
+  describe("useFeaturesDispatch", () => {
+    it("throws when used outside provider", () => {
+      function TestComponent() {
+        useFeaturesDispatch();
+        return null;
+      }
+
+      expect(() => render(<TestComponent />)).toThrow(
+        "useFeaturesDispatch must be used within a FeaturesProvider"
+      );
+    });
+
+    it("provides dispatch methods inside provider", () => {
+      let capturedDispatch: ReturnType<typeof useFeaturesDispatch> | undefined;
+      const Wrapper = createTestWrapper();
+
+      function TestComponent() {
+        capturedDispatch = useFeaturesDispatch();
+        return null;
+      }
+
+      render(
+        <Wrapper>
+          <FeaturesProvider>
+            <TestComponent />
+          </FeaturesProvider>
+        </Wrapper>
+      );
+
+      expect(capturedDispatch).toBeDefined();
+      expect(typeof capturedDispatch!.addDistrict).toBe("function");
+      expect(typeof capturedDispatch!.removeDistrict).toBe("function");
+      expect(typeof capturedDispatch!.updateRoad).toBe("function");
+      expect(typeof capturedDispatch!.addPOI).toBe("function");
+      expect(typeof capturedDispatch!.clearFeatures).toBe("function");
+    });
+  });
+
+  describe("useFeaturesDispatchOptional", () => {
+    it("returns null when used outside provider", () => {
+      let dispatch: ReturnType<typeof useFeaturesDispatchOptional> | undefined;
+
+      function TestComponent() {
+        dispatch = useFeaturesDispatchOptional();
+        return null;
+      }
+
+      render(<TestComponent />);
+      expect(dispatch).toBeNull();
     });
   });
 

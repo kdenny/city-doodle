@@ -159,9 +159,26 @@ export interface AddDistrictResult {
   error?: string;
 }
 
-interface FeaturesContextValue {
+/**
+ * Read-only state provided by FeaturesStateContext.
+ * Consumers that only read features data should use useFeaturesState()
+ * to avoid re-renders when mutation methods are recreated.
+ */
+export interface FeaturesStateValue {
   /** Current features data */
   features: FeaturesData;
+  /** Loading state */
+  isLoading: boolean;
+  /** Error state */
+  error: Error | null;
+}
+
+/**
+ * Dispatch methods provided by FeaturesDispatchContext.
+ * These are memoized independently from state, so consumers that only
+ * call methods (e.g., SelectionWithFeatures) won't re-render on data changes.
+ */
+export interface FeaturesDispatchValue {
   /** Add a district at a position (generates geometry automatically) */
   addDistrict: (
     position: { x: number; y: number },
@@ -208,12 +225,15 @@ interface FeaturesContextValue {
   clearFeatures: () => void;
   /** Set all features data at once */
   setFeatures: (data: FeaturesData) => void;
-  /** Loading state */
-  isLoading: boolean;
-  /** Error state */
-  error: Error | null;
 }
 
+/** Combined interface for backward compatibility (useFeatures / useFeaturesOptional). */
+interface FeaturesContextValue extends FeaturesStateValue, FeaturesDispatchValue {}
+
+const FeaturesStateContext = createContext<FeaturesStateValue | null>(null);
+const FeaturesDispatchContext = createContext<FeaturesDispatchValue | null>(null);
+
+// Legacy single context — kept only so old useFeatures/useFeaturesOptional wrappers work.
 const FeaturesContext = createContext<FeaturesContextValue | null>(null);
 
 interface FeaturesProviderProps {
@@ -2233,8 +2253,15 @@ export function FeaturesProvider({
   const isLoading = !isInitialized || (!!worldId && (isLoadingDistricts || isLoadingNeighborhoods || isLoadingPOIs || isLoadingRoads));
   const error = loadDistrictsError || loadNeighborhoodsError || loadPOIsError || loadRoadsError || null;
 
-  const value: FeaturesContextValue = useMemo(() => ({
+  // State context — changes whenever features, isLoading, or error change.
+  const stateValue: FeaturesStateValue = useMemo(() => ({
     features,
+    isLoading,
+    error,
+  }), [features, isLoading, error]);
+
+  // Dispatch context — only changes when callback identities change (rare).
+  const dispatchValue: FeaturesDispatchValue = useMemo(() => ({
     addDistrict,
     previewDistrictPlacement,
     addDistrictWithGeometry,
@@ -2254,10 +2281,7 @@ export function FeaturesProvider({
     removeCityLimits,
     clearFeatures,
     setFeatures,
-    isLoading,
-    error,
   }), [
-    features,
     addDistrict,
     previewDistrictPlacement,
     addDistrictWithGeometry,
@@ -2277,20 +2301,81 @@ export function FeaturesProvider({
     removeCityLimits,
     clearFeatures,
     setFeatures,
-    isLoading,
-    error,
   ]);
 
+  // Combined value for backward-compatible useFeatures/useFeaturesOptional hooks.
+  const combinedValue: FeaturesContextValue = useMemo(() => ({
+    ...stateValue,
+    ...dispatchValue,
+  }), [stateValue, dispatchValue]);
+
   return (
-    <FeaturesContext.Provider value={value}>
-      {children}
-    </FeaturesContext.Provider>
+    <FeaturesStateContext.Provider value={stateValue}>
+      <FeaturesDispatchContext.Provider value={dispatchValue}>
+        <FeaturesContext.Provider value={combinedValue}>
+          {children}
+        </FeaturesContext.Provider>
+      </FeaturesDispatchContext.Provider>
+    </FeaturesStateContext.Provider>
   );
 }
 
+// ---------------------------------------------------------------------------
+// Granular hooks (prefer these for new code)
+// ---------------------------------------------------------------------------
+
 /**
- * Hook to access features context.
+ * Hook to access read-only features state (features, isLoading, error).
  * Throws if not within a FeaturesProvider.
+ * Consumers using this hook will NOT re-render when dispatch methods change.
+ */
+export function useFeaturesState(): FeaturesStateValue {
+  const context = useContext(FeaturesStateContext);
+  if (!context) {
+    throw new Error("useFeaturesState must be used within a FeaturesProvider");
+  }
+  return context;
+}
+
+/**
+ * Optionally access read-only features state.
+ * Returns null if not within a FeaturesProvider.
+ */
+export function useFeaturesStateOptional(): FeaturesStateValue | null {
+  return useContext(FeaturesStateContext);
+}
+
+/**
+ * Hook to access features dispatch methods (add, remove, update).
+ * Throws if not within a FeaturesProvider.
+ * Consumers using this hook will NOT re-render when features data changes.
+ */
+export function useFeaturesDispatch(): FeaturesDispatchValue {
+  const context = useContext(FeaturesDispatchContext);
+  if (!context) {
+    throw new Error("useFeaturesDispatch must be used within a FeaturesProvider");
+  }
+  return context;
+}
+
+/**
+ * Optionally access features dispatch methods.
+ * Returns null if not within a FeaturesProvider.
+ */
+export function useFeaturesDispatchOptional(): FeaturesDispatchValue | null {
+  return useContext(FeaturesDispatchContext);
+}
+
+// ---------------------------------------------------------------------------
+// Backward-compatible hooks (combine state + dispatch)
+// ---------------------------------------------------------------------------
+
+/**
+ * Hook to access the full features context (state + dispatch).
+ * Throws if not within a FeaturesProvider.
+ *
+ * Prefer useFeaturesState() or useFeaturesDispatch() in new code for
+ * better render performance.
  */
 export function useFeatures(): FeaturesContextValue {
   const context = useContext(FeaturesContext);
@@ -2301,7 +2386,7 @@ export function useFeatures(): FeaturesContextValue {
 }
 
 /**
- * Hook to optionally access features context.
+ * Optionally access the full features context (state + dispatch).
  * Returns null if not within a FeaturesProvider.
  */
 export function useFeaturesOptional(): FeaturesContextValue | null {
