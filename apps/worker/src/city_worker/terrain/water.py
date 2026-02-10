@@ -15,7 +15,7 @@ def _fractal_perturb_ring(
     coords: list[tuple[float, float]],
     amplitude: float,
     seed: int,
-    iterations: int = 2,
+    iterations: int = 3,
 ) -> list[tuple[float, float]]:
     """Add fractal midpoint-displacement detail to a coordinate ring.
 
@@ -245,7 +245,7 @@ def _cells_to_polygon(
         # concave_hull with ratio=0.3 keeps most concave detail while
         # avoiding degenerate geometry. ratio=0 is maximally concave,
         # ratio=1 is the convex hull.
-        hull = concave_hull(mp, ratio=0.3)
+        hull = concave_hull(mp, ratio=0.2)
 
         if isinstance(hull, Polygon) and hull.is_valid and not hull.is_empty:
             return hull

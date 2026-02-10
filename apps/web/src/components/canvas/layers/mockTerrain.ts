@@ -80,7 +80,7 @@ function fractalCoast(
     result.push({ x: mx + nx * displacement, y: my + ny * displacement });
   }
   result.push(points[points.length - 1]);
-  return fractalCoast(result, depth - 1, roughness * 0.55, random);
+  return fractalCoast(result, depth - 1, roughness * 0.65, random);
 }
 
 // ---------------------------------------------------------------------------
@@ -265,23 +265,37 @@ function generateOcean(
   worldSize: number,
   random: () => number
 ): { polygon: { points: Point[] }; coastlineStart: Point; coastlineEnd: Point } | null {
-  const jitter = () => (random() - 0.5) * worldSize * 0.04;
-  const edgeJitter = () => random() * worldSize * 0.06;
+  const jitter = () => (random() - 0.5) * worldSize * 0.08;
+  const edgeJitter = () => random() * worldSize * 0.08;
 
   switch (archetype) {
     case "west_coast": {
       const depth = worldSize * (0.25 + random() * 0.1);
+      // Pick 1-2 bay positions for natural indentation
+      const bayPos1 = 0.2 + random() * 0.3; // 20-50% along coast
+      const bayPos2 = 0.6 + random() * 0.3; // 60-90% along coast
+      const bayDepth1 = depth * (0.15 + random() * 0.1);
+      const bayDepth2 = depth * (0.1 + random() * 0.08);
       const rawPoints: Point[] = [
         { x: 0, y: 0 },
         { x: depth + edgeJitter(), y: 0 },
-        { x: depth * 0.85 + jitter(), y: worldSize * 0.2 },
-        { x: depth * 1.1 + jitter(), y: worldSize * 0.4 },
-        { x: depth * 0.9 + jitter(), y: worldSize * 0.6 },
-        { x: depth * 1.05 + jitter(), y: worldSize * 0.8 },
+        { x: depth * 0.85 + jitter(), y: worldSize * 0.07 },
+        { x: depth * 1.15 + jitter(), y: worldSize * 0.14 },
+        { x: depth * 0.75 + jitter(), y: worldSize * bayPos1 - worldSize * 0.03 },
+        { x: depth + bayDepth1 + jitter(), y: worldSize * bayPos1 },
+        { x: depth * 0.8 + jitter(), y: worldSize * bayPos1 + worldSize * 0.03 },
+        { x: depth * 1.2 + jitter(), y: worldSize * 0.38 },
+        { x: depth * 0.7 + jitter(), y: worldSize * 0.46 },
+        { x: depth * 1.1 + jitter(), y: worldSize * 0.54 },
+        { x: depth * 0.75 + jitter(), y: worldSize * bayPos2 - worldSize * 0.03 },
+        { x: depth + bayDepth2 + jitter(), y: worldSize * bayPos2 },
+        { x: depth * 0.85 + jitter(), y: worldSize * bayPos2 + worldSize * 0.03 },
+        { x: depth * 1.15 + jitter(), y: worldSize * 0.85 },
+        { x: depth * 0.9 + jitter(), y: worldSize * 0.93 },
         { x: depth + edgeJitter(), y: worldSize },
         { x: 0, y: worldSize },
       ];
-      const points = fractalCoast(rawPoints, 3, 0.12, random);
+      const points = fractalCoast(rawPoints, 3, 0.20, random);
       return {
         polygon: { points },
         coastlineStart: { x: depth, y: 0 },
@@ -291,17 +305,30 @@ function generateOcean(
     case "east_coast": {
       const depth = worldSize * (0.25 + random() * 0.1);
       const coastX = worldSize - depth;
+      const bayPos1 = 0.15 + random() * 0.25;
+      const bayPos2 = 0.55 + random() * 0.3;
+      const bayDepth1 = depth * (0.12 + random() * 0.1);
+      const bayDepth2 = depth * (0.15 + random() * 0.1);
       const rawPoints: Point[] = [
         { x: worldSize, y: 0 },
         { x: coastX - edgeJitter(), y: 0 },
-        { x: coastX + jitter(), y: worldSize * 0.2 },
-        { x: coastX - worldSize * 0.05 + jitter(), y: worldSize * 0.4 },
-        { x: coastX + jitter(), y: worldSize * 0.6 },
-        { x: coastX + worldSize * 0.03 + jitter(), y: worldSize * 0.8 },
+        { x: coastX + jitter(), y: worldSize * 0.07 },
+        { x: coastX * 0.98 + jitter(), y: worldSize * bayPos1 - worldSize * 0.03 },
+        { x: coastX - bayDepth1 + jitter(), y: worldSize * bayPos1 },
+        { x: coastX * 1.02 + jitter(), y: worldSize * bayPos1 + worldSize * 0.04 },
+        { x: coastX - worldSize * 0.04 + jitter(), y: worldSize * 0.32 },
+        { x: coastX + worldSize * 0.03 + jitter(), y: worldSize * 0.40 },
+        { x: coastX - worldSize * 0.02 + jitter(), y: worldSize * 0.48 },
+        { x: coastX * 1.01 + jitter(), y: worldSize * bayPos2 - worldSize * 0.03 },
+        { x: coastX - bayDepth2 + jitter(), y: worldSize * bayPos2 },
+        { x: coastX * 0.99 + jitter(), y: worldSize * bayPos2 + worldSize * 0.04 },
+        { x: coastX + worldSize * 0.02 + jitter(), y: worldSize * 0.78 },
+        { x: coastX - worldSize * 0.03 + jitter(), y: worldSize * 0.86 },
+        { x: coastX + jitter(), y: worldSize * 0.93 },
         { x: coastX - edgeJitter(), y: worldSize },
         { x: worldSize, y: worldSize },
       ];
-      const points = fractalCoast(rawPoints, 3, 0.12, random);
+      const points = fractalCoast(rawPoints, 3, 0.20, random);
       return {
         polygon: { points },
         coastlineStart: { x: coastX, y: 0 },
@@ -311,17 +338,30 @@ function generateOcean(
     case "south_coast": {
       const depth = worldSize * (0.25 + random() * 0.1);
       const coastY = worldSize - depth;
+      const bayPos1 = 0.15 + random() * 0.25;
+      const bayPos2 = 0.55 + random() * 0.3;
+      const bayDepth1 = depth * (0.15 + random() * 0.1);
+      const bayDepth2 = depth * (0.12 + random() * 0.08);
       const rawPoints: Point[] = [
         { x: 0, y: worldSize },
         { x: 0, y: coastY - edgeJitter() },
-        { x: worldSize * 0.2, y: coastY + jitter() },
-        { x: worldSize * 0.4, y: coastY - worldSize * 0.04 + jitter() },
-        { x: worldSize * 0.6, y: coastY + jitter() },
-        { x: worldSize * 0.8, y: coastY + worldSize * 0.03 + jitter() },
+        { x: worldSize * 0.07, y: coastY + jitter() },
+        { x: worldSize * bayPos1 - worldSize * 0.03, y: coastY * 1.02 + jitter() },
+        { x: worldSize * bayPos1, y: coastY + bayDepth1 + jitter() },
+        { x: worldSize * bayPos1 + worldSize * 0.04, y: coastY * 0.98 + jitter() },
+        { x: worldSize * 0.32, y: coastY - worldSize * 0.04 + jitter() },
+        { x: worldSize * 0.40, y: coastY + worldSize * 0.02 + jitter() },
+        { x: worldSize * 0.48, y: coastY - worldSize * 0.03 + jitter() },
+        { x: worldSize * bayPos2 - worldSize * 0.03, y: coastY * 1.01 + jitter() },
+        { x: worldSize * bayPos2, y: coastY + bayDepth2 + jitter() },
+        { x: worldSize * bayPos2 + worldSize * 0.04, y: coastY * 0.99 + jitter() },
+        { x: worldSize * 0.78, y: coastY + worldSize * 0.03 + jitter() },
+        { x: worldSize * 0.86, y: coastY - worldSize * 0.02 + jitter() },
+        { x: worldSize * 0.93, y: coastY + jitter() },
         { x: worldSize, y: coastY - edgeJitter() },
         { x: worldSize, y: worldSize },
       ];
-      const points = fractalCoast(rawPoints, 3, 0.12, random);
+      const points = fractalCoast(rawPoints, 3, 0.20, random);
       return {
         polygon: { points },
         coastlineStart: { x: 0, y: coastY },
@@ -330,17 +370,30 @@ function generateOcean(
     }
     case "north_coast": {
       const depth = worldSize * (0.25 + random() * 0.1);
+      const bayPos1 = 0.2 + random() * 0.2;
+      const bayPos2 = 0.6 + random() * 0.25;
+      const bayDepth1 = depth * (0.14 + random() * 0.1);
+      const bayDepth2 = depth * (0.12 + random() * 0.1);
       const rawPoints: Point[] = [
         { x: 0, y: 0 },
         { x: 0, y: depth + edgeJitter() },
-        { x: worldSize * 0.2, y: depth + jitter() },
-        { x: worldSize * 0.4, y: depth + worldSize * 0.04 + jitter() },
-        { x: worldSize * 0.6, y: depth + jitter() },
-        { x: worldSize * 0.8, y: depth - worldSize * 0.03 + jitter() },
+        { x: worldSize * 0.07, y: depth + jitter() },
+        { x: worldSize * bayPos1 - worldSize * 0.03, y: depth * 0.85 + jitter() },
+        { x: worldSize * bayPos1, y: depth - bayDepth1 + jitter() },
+        { x: worldSize * bayPos1 + worldSize * 0.04, y: depth * 0.9 + jitter() },
+        { x: worldSize * 0.35, y: depth + worldSize * 0.04 + jitter() },
+        { x: worldSize * 0.42, y: depth - worldSize * 0.02 + jitter() },
+        { x: worldSize * 0.50, y: depth + worldSize * 0.03 + jitter() },
+        { x: worldSize * bayPos2 - worldSize * 0.03, y: depth * 1.05 + jitter() },
+        { x: worldSize * bayPos2, y: depth - bayDepth2 + jitter() },
+        { x: worldSize * bayPos2 + worldSize * 0.03, y: depth * 0.95 + jitter() },
+        { x: worldSize * 0.78, y: depth - worldSize * 0.03 + jitter() },
+        { x: worldSize * 0.86, y: depth + worldSize * 0.02 + jitter() },
+        { x: worldSize * 0.93, y: depth + jitter() },
         { x: worldSize, y: depth + edgeJitter() },
         { x: worldSize, y: 0 },
       ];
-      const points = fractalCoast(rawPoints, 3, 0.12, random);
+      const points = fractalCoast(rawPoints, 3, 0.20, random);
       return {
         polygon: { points },
         coastlineStart: { x: 0, y: depth },
