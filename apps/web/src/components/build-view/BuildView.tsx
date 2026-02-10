@@ -7,12 +7,10 @@ import { CityNeedsPanel, CityNeeds } from "./CityNeedsPanel";
 import { CityNeedsModal } from "./CityNeedsModal";
 import { ScaleBar } from "./ScaleBar";
 import { InspectorPanel, type SelectedFeature } from "./InspectorPanel";
-import { TransitLinePropertiesDialog } from "./TransitLinePropertiesDialog";
 import { useSelectionContextOptional } from "./SelectionContext";
 import { useZoomOptional } from "../shell/ZoomContext";
 import { useDrawingOptional } from "../canvas/DrawingContext";
-import { useTransitLineDrawingOptional, useTransitOptional, usePopulationStats } from "../canvas";
-import type { TransitLineProperties } from "../canvas";
+import { usePopulationStats } from "../canvas";
 import { useEditLockOptional } from "../shell/EditLockContext";
 import { usePlacementOptional } from "../palette/PlacementContext";
 import { useCreateJob, useJobPolling } from "../../api/hooks";
@@ -67,10 +65,6 @@ export function BuildView({
   // Get drawing context for polygon drawing mode
   const drawingContext = useDrawingOptional();
 
-  // Get transit line drawing context
-  const transitLineDrawingContext = useTransitLineDrawingOptional();
-  const transitContext = useTransitOptional();
-
   // Get edit lock context for gating tools
   const editLock = useEditLockOptional();
   const isEditing = editLock?.isEditing ?? true; // default to true if no provider
@@ -116,12 +110,6 @@ export function BuildView({
     [worldId, isGrowing, createJob]
   );
 
-  // Note: Transit context is used by TransitLineDrawingProvider in EditorShell
-  // We don't need direct access here, but the hook call ensures the provider exists
-
-  // State for showing transit line properties dialog
-  const [showLinePropertiesDialog, setShowLinePropertiesDialog] = useState(false);
-
   // State for showing city needs modal
   const [showCityNeedsModal, setShowCityNeedsModal] = useState(false);
 
@@ -160,78 +148,23 @@ export function BuildView({
     }
   }, [activeTool, drawingContext?.state.isDrawing, drawingContext?.state.mode, setActiveTool]);
 
-  // Handle transit-line tool - show properties dialog first
-  useEffect(() => {
-    if (!transitLineDrawingContext) return;
-
-    if (activeTool === "transit-line") {
-      // Show properties dialog when tool is selected
-      if (!transitLineDrawingContext.state.isDrawing && !showLinePropertiesDialog) {
-        setShowLinePropertiesDialog(true);
-      }
-    } else {
-      // Cancel transit line drawing when switching away from transit-line tool
-      if (transitLineDrawingContext.state.isDrawing) {
-        transitLineDrawingContext.cancelDrawing();
-      }
-      // Also close the properties dialog if it's open (CITY-284)
-      if (showLinePropertiesDialog) {
-        setShowLinePropertiesDialog(false);
-      }
-    }
-  }, [activeTool, transitLineDrawingContext, showLinePropertiesDialog]);
-
-  // Switch back to pan tool when transit line drawing is completed
-  useEffect(() => {
-    if (!transitLineDrawingContext) return;
-
-    // If we were drawing and now we're not, switch to pan
-    if (activeTool === "transit-line" && !transitLineDrawingContext.state.isDrawing && !showLinePropertiesDialog) {
-      setActiveTool("pan");
-    }
-  }, [activeTool, transitLineDrawingContext?.state.isDrawing, showLinePropertiesDialog, setActiveTool]);
-
   // CITY-524: Sync toolbar active state with placement mode.
-  // When a seed is selected in the palette, show "build" as active tool.
+  // When a seed is selected in the palette, switch to pan so placement works.
   useEffect(() => {
-    if (placementContext?.isPlacing && activeTool !== "build") {
-      setActiveTool("build");
+    if (placementContext?.isPlacing && activeTool !== "pan") {
+      setActiveTool("pan");
     }
   }, [placementContext?.isPlacing, activeTool, setActiveTool]);
 
-  // CITY-524: Cancel placement when switching away from build/pan tool.
+  // CITY-524: Cancel placement when switching to a drawing tool.
   // Switching to a drawing tool should exit placement mode.
   useEffect(() => {
     if (!placementContext?.isPlacing) return;
-    if (activeTool !== "build" && activeTool !== "pan") {
+    const isDrawingTool = activeTool === "draw" || activeTool === "city-limits" || activeTool === "split" || activeTool === "draw-road";
+    if (isDrawingTool) {
       placementContext.cancelPlacing();
     }
   }, [activeTool, placementContext]);
-
-  // CITY-524: Clicking pan cancels any active placement.
-  useEffect(() => {
-    if (activeTool === "pan" && placementContext?.isPlacing) {
-      placementContext.cancelPlacing();
-    }
-  }, [activeTool, placementContext]);
-
-  // Handle transit line properties confirmation
-  const handleLinePropertiesConfirm = useCallback(
-    (properties: TransitLineProperties) => {
-      setShowLinePropertiesDialog(false);
-      if (transitLineDrawingContext) {
-        // Pass properties directly so startDrawing() uses them instead of defaults
-        transitLineDrawingContext.startDrawing(properties);
-      }
-    },
-    [transitLineDrawingContext]
-  );
-
-  // Handle transit line properties cancel
-  const handleLinePropertiesCancel = useCallback(() => {
-    setShowLinePropertiesDialog(false);
-    setActiveTool("pan");
-  }, [setActiveTool]);
 
   // Calculate population from placed districts, fallback to props
   const populationStats = usePopulationStats();
@@ -362,50 +295,6 @@ export function BuildView({
           </div>
         </div>
       )}
-
-      {/* CITY-361: Transit line drawing hint (above toolbar, when drawing transit line) */}
-      {transitLineDrawingContext?.state.isDrawing && (
-        <div className="absolute bottom-[4.5rem] left-1/2 -translate-x-1/2 z-10">
-          <div className="bg-white/90 backdrop-blur-sm rounded-lg shadow-lg px-4 py-2 text-sm text-gray-700">
-            <div className="flex items-center gap-3">
-              <span>
-                {transitLineDrawingContext.state.connectedStations.length === 0 ? (
-                  <>Click a station or empty space to start the line</>
-                ) : (
-                  <>Click a station or empty space to extend the line</>
-                )}
-              </span>
-              {transitLineDrawingContext.state.connectedStations.length >= 2 && (
-                <>
-                  <span className="text-gray-400">|</span>
-                  <button
-                    onClick={() => transitLineDrawingContext.undoLastConnection()}
-                    className="px-2 py-0.5 text-xs bg-gray-100 hover:bg-gray-200 rounded transition-colors"
-                    title="Undo last connection (Ctrl+Z)"
-                  >
-                    Undo
-                  </button>
-                </>
-              )}
-              <span className="text-gray-400">|</span>
-              <span className="text-gray-500">
-                Press <kbd className="px-1.5 py-0.5 bg-gray-100 rounded text-xs font-mono">Enter</kbd> to finish
-                {" / "}
-                <kbd className="px-1.5 py-0.5 bg-gray-100 rounded text-xs font-mono">Esc</kbd> to cancel
-              </span>
-            </div>
-          </div>
-        </div>
-      )}
-
-      {/* Transit line properties dialog */}
-      <TransitLinePropertiesDialog
-        isOpen={showLinePropertiesDialog}
-        initialProperties={transitLineDrawingContext?.state.lineProperties || undefined}
-        existingLineNames={transitContext?.transitNetwork?.lines.map((l) => l.name) ?? []}
-        onConfirm={handleLinePropertiesConfirm}
-        onCancel={handleLinePropertiesCancel}
-      />
 
       {/* City needs modal */}
       {showCityNeedsModal && (

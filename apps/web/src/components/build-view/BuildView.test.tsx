@@ -36,8 +36,8 @@ describe("BuildView", () => {
     expect(screen.getByLabelText("Pan")).toBeInTheDocument();
     expect(screen.getByLabelText("Draw Neighborhood")).toBeInTheDocument();
     expect(screen.getByLabelText("Draw City Limits")).toBeInTheDocument();
-    expect(screen.getByLabelText("Build")).toBeInTheDocument();
-    expect(screen.getByLabelText("Draw Transit Line")).toBeInTheDocument();
+    expect(screen.getByLabelText("Split District")).toBeInTheDocument();
+    expect(screen.getByLabelText("Draw Road")).toBeInTheDocument();
   });
 
   it("renders layers panel with toggles", () => {
@@ -79,8 +79,8 @@ describe("BuildView", () => {
       </BuildView>
     );
 
-    fireEvent.click(screen.getByLabelText("Build"));
-    expect(onToolChange).toHaveBeenCalledWith("build");
+    fireEvent.click(screen.getByLabelText("Draw Neighborhood"));
+    expect(onToolChange).toHaveBeenCalledWith("draw");
   });
 
   it("calls onCityNeedsClick when city needs is clicked", () => {
