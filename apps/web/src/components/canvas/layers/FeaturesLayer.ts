@@ -1147,6 +1147,9 @@ setVisibility(visibility: LayerVisibility & { neighborhoods?: boolean; cityLimit
       cap: "round",
     });
 
+    // CITY-507: Batch all dash segments into a single path, then stroke once.
+    // Each moveTo/lineTo pair adds a disconnected sub-path; PixiJS v8 renders
+    // them all in one GPU draw call when stroke() is called once at the end.
     for (let i = 0; i < points.length - 1; i++) {
       const start = points[i];
       const end = points[i + 1];
@@ -1171,13 +1174,14 @@ setVisibility(visibility: LayerVisibility & { neighborhoods?: boolean; cityLimit
 
           this.roadsGraphics.moveTo(startX, startY);
           this.roadsGraphics.lineTo(endX, endY);
-          this.roadsGraphics.stroke();
         }
 
         currentLength = nextLength;
         drawing = !drawing;
       }
     }
+
+    this.roadsGraphics.stroke();
   }
 
   /**
