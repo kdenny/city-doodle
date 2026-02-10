@@ -257,7 +257,9 @@ export class SubwayStationLayer {
       cap: "round"
     });
 
-    // Walk through each segment
+    // CITY-507: Batch all dash segments into a single path, then stroke once.
+    // Each moveTo/lineTo pair adds a disconnected sub-path; PixiJS v8 renders
+    // them all in one GPU draw call when stroke() is called once at the end.
     for (let i = 0; i < points.length - 1; i++) {
       const start = points[i];
       const end = points[i + 1];
@@ -284,13 +286,14 @@ export class SubwayStationLayer {
           const y2 = start.y + unitY * (dist + actualLength);
           graphics.moveTo(x1, y1);
           graphics.lineTo(x2, y2);
-          graphics.stroke();
         }
 
         dist += actualLength;
         drawing = !drawing;
       }
     }
+
+    graphics.stroke();
   }
 
   private createStationGraphics(station: SubwayStationData): void {
