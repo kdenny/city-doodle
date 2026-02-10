@@ -90,6 +90,8 @@ function nearestPointOnPolyline(
   point: Point,
   polylinePoints: Point[]
 ): Point {
+  if (polylinePoints.length === 0) return point; // Return the input point as fallback
+
   let bestPoint: Point = polylinePoints[0];
   let bestDist = Infinity;
 
@@ -647,14 +649,29 @@ function generateRiver(
   random: () => number,
   coastlinePoints?: Point[]
 ): Point[] {
-  let target: Point;
+  let target: Point = { x: worldSize * 0.5, y: worldSize * 0.5 };
 
   // CITY-576: If we have coastline geometry, snap the river target to the
   // nearest coastline point instead of using hardcoded positions.
+  // However, if the snapped target is too close to the source (< worldSize * 0.1),
+  // fall back to the archetype-based target to avoid zero-length or backward rivers.
+  let useArchetypeFallback = false;
   if (coastlinePoints && coastlinePoints.length >= 2) {
-    target = nearestPointOnPolyline(source, coastlinePoints);
+    const snappedTarget = nearestPointOnPolyline(source, coastlinePoints);
+    const dx = snappedTarget.x - source.x;
+    const dy = snappedTarget.y - source.y;
+    const dist = Math.sqrt(dx * dx + dy * dy);
+    if (dist < worldSize * 0.1) {
+      useArchetypeFallback = true;
+    } else {
+      target = snappedTarget;
+    }
   } else {
-    // Fallback for archetypes without an ocean/coastline
+    useArchetypeFallback = true;
+  }
+
+  if (useArchetypeFallback) {
+    // Fallback for archetypes without an ocean/coastline, or when snap target is too close
     switch (archetype) {
       case "west_coast":
         target = { x: worldSize * 0.3, y: source.y + (random() - 0.5) * worldSize * 0.3 };
