@@ -101,6 +101,7 @@ export interface EventStateRef {
         segments: Array<{ from_station_id: string; to_station_id: string }>;
       }>;
     } | null;
+    getLinesForStation?: (stationId: string) => { id: string; name: string; color: string; lineType: string }[];
     placeRailStation: (
       pos: { x: number; y: number },
       opts?: { skipAutoConnect?: boolean }
@@ -449,15 +450,8 @@ export function useCanvasEventHandlers({
         }
 
         if (tooltipStation) {
-          const stationLines: { name: string; color: string }[] = [];
-          const network = s.transitContext?.transitNetwork;
-          if (network) {
-            for (const line of network.lines) {
-              if (line.segments.some((seg) => seg.from_station_id === tooltipStation!.id || seg.to_station_id === tooltipStation!.id)) {
-                stationLines.push({ name: line.name, color: line.color });
-              }
-            }
-          }
+          const stationLines = (s.transitContext?.getLinesForStation?.(tooltipStation.id) ?? [])
+            .map(l => ({ name: l.name, color: l.color }));
           const container = containerRef.current;
           const maxX = (container?.clientWidth ?? 800) - 200;
           const maxY = (container?.clientHeight ?? 600) - 60;
