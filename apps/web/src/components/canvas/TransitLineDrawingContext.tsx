@@ -2,7 +2,7 @@
  * Context for managing transit line drawing state.
  *
  * Provides state and methods for click-to-connect station transit line drawing.
- * Used by the "transit-line" tool to create manual transit lines.
+ * Used by the "Draw New Line" button in TransitView to create manual transit lines.
  *
  * Flow:
  * 1. User clicks station A -> sets firstStation
