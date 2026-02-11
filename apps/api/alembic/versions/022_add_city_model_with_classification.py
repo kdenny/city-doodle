@@ -7,7 +7,7 @@ neighborhoods (nullable, CASCADE).
 CITY-563: Backend multi-city model with core/suburb/town classification.
 
 Revision ID: 022
-Revises: 021
+Revises: 021b
 Create Date: 2026-02-09
 
 """
@@ -19,7 +19,7 @@ from alembic import op
 from sqlalchemy.dialects import postgresql
 
 revision: str = "022"
-down_revision: str | None = "021"
+down_revision: str | None = "021b"
 branch_labels: str | Sequence[str] | None = None
 depends_on: str | Sequence[str] | None = None
 
