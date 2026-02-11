@@ -57,7 +57,10 @@ class Tile(BaseModel):
     tx: int = Field(..., description="Tile X coordinate")
     ty: int = Field(..., description="Tile Y coordinate")
     terrain_data: TerrainData = Field(default_factory=TerrainData)
-    features: TileFeatures = Field(default_factory=TileFeatures)
+    features: dict[str, Any] = Field(
+        default_factory=dict,
+        description="Tile features — may be a GeoJSON FeatureCollection from the terrain worker or a TileFeatures dict",
+    )
     created_at: datetime
     updated_at: datetime
 
@@ -68,7 +71,7 @@ class TileUpdate(BaseModel):
     """Request model for updating a tile."""
 
     terrain_data: TerrainData | None = None
-    features: TileFeatures | None = None
+    features: dict[str, Any] | None = None
 
 
 class TileLockCreate(BaseModel):

@@ -268,6 +268,18 @@ export function useDeleteWorld(
 // Tile Hooks
 // ============================================================================
 
+/**
+ * CITY-583: Helper to check if a tile has real terrain features (GeoJSON FeatureCollection).
+ */
+function tileHasTerrainFeatures(tile: Tile): boolean {
+  return (
+    !!tile.features &&
+    typeof tile.features === "object" &&
+    "type" in tile.features &&
+    tile.features.type === "FeatureCollection"
+  );
+}
+
 export function useWorldTiles(
   worldId: string,
   options?: Omit<UseQueryOptions<Tile[]>, "queryKey" | "queryFn">
@@ -276,6 +288,14 @@ export function useWorldTiles(
     queryKey: queryKeys.worldTiles(worldId),
     queryFn: () => api.tiles.list(worldId),
     enabled: !!worldId,
+    // CITY-583: Poll every 3s while any tile is missing terrain features.
+    // Stops polling once all tiles have GeoJSON FeatureCollection data.
+    refetchInterval: (query) => {
+      const tiles = query.state.data;
+      if (!tiles || tiles.length === 0) return 3000;
+      const allHaveFeatures = tiles.every(tileHasTerrainFeatures);
+      return allHaveFeatures ? false : 3000;
+    },
     ...options,
   });
 }

@@ -246,6 +246,15 @@ class JobRunner:
             None, generator.generate_3x3, int(center_tx), int(center_ty)
         )
 
+        # CITY-582 debug: log generation result summary (remove in CITY-584)
+        all_generated = result.all_tiles()
+        logger.info(
+            "[Terrain] Generation complete: world=%s tiles=%d total_features=%d setting=%s",
+            world_id, len(all_generated),
+            sum(len(t.features) for t in all_generated),
+            geographic_setting,
+        )
+
         # Save generated tiles to database
         await self._save_terrain_tiles(world_id, result)
 
@@ -273,6 +282,14 @@ class JobRunner:
                 for tile_data in result.all_tiles():
                     terrain_dict = tile_data.to_dict()
                     features_dict = tile_data.features_to_geojson()
+
+                    # CITY-582 debug: log GeoJSON features being saved (remove in CITY-584)
+                    fc_type = features_dict.get("type") if isinstance(features_dict, dict) else None
+                    fc_count = len(features_dict.get("features", [])) if isinstance(features_dict, dict) and fc_type == "FeatureCollection" else 0
+                    logger.info(
+                        "[Terrain] Saving tile tx=%s ty=%s world=%s fc_type=%s feature_count=%d",
+                        tile_data.tx, tile_data.ty, world_id, fc_type, fc_count,
+                    )
 
                     await session.execute(
                         text("""
