@@ -29,6 +29,7 @@ import type {
 } from "../layers";
 import type { SelectedFeature } from "../../build-view/SelectionContext";
 import type { SnapEngine } from "../snap";
+import type { SplitTargetType } from "../DrawingContext";
 
 /** Shape of the mutable ref that holds latest context values (updated every render). */
 export interface EventStateRef {
@@ -53,7 +54,7 @@ export interface EventStateRef {
       inputMode?: string;
       previewPoint?: { x: number; y: number } | null;
       vertices?: Array<{ x: number; y: number }>;
-      splitTarget?: { type: string; id: string; name: string } | null;
+      splitTarget?: { type: SplitTargetType; id: string; name: string } | null;
     };
     addVertex?: (pos: { x: number; y: number }) => void;
     canComplete?: () => boolean;
@@ -63,7 +64,7 @@ export interface EventStateRef {
     addFreehandPoint?: (pos: { x: number; y: number }) => void;
     endFreehand?: () => void;
     setPreviewPoint?: (pos: { x: number; y: number }) => void;
-    setSplitTarget?: (target: { type: string; id: string; name: string }) => void;
+    setSplitTarget?: (target: { type: SplitTargetType; id: string; name: string }) => void;
   } | null;
   endpointDragContext: {
     isDragging: boolean;

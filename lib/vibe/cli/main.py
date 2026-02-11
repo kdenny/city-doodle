@@ -107,9 +107,138 @@ def do(ticket_id: str) -> None:
         sys.exit(1)
 
 
+def _extract_ticket_id(branch: str) -> str | None:
+    """Extract a ticket ID (e.g. CITY-123) from a branch name."""
+    import re
+
+    match = re.match(r"([A-Z]+-\d+)", branch)
+    return match.group(1) if match else None
+
+
+def _build_pr_body(branch: str, main_branch: str) -> str | None:
+    """Build a filled-in PR body from ticket info and git history.
+
+    Returns None if no useful content could be generated.
+    """
+    import re
+    import subprocess
+
+    from lib.vibe.config import load_config
+
+    ticket_id = _extract_ticket_id(branch)
+    ticket_title = ""
+    ticket_description = ""
+    ticket_url = ""
+
+    # Try to fetch ticket info
+    if ticket_id:
+        try:
+            config = load_config()
+            tracker_type = config.get("tracker", {}).get("type")
+            if tracker_type == "linear":
+                from lib.vibe.trackers.linear import LinearTracker
+
+                tracker = LinearTracker()
+                ticket = tracker.get_ticket(ticket_id)
+                if ticket:
+                    ticket_title = ticket.title
+                    ticket_description = ticket.description or ""
+                    ticket_url = ticket.url
+        except Exception:
+            pass
+
+    # Determine best base ref (origin/main is more accurate in worktrees)
+    base_ref = main_branch
+    try:
+        subprocess.run(
+            ["git", "rev-parse", "--verify", f"origin/{main_branch}"],
+            capture_output=True,
+            check=True,
+        )
+        base_ref = f"origin/{main_branch}"
+    except Exception:
+        pass
+
+    # Get commit messages
+    commits: list[str] = []
+    try:
+        result = subprocess.run(
+            ["git", "log", f"{base_ref}..HEAD", "--oneline", "--no-decorate"],
+            capture_output=True,
+            text=True,
+            check=True,
+        )
+        commits = [line.strip() for line in result.stdout.strip().splitlines() if line.strip()]
+    except Exception:
+        pass
+
+    # Get changed files
+    changed_files: list[str] = []
+    try:
+        result = subprocess.run(
+            ["git", "diff", f"{base_ref}...HEAD", "--name-only"],
+            capture_output=True,
+            text=True,
+            check=True,
+        )
+        changed_files = [
+            line.strip() for line in result.stdout.strip().splitlines() if line.strip()
+        ]
+    except Exception:
+        pass
+
+    if not commits and not ticket_title:
+        return None
+
+    # Build summary
+    parts: list[str] = ["## Summary\n"]
+    if ticket_title:
+        parts.append(ticket_title)
+    if ticket_id:
+        if ticket_url:
+            parts.append(f"\nCloses [{ticket_id}]({ticket_url})")
+        else:
+            parts.append(f"\nCloses {ticket_id}")
+
+    # Build changes section from commits
+    parts.append("\n## Changes\n")
+    if commits:
+        for commit in commits:
+            # Strip leading hash from oneline format
+            msg = re.sub(r"^[0-9a-f]+ ", "", commit)
+            parts.append(f"- {msg}")
+    else:
+        parts.append("- (no commits yet)")
+
+    # Build files changed section
+    if changed_files:
+        parts.append("\n## Files Changed\n")
+        for f in changed_files:
+            parts.append(f"- `{f}`")
+
+    # Build test plan from ticket acceptance criteria
+    parts.append("\n## Test plan\n")
+    if ticket_description:
+        # Extract acceptance criteria lines (lines starting with - [ ] )
+        criteria = [
+            line.strip()
+            for line in ticket_description.splitlines()
+            if line.strip().startswith("- [ ]")
+        ]
+        if criteria:
+            for c in criteria:
+                parts.append(c)
+        else:
+            parts.append("- [ ] Verify changes work as expected")
+    else:
+        parts.append("- [ ] Verify changes work as expected")
+
+    return "\n".join(parts)
+
+
 @main.command()
-@click.option("--title", "-t", help="PR title (default: branch name or branch + first commit line)")
-@click.option("--body", "-b", help="PR body (default: use template)")
+@click.option("--title", "-t", help="PR title (default: ticket title or branch name)")
+@click.option("--body", "-b", help="PR body (default: auto-generated from ticket + commits)")
 @click.option("--web", is_flag=True, help="Open PR form in the browser")
 def pr(title: str | None, body: str | None, web: bool) -> None:
     """Open a pull request for the current branch (run from your worktree when done)."""
@@ -125,18 +254,38 @@ def pr(title: str | None, body: str | None, web: bool) -> None:
         )
         sys.exit(1)
 
-    args = ["gh", "pr", "create"]
-    if title:
-        args.extend(["--title", title])
-    else:
-        args.extend(["--title", branch])  # default: branch name as title
+    # Build PR title
+    if not title:
+        ticket_id = _extract_ticket_id(branch)
+        if ticket_id:
+            try:
+                from lib.vibe.config import load_config
+                from lib.vibe.trackers.linear import LinearTracker
+
+                config = load_config()
+                if config.get("tracker", {}).get("type") == "linear":
+                    tracker = LinearTracker()
+                    ticket = tracker.get_ticket(ticket_id)
+                    if ticket and ticket.title:
+                        title = f"{ticket_id}: {ticket.title}"
+            except Exception:
+                pass
+        if not title:
+            title = branch
+
+    # Build PR body
+    if not body:
+        generated_body = _build_pr_body(branch, main_branch)
+        if not generated_body:
+            # Last resort: use template if it exists
+            template = Path(".github/PULL_REQUEST_TEMPLATE.md")
+            if template.exists():
+                generated_body = template.read_text()
+        body = generated_body
+
+    args = ["gh", "pr", "create", "--title", title]
     if body:
         args.extend(["--body", body])
-    else:
-        # Use PR template if it exists
-        template = Path(".github/PULL_REQUEST_TEMPLATE.md")
-        if template.exists():
-            args.extend(["--body-file", str(template)])
     if web:
         args.append("--web")
 
