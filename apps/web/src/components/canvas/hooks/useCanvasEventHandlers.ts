@@ -39,11 +39,15 @@ export interface EventStateRef {
     selectedSeed: { id: string; category: string; icon: string } | null;
     dragSize: number | null;
     dragOrigin?: { x: number; y: number } | null;
+    /** CITY-560: Second corner of the drag-to-define rectangle */
+    dragCorner?: { x: number; y: number } | null;
     isDraggingSize?: boolean;
     setPreviewPosition: (pos: { x: number; y: number }) => void;
-    confirmPlacement: (pos: { x: number; y: number }, size?: number) => void;
+    confirmPlacement: (pos: { x: number; y: number }, size?: number, fixedBounds?: { width: number; height: number }) => void;
     startDragSize: (pos: { x: number; y: number }) => void;
     updateDragSize: (size: number) => void;
+    /** CITY-560: Update second corner during drag-to-define */
+    updateDragCorner?: (pos: { x: number; y: number }) => void;
     cancelDragSize: () => void;
   } | null;
   drawingContext: {
@@ -373,13 +377,10 @@ export function useCanvasEventHandlers({
       const pc = s.placementContext;
       const isPlacing = pc?.isPlacing ?? false;
 
-      // CITY-333: Update drag size during district drag-to-size
+      // CITY-560: Update drag corner during district drag-to-define
       if (pc?.isDraggingSize && pc.dragOrigin) {
-        const dx = worldPos.x - pc.dragOrigin.x;
-        const dy = worldPos.y - pc.dragOrigin.y;
-        const distance = Math.sqrt(dx * dx + dy * dy);
-        const size = Math.max(30, Math.min(300, distance));
-        pc.updateDragSize(size);
+        pc.updateDragCorner?.({ x: worldPos.x, y: worldPos.y });
+        pc.setPreviewPosition({ x: worldPos.x, y: worldPos.y });
         return;
       }
 
@@ -542,14 +543,27 @@ export function useCanvasEventHandlers({
         if (wasDragging) return;
       }
 
-      // CITY-364: Handle drag-to-size completion
+      // CITY-560: Handle drag-to-define completion BEFORE the isDragging guard,
+      // because drag-to-define intentionally involves mouse movement that sets isDragging.
       const pc = s.placementContext;
       if (s.isEditingAllowed && pc?.isDraggingSize && pc.dragOrigin && pc?.confirmPlacement) {
         viewport.plugins.resume("drag");
-        const size = pc.dragSize;
-        if (size && size >= 30) {
-          pc.confirmPlacement(pc.dragOrigin, size);
+        const corner = pc.dragCorner;
+        if (corner) {
+          const w = Math.abs(corner.x - pc.dragOrigin.x);
+          const h = Math.abs(corner.y - pc.dragOrigin.y);
+          if (Math.max(w, h) >= 30) {
+            // CITY-560: Place rectangle at center of the two corners
+            const cx = (pc.dragOrigin.x + corner.x) / 2;
+            const cy = (pc.dragOrigin.y + corner.y) / 2;
+            pc.confirmPlacement({ x: cx, y: cy }, undefined, { width: w, height: h });
+          } else {
+            // Drag too small — place default-sized square at click point
+            pc.cancelDragSize();
+            pc.confirmPlacement(pc.dragOrigin);
+          }
         } else {
+          // Click without drag — place default-sized square
           pc.cancelDragSize();
           pc.confirmPlacement(pc.dragOrigin);
         }

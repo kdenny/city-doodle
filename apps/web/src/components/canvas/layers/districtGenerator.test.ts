@@ -127,8 +127,8 @@ describe("generateDistrictGeometry", () => {
     const result = generateDistrictGeometry({ x: 300, y: 300 }, "downtown");
 
     expect(result.district.type).toBe("downtown");
-    // Downtown should have more points (rounded rectangle)
-    expect(result.district.polygon.points.length).toBeGreaterThan(8);
+    // CITY-560: Downtown districts are now axis-aligned rectangles (4 points)
+    expect(result.district.polygon.points.length).toBe(4);
   });
 
   it("generates park districts without roads", () => {
