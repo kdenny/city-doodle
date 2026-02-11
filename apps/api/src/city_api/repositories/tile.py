@@ -1,5 +1,6 @@
 """Tile repository - data access for tiles."""
 
+import logging
 from datetime import UTC, datetime
 from uuid import UUID
 
@@ -7,7 +8,9 @@ from sqlalchemy import and_, select
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from city_api.models import Tile as TileModel
-from city_api.schemas import TerrainData, Tile, TileCreate, TileFeatures, TileUpdate
+from city_api.schemas import TerrainData, Tile, TileCreate, TileUpdate
+
+logger = logging.getLogger(__name__)
 
 
 def _ensure_utc(dt: datetime) -> datetime:
@@ -96,7 +99,7 @@ async def update_tile(db: AsyncSession, tile_id: UUID, tile_update: TileUpdate) 
     if tile_update.terrain_data is not None:
         tile.terrain_data = tile_update.terrain_data.model_dump()
     if tile_update.features is not None:
-        tile.features = tile_update.features.model_dump()
+        tile.features = tile_update.features
     tile.version += 1
 
     await db.commit()
@@ -117,6 +120,14 @@ async def get_or_create_tile(db: AsyncSession, world_id: UUID, tx: int, ty: int)
 
 def _to_schema(tile: TileModel) -> Tile:
     """Convert SQLAlchemy model to Pydantic schema."""
+    # CITY-582 debug: log features passthrough (remove in CITY-584)
+    features_raw = tile.features if tile.features else {}
+    features_type = features_raw.get("type") if isinstance(features_raw, dict) else None
+    feature_count = len(features_raw.get("features", [])) if isinstance(features_raw, dict) and features_type == "FeatureCollection" else 0
+    logger.info(
+        "[Terrain] _to_schema tile_id=%s tx=%s ty=%s features_type=%s feature_count=%d features_empty=%s",
+        tile.id, tile.tx, tile.ty, features_type, feature_count, not bool(features_raw),
+    )
     return Tile(
         id=tile.id,
         world_id=tile.world_id,
@@ -125,7 +136,7 @@ def _to_schema(tile: TileModel) -> Tile:
         terrain_data=TerrainData.model_validate(tile.terrain_data)
         if tile.terrain_data
         else TerrainData(),
-        features=TileFeatures.model_validate(tile.features) if tile.features else TileFeatures(),
+        features=features_raw,
         created_at=_ensure_utc(tile.created_at),
         updated_at=_ensure_utc(tile.updated_at),
     )

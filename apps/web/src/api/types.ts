@@ -179,18 +179,9 @@ export interface TerrainData {
 }
 
 /**
- * Original TileFeatures shape for non-terrain tile content.
- *
- * CITY-573 audit: The backend terrain worker stores a GeoJSON FeatureCollection
- * (with `type: "FeatureCollection"` and a `features` array of GeoJSON Feature
- * objects) in the tile's `features` column, NOT this TileFeatures shape.
- * Frontend code in useCanvasInit.ts and useLayerSync.ts checks for `"type" in
- * features` to detect GeoJSON and passes it to `transformTileFeatures()`.
- *
- * The Tile interface below types `features` as `TileFeatures`, but at runtime
- * the value may be a GeoJSON FeatureCollection. Consumers should treat
- * `Tile.features` as `TileFeatures | GeoJSONFeatureCollection` until a
- * discriminated union is introduced.
+ * Legacy TileFeatures shape for non-terrain tile content.
+ * No longer used by the Tile interface (CITY-582 changed features to raw dict).
+ * Kept for potential future use with structured tile content.
  */
 export interface TileFeatures {
   roads: Record<string, unknown>[];
@@ -206,7 +197,7 @@ export interface TileCreate {
 
 export interface TileUpdate {
   terrain_data?: TerrainData;
-  features?: TileFeatures;
+  features?: Record<string, unknown>;
 }
 
 export interface Tile {
@@ -216,11 +207,11 @@ export interface Tile {
   ty: number;
   terrain_data: TerrainData;
   /**
-   * CITY-573: At runtime this may be a GeoJSON FeatureCollection (from the
-   * backend terrain worker) rather than a TileFeatures object. See the comment
-   * on TileFeatures for details.
+   * CITY-582: The API now passes through the raw features dict from the DB.
+   * When populated by the terrain worker this is a GeoJSON FeatureCollection
+   * ({type: "FeatureCollection", features: [...]}). When empty it is {}.
    */
-  features: TileFeatures;
+  features: Record<string, unknown>;
   created_at: DateTime;
   updated_at: DateTime;
 }
