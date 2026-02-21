@@ -613,6 +613,10 @@ function generateLakes(
     case "river_valley":
       lakeCount = countSeed % 2; // 0-1 lakes
       break;
+    case "peninsula":
+      // CITY-578: Lakes appear ~10% of the time (1 in 10 seeds), max 2
+      lakeCount = countSeed % 10 === 0 ? 1 + (countSeed % 2) : 0;
+      break;
     default:
       lakeCount = countSeed % 4; // 0-3
       break;
@@ -638,19 +642,29 @@ function generateLakes(
 
   for (let i = 0; i < lakeCount; i++) {
     const angle = random() * Math.PI * 2;
-    const dist = worldSize * (0.05 + random() * 0.2);
+    // CITY-578: Peninsula lakes placed closer to center (smaller spread)
+    const maxDist = archetype === "peninsula" ? 0.1 : 0.2;
+    const dist = worldSize * (0.05 + random() * maxDist);
     const lakeCenter = {
       x: worldSize * cx + Math.cos(angle) * dist,
       y: worldSize * cy + Math.sin(angle) * dist,
     };
 
-    lakeCenter.x = Math.max(worldSize * 0.15, Math.min(worldSize * 0.85, lakeCenter.x));
-    lakeCenter.y = Math.max(worldSize * 0.15, Math.min(worldSize * 0.85, lakeCenter.y));
+    // CITY-578: Tighter bounds for peninsula to keep lakes well inland
+    const minBound = archetype === "peninsula" ? 0.25 : 0.15;
+    const maxBound = archetype === "peninsula" ? 0.75 : 0.85;
+    lakeCenter.x = Math.max(worldSize * minBound, Math.min(worldSize * maxBound, lakeCenter.x));
+    lakeCenter.y = Math.max(worldSize * minBound, Math.min(worldSize * maxBound, lakeCenter.y));
 
-    // Lakefront archetype gets a larger lake
-    const baseRadius = archetype === "lakefront"
-      ? worldSize * (0.08 + random() * 0.06)
-      : worldSize * (0.04 + random() * 0.06);
+    // Lakefront gets a larger lake, peninsula gets smaller lakes
+    let baseRadius: number;
+    if (archetype === "lakefront") {
+      baseRadius = worldSize * (0.08 + random() * 0.06);
+    } else if (archetype === "peninsula") {
+      baseRadius = worldSize * (0.02 + random() * 0.03);
+    } else {
+      baseRadius = worldSize * (0.04 + random() * 0.06);
+    }
 
     const numPoints = 10 + Math.floor(random() * 6);
     const lakePoints: Point[] = [];
