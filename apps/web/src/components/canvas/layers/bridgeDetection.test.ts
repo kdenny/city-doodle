@@ -49,6 +49,10 @@ describe("detectBridges", () => {
       rivers: [],
       contours: [],
       beaches: [],
+      barrierIslands: [],
+      tidalFlats: [],
+      duneRidges: [],
+      inlets: [],
     };
     const result = detectBridges(roads, terrain);
     expect(result.bridges).toEqual([]);
@@ -85,6 +89,10 @@ describe("detectBridges", () => {
       rivers: [],
       contours: [],
       beaches: [],
+      barrierIslands: [],
+      tidalFlats: [],
+      duneRidges: [],
+      inlets: [],
     };
 
     const result = detectBridges(roads, terrain);
@@ -124,6 +132,10 @@ describe("detectBridges", () => {
       rivers: [river],
       contours: [],
       beaches: [],
+      barrierIslands: [],
+      tidalFlats: [],
+      duneRidges: [],
+      inlets: [],
     };
 
     const result = detectBridges(roads, terrain);
@@ -165,6 +177,10 @@ describe("detectBridges", () => {
       rivers: [],
       contours: [],
       beaches: [],
+      barrierIslands: [],
+      tidalFlats: [],
+      duneRidges: [],
+      inlets: [],
     };
 
     const result = detectBridges(roads, terrain, { minBridgeLength: 5 });
@@ -215,6 +231,10 @@ describe("detectBridges", () => {
       rivers: [],
       contours: [],
       beaches: [],
+      barrierIslands: [],
+      tidalFlats: [],
+      duneRidges: [],
+      inlets: [],
     };
 
     const result = detectBridges(roads, terrain);
@@ -256,6 +276,10 @@ describe("detectBridges", () => {
       rivers: [],
       contours: [],
       beaches: [],
+      barrierIslands: [],
+      tidalFlats: [],
+      duneRidges: [],
+      inlets: [],
     };
 
     const result = detectBridges(roads, terrain);
@@ -308,6 +332,10 @@ describe("roadCrossesWater", () => {
       rivers: [],
       contours: [],
       beaches: [],
+      barrierIslands: [],
+      tidalFlats: [],
+      duneRidges: [],
+      inlets: [],
     };
     expect(roadCrossesWater(road, terrain)).toBe(false);
   });
@@ -342,6 +370,10 @@ describe("roadCrossesWater", () => {
       rivers: [],
       contours: [],
       beaches: [],
+      barrierIslands: [],
+      tidalFlats: [],
+      duneRidges: [],
+      inlets: [],
     };
     expect(roadCrossesWater(road, terrain)).toBe(true);
   });
@@ -374,6 +406,10 @@ describe("roadCrossesWater", () => {
       ],
       contours: [],
       beaches: [],
+      barrierIslands: [],
+      tidalFlats: [],
+      duneRidges: [],
+      inlets: [],
     };
     expect(roadCrossesWater(road, terrain)).toBe(true);
   });

@@ -12,6 +12,10 @@ import type {
   CoastlineFeature,
   RiverFeature,
   ContourLine,
+  BarrierIslandFeature,
+  TidalFlatFeature,
+  DuneRidgeFeature,
+  InletFeature,
 } from "./types";
 
 // Color palette for terrain features
@@ -28,6 +32,11 @@ const COLORS = {
     lake: 0xe8dcc0, // Muted tan for lake beaches
     river: 0xddd5b8, // Grayish tan for river beaches
   },
+  // Coastal sub-feature colors (CITY-589)
+  barrierIsland: 0xd4c5a0, // Sandy/tan fill
+  tidalFlat: 0xa8b8c0,     // Muted blue-grey
+  duneRidge: 0xc9a86c,     // Tan/brown line
+  inlet: 0x89cff0,         // Water-colored (same as ocean)
   // Lake type colors - subtle variations in blue to show lake character
   lakeType: {
     glacial: 0xa7d8de,   // Cool blue-gray (ice-fed, cold water)
@@ -44,9 +53,13 @@ export class TerrainLayer {
   private container: Container;
   private waterGraphics: Graphics;
   private beachGraphics: Graphics;
+  private barrierIslandGraphics: Graphics;
+  private tidalFlatGraphics: Graphics;
+  private inletGraphics: Graphics;
   private coastlineGraphics: Graphics;
   private riverGraphics: Graphics;
   private contourGraphics: Graphics;
+  private duneRidgeGraphics: Graphics;
   private terrainData: TerrainData | null = null;
 
   constructor() {
@@ -58,14 +71,34 @@ export class TerrainLayer {
     this.waterGraphics.label = "water";
     this.container.addChild(this.waterGraphics);
 
+    // Inlets render on top of water (water-colored polygons)
+    this.inletGraphics = new Graphics();
+    this.inletGraphics.label = "inlets";
+    this.container.addChild(this.inletGraphics);
+
+    // Tidal flats render on top of water, below beaches
+    this.tidalFlatGraphics = new Graphics();
+    this.tidalFlatGraphics.label = "tidalFlats";
+    this.container.addChild(this.tidalFlatGraphics);
+
     // Beaches render on top of water, below coastlines
     this.beachGraphics = new Graphics();
     this.beachGraphics.label = "beaches";
     this.container.addChild(this.beachGraphics);
 
+    // Barrier islands render in the same pass as beaches (sandy polygons)
+    this.barrierIslandGraphics = new Graphics();
+    this.barrierIslandGraphics.label = "barrierIslands";
+    this.container.addChild(this.barrierIslandGraphics);
+
     this.contourGraphics = new Graphics();
     this.contourGraphics.label = "contours";
     this.container.addChild(this.contourGraphics);
+
+    // Dune ridges render on top of contours (tan/brown lines)
+    this.duneRidgeGraphics = new Graphics();
+    this.duneRidgeGraphics.label = "duneRidges";
+    this.container.addChild(this.duneRidgeGraphics);
 
     this.riverGraphics = new Graphics();
     this.riverGraphics.label = "rivers";
@@ -91,16 +124,24 @@ export class TerrainLayer {
     this.coastlineGraphics.visible = visibility.coastlines;
     this.riverGraphics.visible = visibility.rivers;
     this.contourGraphics.visible = visibility.contours;
+    this.barrierIslandGraphics.visible = visibility.barrierIslands;
+    this.tidalFlatGraphics.visible = visibility.tidalFlats;
+    this.duneRidgeGraphics.visible = visibility.duneRidges;
+    this.inletGraphics.visible = visibility.inlets;
   }
 
   private render(): void {
     if (!this.terrainData) return;
 
     this.renderWater(this.terrainData.water);
+    this.renderInlets(this.terrainData.inlets || []);
+    this.renderTidalFlats(this.terrainData.tidalFlats || []);
     this.renderBeaches(this.terrainData.beaches || []);
+    this.renderBarrierIslands(this.terrainData.barrierIslands || []);
     this.renderCoastlines(this.terrainData.coastlines);
     this.renderRivers(this.terrainData.rivers);
     this.renderContours(this.terrainData.contours);
+    this.renderDuneRidges(this.terrainData.duneRidges || []);
   }
 
   private renderWater(features: WaterFeature[]): void {
@@ -219,6 +260,76 @@ export class TerrainLayer {
         this.contourGraphics.lineTo(points[i].x, points[i].y);
       }
       this.contourGraphics.stroke();
+    }
+  }
+
+  private renderBarrierIslands(features: BarrierIslandFeature[]): void {
+    this.barrierIslandGraphics.clear();
+
+    for (const feature of features) {
+      const points = feature.polygon.points;
+      if (points.length < 3) continue;
+
+      this.barrierIslandGraphics.moveTo(points[0].x, points[0].y);
+      for (let i = 1; i < points.length; i++) {
+        this.barrierIslandGraphics.lineTo(points[i].x, points[i].y);
+      }
+      this.barrierIslandGraphics.closePath();
+      this.barrierIslandGraphics.fill({ color: COLORS.barrierIsland, alpha: 0.85 });
+    }
+  }
+
+  private renderTidalFlats(features: TidalFlatFeature[]): void {
+    this.tidalFlatGraphics.clear();
+
+    for (const feature of features) {
+      const points = feature.polygon.points;
+      if (points.length < 3) continue;
+
+      this.tidalFlatGraphics.moveTo(points[0].x, points[0].y);
+      for (let i = 1; i < points.length; i++) {
+        this.tidalFlatGraphics.lineTo(points[i].x, points[i].y);
+      }
+      this.tidalFlatGraphics.closePath();
+      this.tidalFlatGraphics.fill({ color: COLORS.tidalFlat, alpha: 0.5 });
+    }
+  }
+
+  private renderDuneRidges(features: DuneRidgeFeature[]): void {
+    this.duneRidgeGraphics.clear();
+
+    for (const feature of features) {
+      const points = feature.line.points;
+      if (points.length < 2) continue;
+
+      this.duneRidgeGraphics.setStrokeStyle({
+        width: 2,
+        color: COLORS.duneRidge,
+        cap: "round",
+        join: "round",
+      });
+
+      this.duneRidgeGraphics.moveTo(points[0].x, points[0].y);
+      for (let i = 1; i < points.length; i++) {
+        this.duneRidgeGraphics.lineTo(points[i].x, points[i].y);
+      }
+      this.duneRidgeGraphics.stroke();
+    }
+  }
+
+  private renderInlets(features: InletFeature[]): void {
+    this.inletGraphics.clear();
+
+    for (const feature of features) {
+      const points = feature.polygon.points;
+      if (points.length < 3) continue;
+
+      this.inletGraphics.moveTo(points[0].x, points[0].y);
+      for (let i = 1; i < points.length; i++) {
+        this.inletGraphics.lineTo(points[i].x, points[i].y);
+      }
+      this.inletGraphics.closePath();
+      this.inletGraphics.fill({ color: COLORS.inlet, alpha: 0.7 });
     }
   }
 

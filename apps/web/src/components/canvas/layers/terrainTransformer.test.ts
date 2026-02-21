@@ -188,23 +188,88 @@ describe("transformTileFeatures", () => {
     expect(result.water[0].id).toBe("lagoon-1");
   });
 
-  it("skips features with no frontend type (barrier_island, tidal_flat, dune_ridge, inlet)", () => {
-    const polyCoords = [[[0, 0], [1, 0], [1, 1], [0, 0]]];
-    const lineCoords = [[0, 0], [1, 1]];
+  it("transforms barrier_island polygon into barrierIslands array", () => {
+    const coords = [[[0, 0], [20, 0], [20, 5], [0, 5], [0, 0]]];
     const result = transformTileFeatures(
       fc(
-        feature("barrier_island", { type: "Polygon", coordinates: polyCoords }),
-        feature("tidal_flat", { type: "Polygon", coordinates: polyCoords }),
-        feature("dune_ridge", { type: "LineString", coordinates: lineCoords }),
-        feature("inlet", { type: "Point", coordinates: [5, 5] })
+        feature("barrier_island", { type: "Polygon", coordinates: coords }, {
+          island_index: 2,
+          width: 5.0,
+        })
       )
     );
 
-    expect(result.water).toHaveLength(0);
-    expect(result.coastlines).toHaveLength(0);
-    expect(result.rivers).toHaveLength(0);
-    expect(result.contours).toHaveLength(0);
-    expect(result.beaches).toHaveLength(0);
+    expect(result.barrierIslands).toHaveLength(1);
+    const island = result.barrierIslands[0];
+    expect(island.id).toBe("barrier-1");
+    expect(island.polygon.points).toHaveLength(5);
+    expect(island.polygon.points[0]).toEqual({ x: 0, y: 0 });
+    expect(island.islandIndex).toBe(2);
+    expect(island.width).toBe(5.0);
+  });
+
+  it("transforms tidal_flat polygon into tidalFlats array", () => {
+    const coords = [[[10, 10], [30, 10], [30, 15], [10, 15], [10, 10]]];
+    const result = transformTileFeatures(
+      fc(feature("tidal_flat", { type: "Polygon", coordinates: coords }))
+    );
+
+    expect(result.tidalFlats).toHaveLength(1);
+    const flat = result.tidalFlats[0];
+    expect(flat.id).toBe("tidal-1");
+    expect(flat.polygon.points).toHaveLength(5);
+    expect(flat.polygon.points[0]).toEqual({ x: 10, y: 10 });
+  });
+
+  it("transforms dune_ridge linestring into duneRidges array", () => {
+    const coords = [[0, 0], [10, 5], [20, 3]];
+    const result = transformTileFeatures(
+      fc(feature("dune_ridge", { type: "LineString", coordinates: coords }, { height: 3.5 }))
+    );
+
+    expect(result.duneRidges).toHaveLength(1);
+    const dune = result.duneRidges[0];
+    expect(dune.id).toBe("dune-1");
+    expect(dune.line.points).toEqual([
+      { x: 0, y: 0 },
+      { x: 10, y: 5 },
+      { x: 20, y: 3 },
+    ]);
+    expect(dune.height).toBe(3.5);
+  });
+
+  it("transforms inlet polygon into inlets array", () => {
+    const coords = [[[5, 0], [10, 0], [10, 8], [5, 8], [5, 0]]];
+    const result = transformTileFeatures(
+      fc(feature("inlet", { type: "Polygon", coordinates: coords }, { width: 4.2 }))
+    );
+
+    expect(result.inlets).toHaveLength(1);
+    const inlet = result.inlets[0];
+    expect(inlet.id).toBe("inlet-1");
+    expect(inlet.polygon.points).toHaveLength(5);
+    expect(inlet.width).toBe(4.2);
+  });
+
+  it("skips barrier_island with wrong geometry type", () => {
+    const result = transformTileFeatures(
+      fc(feature("barrier_island", { type: "LineString", coordinates: [[0, 0], [1, 1]] }))
+    );
+    expect(result.barrierIslands).toHaveLength(0);
+  });
+
+  it("skips dune_ridge with wrong geometry type", () => {
+    const result = transformTileFeatures(
+      fc(feature("dune_ridge", { type: "Polygon", coordinates: [[[0, 0], [1, 0], [1, 1], [0, 0]]] }))
+    );
+    expect(result.duneRidges).toHaveLength(0);
+  });
+
+  it("skips inlet with wrong geometry type", () => {
+    const result = transformTileFeatures(
+      fc(feature("inlet", { type: "Point", coordinates: [5, 5] }))
+    );
+    expect(result.inlets).toHaveLength(0);
   });
 
   it("skips features with mismatched geometry type", () => {
@@ -279,5 +344,9 @@ describe("emptyTerrainData", () => {
     expect(empty.rivers).toEqual([]);
     expect(empty.contours).toEqual([]);
     expect(empty.beaches).toEqual([]);
+    expect(empty.barrierIslands).toEqual([]);
+    expect(empty.tidalFlats).toEqual([]);
+    expect(empty.duneRidges).toEqual([]);
+    expect(empty.inlets).toEqual([]);
   });
 });

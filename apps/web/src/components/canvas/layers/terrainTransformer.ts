@@ -15,6 +15,10 @@ import type {
   RiverFeature,
   ContourLine,
   BeachFeature,
+  BarrierIslandFeature,
+  TidalFlatFeature,
+  DuneRidgeFeature,
+  InletFeature,
   Point,
   Polygon,
   Line,
@@ -82,14 +86,17 @@ const VALID_BEACH_TYPES = new Set<string>(["ocean", "bay", "lake", "river"]);
  * into the frontend TerrainData structure.
  *
  * Feature type mapping:
- * - "coastline" (Polygon)  → water[type="ocean"] + coastlines (exterior ring as line)
- * - "lake"      (Polygon)  → water[type="lake"] with lakeType & metrics
- * - "river"     (LineString)→ rivers with width
- * - "contour"   (LineString)→ contours with elevation
- * - "beach"     (Polygon)  → beaches with beachType
- * - "bay"       (Polygon)  → water[type="ocean"]
- * - "lagoon"    (Polygon)  → water[type="ocean"]
- * - barrier_island, tidal_flat, dune_ridge, inlet → skipped (no frontend type yet)
+ * - "coastline"      (Polygon)   → water[type="ocean"] + coastlines (exterior ring as line)
+ * - "lake"           (Polygon)   → water[type="lake"] with lakeType & metrics
+ * - "river"          (LineString) → rivers with width
+ * - "contour"        (LineString) → contours with elevation
+ * - "beach"          (Polygon)   → beaches with beachType
+ * - "bay"            (Polygon)   → water[type="ocean"]
+ * - "lagoon"         (Polygon)   → water[type="ocean"]
+ * - "barrier_island" (Polygon)   → barrierIslands
+ * - "tidal_flat"     (Polygon)   → tidalFlats
+ * - "dune_ridge"     (LineString) → duneRidges
+ * - "inlet"          (Polygon)   → inlets
  */
 export function transformTileFeatures(
   featureCollection: unknown
@@ -103,6 +110,10 @@ export function transformTileFeatures(
   const rivers: RiverFeature[] = [];
   const contours: ContourLine[] = [];
   const beaches: BeachFeature[] = [];
+  const barrierIslands: BarrierIslandFeature[] = [];
+  const tidalFlats: TidalFlatFeature[] = [];
+  const duneRidges: DuneRidgeFeature[] = [];
+  const inlets: InletFeature[] = [];
 
   let oceanIdx = 0;
   let lakeIdx = 0;
@@ -112,6 +123,10 @@ export function transformTileFeatures(
   let beachIdx = 0;
   let bayIdx = 0;
   let lagoonIdx = 0;
+  let barrierIdx = 0;
+  let tidalIdx = 0;
+  let duneIdx = 0;
+  let inletIdx = 0;
 
   for (const feature of featureCollection.features) {
     const featureType = feature.properties?.feature_type as string | undefined;
@@ -240,13 +255,60 @@ export function transformTileFeatures(
         break;
       }
 
-      // barrier_island, tidal_flat, dune_ridge, inlet — no frontend type yet
+      case "barrier_island": {
+        if (geom.type !== "Polygon") break;
+        const coords = geom.coordinates as [number, number][][];
+        barrierIdx++;
+        barrierIslands.push({
+          id: `barrier-${barrierIdx}`,
+          polygon: toPolygon(coords),
+          islandIndex: asOptionalNumber(props.island_index),
+          width: asOptionalNumber(props.width),
+        });
+        break;
+      }
+
+      case "tidal_flat": {
+        if (geom.type !== "Polygon") break;
+        const coords = geom.coordinates as [number, number][][];
+        tidalIdx++;
+        tidalFlats.push({
+          id: `tidal-${tidalIdx}`,
+          polygon: toPolygon(coords),
+        });
+        break;
+      }
+
+      case "dune_ridge": {
+        if (geom.type !== "LineString") break;
+        const coords = geom.coordinates as [number, number][];
+        duneIdx++;
+        duneRidges.push({
+          id: `dune-${duneIdx}`,
+          line: toLine(coords),
+          height: asOptionalNumber(props.height),
+        });
+        break;
+      }
+
+      case "inlet": {
+        if (geom.type !== "Polygon") break;
+        const coords = geom.coordinates as [number, number][][];
+        inletIdx++;
+        inlets.push({
+          id: `inlet-${inletIdx}`,
+          polygon: toPolygon(coords),
+          width: asOptionalNumber(props.width),
+        });
+        break;
+      }
+
       default:
         break;
     }
   }
 
-  return { water, coastlines, rivers, contours, beaches };
+  return { water, coastlines, rivers, contours, beaches, barrierIslands, tidalFlats, duneRidges, inlets };
 }
 
 /**
@@ -259,6 +321,10 @@ export function emptyTerrainData(): TerrainData {
     rivers: [],
     contours: [],
     beaches: [],
+    barrierIslands: [],
+    tidalFlats: [],
+    duneRidges: [],
+    inlets: [],
   };
 }
 
