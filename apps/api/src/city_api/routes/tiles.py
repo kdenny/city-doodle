@@ -1,6 +1,7 @@
 """Tile CRUD endpoints."""
 
 import logging
+import uuid
 from uuid import UUID
 
 from fastapi import APIRouter, Depends, HTTPException, Query, status
@@ -70,14 +71,11 @@ async def list_tiles(
         min_ty=min_ty,
         max_ty=max_ty,
     )
-    # CITY-582 debug: log features summary per tile (remove in CITY-584)
-    for t in tiles:
-        has_geojson = isinstance(t.features, dict) and t.features.get("type") == "FeatureCollection"
-        logger.info(
-            "[Terrain] list_tiles tile_id=%s tx=%s ty=%s has_geojson=%s features_keys=%s",
-            t.id, t.tx, t.ty, has_geojson,
-            list(t.features.keys()) if isinstance(t.features, dict) else "N/A",
-        )
+    logger.info(
+        "[Terrain] list_tiles: world=%s tile_count=%d tiles_with_terrain=%d",
+        world_id, len(tiles),
+        sum(1 for t in tiles if isinstance(t.features, dict) and t.features.get("type") == "FeatureCollection"),
+    )
     return tiles
 
 
@@ -217,6 +215,7 @@ async def get_or_create_tile(
 
     # Automatically queue a terrain_generation job for the new tile,
     # including world settings so the worker can apply them
+    terrain_trace_id = uuid.uuid4().hex[:12]  # Short 12-char hex ID
     try:
         settings = WorldSettings.model_validate(world_model.settings or {})
         await job_repo.create_job(
@@ -230,18 +229,19 @@ async def get_or_create_tile(
                     "center_tx": tx,
                     "center_ty": ty,
                     "world_settings": settings.model_dump(),
+                    "terrain_trace_id": terrain_trace_id,
                 },
             ),
             user_id=user_id,
         )
         logger.info(
-            "Queued terrain_generation job for new tile: world_id=%s tx=%s ty=%s",
-            world_id, tx, ty,
+            "[Terrain trace=%s] Job queued: world=%s tx=%s ty=%s",
+            terrain_trace_id, world_id, tx, ty,
         )
     except Exception:
         logger.exception(
-            "Failed to queue terrain_generation job: world_id=%s tx=%s ty=%s",
-            world_id, tx, ty,
+            "[Terrain trace=%s] Failed to queue job: world=%s tx=%s ty=%s",
+            terrain_trace_id, world_id, tx, ty,
         )
 
     return tile

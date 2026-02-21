@@ -136,11 +136,26 @@ export function useCanvasInit({
         ? transformTileFeatures(tileWithFeatures.features as unknown)
         : generateMockTerrain(WORLD_SIZE, seed, geographicSetting);
 
-      // CITY-573: Log terrain source for debugging fallback detection
+      // CITY-587: Structured terrain source logging with tile/feature counts
       if (tileWithFeatures) {
+        const tilesWithFeatures = tiles?.filter(
+          (t) =>
+            t.features &&
+            typeof t.features === "object" &&
+            "type" in (t.features as unknown as Record<string, unknown>)
+        );
+        const featureCount = tilesWithFeatures?.reduce((sum, t) => {
+          const fc = t.features as unknown as { features?: unknown[] };
+          return sum + (fc?.features?.length ?? 0);
+        }, 0) ?? 0;
         console.info(
-          '[Terrain] Using backend-generated terrain from tile features',
-          { seed, geographicSetting: geographicSetting ?? 'default' }
+          '[Terrain] Using backend-generated terrain',
+          {
+            seed,
+            geographicSetting: geographicSetting ?? 'default',
+            tileCount: tilesWithFeatures?.length ?? 1,
+            featureCount,
+          }
         );
       } else {
         console.warn(
