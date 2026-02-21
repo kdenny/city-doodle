@@ -4,7 +4,7 @@ import uuid
 from datetime import datetime
 from typing import TYPE_CHECKING
 
-from sqlalchemy import DateTime, ForeignKey, Index, Integer, Uuid, func
+from sqlalchemy import DateTime, ForeignKey, Index, Integer, String, Text, Uuid, func
 from sqlalchemy.orm import Mapped, mapped_column, relationship
 
 from city_api.database import Base, JSONVariant
@@ -26,6 +26,10 @@ class Tile(Base):
     ty: Mapped[int] = mapped_column(Integer, nullable=False)
     terrain_data: Mapped[dict] = mapped_column(JSONVariant, nullable=False, default=dict)
     features: Mapped[dict] = mapped_column(JSONVariant, nullable=False, default=dict)
+    terrain_status: Mapped[str] = mapped_column(
+        String(20), nullable=False, default="pending"
+    )
+    terrain_error: Mapped[str | None] = mapped_column(Text, nullable=True)
     version: Mapped[int] = mapped_column(Integer, nullable=False, default=1)
     created_at: Mapped[datetime] = mapped_column(
         DateTime(timezone=True), server_default=func.now(), nullable=False

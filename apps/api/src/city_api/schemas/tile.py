@@ -61,6 +61,14 @@ class Tile(BaseModel):
         default_factory=dict,
         description="Tile features — may be a GeoJSON FeatureCollection from the terrain worker or a TileFeatures dict",
     )
+    terrain_status: str = Field(
+        default="pending",
+        description="Terrain generation status: pending, generating, ready, or failed",
+    )
+    terrain_error: str | None = Field(
+        default=None,
+        description="Error message if terrain generation failed",
+    )
     created_at: datetime
     updated_at: datetime
 

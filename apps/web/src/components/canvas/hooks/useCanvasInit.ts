@@ -149,6 +149,17 @@ export function useCanvasInit({
         );
       }
 
+      // CITY-590: Log failed tile errors for visibility
+      const failedTile = (tiles as Array<{ terrain_status?: string; terrain_error?: string; id?: string }> | undefined)?.find(
+        (t) => t.terrain_status === 'failed'
+      );
+      if (failedTile) {
+        console.error(
+          '[Terrain] Terrain generation failed',
+          { tileId: failedTile.id, error: failedTile.terrain_error }
+        );
+      }
+
       terrainLayer.setData(terrainData);
       terrainLayer.setVisibility(layerVisibilityRef.current);
       setTerrainDataRef.current?.(terrainData);

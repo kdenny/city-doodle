@@ -212,6 +212,10 @@ export interface Tile {
    * ({type: "FeatureCollection", features: [...]}). When empty it is {}.
    */
   features: Record<string, unknown>;
+  /** CITY-585: Terrain generation status: pending, generating, ready, or failed. */
+  terrain_status: "pending" | "generating" | "ready" | "failed";
+  /** CITY-585: Error message if terrain generation failed. */
+  terrain_error: string | null;
   created_at: DateTime;
   updated_at: DateTime;
 }

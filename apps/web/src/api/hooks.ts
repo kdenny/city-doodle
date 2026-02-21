@@ -2,6 +2,7 @@
  * React Query hooks for the City Doodle API.
  */
 
+import { useEffect, useRef } from "react";
 import {
   useMutation,
   useQuery,
@@ -280,24 +281,47 @@ function tileHasTerrainFeatures(tile: Tile): boolean {
   );
 }
 
+/**
+ * CITY-590: Maximum number of polls (60 * 3s = 3 minutes) as a safety net
+ * to prevent infinite polling if terrain never completes.
+ */
+const MAX_TILE_POLL_COUNT = 60;
+
 export function useWorldTiles(
   worldId: string,
   options?: Omit<UseQueryOptions<Tile[]>, "queryKey" | "queryFn">
 ) {
-  return useQuery({
+  const pollCountRef = useRef(0);
+
+  const query = useQuery({
     queryKey: queryKeys.worldTiles(worldId),
-    queryFn: () => api.tiles.list(worldId),
+    queryFn: () => {
+      pollCountRef.current += 1;
+      return api.tiles.list(worldId);
+    },
     enabled: !!worldId,
     // CITY-583: Poll every 3s while any tile is missing terrain features.
-    // Stops polling once all tiles have GeoJSON FeatureCollection data.
+    // CITY-590: Stop polling on failure or after max poll count.
     refetchInterval: (query) => {
       const tiles = query.state.data;
       if (!tiles || tiles.length === 0) return 3000;
+      // Stop polling if any tile has failed
+      const hasFailedTile = tiles.some(t => t.terrain_status === "failed");
+      if (hasFailedTile) return false;
+      // Stop polling after max count as safety net
+      if (pollCountRef.current >= MAX_TILE_POLL_COUNT) return false;
       const allHaveFeatures = tiles.every(tileHasTerrainFeatures);
       return allHaveFeatures ? false : 3000;
     },
     ...options,
   });
+
+  // Reset poll count when worldId changes
+  useEffect(() => {
+    pollCountRef.current = 0;
+  }, [worldId]);
+
+  return query;
 }
 
 export function useTile(
@@ -402,6 +426,27 @@ export function useHeartbeatLock(
       api.tiles.heartbeatLock(tileId, durationSeconds),
     onSuccess: (lock) => {
       queryClient.setQueryData(queryKeys.tileLock(lock.tile_id), lock);
+    },
+    ...options,
+  });
+}
+
+// ============================================================================
+// Terrain Regeneration Hook (CITY-590)
+// ============================================================================
+
+export function useRegenerateTerrain(
+  options?: UseMutationOptions<Tile, Error, string>
+) {
+  const queryClient = useQueryClient();
+  return useMutation({
+    mutationFn: (tileId: string) => api.tiles.regenerateTerrain(tileId),
+    onSuccess: (tile) => {
+      // Invalidate tile queries to trigger re-fetch/polling
+      queryClient.invalidateQueries({
+        queryKey: queryKeys.worldTiles(tile.world_id),
+      });
+      queryClient.setQueryData(queryKeys.tile(tile.id), tile);
     },
     ...options,
   });

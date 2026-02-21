@@ -137,6 +137,8 @@ def _to_schema(tile: TileModel) -> Tile:
         if tile.terrain_data
         else TerrainData(),
         features=features_raw,
+        terrain_status=tile.terrain_status if tile.terrain_status else "pending",
+        terrain_error=tile.terrain_error,
         created_at=_ensure_utc(tile.created_at),
         updated_at=_ensure_utc(tile.updated_at),
     )

@@ -290,6 +290,11 @@ export const tiles = {
       params: { duration_seconds: durationSeconds },
     });
   },
+
+  /** CITY-590: Re-queue terrain generation for a failed tile */
+  async regenerateTerrain(tileId: string): Promise<Tile> {
+    return request<Tile>("POST", `/tiles/${tileId}/regenerate-terrain`);
+  },
 };
 
 // ============================================================================
