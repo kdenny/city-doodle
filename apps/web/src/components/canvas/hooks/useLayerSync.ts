@@ -35,7 +35,7 @@ import type { Container } from "pixi.js";
 import type { SnapEngine, SnapLineSegment } from "../snap";
 import type { SelectedFeature } from "../../build-view/SelectionContext";
 import { MINIMUM_STATION_DISTANCE } from "../TransitContext";
-import { transformTileFeatures } from "../layers/terrainTransformer";
+import { composeTileFeatures } from "../layers/terrainTransformer";
 import { getEffectiveDistrictConfig } from "../layers/districtGenerator";
 import type { TerrainData } from "../layers";
 
@@ -150,7 +150,7 @@ interface UseLayerSyncParams {
   transitLineDrawingContext: TransitLineDrawingContextSlice | null;
   snapEngine: SnapEngine;
   showMockFeatures: boolean;
-  tiles: Array<{ features?: unknown }> | undefined;
+  tiles: Array<{ features?: unknown; tx: number; ty: number }> | undefined;
 }
 
 export function useLayerSync(params: UseLayerSyncParams) {
@@ -197,19 +197,26 @@ export function useLayerSync(params: UseLayerSyncParams) {
     subwayStationLayerRef.current.setTunnelsVisible(layerVisibility.subwayTunnels);
   }, [layerVisibility.subwayTunnels, isReady]);
 
-  // CITY-439: Update terrain when tile data loads from API (after canvas init)
+  // CITY-588: Update terrain when tile data loads from API (after canvas init)
   useEffect(() => {
     if (!isReady || !terrainLayerRef.current || !tiles) return;
-    const tileWithFeatures = tiles.find(
-      (t) => t.features && typeof t.features === "object" && "type" in (t.features as unknown as Record<string, unknown>)
+    const tilesWithFeatures = tiles.filter(
+      (t) => t.features && typeof t.features === "object" && "type" in (t.features as Record<string, unknown>)
     );
-    if (!tileWithFeatures) return;
+    if (tilesWithFeatures.length === 0) return;
 
-    const terrainData = transformTileFeatures(tileWithFeatures.features as unknown);
+    const terrainData = composeTileFeatures(
+      tilesWithFeatures.map((t) => ({
+        features: t.features as unknown,
+        tx: t.tx,
+        ty: t.ty,
+      }))
+    );
     if (terrainData.water.length > 0 || terrainData.coastlines.length > 0 || terrainData.rivers.length > 0) {
       // CITY-573: Log when real terrain replaces mock terrain
       console.info(
-        '[Terrain] Real terrain replacing mock terrain from API tile data',
+        '[Terrain] Real terrain replacing mock terrain from %d API tiles',
+        tilesWithFeatures.length,
         {
           waterFeatures: terrainData.water.length,
           coastlines: terrainData.coastlines.length,
