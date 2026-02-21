@@ -2,6 +2,7 @@
  * React Query hooks for the City Doodle API.
  */
 
+import { useRef } from "react";
 import {
   useMutation,
   useQuery,
@@ -269,9 +270,12 @@ export function useDeleteWorld(
 // ============================================================================
 
 /**
- * CITY-583: Helper to check if a tile has real terrain features (GeoJSON FeatureCollection).
+ * CITY-583/585: Helper to check if a tile has real terrain features.
+ * Uses terrain_status as the primary signal, falls back to inspecting features content.
  */
 function tileHasTerrainFeatures(tile: Tile): boolean {
+  if (tile.terrain_status === "ready") return true;
+  // Fallback for tiles created before CITY-585 migration
   return (
     !!tile.features &&
     typeof tile.features === "object" &&
@@ -280,21 +284,46 @@ function tileHasTerrainFeatures(tile: Tile): boolean {
   );
 }
 
+/** CITY-585: Max number of poll cycles before giving up (60 * 3s = 3 minutes) */
+const MAX_TERRAIN_POLL_COUNT = 60;
+
 export function useWorldTiles(
   worldId: string,
   options?: Omit<UseQueryOptions<Tile[]>, "queryKey" | "queryFn">
 ) {
+  // CITY-585: Track poll count to enforce max poll safety net
+  const pollCountRef = useRef(0);
+
   return useQuery({
     queryKey: queryKeys.worldTiles(worldId),
     queryFn: () => api.tiles.list(worldId),
     enabled: !!worldId,
-    // CITY-583: Poll every 3s while any tile is missing terrain features.
-    // Stops polling once all tiles have GeoJSON FeatureCollection data.
+    // CITY-583/585: Poll every 3s while tiles are pending/generating.
+    // Stops polling when all tiles are ready, any tile failed, or max polls reached.
     refetchInterval: (query) => {
       const tiles = query.state.data;
       if (!tiles || tiles.length === 0) return 3000;
-      const allHaveFeatures = tiles.every(tileHasTerrainFeatures);
-      return allHaveFeatures ? false : 3000;
+
+      // Stop polling if any tile has failed
+      const anyFailed = tiles.some((t) => t.terrain_status === "failed");
+      if (anyFailed) return false;
+
+      const allReady = tiles.every(tileHasTerrainFeatures);
+      if (allReady) {
+        pollCountRef.current = 0;
+        return false;
+      }
+
+      // Safety net: stop polling after MAX_TERRAIN_POLL_COUNT attempts
+      pollCountRef.current += 1;
+      if (pollCountRef.current >= MAX_TERRAIN_POLL_COUNT) {
+        console.warn(
+          `[Terrain] Stopped polling after ${MAX_TERRAIN_POLL_COUNT} attempts for world ${worldId}`
+        );
+        return false;
+      }
+
+      return 3000;
     },
     ...options,
   });

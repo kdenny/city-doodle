@@ -200,6 +200,9 @@ export interface TileUpdate {
   features?: Record<string, unknown>;
 }
 
+/** Terrain generation lifecycle status */
+export type TerrainStatus = "pending" | "generating" | "ready" | "failed";
+
 export interface Tile {
   id: UUID;
   world_id: UUID;
@@ -212,6 +215,10 @@ export interface Tile {
    * ({type: "FeatureCollection", features: [...]}). When empty it is {}.
    */
   features: Record<string, unknown>;
+  /** CITY-585: Terrain generation lifecycle status */
+  terrain_status: TerrainStatus;
+  /** CITY-585: Error message if terrain generation failed */
+  terrain_error: string | null;
   created_at: DateTime;
   updated_at: DateTime;
 }

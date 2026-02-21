@@ -52,7 +52,7 @@ interface UseCanvasInitParams {
   geographicSetting?: GeographicSetting;
   showMockFeatures: boolean;
   layerVisibility: LayerVisibility;
-  tiles: Array<{ features?: unknown; tx: number; ty: number }> | undefined;
+  tiles: Array<{ features?: unknown; tx: number; ty: number; terrain_status?: string }> | undefined;
   setTerrainDataRef: MutableRefObject<((data: TerrainData) => void) | undefined>;
   onReady: () => void;
 }
@@ -125,12 +125,14 @@ export function useCanvasInit({
       const terrainLayer = new TerrainLayer();
       viewport.addChild(terrainLayer.getContainer());
 
-      // CITY-588: Use real terrain from ALL tiles with features, not just the first.
+      // CITY-588/585: Use real terrain from ALL tiles with features, not just the first.
+      // Primary signal: terrain_status === 'ready'. Fallback: inspect features content.
       const tilesWithFeatures = tiles?.filter(
         (t) =>
-          t.features &&
-          typeof t.features === "object" &&
-          "type" in (t.features as Record<string, unknown>)
+          t.terrain_status === "ready" ||
+          (t.features &&
+            typeof t.features === "object" &&
+            "type" in (t.features as Record<string, unknown>))
       ) ?? [];
 
       const terrainData = tilesWithFeatures.length > 0
