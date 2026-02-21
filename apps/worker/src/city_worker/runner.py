@@ -3,6 +3,7 @@
 import asyncio
 import logging
 import signal
+import time
 from datetime import UTC, datetime
 from typing import Any
 from uuid import UUID
@@ -242,9 +243,13 @@ class JobRunner:
         config = TerrainConfig(**config_kwargs)
         generator = TerrainGenerator(config)
 
+        t_pipeline_start = time.perf_counter()
+
         result = await loop.run_in_executor(
             None, generator.generate_3x3, int(center_tx), int(center_ty)
         )
+
+        t_gen_end = time.perf_counter()
 
         # CITY-582 debug: log generation result summary (remove in CITY-584)
         all_generated = result.all_tiles()
@@ -257,6 +262,16 @@ class JobRunner:
 
         # Save generated tiles to database
         await self._save_terrain_tiles(world_id, result)
+
+        t_save_end = time.perf_counter()
+
+        gen_ms = (t_gen_end - t_pipeline_start) * 1000
+        save_ms = (t_save_end - t_gen_end) * 1000
+        total_ms = (t_save_end - t_pipeline_start) * 1000
+        logger.info(
+            "[Terrain] Full pipeline complete in %.1fms (generation=%.1fms save=%.1fms) world=%s",
+            total_ms, gen_ms, save_ms, world_id,
+        )
 
         # Return summary
         all_tiles = result.all_tiles()
