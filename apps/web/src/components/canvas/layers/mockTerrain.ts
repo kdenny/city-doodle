@@ -507,76 +507,137 @@ function generateOcean(
       // No ocean polygon for these archetypes
       return null;
     case "peninsula": {
-      const depthX = worldSize * (0.2 + random() * 0.1);
-      const depthY = worldSize * (0.2 + random() * 0.1);
-      const corner = Math.floor(random() * 4);
+      // CITY-577: Peninsula as an elongated finger of land extending from one edge.
+      // The ocean polygon wraps around the map edges and traces both sides of the
+      // peninsula, leaving a narrow tapered strip of land.
+      const edge = Math.floor(random() * 4); // 0=bottom, 1=top, 2=left, 3=right
+      const penLength = worldSize * (0.55 + random() * 0.2); // 55-75% of world
+      const baseHalfW = worldSize * (0.17 + random() * 0.08); // base half-width
+      const tipHalfW = worldSize * (0.03 + random() * 0.04); // tip half-width
+      const basePos = worldSize * (0.4 + random() * 0.2); // center along base edge
+      // Slight lateral drift at tip for natural asymmetry
+      const tipDrift = (random() - 0.5) * tipHalfW * 0.8;
+
       let rawPoints: Point[];
       let cStart: Point, cEnd: Point;
-      switch (corner) {
-        case 0: // top-left
+
+      switch (edge) {
+        case 0: { // extends upward from bottom edge
+          const bL = basePos - baseHalfW;
+          const bR = basePos + baseHalfW;
+          const tipY = worldSize - penLength;
+          const tipCx = basePos + tipDrift;
+          const midY = worldSize - penLength * 0.5;
+          const midHalfW = (baseHalfW + tipHalfW) * 0.55;
+          rawPoints = [
+            { x: worldSize, y: worldSize },
+            { x: worldSize, y: 0 },
+            { x: 0, y: 0 },
+            { x: 0, y: worldSize },
+            // Left coast (going up from base, narrowing)
+            { x: bL, y: worldSize },
+            { x: bL + jitter(), y: midY + jitter() },
+            { x: tipCx - midHalfW + jitter(), y: tipY + penLength * 0.2 + jitter() },
+            { x: tipCx - tipHalfW + jitter(), y: tipY + penLength * 0.08 + jitter() },
+            // Tip
+            { x: tipCx + jitter(), y: tipY + jitter() },
+            // Right coast (going back down, widening)
+            { x: tipCx + tipHalfW + jitter(), y: tipY + penLength * 0.08 + jitter() },
+            { x: tipCx + midHalfW + jitter(), y: tipY + penLength * 0.2 + jitter() },
+            { x: bR + jitter(), y: midY + jitter() },
+            { x: bR, y: worldSize },
+          ];
+          cStart = { x: bL, y: worldSize };
+          cEnd = { x: bR, y: worldSize };
+          break;
+        }
+        case 1: { // extends downward from top edge
+          const bL = basePos - baseHalfW;
+          const bR = basePos + baseHalfW;
+          const tipY = penLength;
+          const tipCx = basePos + tipDrift;
+          const midY = penLength * 0.5;
+          const midHalfW = (baseHalfW + tipHalfW) * 0.55;
           rawPoints = [
             { x: 0, y: 0 },
-            { x: worldSize, y: 0 },
-            { x: worldSize, y: depthY + edgeJitter() },
-            { x: worldSize * 0.7 + jitter(), y: depthY + jitter() },
-            { x: worldSize * 0.5 + jitter(), y: depthY * 1.2 + jitter() },
-            { x: depthX * 1.1 + jitter(), y: depthY * 1.1 + jitter() },
-            { x: depthX + jitter(), y: worldSize * 0.5 + jitter() },
-            { x: depthX * 1.2 + jitter(), y: worldSize * 0.7 + jitter() },
-            { x: depthX + edgeJitter(), y: worldSize },
             { x: 0, y: worldSize },
+            { x: worldSize, y: worldSize },
+            { x: worldSize, y: 0 },
+            // Right coast (going down from base, narrowing)
+            { x: bR, y: 0 },
+            { x: bR + jitter(), y: midY + jitter() },
+            { x: tipCx + midHalfW + jitter(), y: tipY - penLength * 0.2 + jitter() },
+            { x: tipCx + tipHalfW + jitter(), y: tipY - penLength * 0.08 + jitter() },
+            // Tip
+            { x: tipCx + jitter(), y: tipY + jitter() },
+            // Left coast (going back up, widening)
+            { x: tipCx - tipHalfW + jitter(), y: tipY - penLength * 0.08 + jitter() },
+            { x: tipCx - midHalfW + jitter(), y: tipY - penLength * 0.2 + jitter() },
+            { x: bL + jitter(), y: midY + jitter() },
+            { x: bL, y: 0 },
           ];
-          cStart = { x: worldSize, y: depthY };
-          cEnd = { x: depthX, y: worldSize };
+          cStart = { x: bR, y: 0 };
+          cEnd = { x: bL, y: 0 };
           break;
-        case 1: // top-right
+        }
+        case 2: { // extends rightward from left edge
+          const bT = basePos - baseHalfW;
+          const bB = basePos + baseHalfW;
+          const tipX = penLength;
+          const tipCy = basePos + tipDrift;
+          const midX = penLength * 0.5;
+          const midHalfW = (baseHalfW + tipHalfW) * 0.55;
           rawPoints = [
             { x: 0, y: 0 },
             { x: worldSize, y: 0 },
             { x: worldSize, y: worldSize },
-            { x: worldSize - depthX - edgeJitter(), y: worldSize },
-            { x: worldSize - depthX + jitter(), y: worldSize * 0.7 + jitter() },
-            { x: worldSize - depthX * 1.1 + jitter(), y: worldSize * 0.5 + jitter() },
-            { x: worldSize - depthX * 1.2 + jitter(), y: depthY * 1.1 + jitter() },
-            { x: worldSize * 0.5 + jitter(), y: depthY + jitter() },
-            { x: worldSize * 0.3 + jitter(), y: depthY * 1.1 + jitter() },
-            { x: 0, y: depthY + edgeJitter() },
+            { x: 0, y: worldSize },
+            // Bottom coast (going right from base, narrowing)
+            { x: 0, y: bB },
+            { x: midX + jitter(), y: bB + jitter() },
+            { x: tipX - penLength * 0.2 + jitter(), y: tipCy + midHalfW + jitter() },
+            { x: tipX - penLength * 0.08 + jitter(), y: tipCy + tipHalfW + jitter() },
+            // Tip
+            { x: tipX + jitter(), y: tipCy + jitter() },
+            // Top coast (going back left, widening)
+            { x: tipX - penLength * 0.08 + jitter(), y: tipCy - tipHalfW + jitter() },
+            { x: tipX - penLength * 0.2 + jitter(), y: tipCy - midHalfW + jitter() },
+            { x: midX + jitter(), y: bT + jitter() },
+            { x: 0, y: bT },
           ];
-          cStart = { x: 0, y: depthY };
-          cEnd = { x: worldSize - depthX, y: worldSize };
+          cStart = { x: 0, y: bB };
+          cEnd = { x: 0, y: bT };
           break;
-        case 2: // bottom-left
+        }
+        default: { // extends leftward from right edge
+          const bT = basePos - baseHalfW;
+          const bB = basePos + baseHalfW;
+          const tipX = worldSize - penLength;
+          const tipCy = basePos + tipDrift;
+          const midX = worldSize - penLength * 0.5;
+          const midHalfW = (baseHalfW + tipHalfW) * 0.55;
           rawPoints = [
+            { x: worldSize, y: worldSize },
+            { x: 0, y: worldSize },
             { x: 0, y: 0 },
-            { x: depthX + edgeJitter(), y: 0 },
-            { x: depthX + jitter(), y: worldSize * 0.3 + jitter() },
-            { x: depthX * 1.1 + jitter(), y: worldSize * 0.5 + jitter() },
-            { x: depthX * 1.2 + jitter(), y: worldSize - depthY * 1.1 + jitter() },
-            { x: worldSize * 0.5 + jitter(), y: worldSize - depthY + jitter() },
-            { x: worldSize * 0.7 + jitter(), y: worldSize - depthY * 1.1 + jitter() },
-            { x: worldSize, y: worldSize - depthY - edgeJitter() },
-            { x: worldSize, y: worldSize },
-            { x: 0, y: worldSize },
-          ];
-          cStart = { x: depthX, y: 0 };
-          cEnd = { x: worldSize, y: worldSize - depthY };
-          break;
-        default: // bottom-right
-          rawPoints = [
             { x: worldSize, y: 0 },
-            { x: worldSize, y: worldSize },
-            { x: 0, y: worldSize },
-            { x: 0, y: worldSize - depthY - edgeJitter() },
-            { x: worldSize * 0.3 + jitter(), y: worldSize - depthY + jitter() },
-            { x: worldSize * 0.5 + jitter(), y: worldSize - depthY * 1.2 + jitter() },
-            { x: worldSize - depthX * 1.1 + jitter(), y: worldSize - depthY * 1.1 + jitter() },
-            { x: worldSize - depthX + jitter(), y: worldSize * 0.5 + jitter() },
-            { x: worldSize - depthX * 1.1 + jitter(), y: worldSize * 0.3 + jitter() },
-            { x: worldSize - depthX - edgeJitter(), y: 0 },
+            // Top coast (going left from base, narrowing)
+            { x: worldSize, y: bT },
+            { x: midX + jitter(), y: bT + jitter() },
+            { x: tipX + penLength * 0.2 + jitter(), y: tipCy - midHalfW + jitter() },
+            { x: tipX + penLength * 0.08 + jitter(), y: tipCy - tipHalfW + jitter() },
+            // Tip
+            { x: tipX + jitter(), y: tipCy + jitter() },
+            // Bottom coast (going back right, widening)
+            { x: tipX + penLength * 0.08 + jitter(), y: tipCy + tipHalfW + jitter() },
+            { x: tipX + penLength * 0.2 + jitter(), y: tipCy + midHalfW + jitter() },
+            { x: midX + jitter(), y: bB + jitter() },
+            { x: worldSize, y: bB },
           ];
-          cStart = { x: worldSize - depthX, y: 0 };
-          cEnd = { x: 0, y: worldSize - depthY };
+          cStart = { x: worldSize, y: bT };
+          cEnd = { x: worldSize, y: bB };
           break;
+        }
       }
       const points = fractalCoast(rawPoints, 3, 0.12, random);
       return {
