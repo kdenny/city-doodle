@@ -281,3 +281,273 @@ describe("emptyTerrainData", () => {
     expect(empty.beaches).toEqual([]);
   });
 });
+
+// ---------------------------------------------------------------------------
+// CITY-586: End-to-end pipeline round-trip tests
+//
+// These tests use a realistic GeoJSON FeatureCollection (matching what the
+// backend terrain generator actually produces) to verify the full pipeline
+// from backend GeoJSON → frontend TerrainData.
+// ---------------------------------------------------------------------------
+
+/**
+ * Realistic sample GeoJSON that mirrors actual backend output.
+ * Contains one of each major feature type.
+ */
+const REALISTIC_GEOJSON = {
+  type: "FeatureCollection",
+  features: [
+    // Coastline polygon (produces water + coastlines)
+    {
+      type: "Feature",
+      geometry: {
+        type: "Polygon",
+        coordinates: [
+          [
+            [10372.725, 2828.925],
+            [10377.957, 2489.453],
+            [10311.139, 2156.581],
+            [10550.028, 1904.632],
+            [10648.281, 1571.625],
+            [10372.725, 2828.925],
+          ],
+        ],
+      },
+      properties: { feature_type: "coastline", area: 2500000 },
+    },
+    // Lake polygon with metrics
+    {
+      type: "Feature",
+      geometry: {
+        type: "Polygon",
+        coordinates: [
+          [
+            [5000.0, 5000.0],
+            [5500.0, 5000.0],
+            [5500.0, 5500.0],
+            [5000.0, 5500.0],
+            [5000.0, 5000.0],
+          ],
+        ],
+      },
+      properties: {
+        feature_type: "lake",
+        area: 250000,
+        lake_type: "glacial",
+        circularity: 0.78,
+        elongation: 1.3,
+        avg_depth: 0.04,
+        max_depth: 0.09,
+        rim_elevation: 0.42,
+      },
+    },
+    // River linestring with flow data
+    {
+      type: "Feature",
+      geometry: {
+        type: "LineString",
+        coordinates: [
+          [1000.0, 500.0],
+          [1200.0, 600.0],
+          [1400.0, 550.0],
+          [1600.0, 700.0],
+          [1800.0, 900.0],
+          [2000.0, 1100.0],
+          [2200.0, 1300.0],
+          [2400.0, 1200.0],
+          [2600.0, 1400.0],
+          [2800.0, 1500.0],
+        ],
+      },
+      properties: {
+        feature_type: "river",
+        width: 4.5,
+        length: 2100.0,
+        max_flow: 35.0,
+        avg_flow: 22.0,
+      },
+    },
+    // Contour lines at different elevations
+    {
+      type: "Feature",
+      geometry: {
+        type: "LineString",
+        coordinates: [
+          [0.0, 3000.0],
+          [500.0, 3100.0],
+          [1000.0, 3050.0],
+          [1500.0, 3200.0],
+          [2000.0, 3150.0],
+        ],
+      },
+      properties: { feature_type: "contour", elevation: 0.3 },
+    },
+    {
+      type: "Feature",
+      geometry: {
+        type: "LineString",
+        coordinates: [
+          [0.0, 4000.0],
+          [600.0, 4100.0],
+          [1200.0, 4050.0],
+        ],
+      },
+      properties: { feature_type: "contour", elevation: 0.5 },
+    },
+    // Beach polygon
+    {
+      type: "Feature",
+      geometry: {
+        type: "Polygon",
+        coordinates: [
+          [
+            [8000.0, 2800.0],
+            [8500.0, 2810.0],
+            [8500.0, 2850.0],
+            [8000.0, 2840.0],
+            [8000.0, 2800.0],
+          ],
+        ],
+      },
+      properties: {
+        feature_type: "beach",
+        beach_type: "ocean",
+        width: 3.2,
+        area: 18000,
+      },
+    },
+    // Bay polygon
+    {
+      type: "Feature",
+      geometry: {
+        type: "Polygon",
+        coordinates: [
+          [
+            [6000.0, 1000.0],
+            [7000.0, 1000.0],
+            [6800.0, 1800.0],
+            [6200.0, 1800.0],
+            [6000.0, 1000.0],
+          ],
+        ],
+      },
+      properties: { feature_type: "bay", bay_size: "harbor" },
+    },
+  ],
+} as const;
+
+describe("CITY-586: pipeline round-trip with realistic GeoJSON", () => {
+  it("produces non-empty arrays for all terrain categories", () => {
+    const result = transformTileFeatures(REALISTIC_GEOJSON);
+
+    expect(result.water.length).toBeGreaterThan(0);
+    expect(result.coastlines.length).toBeGreaterThan(0);
+    expect(result.rivers.length).toBeGreaterThan(0);
+    expect(result.contours.length).toBeGreaterThan(0);
+    expect(result.beaches.length).toBeGreaterThan(0);
+  });
+
+  it("assigns correct feature IDs", () => {
+    const result = transformTileFeatures(REALISTIC_GEOJSON);
+
+    // Water: ocean (from coastline) + lake + bay = 3 entries
+    expect(result.water).toHaveLength(3);
+    expect(result.water[0].id).toBe("ocean-1");
+    expect(result.water[1].id).toBe("lake-1");
+    expect(result.water[2].id).toBe("bay-1");
+
+    expect(result.coastlines).toHaveLength(1);
+    expect(result.coastlines[0].id).toBe("coast-1");
+
+    expect(result.rivers).toHaveLength(1);
+    expect(result.rivers[0].id).toBe("river-1");
+
+    expect(result.contours).toHaveLength(2);
+    expect(result.contours[0].id).toBe("contour-1");
+    expect(result.contours[1].id).toBe("contour-2");
+
+    expect(result.beaches).toHaveLength(1);
+    expect(result.beaches[0].id).toBe("beach-1");
+  });
+
+  it("correctly transforms polygon coordinates to points", () => {
+    const result = transformTileFeatures(REALISTIC_GEOJSON);
+
+    // Coastline polygon -> water[0].polygon
+    const oceanPoly = result.water[0].polygon;
+    expect(oceanPoly.points.length).toBe(6);
+    expect(oceanPoly.points[0]).toEqual({ x: 10372.725, y: 2828.925 });
+    expect(oceanPoly.points[5]).toEqual({ x: 10372.725, y: 2828.925 }); // closed ring
+
+    // Lake polygon
+    const lakePoly = result.water[1].polygon;
+    expect(lakePoly.points.length).toBe(5);
+    expect(lakePoly.points[0]).toEqual({ x: 5000.0, y: 5000.0 });
+  });
+
+  it("correctly transforms linestring coordinates to points", () => {
+    const result = transformTileFeatures(REALISTIC_GEOJSON);
+
+    // River
+    const riverLine = result.rivers[0].line;
+    expect(riverLine.points.length).toBe(10);
+    expect(riverLine.points[0]).toEqual({ x: 1000.0, y: 500.0 });
+    expect(riverLine.points[9]).toEqual({ x: 2800.0, y: 1500.0 });
+
+    // Contour
+    const contourLine = result.contours[0].line;
+    expect(contourLine.points.length).toBe(5);
+    expect(contourLine.points[0]).toEqual({ x: 0.0, y: 3000.0 });
+  });
+
+  it("preserves numeric properties (width, elevation, metrics)", () => {
+    const result = transformTileFeatures(REALISTIC_GEOJSON);
+
+    // River width
+    expect(result.rivers[0].width).toBe(4.5);
+
+    // Contour elevations
+    expect(result.contours[0].elevation).toBe(0.3);
+    expect(result.contours[1].elevation).toBe(0.5);
+
+    // Beach width
+    expect(result.beaches[0].width).toBe(3.2);
+
+    // Lake metrics
+    const lake = result.water[1];
+    expect(lake.lakeType).toBe("glacial");
+    expect(lake.metrics).toEqual({
+      circularity: 0.78,
+      elongation: 1.3,
+      avgDepth: 0.04,
+      maxDepth: 0.09,
+    });
+  });
+
+  it("preserves beach type classification", () => {
+    const result = transformTileFeatures(REALISTIC_GEOJSON);
+    expect(result.beaches[0].beachType).toBe("ocean");
+  });
+
+  it("coastline line has default width of 2", () => {
+    const result = transformTileFeatures(REALISTIC_GEOJSON);
+    expect(result.coastlines[0].line.width).toBe(2);
+  });
+
+  it("survives JSON stringify → parse round-trip", () => {
+    // Simulate what happens when GeoJSON is fetched from API as JSON string
+    const jsonString = JSON.stringify(REALISTIC_GEOJSON);
+    const parsed = JSON.parse(jsonString);
+    const result = transformTileFeatures(parsed);
+
+    expect(result.water.length).toBeGreaterThan(0);
+    expect(result.coastlines.length).toBeGreaterThan(0);
+    expect(result.rivers.length).toBeGreaterThan(0);
+    expect(result.contours.length).toBeGreaterThan(0);
+    expect(result.beaches.length).toBeGreaterThan(0);
+
+    // Verify it matches the non-round-tripped result
+    const direct = transformTileFeatures(REALISTIC_GEOJSON);
+    expect(result).toEqual(direct);
+  });
+});
