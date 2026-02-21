@@ -108,6 +108,63 @@ class TestRoadNodes:
         assert response.json()["id"] == node_id
 
     @pytest.mark.asyncio
+    async def test_get_road_node_connected_edges_populated(self, client: AsyncClient):
+        """Test that connected_edges is populated when a node has edges."""
+        # Create two nodes
+        node1_resp = await client.post(
+            f"/worlds/{TEST_WORLD_ID}/road-nodes",
+            json={
+                "world_id": TEST_WORLD_ID,
+                "position": {"x": 0.0, "y": 0.0},
+                "node_type": "intersection",
+            },
+            headers={"X-User-Id": TEST_USER_ID},
+        )
+        node1_id = node1_resp.json()["id"]
+
+        node2_resp = await client.post(
+            f"/worlds/{TEST_WORLD_ID}/road-nodes",
+            json={
+                "world_id": TEST_WORLD_ID,
+                "position": {"x": 100.0, "y": 0.0},
+                "node_type": "intersection",
+            },
+            headers={"X-User-Id": TEST_USER_ID},
+        )
+        node2_id = node2_resp.json()["id"]
+
+        # Create an edge between them
+        edge_resp = await client.post(
+            f"/worlds/{TEST_WORLD_ID}/road-edges",
+            json={
+                "world_id": TEST_WORLD_ID,
+                "from_node_id": node1_id,
+                "to_node_id": node2_id,
+                "road_class": "local",
+            },
+            headers={"X-User-Id": TEST_USER_ID},
+        )
+        edge_id = edge_resp.json()["id"]
+
+        # Fetch node1 and verify connected_edges contains the edge
+        response = await client.get(
+            f"/road-nodes/{node1_id}",
+            headers={"X-User-Id": TEST_USER_ID},
+        )
+        assert response.status_code == 200
+        data = response.json()
+        assert edge_id in data["connected_edges"]
+
+        # Fetch node2 and verify it also has the edge
+        response = await client.get(
+            f"/road-nodes/{node2_id}",
+            headers={"X-User-Id": TEST_USER_ID},
+        )
+        assert response.status_code == 200
+        data = response.json()
+        assert edge_id in data["connected_edges"]
+
+    @pytest.mark.asyncio
     async def test_get_road_node_not_found(self, client: AsyncClient):
         """Test getting a non-existent node."""
         response = await client.get(

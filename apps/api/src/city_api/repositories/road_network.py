@@ -132,7 +132,14 @@ async def update_node(
         node.name = node_update.name
 
     await db.commit()
-    await db.refresh(node)
+    # Re-query with selectinload to get fresh relationships
+    # (db.refresh() would expire them, causing MissingGreenlet in async)
+    result2 = await db.execute(
+        select(RoadNodeModel)
+        .where(RoadNodeModel.id == node_id)
+        .options(selectinload(RoadNodeModel.edges_from), selectinload(RoadNodeModel.edges_to))
+    )
+    node = result2.scalar_one()
     return _node_to_schema(node, include_edges=True)
 
 
@@ -362,15 +369,11 @@ def _node_to_schema(node: RoadNodeModel, include_edges: bool = False) -> RoadNod
     """
     connected_edges: list[UUID] = []
     if include_edges:
-        # Only access relationships if they were explicitly loaded
-        try:
-            if node.edges_from is not None:
-                connected_edges.extend([e.id for e in node.edges_from])
-            if node.edges_to is not None:
-                connected_edges.extend([e.id for e in node.edges_to])
-        except Exception:
-            # If accessing relationships fails, just return empty list
-            connected_edges = []
+        # Relationships must be loaded with selectinload() before calling this
+        if node.edges_from is not None:
+            connected_edges.extend([e.id for e in node.edges_from])
+        if node.edges_to is not None:
+            connected_edges.extend([e.id for e in node.edges_to])
 
     return RoadNode(
         id=node.id,
