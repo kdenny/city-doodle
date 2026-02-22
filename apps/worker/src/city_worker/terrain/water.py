@@ -1,14 +1,18 @@
 """Water feature generation for terrain (coastlines, rivers, lakes)."""
 
+import logging
 from typing import Any
 
 import numpy as np
 from numpy.typing import NDArray
 from shapely import concave_hull
+from shapely.errors import GEOSException, TopologicalError
 from shapely.geometry import LineString, MultiPoint, MultiPolygon, Polygon
 from shapely.ops import unary_union
 
 from city_worker.terrain.types import DEFAULT_LAKE_TYPE, LakeType, TerrainFeature
+
+logger = logging.getLogger(__name__)
 
 
 def _fractal_perturb_ring(
@@ -173,8 +177,8 @@ def _apply_fractal_to_polygon(
         fixed = result.buffer(0)
         if isinstance(fixed, Polygon) and fixed.is_valid:
             return fixed
-    except Exception:
-        pass
+    except (GEOSException, TopologicalError, ValueError) as e:
+        logger.warning("Fractal perturbation failed for polygon: %s", e)
     return poly
 
 
@@ -259,7 +263,8 @@ def _cells_to_polygon(
             if isinstance(buffered, Polygon) and buffered.is_valid:
                 return buffered
         return None
-    except Exception:
+    except (GEOSException, TopologicalError, ValueError) as e:
+        logger.warning("Failed to create polygon from boundary cells: %s", e)
         return None
 
 
@@ -525,8 +530,8 @@ def extract_rivers(
                                     cpoly.exterior.project(end_point)
                                 )
                                 best_snap = (nearest.x, nearest.y)
-                        except Exception:
-                            pass
+                        except (GEOSException, TopologicalError) as e:
+                            logger.warning("River endpoint snap to coastline failed: %s", e)
                     if best_snap is not None and best_dist <= snap_threshold:
                         coords[-1] = best_snap
 
@@ -784,8 +789,8 @@ def extract_beaches(
                 buf = rline.buffer(cell_size * 3)
                 if buf.is_valid and not buf.is_empty:
                     river_buffers.append(buf)
-            except Exception:
-                pass
+            except (GEOSException, TopologicalError) as e:
+                logger.warning("Failed to buffer river line for beach exclusion: %s", e)
 
     # Track per-lake beach coverage so we can cap it (CITY-547).
     # Key = index into lake_polygons, value = accumulated beach perimeter.
@@ -850,8 +855,8 @@ def extract_beaches(
                                     if overlap > poly.area * 0.3:
                                         skip = True
                                         break
-                                except Exception:
-                                    pass
+                                except (GEOSException, TopologicalError) as e:
+                                    logger.warning("Beach-river intersection check failed: %s", e)
                             if skip:
                                 continue
 
@@ -864,8 +869,8 @@ def extract_beaches(
                                     if overlap > poly.area * 0.5:
                                         skip = True
                                         break
-                                except Exception:
-                                    pass
+                                except (GEOSException, TopologicalError) as e:
+                                    logger.warning("Beach-lagoon intersection check failed: %s", e)
                             if skip:
                                 continue
 
@@ -879,8 +884,8 @@ def extract_beaches(
                                     if overlap > poly.area * 0.4:
                                         skip = True
                                         break
-                                except Exception:
-                                    pass
+                                except (GEOSException, TopologicalError) as e:
+                                    logger.warning("Beach-bay intersection check failed: %s", e)
                             if skip:
                                 continue
 
@@ -902,11 +907,11 @@ def extract_beaches(
                                                     if poly.distance(rbuf) < cell_size * 2:
                                                         beach_type = "river"
                                                         break
-                                                except Exception:
-                                                    pass
+                                                except (GEOSException, TopologicalError) as e:
+                                                    logger.warning("Lake beach-river distance check failed: %s", e)
                                         break
-                                except Exception:
-                                    pass
+                                except (GEOSException, TopologicalError) as e:
+                                    logger.warning("Beach-lake intersection check failed: %s", e)
                         if beach_type == "river":
                             continue
 

@@ -5,15 +5,19 @@ Bay detection identifies concave coastline formations and generates organic
 bay shapes with varied depths and sizes.
 """
 
+import logging
 from dataclasses import dataclass
 from typing import Any
 
 import numpy as np
 from numpy.typing import NDArray
+from shapely.errors import GEOSException, TopologicalError
 from shapely.geometry import LineString, MultiPoint, Point, Polygon
 from shapely.ops import unary_union
 
 from city_worker.terrain.types import TerrainFeature
+
+logger = logging.getLogger(__name__)
 
 
 @dataclass
@@ -560,7 +564,8 @@ def extract_bays(
                 continue
             if not isinstance(bay_poly, Polygon):
                 continue
-        except Exception:
+        except (GEOSException, TopologicalError, ValueError) as e:
+            logger.warning("Failed to create bay polygon: %s", e)
             continue
 
         area = bay_poly.area
@@ -657,7 +662,8 @@ def apply_bay_erosion(
             bay_poly = Polygon(coords[0])
             if not bay_poly.is_valid:
                 continue
-        except Exception:
+        except (GEOSException, TopologicalError, ValueError) as e:
+            logger.warning("Failed to parse bay polygon for erosion: %s", e)
             continue
 
         # Get bay properties
