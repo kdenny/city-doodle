@@ -899,7 +899,7 @@ def extract_beaches(
                                         if river_buffers:
                                             for rbuf in river_buffers:
                                                 try:
-                                                    if poly.distance(rbuf) < cell_size * 2:
+                                                    if poly.distance(rbuf) < cell_size * 4:
                                                         beach_type = "river"
                                                         break
                                                 except Exception:
@@ -916,8 +916,18 @@ def extract_beaches(
                             used = lake_beach_perimeter.get(matched_lake_idx, 0.0)
                             if lake_perim > 0 and used >= lake_perim * lake_perimeter_cap:
                                 continue
+                            # Per-segment arc cap: no single beach segment may
+                            # exceed 10% of the lake perimeter (CITY-547).
+                            segment_cap = lake_perim * 0.10
+                            seg_len = poly.length
+                            if seg_len > segment_cap:
+                                continue
+                            # Also check that adding this segment wouldn't
+                            # exceed the overall 20% budget.
+                            if lake_perim > 0 and used + seg_len > lake_perim * lake_perimeter_cap:
+                                continue
                             # Track how much perimeter this beach consumes
-                            lake_beach_perimeter[matched_lake_idx] = used + poly.length
+                            lake_beach_perimeter[matched_lake_idx] = used + seg_len
 
                         area = len(segment_cells) * cell_size * cell_size
                         perimeter = poly.length
