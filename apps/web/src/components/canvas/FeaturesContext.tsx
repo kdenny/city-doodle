@@ -1683,6 +1683,20 @@ export function FeaturesProvider({
       const districtToRemove = featuresRef.current.districts.find((d) => d.id === id);
       if (!districtToRemove) return;
 
+      // CITY-281: Clean up transit stations that belong to this district
+      if (transitContext?.transitNetwork) {
+        const orphanedStations = transitContext.transitNetwork.stations.filter(
+          (s) => s.district_id === id
+        );
+        for (const station of orphanedStations) {
+          if (station.station_type === "rail") {
+            transitContext.removeRailStation(station.id);
+          } else if (station.station_type === "subway") {
+            transitContext.removeSubwayStation(station.id);
+          }
+        }
+      }
+
       // Optimistically remove district, its roads, and its auto-generated POIs from local state
       updateFeatures((prev) => {
         return {
@@ -1714,7 +1728,7 @@ export function FeaturesProvider({
         );
       }
     },
-    [worldId, updateFeatures, deleteDistrictMutation, toast]
+    [worldId, updateFeatures, deleteDistrictMutation, toast, transitContext]
   );
 
   const removeRoad = useCallback(
