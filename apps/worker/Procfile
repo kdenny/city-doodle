@@ -1,1 +1,1 @@
-worker: PYTHONPATH=src python -m city_worker.main
+worker: python -m city_worker.main
