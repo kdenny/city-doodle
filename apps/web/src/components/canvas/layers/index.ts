@@ -14,7 +14,7 @@ export type { RailStationData, TrackSegmentData, RailStationPreviewData } from "
 export type { SubwayStationData, SubwayStationPreviewData, SubwayTunnelData } from "./SubwayStationLayer";
 export type { TransitLineDrawingState } from "./TransitLineDrawingLayer";
 export { generateMockTerrain } from "./mockTerrain";
-export { transformTileFeatures, emptyTerrainData } from "./terrainTransformer";
+export { transformTileFeatures, emptyTerrainData, composeTileFeatures } from "./terrainTransformer";
 export {
   generateDistrictGeometry,
   wouldOverlap,
@@ -52,6 +52,10 @@ export type {
   CoastlineFeature,
   RiverFeature,
   ContourLine,
+  BarrierIslandFeature,
+  TidalFlatFeature,
+  DuneRidgeFeature,
+  InletFeature,
   District,
   DistrictType,
   DistrictPersonality,

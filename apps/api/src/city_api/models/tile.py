@@ -27,7 +27,7 @@ class Tile(Base):
     terrain_data: Mapped[dict] = mapped_column(JSONVariant, nullable=False, default=dict)
     features: Mapped[dict] = mapped_column(JSONVariant, nullable=False, default=dict)
     terrain_status: Mapped[str] = mapped_column(
-        String(20), nullable=False, default="pending"
+        String(20), nullable=False, default="pending", server_default="pending"
     )
     terrain_error: Mapped[str | None] = mapped_column(Text, nullable=True)
     version: Mapped[int] = mapped_column(Integer, nullable=False, default=1)

@@ -194,6 +194,70 @@ class JobRunner:
         finally:
             await session.close()
 
+    async def _update_tile_terrain_status(
+        self,
+        world_id: UUID,
+        tx: int,
+        ty: int,
+        status: str,
+        error: str | None = None,
+    ) -> None:
+        """Update terrain_status for a tile identified by world + coordinates."""
+        session = await get_session()
+        try:
+            async with session.begin():
+                values = f"terrain_status = :status"
+                if error is not None:
+                    values += ", terrain_error = :error"
+                elif status != "failed":
+                    values += ", terrain_error = NULL"
+                await session.execute(
+                    text(f"""
+                        UPDATE tiles
+                        SET {values}
+                        WHERE world_id = :world_id AND tx = :tx AND ty = :ty
+                    """),
+                    {"status": status, "error": error, "world_id": world_id, "tx": tx, "ty": ty},
+                )
+            logger.info(
+                "[Terrain] Updated terrain_status=%s for world=%s tx=%s ty=%s",
+                status, world_id, tx, ty,
+            )
+        finally:
+            await session.close()
+
+    async def _update_tiles_terrain_status_bulk(
+        self,
+        world_id: UUID,
+        tile_coords: list[tuple[int, int]],
+        status: str,
+        error: str | None = None,
+    ) -> None:
+        """Update terrain_status for multiple tiles in a single transaction."""
+        session = await get_session()
+        try:
+            async with session.begin():
+                for tx, ty in tile_coords:
+                    values = "terrain_status = :status"
+                    if error is not None:
+                        values += ", terrain_error = :error"
+                    elif status != "failed":
+                        values += ", terrain_error = NULL"
+                    await session.execute(
+                        text(f"""
+                            UPDATE tiles
+                            SET {values}
+                            WHERE world_id = :world_id AND tx = :tx AND ty = :ty
+                        """),
+                        {"status": status, "error": error, "world_id": world_id, "tx": tx, "ty": ty},
+                    )
+            logger.info(
+                "[Terrain] Bulk updated terrain_status=%s for world=%s (%d tiles)",
+                status, world_id, len(tile_coords),
+            )
+        finally:
+            await session.close()
+
     async def _handle_terrain_generation(self, params: dict) -> dict[str, Any]:
         """Handle terrain generation job.
 
@@ -225,12 +289,12 @@ class JobRunner:
 
         world_id = UUID(world_id) if isinstance(world_id, str) else world_id
 
+        # CITY-585: Mark center tile as "generating"
+        await self._update_tile_terrain_status(world_id, int(center_tx), int(center_ty), "generating")
+
         try:
             # Extract world settings if provided (from WorldSettings schema)
             world_settings = params.get("world_settings", {})
-
-            # Update terrain_status to "generating"
-            await self._update_tile_terrain_status(world_id, int(center_tx), int(center_ty), "generating")
 
             # Build terrain config from geographic setting presets + seed variation
             loop = asyncio.get_running_loop()
@@ -262,11 +326,11 @@ class JobRunner:
             # Save generated tiles to database
             await self._save_terrain_tiles(world_id, result)
 
-            # Update terrain_status to "ready" for the center tile
-            await self._update_tile_terrain_status(world_id, int(center_tx), int(center_ty), "ready")
-
-            # Return summary
+            # CITY-585: Mark all generated tiles as "ready"
             all_tiles = result.all_tiles()
+            tile_coords = [(t.tx, t.ty) for t in all_tiles]
+            await self._update_tiles_terrain_status_bulk(world_id, tile_coords, "ready")
+
             total_features = sum(len(t.features) for t in all_tiles)
 
             return {
@@ -276,11 +340,11 @@ class JobRunner:
                 "center_tile": {"tx": center_tx, "ty": center_ty},
             }
         except Exception as e:
+            # CITY-585/590: Mark center tile as "failed" with error message
             logger.exception("[Terrain] Generation failed for world=%s: %s", world_id, str(e))
-            # Update tile status to failed
             try:
                 await self._update_tile_terrain_status(
-                    world_id, int(center_tx), int(center_ty), "failed", str(e)
+                    world_id, int(center_tx), int(center_ty), "failed", error=str(e)
                 )
             except Exception:
                 logger.exception("[Terrain] Failed to update terrain_status to 'failed'")
@@ -335,41 +399,6 @@ class JobRunner:
                     len(result.all_tiles()),
                     world_id,
                 )
-        finally:
-            await session.close()
-
-    async def _update_tile_terrain_status(
-        self,
-        world_id: UUID,
-        center_tx: int,
-        center_ty: int,
-        status: str,
-        error: str | None = None,
-    ) -> None:
-        """Update terrain_status (and optionally terrain_error) for a tile."""
-        session = await get_session()
-        try:
-            async with session.begin():
-                await session.execute(
-                    text("""
-                        UPDATE tiles
-                        SET terrain_status = :status,
-                            terrain_error = :error,
-                            updated_at = now()
-                        WHERE world_id = :world_id AND tx = :tx AND ty = :ty
-                    """),
-                    {
-                        "status": status,
-                        "error": error,
-                        "world_id": world_id,
-                        "tx": center_tx,
-                        "ty": center_ty,
-                    },
-                )
-            logger.info(
-                "[Terrain] Updated terrain_status=%s for world=%s tx=%s ty=%s",
-                status, world_id, center_tx, center_ty,
-            )
         finally:
             await session.close()
 

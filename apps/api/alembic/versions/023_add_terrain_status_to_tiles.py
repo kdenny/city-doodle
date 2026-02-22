@@ -1,8 +1,9 @@
-"""Add terrain_status and terrain_error to tiles
+"""Add terrain_status and terrain_error columns to tiles
 
-CITY-585/590: Add terrain_status (pending/generating/ready/failed) and
-terrain_error fields to the tiles table for tracking terrain generation
-state and failure reasons.
+Adds a terrain_status VARCHAR column (default 'pending') and a nullable
+terrain_error TEXT column for tracking terrain generation lifecycle.
+
+CITY-585: Add terrain_status field to tile model for tracking generation state.
 
 Revision ID: 023
 Revises: 022
@@ -33,10 +34,16 @@ def upgrade() -> None:
     )
     op.add_column(
         "tiles",
-        sa.Column("terrain_error", sa.Text(), nullable=True),
+        sa.Column(
+            "terrain_error",
+            sa.Text(),
+            nullable=True,
+        ),
     )
+    op.create_index("ix_tiles_terrain_status", "tiles", ["terrain_status"])
 
 
 def downgrade() -> None:
+    op.drop_index("ix_tiles_terrain_status", table_name="tiles")
     op.drop_column("tiles", "terrain_error")
     op.drop_column("tiles", "terrain_status")

@@ -4,7 +4,7 @@ import logging
 from datetime import UTC, datetime
 from uuid import UUID
 
-from sqlalchemy import and_, select
+from sqlalchemy import and_, select, update
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from city_api.models import Tile as TileModel
@@ -137,8 +137,28 @@ def _to_schema(tile: TileModel) -> Tile:
         if tile.terrain_data
         else TerrainData(),
         features=features_raw,
-        terrain_status=tile.terrain_status if tile.terrain_status else "pending",
+        terrain_status=tile.terrain_status or "pending",
         terrain_error=tile.terrain_error,
         created_at=_ensure_utc(tile.created_at),
         updated_at=_ensure_utc(tile.updated_at),
     )
+
+
+async def update_terrain_status(
+    db: AsyncSession,
+    tile_id: UUID,
+    status: str,
+    error: str | None = None,
+) -> None:
+    """Update terrain_status (and optionally terrain_error) for a tile."""
+    values: dict = {"terrain_status": status}
+    if error is not None:
+        values["terrain_error"] = error
+    elif status != "failed":
+        # Clear any previous error when status is not failed
+        values["terrain_error"] = None
+    await db.execute(
+        update(TileModel).where(TileModel.id == tile_id).values(**values)
+    )
+    await db.commit()
+    logger.info("Updated terrain_status for tile %s to %s", tile_id, status)
