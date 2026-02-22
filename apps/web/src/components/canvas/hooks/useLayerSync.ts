@@ -216,6 +216,10 @@ export function useLayerSync(params: UseLayerSyncParams) {
           rivers: terrainData.rivers.length,
           contours: terrainData.contours.length,
           beaches: terrainData.beaches.length,
+          barrierIslands: terrainData.barrierIslands.length,
+          tidalFlats: terrainData.tidalFlats.length,
+          duneRidges: terrainData.duneRidges.length,
+          inlets: terrainData.inlets.length,
         }
       );
       terrainLayerRef.current.setData(terrainData);
