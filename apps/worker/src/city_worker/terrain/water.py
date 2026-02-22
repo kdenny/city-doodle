@@ -442,13 +442,36 @@ def extract_rivers(
 
                 if next_cell is None:
                     # Extend the river downhill to the coastline even
-                    # if cells are not part of river_mask (CITY-553).
-                    # Walk up to 12 cells downhill to reach water
-                    # (CITY-576: increased from 6 to traverse gentle
-                    # coastal slopes).
+                    # if cells are not part of river_mask.
+                    # CITY-553: Use adaptive step limit based on local
+                    # terrain gradient instead of a fixed limit.  Steep
+                    # slopes need only a few cells; gradual slopes may
+                    # need many more to reach the water_level contour.
                     if heightfield[ci, cj] >= water_level:
+                        # --- compute local gradient from the last
+                        # segment of the traced path (up to 4 cells) ---
+                        lookback = min(4, len(path))
+                        if lookback >= 2:
+                            h_start = heightfield[path[-lookback][0], path[-lookback][1]]
+                            h_end = heightfield[ci, cj]
+                            gradient = abs(h_start - h_end) / lookback
+                        else:
+                            gradient = 0.0
+
+                        # Map gradient to max extension steps:
+                        #   steep  (gradient >= 0.05) -> 3 steps
+                        #   gentle (gradient <= 0.005) -> 12 steps
+                        if gradient >= 0.05:
+                            max_ext = 3
+                        elif gradient <= 0.005:
+                            max_ext = 12
+                        else:
+                            # Linear interpolation between 12 and 3
+                            t = (gradient - 0.005) / (0.05 - 0.005)
+                            max_ext = int(round(12 - 9 * t))
+
                         ei, ej = ci, cj
-                        for _step in range(12):
+                        for _step in range(max_ext):
                             best_next = None
                             best_h = heightfield[ei, ej]
                             for di, dj in directions:
@@ -465,7 +488,8 @@ def extract_rivers(
                             visited[best_next[0], best_next[1]] = True
                             path.append(best_next)
                             ei, ej = best_next
-                            if heightfield[ei, ej] < water_level:
+                            # Stop once we reach the water_level contour
+                            if heightfield[ei, ej] <= water_level:
                                 break
                     break
 
