@@ -310,7 +310,7 @@ function generateOcean(
   archetype: TerrainArchetype,
   worldSize: number,
   random: () => number
-): { polygon: { points: Point[] }; coastlineStart: Point; coastlineEnd: Point } | null {
+): { polygon: { points: Point[] }; coastlineStart: Point; coastlineEnd: Point; peninsulaDirection?: number } | null {
   const jitter = () => (random() - 0.5) * worldSize * 0.08;
   const edgeJitter = () => random() * worldSize * 0.08;
 
@@ -644,6 +644,7 @@ function generateOcean(
         polygon: { points },
         coastlineStart: cStart,
         coastlineEnd: cEnd,
+        peninsulaDirection: edge, // CITY-580: 0=up, 1=down, 2=right, 3=left
       };
     }
   }
@@ -753,7 +754,8 @@ function generateRiver(
   archetype: TerrainArchetype,
   worldSize: number,
   random: () => number,
-  coastlinePoints?: Point[]
+  coastlinePoints?: Point[],
+  peninsulaDirection?: number
 ): Point[] {
   let target: Point = { x: worldSize * 0.5, y: worldSize * 0.5 };
 
@@ -796,6 +798,21 @@ function generateRiver(
         target = { x: random() < 0.5 ? 0 : worldSize, y: source.y + (random() - 0.5) * worldSize * 0.4 };
         break;
       case "peninsula":
+        // CITY-580: Constrain fallback target along the peninsula axis
+        if (peninsulaDirection === 0) {
+          // Extends upward — flow along Y axis toward top (tip)
+          target = { x: source.x + (random() - 0.5) * worldSize * 0.08, y: worldSize * (0.1 + random() * 0.3) };
+        } else if (peninsulaDirection === 1) {
+          // Extends downward — flow along Y axis toward bottom (tip)
+          target = { x: source.x + (random() - 0.5) * worldSize * 0.08, y: worldSize * (0.6 + random() * 0.3) };
+        } else if (peninsulaDirection === 2) {
+          // Extends rightward — flow along X axis toward right (tip)
+          target = { x: worldSize * (0.6 + random() * 0.3), y: source.y + (random() - 0.5) * worldSize * 0.08 };
+        } else {
+          // Extends leftward — flow along X axis toward left (tip)
+          target = { x: worldSize * (0.1 + random() * 0.3), y: source.y + (random() - 0.5) * worldSize * 0.08 };
+        }
+        break;
       case "bay_harbor":
         target = { x: worldSize * (0.2 + random() * 0.6), y: worldSize * (0.2 + random() * 0.6) };
         break;
@@ -1011,32 +1028,111 @@ export function generateMockTerrain(
   // CITY-576: Use ocean polygon points as coastline geometry so rivers
   // can snap their endpoints to the actual coast.
   const oceanCoastPoints = oceanResult ? oceanResult.polygon.points : undefined;
+  const peninsulaDir = oceanResult?.peninsulaDirection;
 
-  // Rivers from lakes
-  for (let i = 0; i < lakes.length; i++) {
-    const lake = lakes[i];
-    const riverStart = {
-      x: lake.center.x + (random() - 0.5) * lake.radius,
-      y: lake.center.y + (random() - 0.5) * lake.radius,
-    };
-    const riverPoints = generateRiver(riverStart, archetype, worldSize, random, oceanCoastPoints);
-    rivers.push({
-      points: riverPoints,
-      name: generateRiverName({ seed: seed + 2000 + i }),
-    });
-  }
+  // CITY-580: Peninsula rivers — only ~20% of the time, max 1, axis-constrained.
+  // We consume the same random() calls even when skipping to preserve RNG sequence.
+  if (archetype === "peninsula") {
+    const penRiverRoll = random(); // always consume one roll for determinism
+    if (penRiverRoll <= 0.20) {
+      // Generate at most 1 river (lake-fed if lake exists, otherwise standalone)
+      if (lakes.length > 0) {
+        const lake = lakes[0]; // only use first lake
+        const riverStart = {
+          x: lake.center.x + (random() - 0.5) * lake.radius,
+          y: lake.center.y + (random() - 0.5) * lake.radius,
+        };
+        // CITY-580: Constrain river start along peninsula axis toward base
+        if (peninsulaDir === 0) {
+          // Extends upward — base is at bottom, start near base
+          riverStart.y = Math.max(riverStart.y, worldSize * 0.6);
+        } else if (peninsulaDir === 1) {
+          // Extends downward — base is at top, start near base
+          riverStart.y = Math.min(riverStart.y, worldSize * 0.4);
+        } else if (peninsulaDir === 2) {
+          // Extends rightward — base is at left, start near base
+          riverStart.x = Math.min(riverStart.x, worldSize * 0.4);
+        } else {
+          // Extends leftward — base is at right, start near base
+          riverStart.x = Math.max(riverStart.x, worldSize * 0.6);
+        }
+        const riverPoints = generateRiver(riverStart, archetype, worldSize, random, oceanCoastPoints, peninsulaDir);
+        rivers.push({
+          points: riverPoints,
+          name: generateRiverName({ seed: seed + 2000 }),
+        });
+      } else if (oceanResult) {
+        // Standalone river — start near base, flow toward tip/coast
+        let highlandStart: Point;
+        if (peninsulaDir === 0) {
+          // Extends upward — highland/base at bottom
+          highlandStart = {
+            x: worldSize * (0.4 + random() * 0.2),
+            y: worldSize * (0.7 + random() * 0.15),
+          };
+        } else if (peninsulaDir === 1) {
+          // Extends downward — highland/base at top
+          highlandStart = {
+            x: worldSize * (0.4 + random() * 0.2),
+            y: worldSize * (0.15 + random() * 0.15),
+          };
+        } else if (peninsulaDir === 2) {
+          // Extends rightward — highland/base at left
+          highlandStart = {
+            x: worldSize * (0.15 + random() * 0.15),
+            y: worldSize * (0.4 + random() * 0.2),
+          };
+        } else {
+          // Extends leftward — highland/base at right
+          highlandStart = {
+            x: worldSize * (0.7 + random() * 0.15),
+            y: worldSize * (0.4 + random() * 0.2),
+          };
+        }
+        const riverPoints = generateRiver(highlandStart, archetype, worldSize, random, oceanCoastPoints, peninsulaDir);
+        rivers.push({
+          points: riverPoints,
+          name: generateRiverName({ seed: seed + 2000 }),
+        });
+      }
+    } else {
+      // CITY-580: No river for this peninsula — consume random() calls to keep
+      // RNG sequence stable. We need to consume roughly the same number as a
+      // river generation would. Lake-fed path: 2 (start) + generateRiver internals.
+      // Standalone path: 2 (start) + generateRiver internals.
+      // generateRiver consumes: 1 (fallback target random) + generateSmoothLine
+      // (2 * segments calls) + 0-1 snap. Rather than trying to match exactly,
+      // we accept that peninsula seeds will differ from non-peninsula anyway,
+      // so no extra dummy calls needed — the roll itself is the gate.
+    }
+  } else {
+    // Non-peninsula: existing river logic
+    // Rivers from lakes
+    for (let i = 0; i < lakes.length; i++) {
+      const lake = lakes[i];
+      const riverStart = {
+        x: lake.center.x + (random() - 0.5) * lake.radius,
+        y: lake.center.y + (random() - 0.5) * lake.radius,
+      };
+      const riverPoints = generateRiver(riverStart, archetype, worldSize, random, oceanCoastPoints);
+      rivers.push({
+        points: riverPoints,
+        name: generateRiverName({ seed: seed + 2000 + i }),
+      });
+    }
 
-  // Standalone river if no lakes but we have an ocean (and not already a river_valley/delta)
-  if (lakes.length === 0 && oceanResult && archetype !== "river_valley" && archetype !== "delta") {
-    const highlandStart = {
-      x: worldSize * (0.4 + random() * 0.2),
-      y: worldSize * (0.4 + random() * 0.2),
-    };
-    const riverPoints = generateRiver(highlandStart, archetype, worldSize, random, oceanCoastPoints);
-    rivers.push({
-      points: riverPoints,
-      name: generateRiverName({ seed: seed + 2000 }),
-    });
+    // Standalone river if no lakes but we have an ocean (and not already a river_valley/delta)
+    if (lakes.length === 0 && oceanResult && archetype !== "river_valley" && archetype !== "delta") {
+      const highlandStart = {
+        x: worldSize * (0.4 + random() * 0.2),
+        y: worldSize * (0.4 + random() * 0.2),
+      };
+      const riverPoints = generateRiver(highlandStart, archetype, worldSize, random, oceanCoastPoints);
+      rivers.push({
+        points: riverPoints,
+        name: generateRiverName({ seed: seed + 2000 }),
+      });
+    }
   }
 
   // Step 6: Generate contour lines
