@@ -12,7 +12,7 @@ primary_region = "iad"
 
 # Worker process - no HTTP service, just runs continuously
 [processes]
-  worker = "python -m city_worker.main"
+  worker = "PYTHONPATH=src python -m city_worker.main"
 
 [[vm]]
   cpu_kind = "shared"
