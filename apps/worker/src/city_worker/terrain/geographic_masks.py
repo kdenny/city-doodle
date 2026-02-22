@@ -476,6 +476,80 @@ def coastal_mask(
     return heightfield * gradient
 
 
+def lakefront_mask(
+    heightfield: NDArray[np.float64], ctx: MaskContext
+) -> NDArray[np.float64]:
+    """Glacial-lake shore mask for lakefront worlds (CITY-447).
+
+    Creates a large freshwater lake on one edge of the world by
+    depressing terrain in a smooth elliptical bowl.  The lake edge
+    direction is seed-deterministic, and the shoreline is perturbed
+    with angle-dependent noise for an organic, glacial-lake feel.
+
+    The lake covers roughly 20-30% of the world area and sits
+    below the lakefront preset's water_level (0.34), so lake
+    extraction will fill it with water.
+    """
+    res = ctx.resolution
+    ts = ctx.tile_size
+    cx, cy = ts * 0.5, ts * 0.5
+
+    # Seed-based lake direction: which edge the lake is on.
+    # Pick one of 4 cardinal-ish directions with some randomness.
+    base_dir = int(_seeded_hash(ctx.seed, 70) * 4)  # 0-3
+    dir_offsets = [0.0, math.pi * 0.5, math.pi, math.pi * 1.5]
+    lake_dir = dir_offsets[base_dir] + (_seeded_hash(ctx.seed, 71) - 0.5) * 0.3
+    cos_d, sin_d = math.cos(lake_dir), math.sin(lake_dir)
+
+    # Build world-coordinate grids
+    step = ts / res
+    xs = ctx.tx * ts + np.arange(res, dtype=np.float64) * step
+    ys = ctx.ty * ts + np.arange(res, dtype=np.float64) * step
+    xx, yy = np.meshgrid(xs, ys)
+    dx, dy = xx - cx, yy - cy
+
+    # Rotated coordinates: u = toward lake center, v = along shore
+    u = dx * cos_d + dy * sin_d
+    v = -dx * sin_d + dy * cos_d
+
+    # Lake geometry: an elliptical depression centered beyond the
+    # tile edge.  The lake center sits outside the world so only
+    # one edge has the lake shore.
+    lake_center_u = ts * 1.1   # Lake center past the world edge
+    lake_radius_u = ts * 1.2   # Radial extent along u (into the world)
+    lake_radius_v = ts * (0.9 + _seeded_hash(ctx.seed, 72) * 0.4)  # 0.9-1.3
+
+    # Elliptical distance from lake center
+    du = u - lake_center_u
+    safe_ru = max(lake_radius_u, 1e-10)
+    safe_rv = max(lake_radius_v, 1e-10)
+    ellipse_dist = np.sqrt((du / safe_ru) ** 2 + (v / safe_rv) ** 2)
+
+    # Shoreline noise for organic boundary
+    shore_angles = np.arctan2(v, du)
+    noise = _angle_noise(shore_angles, ctx.seed + 800, octaves=5)
+
+    # Perturb the ellipse boundary
+    perturbed_dist = ellipse_dist + noise * 0.08
+
+    # Transition band: smooth falloff from lake floor to highlands
+    shore_inner = 0.75   # Inside this = full lake depth
+    shore_outer = 1.05   # Outside this = no depression
+    t = np.clip(
+        (perturbed_dist - shore_inner) / max(shore_outer - shore_inner, 1e-10),
+        0.0,
+        1.0,
+    )
+    # depression_strength: 1.0 at lake floor, 0.0 at highlands
+    depression_strength = 1.0 - _smoothstep(t)
+
+    # Maximum depth of the depression — enough to push terrain
+    # well below the lakefront water_level of 0.34
+    max_depression = 0.45
+
+    return heightfield - max_depression * depression_strength
+
+
 def delta_mask(
     heightfield: NDArray[np.float64], ctx: MaskContext
 ) -> NDArray[np.float64]:
@@ -592,7 +666,7 @@ _MASK_REGISTRY: dict[str, MaskFn] = {
     "coastal": coastal_mask,
     "bay_harbor": bay_harbor_mask,
     "river_valley": river_valley_mask,
-    "lakefront": identity_mask,
+    "lakefront": lakefront_mask,
     "inland": inland_mask,
     "island": island_mask,
     "peninsula": peninsula_mask,
