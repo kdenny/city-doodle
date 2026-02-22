@@ -5,14 +5,14 @@ app = "city-doodle-worker"
 primary_region = "iad"
 
 [build]
-  builder = "paketobuildpacks/builder:base"
+  dockerfile = "Dockerfile"
 
 [env]
   LOG_LEVEL = "info"
 
 # Worker process - no HTTP service, just runs continuously
 [processes]
-  worker = "PYTHONPATH=src python -m city_worker.main"
+  worker = "python -m city_worker.main"
 
 [[vm]]
   cpu_kind = "shared"
