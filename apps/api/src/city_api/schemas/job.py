@@ -56,6 +56,9 @@ class Job(BaseModel):
     params: dict[str, Any] = Field(default_factory=dict)
     result: dict[str, Any] | None = None
     error: str | None = None
+    retry_count: int = 0
+    max_retries: int = 3
+    retry_after: datetime | None = None
     created_at: datetime
     started_at: datetime | None = None
     completed_at: datetime | None = None
