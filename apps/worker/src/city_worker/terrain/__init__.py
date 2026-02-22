@@ -1,6 +1,7 @@
 """Terrain generation module for procedural map creation."""
 
 from city_worker.terrain.bays import BayConfig, extract_bays
+from city_worker.terrain.deltas import extract_deltas
 from city_worker.terrain.generator import TerrainGenerator, generate_terrain_3x3
 from city_worker.terrain.geographic_masks import (
     MaskContext,
@@ -17,6 +18,7 @@ __all__ = [
     "TerrainGenerator",
     "apply_geographic_mask",
     "extract_bays",
+    "extract_deltas",
     "generate_terrain_3x3",
     "apply_seed_variation",
     "get_mask",
