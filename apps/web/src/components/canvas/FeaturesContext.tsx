@@ -1964,6 +1964,23 @@ export function FeaturesProvider({
         return;
       }
 
+      // CITY-288: When polygon changes, revalidate that transit stations still fall inside
+      if (updates.polygon && transitContext?.transitNetwork) {
+        const newPoints = updates.polygon.points;
+        const orphanedStations = transitContext.transitNetwork.stations.filter(
+          (s) =>
+            s.district_id === id &&
+            !pointInPolygon({ x: s.position_x, y: s.position_y }, newPoints)
+        );
+        for (const station of orphanedStations) {
+          if (station.station_type === "rail") {
+            transitContext.removeRailStation(station.id);
+          } else if (station.station_type === "subway") {
+            transitContext.removeSubwayStation(station.id);
+          }
+        }
+      }
+
       // Handle gridAngle changes by regenerating street grid
       if (updates.gridAngle !== undefined && updates.gridAngle !== currentDistrict.gridAngle) {
         const { roads: newRoads, gridAngle: actualAngle } = regenerateStreetGridWithAngle(
@@ -2054,7 +2071,7 @@ export function FeaturesProvider({
         }
       }
     },
-    [worldId, updateFeatures, updateDistrictMutation, toast]
+    [worldId, updateFeatures, updateDistrictMutation, toast, transitContext]
   );
 
   const updateRoad = useCallback(
