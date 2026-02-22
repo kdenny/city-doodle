@@ -365,6 +365,10 @@ export function composeTileFeatures(
   const rivers: TerrainData["rivers"] = [];
   const contours: TerrainData["contours"] = [];
   const beaches: TerrainData["beaches"] = [];
+  const barrierIslands: TerrainData["barrierIslands"] = [];
+  const tidalFlats: TerrainData["tidalFlats"] = [];
+  const duneRidges: TerrainData["duneRidges"] = [];
+  const inlets: TerrainData["inlets"] = [];
 
   for (const tile of validTiles) {
     const tileData = transformTileFeatures(tile.features);
@@ -385,6 +389,18 @@ export function composeTileFeatures(
     for (const b of tileData.beaches) {
       beaches.push({ ...b, id: `${prefix}${b.id}` });
     }
+    for (const bi of tileData.barrierIslands) {
+      barrierIslands.push({ ...bi, id: `${prefix}${bi.id}` });
+    }
+    for (const tf of tileData.tidalFlats) {
+      tidalFlats.push({ ...tf, id: `${prefix}${tf.id}` });
+    }
+    for (const dr of tileData.duneRidges) {
+      duneRidges.push({ ...dr, id: `${prefix}${dr.id}` });
+    }
+    for (const inlet of tileData.inlets) {
+      inlets.push({ ...inlet, id: `${prefix}${inlet.id}` });
+    }
   }
 
   console.info(
@@ -397,5 +413,5 @@ export function composeTileFeatures(
     beaches.length,
   );
 
-  return { water, coastlines, rivers, contours, beaches };
+  return { water, coastlines, rivers, contours, beaches, barrierIslands, tidalFlats, duneRidges, inlets };
 }
