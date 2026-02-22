@@ -1906,9 +1906,29 @@ export function FeaturesProvider({
           updatedPersonality.era_year
         );
 
+        // CITY-487: Regenerate cross-boundary connections with new grid
+        const updatedDistrictFinal: District = {
+          ...updatedDistrictForGrid,
+          gridAngle: actualAngle,
+        };
+        const currentFeatures = featuresRef.current;
+        const otherDistricts = currentFeatures.districts.filter((d) => d.id !== id);
+        const otherRoadsForCross = currentFeatures.roads.filter(
+          (r) => r.districtId !== id && !r.id.includes(`-${id}-`)
+        );
+        const crossBoundaryRoads = generateCrossBoundaryConnections(
+          updatedDistrictFinal,
+          newRoads,
+          otherDistricts,
+          otherRoadsForCross
+        );
+
         // Update district with new type, personality, and regenerated roads
         updateFeatures((prev) => {
-          const otherRoads = prev.roads.filter((r) => !r.id.startsWith(id));
+          // Remove old internal roads AND old cross-boundary connectors involving this district
+          const otherRoads = prev.roads.filter(
+            (r) => !r.id.startsWith(id) && !r.id.includes(`-${id}-`)
+          );
           return {
             ...prev,
             districts: prev.districts.map((d) =>
@@ -1916,7 +1936,7 @@ export function FeaturesProvider({
                 ? { ...d, ...updates, type: newType, personality: updatedPersonality, gridAngle: actualAngle }
                 : d
             ),
-            roads: [...otherRoads, ...newRoads],
+            roads: [...otherRoads, ...newRoads, ...crossBoundaryRoads],
           };
         });
 
@@ -1973,15 +1993,32 @@ export function FeaturesProvider({
           currentDistrict.personality?.era_year
         );
 
+        // CITY-487: Regenerate cross-boundary connections with new grid
+        const updatedDistrictForAngle: District = { ...currentDistrict, gridAngle: actualAngle };
+        const currentFeaturesForAngle = featuresRef.current;
+        const otherDistrictsForAngle = currentFeaturesForAngle.districts.filter((d) => d.id !== id);
+        const otherRoadsForAngleCross = currentFeaturesForAngle.roads.filter(
+          (r) => r.districtId !== id && !r.id.includes(`-${id}-`)
+        );
+        const crossBoundaryRoadsAngle = generateCrossBoundaryConnections(
+          updatedDistrictForAngle,
+          newRoads,
+          otherDistrictsForAngle,
+          otherRoadsForAngleCross
+        );
+
         // Update district with new gridAngle and replace its roads
         updateFeatures((prev) => {
-          const otherRoads = prev.roads.filter((r) => r.districtId !== id);
+          // Remove old internal roads AND old cross-boundary connectors involving this district
+          const otherRoads = prev.roads.filter(
+            (r) => r.districtId !== id && !r.id.includes(`-${id}-`)
+          );
           return {
             ...prev,
             districts: prev.districts.map((d) =>
               d.id === id ? { ...d, ...updates, gridAngle: actualAngle } : d
             ),
-            roads: [...otherRoads, ...newRoads],
+            roads: [...otherRoads, ...newRoads, ...crossBoundaryRoadsAngle],
           };
         });
 
