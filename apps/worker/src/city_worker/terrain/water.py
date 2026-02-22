@@ -4,6 +4,7 @@ from typing import Any
 
 import numpy as np
 from numpy.typing import NDArray
+from scipy.ndimage import binary_dilation
 from shapely import concave_hull
 from shapely.geometry import LineString, MultiPoint, MultiPolygon, Polygon
 from shapely.ops import unary_union
@@ -754,25 +755,12 @@ def extract_beaches(
     # Only include cells with gentle slopes
     beach_mask = beach_mask & (slope <= max_slope)
 
-    # Beach must be adjacent to water
+    # Beach must be adjacent to water — use binary dilation with a 3x3
+    # structuring element (8-connectivity) to find all cells neighbouring
+    # water, then intersect with the beach candidate mask.
     water_mask = heightfield < water_level
-    adjacent_to_water = np.zeros_like(beach_mask)
-    for i in range(h):
-        for j in range(w):
-            if beach_mask[i, j]:
-                # Check 8-connectivity for water adjacency
-                for di in [-1, 0, 1]:
-                    for dj in [-1, 0, 1]:
-                        if di == 0 and dj == 0:
-                            continue
-                        ni, nj = i + di, j + dj
-                        if 0 <= ni < h and 0 <= nj < w and water_mask[ni, nj]:
-                            adjacent_to_water[i, j] = True
-                            break
-                    if adjacent_to_water[i, j]:
-                        break
-
-    beach_mask = beach_mask & adjacent_to_water
+    dilated_water = binary_dilation(water_mask, structure=np.ones((3, 3)))
+    beach_mask = beach_mask & dilated_water
 
     # Pre-compute river buffer zones for filtering (CITY-546).
     # Buffer each river line by its width (or a minimum) to create
