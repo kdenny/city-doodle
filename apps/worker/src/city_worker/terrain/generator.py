@@ -258,6 +258,7 @@ class TerrainGenerator:
             tile_x=tx,
             tile_y=ty,
             tile_size=cfg.tile_size,
+            max_lakes=cfg.max_lakes,
         )
         features.extend(lakes)
 

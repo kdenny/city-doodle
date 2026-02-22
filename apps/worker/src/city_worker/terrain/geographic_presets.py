@@ -62,6 +62,7 @@ GEOGRAPHIC_PRESETS: dict[str, dict[str, Any]] = {
         "bay_enabled": False,
         "barrier_islands_enabled": False,
         "min_river_length": 8,
+        "max_lakes": 8,  # CITY-490: lakefront cities should have more lakes
     },
     # ── Inland ──────────────────────────────────────────────────
     # No coastline.  Very low water level so almost all terrain is
