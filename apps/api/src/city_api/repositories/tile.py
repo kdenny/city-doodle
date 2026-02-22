@@ -120,14 +120,6 @@ async def get_or_create_tile(db: AsyncSession, world_id: UUID, tx: int, ty: int)
 
 def _to_schema(tile: TileModel) -> Tile:
     """Convert SQLAlchemy model to Pydantic schema."""
-    # CITY-582 debug: log features passthrough (remove in CITY-584)
-    features_raw = tile.features if tile.features else {}
-    features_type = features_raw.get("type") if isinstance(features_raw, dict) else None
-    feature_count = len(features_raw.get("features", [])) if isinstance(features_raw, dict) and features_type == "FeatureCollection" else 0
-    logger.info(
-        "[Terrain] _to_schema tile_id=%s tx=%s ty=%s features_type=%s feature_count=%d features_empty=%s",
-        tile.id, tile.tx, tile.ty, features_type, feature_count, not bool(features_raw),
-    )
     return Tile(
         id=tile.id,
         world_id=tile.world_id,
@@ -136,7 +128,7 @@ def _to_schema(tile: TileModel) -> Tile:
         terrain_data=TerrainData.model_validate(tile.terrain_data)
         if tile.terrain_data
         else TerrainData(),
-        features=features_raw,
+        features=tile.features if tile.features else {},
         terrain_status=tile.terrain_status or "pending",
         terrain_error=tile.terrain_error,
         created_at=_ensure_utc(tile.created_at),

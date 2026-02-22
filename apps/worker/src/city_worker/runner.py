@@ -3,6 +3,7 @@
 import asyncio
 import logging
 import signal
+import time
 from datetime import UTC, datetime
 from typing import Any
 from uuid import UUID
@@ -310,21 +311,27 @@ class JobRunner:
             config = TerrainConfig(**config_kwargs)
             generator = TerrainGenerator(config)
 
+            t_pipeline_start = time.perf_counter()
+
             result = await loop.run_in_executor(
                 None, generator.generate_3x3, int(center_tx), int(center_ty)
             )
 
-            # CITY-582 debug: log generation result summary (remove in CITY-584)
-            all_generated = result.all_tiles()
-            logger.info(
-                "[Terrain] Generation complete: world=%s tiles=%d total_features=%d setting=%s",
-                world_id, len(all_generated),
-                sum(len(t.features) for t in all_generated),
-                geographic_setting,
-            )
+            t_gen_end = time.perf_counter()
+
 
             # Save generated tiles to database
             await self._save_terrain_tiles(world_id, result)
+
+            t_save_end = time.perf_counter()
+
+            gen_ms = (t_gen_end - t_pipeline_start) * 1000
+            save_ms = (t_save_end - t_gen_end) * 1000
+            total_ms = (t_save_end - t_pipeline_start) * 1000
+            logger.info(
+                "[Terrain] Full pipeline complete in %.1fms (generation=%.1fms save=%.1fms) world=%s",
+                total_ms, gen_ms, save_ms, world_id,
+            )
 
             # CITY-585: Mark all generated tiles as "ready"
             all_tiles = result.all_tiles()
@@ -363,14 +370,6 @@ class JobRunner:
                 for tile_data in result.all_tiles():
                     terrain_dict = tile_data.to_dict()
                     features_dict = tile_data.features_to_geojson()
-
-                    # CITY-582 debug: log GeoJSON features being saved (remove in CITY-584)
-                    fc_type = features_dict.get("type") if isinstance(features_dict, dict) else None
-                    fc_count = len(features_dict.get("features", [])) if isinstance(features_dict, dict) and fc_type == "FeatureCollection" else 0
-                    logger.info(
-                        "[Terrain] Saving tile tx=%s ty=%s world=%s fc_type=%s feature_count=%d",
-                        tile_data.tx, tile_data.ty, world_id, fc_type, fc_count,
-                    )
 
                     await session.execute(
                         text("""

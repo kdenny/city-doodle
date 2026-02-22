@@ -1,6 +1,7 @@
 """Main terrain generator combining all terrain features."""
 
 import logging
+import time
 from typing import Any
 
 import numpy as np
@@ -47,6 +48,8 @@ class TerrainGenerator:
         """
         logger.info("Generating 3x3 terrain centered at (%d, %d)", center_tx, center_ty)
 
+        t_start = time.perf_counter()
+
         # Generate all 9 tiles
         tiles: dict[tuple[int, int], TileTerrainData] = {}
         center_data: TileTerrainData | None = None
@@ -65,9 +68,12 @@ class TerrainGenerator:
 
         assert center_data is not None
 
+        total_features = sum(len(t.features) for t in [center_data, *tiles.values()])
+        total_ms = (time.perf_counter() - t_start) * 1000
+
         logger.info(
-            "Generated 9 tiles with %d total features",
-            sum(len(t.features) for t in [center_data, *tiles.values()]),
+            "[Terrain] 3x3 generation complete in %.1fms (9 tiles, %d features)",
+            total_ms, total_features,
         )
 
         return TerrainResult(center=center_data, neighbors=tiles)
@@ -75,6 +81,8 @@ class TerrainGenerator:
     def _generate_tile(self, tx: int, ty: int) -> TileTerrainData:
         """Generate terrain for a single tile."""
         cfg = self.config
+
+        t0 = time.perf_counter()
 
         # Generate base heightfield
         heightfield = generate_heightfield(
@@ -89,6 +97,8 @@ class TerrainGenerator:
             scale=cfg.height_scale,
         )
 
+        t_heightfield = time.perf_counter()
+
         # Apply geographic mask to shape terrain per world type (CITY-386)
         heightfield = apply_geographic_mask(
             heightfield=heightfield,
@@ -100,14 +110,20 @@ class TerrainGenerator:
             seed=cfg.world_seed,
         )
 
+        t_mask = time.perf_counter()
+
         # Apply erosion for more realistic features
         # Derive tile-specific seed from world seed and tile coordinates
         # Use abs() to ensure non-negative seed for numpy's RNG
         erosion_seed = abs(cfg.world_seed ^ (tx * 7919 + ty * 7927))
         heightfield = apply_erosion(heightfield, seed=erosion_seed, iterations=30)
 
+        t_erosion = time.perf_counter()
+
         # Calculate flow accumulation for river and bay detection
         flow_accumulation = calculate_flow_accumulation(heightfield)
+
+        t_flow = time.perf_counter()
 
         # Extract water features
         features: list[TerrainFeature] = []
@@ -124,6 +140,8 @@ class TerrainGenerator:
             fractal_seed=coastline_seed,
         )
         features.extend(coastlines)
+
+        t_coastlines = time.perf_counter()
 
         # Bays (concave coastline formations)
         bays: list[TerrainFeature] = []
@@ -169,6 +187,8 @@ class TerrainGenerator:
                     from shapely.geometry import shape as _shape
                     bay_polygons.append(_shape(f.geometry))
 
+        t_bays = time.perf_counter()
+
         # Barrier islands (moved before beaches so lagoon polygons can
         # be used to exclude lagoon-side beaches — CITY-525)
         lagoon_polygons: list = []
@@ -198,6 +218,8 @@ class TerrainGenerator:
                     from shapely.geometry import shape
                     lagoon_polygons.append(shape(f.geometry))
 
+        t_barriers = time.perf_counter()
+
         # CITY-576: Collect coastline polygons for river endpoint snapping
         coastline_polys: list = []
         for f in coastlines:
@@ -226,6 +248,8 @@ class TerrainGenerator:
             from shapely.geometry import shape as _shape
             river_lines.append(_shape(f.geometry))
 
+        t_rivers = time.perf_counter()
+
         # Lakes (moved before beaches so lake polygons can be used
         # to cap lake beach coverage — CITY-547)
         lakes = extract_lakes(
@@ -242,6 +266,8 @@ class TerrainGenerator:
         for f in lakes:
             from shapely.geometry import shape as _shape
             lake_polygons.append(_shape(f.geometry))
+
+        t_lakes = time.perf_counter()
 
         # Beaches (transition zones between water and land)
         if cfg.beach_enabled:
@@ -266,6 +292,8 @@ class TerrainGenerator:
             )
             features.extend(beaches)
 
+        t_beaches = time.perf_counter()
+
         # Generate contour lines
         contours = self._generate_contours(
             heightfield=heightfield,
@@ -275,8 +303,37 @@ class TerrainGenerator:
         )
         features.extend(contours)
 
+        t_contours = time.perf_counter()
+
         # Clip all features to tile boundaries (CITY-530)
         features = clip_features_to_tile(features, tx, ty, cfg.tile_size)
+
+        t_clip = time.perf_counter()
+
+        # Log per-phase timing summary (CITY-591)
+        # Note: execution order is barriers -> rivers -> lakes -> beaches,
+        # but log labels match the ticket spec order.
+        timing_values = (
+            (t_heightfield - t0) * 1000,
+            (t_mask - t_heightfield) * 1000,
+            (t_erosion - t_mask) * 1000,
+            (t_flow - t_erosion) * 1000,
+            (t_coastlines - t_flow) * 1000,
+            (t_bays - t_coastlines) * 1000,
+            (t_barriers - t_bays) * 1000,
+            (t_beaches - t_lakes) * 1000,
+            (t_rivers - t_barriers) * 1000,
+            (t_lakes - t_rivers) * 1000,
+            (t_contours - t_beaches) * 1000,
+            (t_clip - t_contours) * 1000,
+        )
+        total_ms = (t_clip - t0) * 1000
+        logger.info(
+            "[Terrain] Tile (%d, %d) phase timings: heightfield=%.1fms mask=%.1fms erosion=%.1fms "
+            "flow=%.1fms coastlines=%.1fms bays=%.1fms barriers=%.1fms beaches=%.1fms "
+            "rivers=%.1fms lakes=%.1fms contours=%.1fms clip=%.1fms total=%.1fms features=%d",
+            tx, ty, *timing_values, total_ms, len(features),
+        )
 
         return TileTerrainData(
             tx=tx,
