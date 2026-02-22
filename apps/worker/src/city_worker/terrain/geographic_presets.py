@@ -65,7 +65,8 @@ GEOGRAPHIC_PRESETS: dict[str, dict[str, Any]] = {
     },
     # ── Inland ──────────────────────────────────────────────────
     # No coastline.  Very low water level so almost all terrain is
-    # above water.  Lakes/rivers still possible but rare.
+    # above water.  Water features (rivers/lakes) are suppressed
+    # because water_level < WATER_LEVEL_SUPPRESS_THRESHOLD (CITY-551).
     "inland": {
         "water_level": 0.15,
         "beach_enabled": False,
