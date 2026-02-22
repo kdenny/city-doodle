@@ -1087,6 +1087,17 @@ def extract_lakes(
         min_depth: Minimum average depth below water_level to qualify as a
             lake. Shallow depressions from heightfield noise are filtered out.
     """
+    # CITY-549: Enforce a floor so callers cannot bypass the CITY-529
+    # noise filter by passing a smaller min_area_cells value.
+    min_area_cells = max(min_area_cells, 50)
+
+    # CITY-549: Scale min_depth with water_level so that low water-level
+    # presets get a proportionally stricter depth filter.  At the default
+    # water_level (0.35) this gives 0.035 which is already above the old
+    # hard-coded 0.015; for very low water_levels the floor of the
+    # caller-supplied min_depth still applies.
+    effective_min_depth = max(min_depth, water_level * 0.1)
+
     h, w = heightfield.shape
     cell_size = tile_size / w
 
@@ -1119,7 +1130,7 @@ def extract_lakes(
                         water_level - heightfield[ci, cj]
                         for ci, cj in region_cells
                     ]))
-                    if avg_depth < min_depth:
+                    if avg_depth < effective_min_depth:
                         continue
 
                     poly = _cells_to_polygon(
