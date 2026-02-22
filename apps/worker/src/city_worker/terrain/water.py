@@ -341,6 +341,141 @@ def _chaikin_smooth(
     return pts
 
 
+def _interpolate_widths(
+    original_coords: list[tuple[float, float]],
+    original_widths: list[float],
+    target_coords: list[tuple[float, float]],
+) -> list[float]:
+    """Interpolate per-vertex widths from original path onto target coordinates.
+
+    Uses cumulative-distance parameterisation: for each target vertex, find its
+    nearest position along the original path and linearly interpolate the width.
+
+    Args:
+        original_coords: Coordinates of the original (pre-simplification) path
+        original_widths: Width value at each original vertex
+        target_coords: Coordinates of the target (post-smoothing) path
+
+    Returns:
+        Width value for each target vertex
+    """
+    import math as _math
+
+    if len(original_coords) < 2 or len(original_widths) < 2:
+        fallback = original_widths[0] if original_widths else 1.0
+        return [fallback] * len(target_coords)
+
+    # Build cumulative distance along original path
+    cum_dist = [0.0]
+    for k in range(1, len(original_coords)):
+        dx = original_coords[k][0] - original_coords[k - 1][0]
+        dy = original_coords[k][1] - original_coords[k - 1][1]
+        cum_dist.append(cum_dist[-1] + _math.hypot(dx, dy))
+
+    total_len = cum_dist[-1]
+    if total_len < 1e-10:
+        return [original_widths[0]] * len(target_coords)
+
+    # Build cumulative distance along target path
+    target_cum = [0.0]
+    for k in range(1, len(target_coords)):
+        dx = target_coords[k][0] - target_coords[k - 1][0]
+        dy = target_coords[k][1] - target_coords[k - 1][1]
+        target_cum.append(target_cum[-1] + _math.hypot(dx, dy))
+
+    target_total = target_cum[-1]
+
+    result: list[float] = []
+    for k in range(len(target_coords)):
+        # Normalise position along target path to [0, 1]
+        if target_total > 1e-10:
+            t = target_cum[k] / target_total
+        else:
+            t = 0.0
+
+        # Map to distance along original path
+        d = t * total_len
+
+        # Binary-search for the segment in the original path
+        lo, hi = 0, len(cum_dist) - 1
+        while lo < hi - 1:
+            mid = (lo + hi) // 2
+            if cum_dist[mid] <= d:
+                lo = mid
+            else:
+                hi = mid
+
+        seg_len = cum_dist[hi] - cum_dist[lo]
+        if seg_len > 1e-10:
+            frac = (d - cum_dist[lo]) / seg_len
+        else:
+            frac = 0.0
+        frac = max(0.0, min(1.0, frac))
+
+        w = original_widths[lo] + (original_widths[hi] - original_widths[lo]) * frac
+        result.append(w)
+
+    return result
+
+
+def _suppress_parallel_rivers(
+    features: list[TerrainFeature],
+    proximity_threshold: float,
+    overlap_fraction: float = 0.30,
+) -> list[TerrainFeature]:
+    """Suppress shorter rivers that run parallel to longer ones (CITY-490).
+
+    Two rivers are considered parallel if more than *overlap_fraction* of
+    the shorter river's vertices are within *proximity_threshold* distance
+    of the longer river's LineString.
+
+    Args:
+        features: List of river TerrainFeatures
+        proximity_threshold: Maximum distance (world units) to consider
+            two rivers as parallel
+        overlap_fraction: Fraction of the shorter river's vertices that
+            must be proximate to trigger suppression
+
+    Returns:
+        Filtered list with redundant parallel rivers removed
+    """
+    if len(features) <= 1:
+        return features
+
+    # Sort by length descending so longer rivers are kept preferentially
+    indexed = list(enumerate(features))
+    indexed.sort(key=lambda x: x[1].properties.get("length", 0), reverse=True)
+
+    suppressed: set[int] = set()
+
+    for a_pos in range(len(indexed)):
+        a_idx, a_feat = indexed[a_pos]
+        if a_idx in suppressed:
+            continue
+        a_line = LineString(a_feat.geometry["coordinates"])
+
+        for b_pos in range(a_pos + 1, len(indexed)):
+            b_idx, b_feat = indexed[b_pos]
+            if b_idx in suppressed:
+                continue
+
+            b_coords = b_feat.geometry["coordinates"]
+            if not b_coords:
+                continue
+
+            # Count how many of b's vertices are within threshold of a
+            from shapely.geometry import Point as _Point
+            close_count = 0
+            for bx, by in b_coords:
+                if a_line.distance(_Point(bx, by)) <= proximity_threshold:
+                    close_count += 1
+
+            if close_count / len(b_coords) >= overlap_fraction:
+                suppressed.add(b_idx)
+
+    return [f for i, f in enumerate(features) if i not in suppressed]
+
+
 def extract_rivers(
     heightfield: NDArray[np.float64],
     water_level: float,
@@ -351,6 +486,7 @@ def extract_rivers(
     min_length: int = 10,
     flow_accumulation: NDArray[np.float64] | None = None,
     coastline_polys: list[Polygon] | None = None,
+    parallel_proximity_cells: int = 5,
 ) -> list[TerrainFeature]:
     """Extract river linestrings from heightfield.
 
@@ -364,6 +500,9 @@ def extract_rivers(
         flow_accumulation: Pre-computed flow accumulation array (avoids recomputation)
         coastline_polys: Optional coastline polygons for snapping river
             endpoints to the actual coastline geometry (CITY-576)
+        parallel_proximity_cells: Distance in grid cells within which two
+            rivers are considered parallel (CITY-490). Set to 0 to disable
+            parallel river suppression.
 
     Returns:
         List of river LineString features
@@ -503,6 +642,7 @@ def extract_rivers(
                 max_flow = max(path_flows)
                 avg_flow = sum(path_flows) / len(path_flows)
 
+                # CITY-490: Per-vertex width based on local flow accumulation.
                 # Flow-based width: log-scale so tributaries aren't invisible
                 # but main rivers are noticeably wider.
                 # Maps flow_threshold..max_possible to ~1.5..8.0 world-unit width
@@ -510,13 +650,19 @@ def extract_rivers(
 
                 width_min = cell_size * 0.3
                 width_max = cell_size * 1.5
-                log_flow = _math.log1p(max_flow)
                 log_thresh = _math.log1p(flow_threshold)
                 log_cap = _math.log1p(flow_threshold * 20)
-                t_width = min(
-                    (log_flow - log_thresh) / max(log_cap - log_thresh, 1e-6), 1.0
-                )
-                width = width_min + (width_max - width_min) * t_width
+
+                def _flow_to_width(f: float) -> float:
+                    """Convert a single flow value to a width."""
+                    lf = _math.log1p(f)
+                    t = min((lf - log_thresh) / max(log_cap - log_thresh, 1e-6), 1.0)
+                    t = max(t, 0.0)
+                    return width_min + (width_max - width_min) * t
+
+                # Per-vertex widths along the raw path
+                raw_widths = [_flow_to_width(f) for f in path_flows]
+                width = max(raw_widths)  # overall max width for backward compat
 
                 # Convert to world coordinates
                 coords = [
@@ -560,6 +706,11 @@ def extract_rivers(
                 smoothed = _chaikin_smooth(list(simplified.coords), iterations=6)
                 smoothed_line = LineString(smoothed)
 
+                # CITY-490: Interpolate per-vertex widths onto the
+                # smoothed line. Build cumulative-distance parameterisation
+                # of the original path, then sample at each smoothed vertex.
+                smoothed_widths = _interpolate_widths(coords, raw_widths, list(smoothed_line.coords))
+
                 features.append(
                     TerrainFeature(
                         type="river",
@@ -570,11 +721,19 @@ def extract_rivers(
                         properties={
                             "length": smoothed_line.length,
                             "width": round(width, 2),
+                            "widths": [round(w, 2) for w in smoothed_widths],
                             "max_flow": round(max_flow, 1),
                             "avg_flow": round(avg_flow, 1),
                         },
                     )
                 )
+
+    # CITY-490: Suppress parallel rivers that run too close together.
+    # The shorter river is removed when >30% of its vertices are within
+    # N cells of a longer river.
+    if parallel_proximity_cells > 0 and len(features) > 1:
+        proximity_threshold = parallel_proximity_cells * cell_size
+        features = _suppress_parallel_rivers(features, proximity_threshold)
 
     return features
 
@@ -1070,6 +1229,7 @@ def extract_lakes(
     tile_size: float,
     min_area_cells: int = 50,
     min_depth: float = 0.015,
+    max_lakes: int = 3,
 ) -> list[TerrainFeature]:
     """Extract lake polygons from heightfield depressions.
 
@@ -1086,6 +1246,9 @@ def extract_lakes(
             from 20 to 50 to filter noise-generated micro-depressions)
         min_depth: Minimum average depth below water_level to qualify as a
             lake. Shallow depressions from heightfield noise are filtered out.
+        max_lakes: Maximum number of lakes to keep per tile (CITY-490).
+            Lakes are sorted by area descending and only the top max_lakes
+            are returned. Set to 0 or negative to disable the cap.
     """
     h, w = heightfield.shape
     cell_size = tile_size / w
@@ -1144,5 +1307,12 @@ def extract_lakes(
                                 properties=properties,
                             )
                         )
+
+    # CITY-490: Cap lake count per tile. Sort by area descending and
+    # keep only the largest lakes to avoid unrealistically dense lake
+    # clusters from noisy heightfields.
+    if max_lakes > 0 and len(features) > max_lakes:
+        features.sort(key=lambda f: f.properties.get("area", 0), reverse=True)
+        features = features[:max_lakes]
 
     return features

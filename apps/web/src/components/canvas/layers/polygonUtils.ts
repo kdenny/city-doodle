@@ -764,16 +764,25 @@ export function clipAndValidateDistrict(
  *
  * Uses averaged normals at interior points for smooth corners.
  * Adds a 0.5 world-unit buffer to prevent pixel-thin slivers at clip boundaries.
+ *
+ * CITY-490: When `river.widths` is provided (per-vertex width array),
+ * each vertex uses its own half-width for tapering. Falls back to the
+ * uniform `river.width` when the array is absent or mismatched.
  */
 export function riverToPolygon(river: RiverFeature): Point[] {
   const pts = river.line.points;
   if (pts.length < 2) return [];
 
-  const halfWidth = (river.width || 1) / 2 + 0.5;
+  const uniformHalfWidth = (river.width || 1) / 2 + 0.5;
+  const hasWidths = river.widths && river.widths.length === pts.length;
   const leftPoints: Point[] = [];
   const rightPoints: Point[] = [];
 
   for (let i = 0; i < pts.length; i++) {
+    const halfWidth = hasWidths
+      ? (river.widths![i] || 1) / 2 + 0.5
+      : uniformHalfWidth;
+
     let nx: number, ny: number;
 
     if (i === 0) {

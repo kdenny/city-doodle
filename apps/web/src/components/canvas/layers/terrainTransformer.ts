@@ -193,6 +193,7 @@ export function transformTileFeatures(
           id: `river-${riverIdx}`,
           line: toLine(coords),
           width: (props.width as number) ?? 3,
+          widths: Array.isArray(props.widths) ? (props.widths as number[]) : undefined,
           name: props.name as string | undefined,
         });
         break;

@@ -54,7 +54,9 @@ export interface CoastlineFeature {
 export interface RiverFeature {
   id: string;
   line: Line;
-  width: number; // varies along length
+  width: number; // max width (backward compat)
+  /** Per-vertex widths for tapering (CITY-490). Length matches line.points. */
+  widths?: number[];
   /** Auto-generated or user-edited name */
   name?: string;
 }
