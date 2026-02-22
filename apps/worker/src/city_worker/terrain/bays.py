@@ -308,7 +308,7 @@ def _generate_bay_shape(
 
         # Quadratic bezier-like interpolation
         # Control point offset creates natural curve
-        ctrl_offset = candidate.entrance_width * 0.2 * (1 + rng.random() * 0.3)
+        ctrl_offset = candidate.entrance_width * 0.4 * (1 + rng.random() * 0.3)
 
         # Direction perpendicular to start-apex line
         dx = apex[0] - start[0]
@@ -334,7 +334,7 @@ def _generate_bay_shape(
         t = i / detail_level
 
         # Similar bezier curve on the other side
-        ctrl_offset = candidate.entrance_width * 0.2 * (1 + rng.random() * 0.3)
+        ctrl_offset = candidate.entrance_width * 0.4 * (1 + rng.random() * 0.3)
 
         dx = end[0] - apex[0]
         dy = end[1] - apex[1]
@@ -531,11 +531,37 @@ def extract_bays(
 
     features = []
 
+    # Minimum entrance width for harbor-classified bays (world units).
+    # Bays with large area but narrow entrances are unrealistic harbors.
+    harbor_min_entrance_width = 30.0
+
     for candidate in candidates:
         # Skip bays that are too shallow (low depth ratio)
         depth_ratio = candidate.depth / candidate.entrance_width if candidate.entrance_width > 0 else 0
         if depth_ratio < 0.3 or depth_ratio > config.max_depth_ratio:
             continue
+
+        # Enforce minimum entrance width for harbor-scale bays.
+        # If the candidate's area estimate suggests a harbor but the
+        # entrance is too narrow, widen it to the minimum threshold.
+        estimated_area = candidate.entrance_width * candidate.depth
+        if estimated_area >= config.harbor_min_area and candidate.entrance_width < harbor_min_entrance_width:
+            # Shift entrance points outward to meet the minimum width
+            mid_x = (candidate.entrance_start[0] + candidate.entrance_end[0]) / 2
+            mid_y = (candidate.entrance_start[1] + candidate.entrance_end[1]) / 2
+            dx = candidate.entrance_end[0] - candidate.entrance_start[0]
+            dy = candidate.entrance_end[1] - candidate.entrance_start[1]
+            cur_w = candidate.entrance_width
+            if cur_w > 1e-10:
+                scale = harbor_min_entrance_width / cur_w
+                candidate.entrance_start = (
+                    mid_x - dx / 2 * scale,
+                    mid_y - dy / 2 * scale,
+                )
+                candidate.entrance_end = (
+                    mid_x + dx / 2 * scale,
+                    mid_y + dy / 2 * scale,
+                )
 
         # Generate organic bay shape
         bay_points = _generate_bay_shape(candidate, rng)
@@ -571,7 +597,7 @@ def extract_bays(
         bay_size = _classify_bay_size(area, config)
 
         # Calculate depth profile
-        max_depth = water_level * 0.8  # Max depth relative to water level
+        max_depth = water_level * 1.2  # Max depth relative to water level
         if candidate.is_river_mouth:
             max_depth *= 1.2  # River mouths tend to be deeper (erosion)
 
