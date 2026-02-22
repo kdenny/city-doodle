@@ -2,7 +2,7 @@
  * React Query hooks for the City Doodle API.
  */
 
-import { useRef } from "react";
+import { useEffect, useRef } from "react";
 import {
   useMutation,
   useQuery,
@@ -284,21 +284,24 @@ function tileHasTerrainFeatures(tile: Tile): boolean {
   );
 }
 
-/** CITY-585: Max number of poll cycles before giving up (60 * 3s = 3 minutes) */
+/** CITY-585/590: Max number of poll cycles before giving up (60 * 3s = 3 minutes) */
 const MAX_TERRAIN_POLL_COUNT = 60;
 
 export function useWorldTiles(
   worldId: string,
   options?: Omit<UseQueryOptions<Tile[]>, "queryKey" | "queryFn">
 ) {
-  // CITY-585: Track poll count to enforce max poll safety net
+  // CITY-585/590: Track poll count to enforce max poll safety net
   const pollCountRef = useRef(0);
 
-  return useQuery({
+  const query = useQuery({
     queryKey: queryKeys.worldTiles(worldId),
-    queryFn: () => api.tiles.list(worldId),
+    queryFn: () => {
+      pollCountRef.current += 1;
+      return api.tiles.list(worldId);
+    },
     enabled: !!worldId,
-    // CITY-583/585: Poll every 3s while tiles are pending/generating.
+    // CITY-583/585/590: Poll every 3s while tiles are pending/generating.
     // Stops polling when all tiles are ready, any tile failed, or max polls reached.
     refetchInterval: (query) => {
       const tiles = query.state.data;
@@ -327,6 +330,13 @@ export function useWorldTiles(
     },
     ...options,
   });
+
+  // Reset poll count when worldId changes
+  useEffect(() => {
+    pollCountRef.current = 0;
+  }, [worldId]);
+
+  return query;
 }
 
 export function useTile(
@@ -431,6 +441,27 @@ export function useHeartbeatLock(
       api.tiles.heartbeatLock(tileId, durationSeconds),
     onSuccess: (lock) => {
       queryClient.setQueryData(queryKeys.tileLock(lock.tile_id), lock);
+    },
+    ...options,
+  });
+}
+
+// ============================================================================
+// Terrain Regeneration Hook (CITY-590)
+// ============================================================================
+
+export function useRegenerateTerrain(
+  options?: UseMutationOptions<Tile, Error, string>
+) {
+  const queryClient = useQueryClient();
+  return useMutation({
+    mutationFn: (tileId: string) => api.tiles.regenerateTerrain(tileId),
+    onSuccess: (tile) => {
+      // Invalidate tile queries to trigger re-fetch/polling
+      queryClient.invalidateQueries({
+        queryKey: queryKeys.worldTiles(tile.world_id),
+      });
+      queryClient.setQueryData(queryKeys.tile(tile.id), tile);
     },
     ...options,
   });

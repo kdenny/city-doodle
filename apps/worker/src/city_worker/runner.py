@@ -350,10 +350,14 @@ class JobRunner:
                 "center_tile": {"tx": center_tx, "ty": center_ty},
             }
         except Exception as e:
-            # CITY-585: Mark center tile as "failed" with error message
-            await self._update_tile_terrain_status(
-                world_id, int(center_tx), int(center_ty), "failed", error=str(e)
-            )
+            # CITY-585/590: Mark center tile as "failed" with error message
+            logger.exception("[Terrain] Generation failed for world=%s: %s", world_id, str(e))
+            try:
+                await self._update_tile_terrain_status(
+                    world_id, int(center_tx), int(center_ty), "failed", error=str(e)
+                )
+            except Exception:
+                logger.exception("[Terrain] Failed to update terrain_status to 'failed'")
             raise
 
     async def _save_terrain_tiles(self, world_id: UUID, result: Any, trace_id: str = "unknown") -> None:
@@ -379,12 +383,14 @@ class JobRunner:
 
                     await session.execute(
                         text("""
-                            INSERT INTO tiles (id, world_id, tx, ty, terrain_data, features, version)
-                            VALUES (gen_random_uuid(), :world_id, :tx, :ty, :terrain_data, :features, 1)
+                            INSERT INTO tiles (id, world_id, tx, ty, terrain_data, features, terrain_status, version)
+                            VALUES (gen_random_uuid(), :world_id, :tx, :ty, :terrain_data, :features, 'ready', 1)
                             ON CONFLICT (world_id, tx, ty)
                             DO UPDATE SET
                                 terrain_data = EXCLUDED.terrain_data,
                                 features = EXCLUDED.features,
+                                terrain_status = 'ready',
+                                terrain_error = NULL,
                                 version = tiles.version + 1,
                                 updated_at = now()
                         """),

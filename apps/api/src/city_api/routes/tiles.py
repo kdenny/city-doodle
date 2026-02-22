@@ -249,3 +249,71 @@ async def get_or_create_tile(
         )
 
     return tile
+
+
+@router.post("/tiles/{tile_id}/regenerate-terrain", response_model=Tile)
+async def regenerate_terrain(
+    tile_id: UUID,
+    db: AsyncSession = Depends(get_db),
+    user_id: UUID = Depends(get_current_user),
+) -> Tile:
+    """Re-queue terrain generation for a tile that failed or needs regeneration."""
+    # Look up the tile
+    tile_model = await tile_repo.get_tile(db, tile_id)
+    if tile_model is None:
+        logger.warning(
+            "[Terrain] Tile not found for regeneration: tile_id=%s user_id=%s",
+            tile_id, user_id,
+        )
+        raise HTTPException(
+            status_code=status.HTTP_404_NOT_FOUND,
+            detail=f"Tile {tile_id} not found",
+        )
+
+    # Verify the user owns the world
+    world_model = await world_repo.get_world(db, tile_model.world_id)
+    if world_model is None or world_model.user_id != user_id:
+        logger.warning(
+            "[Terrain] Unauthorized regeneration: tile_id=%s world_id=%s user_id=%s",
+            tile_id, tile_model.world_id, user_id,
+        )
+        raise HTTPException(
+            status_code=status.HTTP_403_FORBIDDEN,
+            detail="You don't have access to this tile",
+        )
+
+    # Reset terrain_status to "pending" and clear terrain_error
+    tile_model.terrain_status = "pending"
+    tile_model.terrain_error = None
+    await db.commit()
+    await db.refresh(tile_model)
+
+    # Queue a new TERRAIN_GENERATION job
+    try:
+        settings = WorldSettings.model_validate(world_model.settings or {})
+        await job_repo.create_job(
+            db,
+            JobCreate(
+                type=JobType.TERRAIN_GENERATION,
+                tile_id=tile_id,
+                params={
+                    "world_id": str(tile_model.world_id),
+                    "world_seed": world_model.seed,
+                    "center_tx": tile_model.tx,
+                    "center_ty": tile_model.ty,
+                    "world_settings": settings.model_dump(),
+                },
+            ),
+            user_id=user_id,
+        )
+        logger.info(
+            "[Terrain] Queued terrain regeneration job: tile_id=%s world_id=%s tx=%s ty=%s",
+            tile_id, tile_model.world_id, tile_model.tx, tile_model.ty,
+        )
+    except Exception:
+        logger.exception(
+            "[Terrain] Failed to queue terrain regeneration job: tile_id=%s world_id=%s",
+            tile_id, tile_model.world_id,
+        )
+
+    return tile_repo._to_schema(tile_model)
