@@ -334,14 +334,15 @@ async def test_execute_job_success():
 
 
 @pytest.mark.asyncio
-async def test_execute_job_failure():
-    """Test _execute_job handles handler failures."""
+async def test_execute_job_failure_exhausted_retries():
+    """Test _execute_job marks as FAILED when retries are exhausted."""
     runner = JobRunner()
     job_id = uuid4()
 
-    # Mock handler to raise exception
+    # Mock handler to raise exception, retries exhausted (retry_count=3, max_retries=3)
     with (
         patch.object(runner, "_run_job_handler", side_effect=Exception("Test error")),
+        patch.object(runner, "_get_retry_info", new_callable=AsyncMock, return_value=(3, 3)),
         patch.object(runner, "_update_job_status", new_callable=AsyncMock) as mock_update,
     ):
         await runner._execute_job(job_id, JobType.TERRAIN_GENERATION.value, {})
@@ -351,6 +352,45 @@ async def test_execute_job_failure():
         assert call_args[0][0] == job_id
         assert call_args[0][1] == JobStatus.FAILED
         assert "Test error" in call_args[0][3]
+
+
+@pytest.mark.asyncio
+async def test_execute_job_failure_retries_remaining():
+    """Test _execute_job retries when retry_count < max_retries."""
+    runner = JobRunner()
+    job_id = uuid4()
+
+    # Mock handler to raise exception, retries remaining (retry_count=0, max_retries=3)
+    with (
+        patch.object(runner, "_run_job_handler", side_effect=Exception("Transient error")),
+        patch.object(runner, "_get_retry_info", new_callable=AsyncMock, return_value=(0, 3)),
+        patch.object(runner, "_retry_job", new_callable=AsyncMock) as mock_retry,
+        patch.object(runner, "_update_job_status", new_callable=AsyncMock) as mock_update,
+    ):
+        await runner._execute_job(job_id, JobType.TERRAIN_GENERATION.value, {})
+
+        # Should retry, not mark as failed
+        mock_retry.assert_called_once_with(job_id, 0, "Transient error")
+        mock_update.assert_not_called()
+
+
+@pytest.mark.asyncio
+async def test_execute_job_failure_second_retry():
+    """Test _execute_job retries on second attempt when retries remaining."""
+    runner = JobRunner()
+    job_id = uuid4()
+
+    # retry_count=1, max_retries=3 means 2 more retries available
+    with (
+        patch.object(runner, "_run_job_handler", side_effect=Exception("DB timeout")),
+        patch.object(runner, "_get_retry_info", new_callable=AsyncMock, return_value=(1, 3)),
+        patch.object(runner, "_retry_job", new_callable=AsyncMock) as mock_retry,
+        patch.object(runner, "_update_job_status", new_callable=AsyncMock) as mock_update,
+    ):
+        await runner._execute_job(job_id, JobType.TERRAIN_GENERATION.value, {})
+
+        mock_retry.assert_called_once_with(job_id, 1, "DB timeout")
+        mock_update.assert_not_called()
 
 
 @pytest.mark.asyncio
@@ -380,3 +420,37 @@ async def test_poll_and_execute_no_job_available():
         # Should complete without error
         await runner._poll_and_execute()
         assert len(runner._active_jobs) == 0
+
+
+# ============================================================================
+# Retry Logic Tests
+# ============================================================================
+
+
+def test_compute_retry_delay_first_attempt():
+    """Test exponential backoff: first retry = 30 seconds."""
+    assert JobRunner._compute_retry_delay(0) == 30
+
+
+def test_compute_retry_delay_second_attempt():
+    """Test exponential backoff: second retry = 60 seconds."""
+    assert JobRunner._compute_retry_delay(1) == 60
+
+
+def test_compute_retry_delay_third_attempt():
+    """Test exponential backoff: third retry = 120 seconds."""
+    assert JobRunner._compute_retry_delay(2) == 120
+
+
+def test_compute_retry_delay_capped_at_300():
+    """Test exponential backoff caps at 300 seconds."""
+    assert JobRunner._compute_retry_delay(4) == 300
+    assert JobRunner._compute_retry_delay(10) == 300
+    assert JobRunner._compute_retry_delay(100) == 300
+
+
+def test_compute_retry_delay_progression():
+    """Test the full delay progression follows 2^n * 30, capped at 300."""
+    expected = [30, 60, 120, 240, 300]
+    for i, exp in enumerate(expected):
+        assert JobRunner._compute_retry_delay(i) == exp
