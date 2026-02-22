@@ -1,5 +1,5 @@
 import { describe, it, expect } from "vitest";
-import { transformTileFeatures, emptyTerrainData } from "./terrainTransformer";
+import { transformTileFeatures, emptyTerrainData, composeTileFeatures } from "./terrainTransformer";
 
 // ---------------------------------------------------------------------------
 // Helper to build a minimal GeoJSON FeatureCollection
@@ -348,5 +348,147 @@ describe("emptyTerrainData", () => {
     expect(empty.tidalFlats).toEqual([]);
     expect(empty.duneRidges).toEqual([]);
     expect(empty.inlets).toEqual([]);
+  });
+});
+
+// ---------------------------------------------------------------------------
+// composeTileFeatures (CITY-588)
+// ---------------------------------------------------------------------------
+
+describe("composeTileFeatures", () => {
+  it("returns emptyTerrainData for empty array", () => {
+    expect(composeTileFeatures([])).toEqual(emptyTerrainData());
+  });
+
+  it("single tile produces same features as transformTileFeatures (with prefix)", () => {
+    const collection = fc(
+      feature("river", { type: "LineString", coordinates: [[0, 0], [10, 10]] }, { width: 4 }),
+      feature("lake", { type: "Polygon", coordinates: [[[5, 5], [10, 5], [10, 10], [5, 5]]] }, { lake_type: "pond" }),
+    );
+
+    const single = transformTileFeatures(collection);
+    const composed = composeTileFeatures([{ features: collection, tx: 0, ty: 0 }]);
+
+    // Same number of features
+    expect(composed.rivers).toHaveLength(single.rivers.length);
+    expect(composed.water).toHaveLength(single.water.length);
+
+    // IDs are prefixed with tile coordinates
+    expect(composed.rivers[0].id).toBe("t0_0-river-1");
+    expect(composed.water[0].id).toBe("t0_0-lake-1");
+
+    // Data is the same apart from ID
+    expect(composed.rivers[0].width).toBe(single.rivers[0].width);
+    expect(composed.rivers[0].line).toEqual(single.rivers[0].line);
+  });
+
+  it("merges features from multiple tiles correctly", () => {
+    const tile1 = fc(
+      feature("coastline", {
+        type: "Polygon",
+        coordinates: [[[0, 0], [100, 0], [100, 50], [0, 50], [0, 0]]],
+      }),
+      feature("river", { type: "LineString", coordinates: [[0, 0], [50, 25]] }, { width: 3 }),
+    );
+
+    const tile2 = fc(
+      feature("lake", {
+        type: "Polygon",
+        coordinates: [[[10, 10], [20, 10], [20, 20], [10, 10]]],
+      }, { lake_type: "crater" }),
+      feature("beach", {
+        type: "Polygon",
+        coordinates: [[[0, 0], [10, 0], [10, 2], [0, 0]]],
+      }, { beach_type: "ocean" }),
+      feature("contour", { type: "LineString", coordinates: [[0, 30], [50, 35]] }, { elevation: 0.5 }),
+    );
+
+    const result = composeTileFeatures([
+      { features: tile1, tx: 0, ty: 0 },
+      { features: tile2, tx: 1, ty: 0 },
+    ]);
+
+    // Tile 1: 1 ocean water + 1 coastline + 1 river
+    // Tile 2: 1 lake water + 1 beach + 1 contour
+    expect(result.water).toHaveLength(2); // ocean + lake
+    expect(result.coastlines).toHaveLength(1);
+    expect(result.rivers).toHaveLength(1);
+    expect(result.contours).toHaveLength(1);
+    expect(result.beaches).toHaveLength(1);
+  });
+
+  it("filters out tiles without valid FeatureCollections", () => {
+    const validTile = fc(
+      feature("river", { type: "LineString", coordinates: [[0, 0], [10, 10]] }, { width: 2 }),
+    );
+
+    const result = composeTileFeatures([
+      { features: validTile, tx: 0, ty: 0 },
+      { features: {} as unknown, tx: 1, ty: 0 },           // empty object
+      { features: null as unknown, tx: 0, ty: 1 },          // null
+      { features: "invalid" as unknown, tx: 1, ty: 1 },     // string
+    ]);
+
+    expect(result.rivers).toHaveLength(1);
+    expect(result.rivers[0].id).toBe("t0_0-river-1");
+  });
+
+  it("returns emptyTerrainData when all tiles have invalid features", () => {
+    const result = composeTileFeatures([
+      { features: {} as unknown, tx: 0, ty: 0 },
+      { features: null as unknown, tx: 1, ty: 0 },
+    ]);
+
+    expect(result).toEqual(emptyTerrainData());
+  });
+
+  it("prefixes feature IDs with tile coordinates to avoid collisions", () => {
+    const tileA = fc(
+      feature("river", { type: "LineString", coordinates: [[0, 0], [10, 10]] }, { width: 3 }),
+    );
+    const tileB = fc(
+      feature("river", { type: "LineString", coordinates: [[20, 20], [30, 30]] }, { width: 5 }),
+    );
+
+    const result = composeTileFeatures([
+      { features: tileA, tx: 0, ty: 0 },
+      { features: tileB, tx: 2, ty: 1 },
+    ]);
+
+    expect(result.rivers).toHaveLength(2);
+    expect(result.rivers[0].id).toBe("t0_0-river-1");
+    expect(result.rivers[1].id).toBe("t2_1-river-1");
+
+    // Verify IDs are unique
+    const allIds = result.rivers.map((r) => r.id);
+    expect(new Set(allIds).size).toBe(allIds.length);
+  });
+
+  it("prefixes all feature category IDs consistently", () => {
+    const tile = fc(
+      feature("coastline", {
+        type: "Polygon",
+        coordinates: [[[0, 0], [10, 0], [10, 5], [0, 5], [0, 0]]],
+      }),
+      feature("lake", {
+        type: "Polygon",
+        coordinates: [[[1, 1], [2, 1], [2, 2], [1, 1]]],
+      }, { lake_type: "pond" }),
+      feature("river", { type: "LineString", coordinates: [[0, 0], [5, 5]] }, { width: 2 }),
+      feature("contour", { type: "LineString", coordinates: [[0, 3], [10, 3]] }, { elevation: 0.2 }),
+      feature("beach", {
+        type: "Polygon",
+        coordinates: [[[0, 0], [10, 0], [10, 1], [0, 0]]],
+      }, { beach_type: "ocean" }),
+    );
+
+    const result = composeTileFeatures([{ features: tile, tx: 3, ty: 7 }]);
+
+    expect(result.water[0].id).toBe("t3_7-ocean-1");
+    expect(result.water[1].id).toBe("t3_7-lake-1");
+    expect(result.coastlines[0].id).toBe("t3_7-coast-1");
+    expect(result.rivers[0].id).toBe("t3_7-river-1");
+    expect(result.contours[0].id).toBe("t3_7-contour-1");
+    expect(result.beaches[0].id).toBe("t3_7-beach-1");
   });
 });

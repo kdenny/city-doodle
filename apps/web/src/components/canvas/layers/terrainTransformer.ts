@@ -341,3 +341,61 @@ function isFeatureCollection(value: unknown): value is GeoJSONFeatureCollection 
 function asOptionalNumber(value: unknown): number | undefined {
   return typeof value === "number" ? value : undefined;
 }
+
+// ---------------------------------------------------------------------------
+// Multi-tile composition (CITY-588)
+// ---------------------------------------------------------------------------
+
+/**
+ * Compose terrain features from multiple tiles into a single TerrainData.
+ * Transforms each tile's GeoJSON FeatureCollection and merges all features.
+ * Feature IDs are prefixed with tile coordinates to avoid collisions.
+ */
+export function composeTileFeatures(
+  tiles: Array<{ features: unknown; tx: number; ty: number }>
+): TerrainData {
+  const validTiles = tiles.filter((t) => isFeatureCollection(t.features));
+
+  if (validTiles.length === 0) {
+    return emptyTerrainData();
+  }
+
+  const water: TerrainData["water"] = [];
+  const coastlines: TerrainData["coastlines"] = [];
+  const rivers: TerrainData["rivers"] = [];
+  const contours: TerrainData["contours"] = [];
+  const beaches: TerrainData["beaches"] = [];
+
+  for (const tile of validTiles) {
+    const tileData = transformTileFeatures(tile.features);
+    const prefix = `t${tile.tx}_${tile.ty}-`;
+
+    for (const w of tileData.water) {
+      water.push({ ...w, id: `${prefix}${w.id}` });
+    }
+    for (const c of tileData.coastlines) {
+      coastlines.push({ ...c, id: `${prefix}${c.id}` });
+    }
+    for (const r of tileData.rivers) {
+      rivers.push({ ...r, id: `${prefix}${r.id}` });
+    }
+    for (const ct of tileData.contours) {
+      contours.push({ ...ct, id: `${prefix}${ct.id}` });
+    }
+    for (const b of tileData.beaches) {
+      beaches.push({ ...b, id: `${prefix}${b.id}` });
+    }
+  }
+
+  console.info(
+    '[Terrain] Composed %d tiles into terrain data (water=%d, coastlines=%d, rivers=%d, contours=%d, beaches=%d)',
+    validTiles.length,
+    water.length,
+    coastlines.length,
+    rivers.length,
+    contours.length,
+    beaches.length,
+  );
+
+  return { water, coastlines, rivers, contours, beaches };
+}
