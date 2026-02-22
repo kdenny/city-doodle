@@ -70,14 +70,6 @@ async def list_tiles(
         min_ty=min_ty,
         max_ty=max_ty,
     )
-    # CITY-582 debug: log features summary per tile (remove in CITY-584)
-    for t in tiles:
-        has_geojson = isinstance(t.features, dict) and t.features.get("type") == "FeatureCollection"
-        logger.info(
-            "[Terrain] list_tiles tile_id=%s tx=%s ty=%s has_geojson=%s features_keys=%s",
-            t.id, t.tx, t.ty, has_geojson,
-            list(t.features.keys()) if isinstance(t.features, dict) else "N/A",
-        )
     return tiles
 
 

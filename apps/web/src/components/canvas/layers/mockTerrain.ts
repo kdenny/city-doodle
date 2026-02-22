@@ -1199,5 +1199,9 @@ export function generateMockTerrain(
     rivers: riverFeatures,
     contours,
     beaches,
+    barrierIslands: [],
+    tidalFlats: [],
+    duneRidges: [],
+    inlets: [],
   };
 }

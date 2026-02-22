@@ -26,7 +26,7 @@ import {
 } from "../layers";
 import type { GeographicSetting } from "../../../api/types";
 import { TILE_SIZE, WORLD_TILES, WORLD_SIZE } from "../../../utils/worldConstants";
-import { transformTileFeatures } from "../layers/terrainTransformer";
+import { composeTileFeatures } from "../layers/terrainTransformer";
 import type { TerrainData } from "../layers";
 
 export interface CanvasLayerRefs {
@@ -52,7 +52,7 @@ interface UseCanvasInitParams {
   geographicSetting?: GeographicSetting;
   showMockFeatures: boolean;
   layerVisibility: LayerVisibility;
-  tiles: Array<{ features?: unknown; terrain_status?: string }> | undefined;
+  tiles: Array<{ features?: unknown; tx: number; ty: number; terrain_status?: string }> | undefined;
   setTerrainDataRef: MutableRefObject<((data: TerrainData) => void) | undefined>;
   onReady: () => void;
 }
@@ -125,23 +125,29 @@ export function useCanvasInit({
       const terrainLayer = new TerrainLayer();
       viewport.addChild(terrainLayer.getContainer());
 
-      // CITY-439/585: Use real terrain from tiles API if available, otherwise mock.
+      // CITY-588/585: Use real terrain from ALL tiles with features, not just the first.
       // Primary signal: terrain_status === 'ready'. Fallback: inspect features content.
-      const tileWithFeatures = tiles?.find(
+      const tilesWithFeatures = tiles?.filter(
         (t) =>
           t.terrain_status === "ready" ||
           (t.features &&
             typeof t.features === "object" &&
-            "type" in (t.features as unknown as Record<string, unknown>))
-      );
-      const terrainData = tileWithFeatures
-        ? transformTileFeatures(tileWithFeatures.features as unknown)
+            "type" in (t.features as Record<string, unknown>))
+      ) ?? [];
+
+      const terrainData = tilesWithFeatures.length > 0
+        ? composeTileFeatures(tilesWithFeatures.map((t) => ({
+            features: t.features as unknown,
+            tx: t.tx,
+            ty: t.ty,
+          })))
         : generateMockTerrain(WORLD_SIZE, seed, geographicSetting);
 
       // CITY-573: Log terrain source for debugging fallback detection
-      if (tileWithFeatures) {
+      if (tilesWithFeatures.length > 0) {
         console.info(
-          '[Terrain] Using backend-generated terrain from tile features',
+          '[Terrain] Using backend-generated terrain from %d tiles',
+          tilesWithFeatures.length,
           { seed, geographicSetting: geographicSetting ?? 'default' }
         );
       } else {

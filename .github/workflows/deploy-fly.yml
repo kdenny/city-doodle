@@ -63,7 +63,7 @@ jobs:
         working-directory: apps/api
         run: $HOME/.fly/bin/flyctl deploy --remote-only
         env:
-          FLY_API_TOKEN: ${{ secrets.FLY_API_TOKEN }}
+          FLY_API_TOKEN: ${{ secrets.FLY_API_TOKEN_API }}
 
   deploy-worker:
     name: Deploy Worker
@@ -85,4 +85,4 @@ jobs:
         working-directory: apps/worker
         run: $HOME/.fly/bin/flyctl deploy --remote-only
         env:
-          FLY_API_TOKEN: ${{ secrets.FLY_API_TOKEN }}
+          FLY_API_TOKEN: ${{ secrets.FLY_API_TOKEN_WORKER }}
