@@ -53,6 +53,7 @@ import type { District, Neighborhood, CityLimits, Road, POI, FeaturesData, Point
 import { DEFAULT_DISTRICT_PERSONALITY, DEFAULT_DENSITY_BY_TYPE } from "./layers/types";
 import type { DistrictType } from "./layers/types";
 import { detectBridges } from "./layers/bridgeDetection";
+import { detectWaterfrontRoads, applyWaterfrontTypes } from "./layers/waterfrontDetection";
 import {
   generateDistrictGeometry,
   clipDistrictAgainstExisting,
@@ -958,6 +959,26 @@ export function FeaturesProvider({
         return { ...prev, bridges };
       });
     }, 150);
+    return () => clearTimeout(timer);
+  }, [features.roads, terrainContext?.terrainData]);
+
+  // Auto-detect waterfront roads when roads or terrain change (CITY-181)
+  useEffect(() => {
+    const timer = setTimeout(() => {
+      const terrainData = terrainContext?.terrainData ?? null;
+
+      setFeaturesState((prev) => {
+        if (prev.roads.length === 0) return prev;
+
+        const result = detectWaterfrontRoads(prev.roads, terrainData);
+        const updatedRoads = applyWaterfrontTypes(prev.roads, result);
+
+        // If applyWaterfrontTypes returned the same reference, nothing changed
+        if (updatedRoads === prev.roads) return prev;
+
+        return { ...prev, roads: updatedRoads };
+      });
+    }, 200); // Slightly longer debounce than bridges since this is lower priority
     return () => clearTimeout(timer);
   }, [features.roads, terrainContext?.terrainData]);
 
