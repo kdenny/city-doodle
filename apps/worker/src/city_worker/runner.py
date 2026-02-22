@@ -3,6 +3,7 @@
 import asyncio
 import logging
 import signal
+import time
 from datetime import UTC, datetime
 from typing import Any
 from uuid import UUID
@@ -194,6 +195,70 @@ class JobRunner:
         finally:
             await session.close()
 
+    async def _update_tile_terrain_status(
+        self,
+        world_id: UUID,
+        tx: int,
+        ty: int,
+        status: str,
+        error: str | None = None,
+    ) -> None:
+        """Update terrain_status for a tile identified by world + coordinates."""
+        session = await get_session()
+        try:
+            async with session.begin():
+                values = f"terrain_status = :status"
+                if error is not None:
+                    values += ", terrain_error = :error"
+                elif status != "failed":
+                    values += ", terrain_error = NULL"
+                await session.execute(
+                    text(f"""
+                        UPDATE tiles
+                        SET {values}
+                        WHERE world_id = :world_id AND tx = :tx AND ty = :ty
+                    """),
+                    {"status": status, "error": error, "world_id": world_id, "tx": tx, "ty": ty},
+                )
+            logger.info(
+                "[Terrain] Updated terrain_status=%s for world=%s tx=%s ty=%s",
+                status, world_id, tx, ty,
+            )
+        finally:
+            await session.close()
+
+    async def _update_tiles_terrain_status_bulk(
+        self,
+        world_id: UUID,
+        tile_coords: list[tuple[int, int]],
+        status: str,
+        error: str | None = None,
+    ) -> None:
+        """Update terrain_status for multiple tiles in a single transaction."""
+        session = await get_session()
+        try:
+            async with session.begin():
+                for tx, ty in tile_coords:
+                    values = "terrain_status = :status"
+                    if error is not None:
+                        values += ", terrain_error = :error"
+                    elif status != "failed":
+                        values += ", terrain_error = NULL"
+                    await session.execute(
+                        text(f"""
+                            UPDATE tiles
+                            SET {values}
+                            WHERE world_id = :world_id AND tx = :tx AND ty = :ty
+                        """),
+                        {"status": status, "error": error, "world_id": world_id, "tx": tx, "ty": ty},
+                    )
+            logger.info(
+                "[Terrain] Bulk updated terrain_status=%s for world=%s (%d tiles)",
+                status, world_id, len(tile_coords),
+            )
+        finally:
+            await session.close()
+
     async def _handle_terrain_generation(self, params: dict) -> dict[str, Any]:
         """Handle terrain generation job.
 
@@ -225,54 +290,71 @@ class JobRunner:
 
         world_id = UUID(world_id) if isinstance(world_id, str) else world_id
 
-        # Extract world settings if provided (from WorldSettings schema)
-        world_settings = params.get("world_settings", {})
+        # CITY-585: Mark center tile as "generating"
+        await self._update_tile_terrain_status(world_id, int(center_tx), int(center_ty), "generating")
 
-        # Build terrain config from geographic setting presets + seed variation
-        loop = asyncio.get_running_loop()
-        geographic_setting = world_settings.get("geographic_setting", "coastal")
-        logger.info(
-            "[Terrain trace=%s] Job picked up: world=%s setting=%s seed=%s",
-            trace_id, world_id, geographic_setting, world_seed,
-        )
-        config_kwargs = apply_seed_variation(geographic_setting, seed=int(world_seed))
-        config_kwargs["world_seed"] = int(world_seed)
-        config_kwargs["geographic_setting"] = geographic_setting
-        # Explicit per-world overrides take precedence over preset
-        if "beach_enabled" in world_settings:
-            config_kwargs["beach_enabled"] = world_settings["beach_enabled"]
-        if "beach_width_multiplier" in world_settings:
-            config_kwargs["beach_width_multiplier"] = world_settings["beach_width_multiplier"]
-        config = TerrainConfig(**config_kwargs)
-        generator = TerrainGenerator(config)
+        try:
+            # Extract world settings if provided (from WorldSettings schema)
+            world_settings = params.get("world_settings", {})
 
-        result = await loop.run_in_executor(
-            None, generator.generate_3x3, int(center_tx), int(center_ty)
-        )
+            # Build terrain config from geographic setting presets + seed variation
+            loop = asyncio.get_running_loop()
+            geographic_setting = world_settings.get("geographic_setting", "coastal")
+            logger.info(
+                "[Terrain trace=%s] Job picked up: world=%s setting=%s seed=%s",
+                trace_id, world_id, geographic_setting, world_seed,
+            )
+            config_kwargs = apply_seed_variation(geographic_setting, seed=int(world_seed))
+            config_kwargs["world_seed"] = int(world_seed)
+            config_kwargs["geographic_setting"] = geographic_setting
+            # Explicit per-world overrides take precedence over preset
+            if "beach_enabled" in world_settings:
+                config_kwargs["beach_enabled"] = world_settings["beach_enabled"]
+            if "beach_width_multiplier" in world_settings:
+                config_kwargs["beach_width_multiplier"] = world_settings["beach_width_multiplier"]
+            config = TerrainConfig(**config_kwargs)
+            generator = TerrainGenerator(config)
 
-        all_generated = result.all_tiles()
-        total_features = sum(len(t.features) for t in all_generated)
-        logger.info(
-            "[Terrain trace=%s] Generation complete: tiles=%d features=%d",
-            trace_id, len(all_generated), total_features,
-        )
+            t_pipeline_start = time.perf_counter()
 
-        # Save generated tiles to database
-        await self._save_terrain_tiles(world_id, result, trace_id)
+            result = await loop.run_in_executor(
+                None, generator.generate_3x3, int(center_tx), int(center_ty)
+            )
 
-        # Return summary
-        all_tiles = result.all_tiles()
-        logger.info(
-            "[Terrain trace=%s] Pipeline complete: saved %d tiles for world=%s",
-            trace_id, len(all_tiles), world_id,
-        )
+            t_gen_end = time.perf_counter()
 
-        return {
-            "status": "generated",
-            "tiles_generated": len(all_tiles),
-            "total_features": total_features,
-            "center_tile": {"tx": center_tx, "ty": center_ty},
-        }
+            # Save generated tiles to database
+            await self._save_terrain_tiles(world_id, result, trace_id)
+
+            t_save_end = time.perf_counter()
+
+            gen_ms = (t_gen_end - t_pipeline_start) * 1000
+            save_ms = (t_save_end - t_gen_end) * 1000
+            total_ms = (t_save_end - t_pipeline_start) * 1000
+            logger.info(
+                "[Terrain trace=%s] Full pipeline complete in %.1fms (generation=%.1fms save=%.1fms) world=%s",
+                trace_id, total_ms, gen_ms, save_ms, world_id,
+            )
+
+            # CITY-585: Mark all generated tiles as "ready"
+            all_tiles = result.all_tiles()
+            tile_coords = [(t.tx, t.ty) for t in all_tiles]
+            await self._update_tiles_terrain_status_bulk(world_id, tile_coords, "ready")
+
+            total_features = sum(len(t.features) for t in all_tiles)
+
+            return {
+                "status": "generated",
+                "tiles_generated": len(all_tiles),
+                "total_features": total_features,
+                "center_tile": {"tx": center_tx, "ty": center_ty},
+            }
+        except Exception as e:
+            # CITY-585: Mark center tile as "failed" with error message
+            await self._update_tile_terrain_status(
+                world_id, int(center_tx), int(center_ty), "failed", error=str(e)
+            )
+            raise
 
     async def _save_terrain_tiles(self, world_id: UUID, result: Any, trace_id: str = "unknown") -> None:
         """Save generated terrain tiles to the database."""

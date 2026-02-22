@@ -81,12 +81,40 @@ export interface BeachFeature {
   name?: string;
 }
 
+export interface BarrierIslandFeature {
+  id: string;
+  polygon: Polygon;
+  islandIndex?: number;
+  width?: number;
+}
+
+export interface TidalFlatFeature {
+  id: string;
+  polygon: Polygon;
+}
+
+export interface DuneRidgeFeature {
+  id: string;
+  line: Line;
+  height?: number;
+}
+
+export interface InletFeature {
+  id: string;
+  polygon: Polygon;
+  width?: number;
+}
+
 export interface TerrainData {
   water: WaterFeature[];
   coastlines: CoastlineFeature[];
   rivers: RiverFeature[];
   contours: ContourLine[];
   beaches: BeachFeature[];
+  barrierIslands: BarrierIslandFeature[];
+  tidalFlats: TidalFlatFeature[];
+  duneRidges: DuneRidgeFeature[];
+  inlets: InletFeature[];
 }
 
 // District types matching the spec
@@ -335,6 +363,10 @@ export interface LayerVisibility {
   coastlines: boolean;
   rivers: boolean;
   contours: boolean;
+  barrierIslands: boolean;
+  tidalFlats: boolean;
+  duneRidges: boolean;
+  inlets: boolean;
   neighborhoods: boolean;
   cityLimits: boolean;
   districts: boolean;
@@ -352,6 +384,10 @@ export const DEFAULT_LAYER_VISIBILITY: LayerVisibility = {
   coastlines: true,
   rivers: true,
   contours: false,
+  barrierIslands: true,
+  tidalFlats: true,
+  duneRidges: true,
+  inlets: true,
   neighborhoods: true,
   cityLimits: true,
   districts: true,

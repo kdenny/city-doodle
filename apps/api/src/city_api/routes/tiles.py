@@ -210,8 +210,12 @@ async def get_or_create_tile(
     if existing_tile is not None:
         return existing_tile
 
-    # Create new tile with empty terrain
+    # Create new tile with empty terrain (terrain_status defaults to "pending")
     tile = await tile_repo.create_tile(db, TileCreate(world_id=world_id, tx=tx, ty=ty))
+    logger.info(
+        "Created tile with terrain_status=pending: world_id=%s tx=%s ty=%s tile_id=%s",
+        world_id, tx, ty, tile.id,
+    )
 
     # Automatically queue a terrain_generation job for the new tile,
     # including world settings so the worker can apply them
