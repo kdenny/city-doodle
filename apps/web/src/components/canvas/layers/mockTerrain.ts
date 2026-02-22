@@ -923,22 +923,42 @@ function generateCoastBeach(
 function generateLakeBeach(
   lakePoints: Point[],
   lakeCenter: Point,
-  beachWidth: number
+  beachWidth: number,
+  inletExclusions?: Point[],
+  exclusionRadius?: number
 ): Point[] {
-  const beachPolygon: Point[] = [];
-  for (const point of lakePoints) {
-    beachPolygon.push({ x: point.x, y: point.y });
-  }
-  for (let i = lakePoints.length - 1; i >= 0; i--) {
+  // CITY-579: Determine which lake shore points are near river-lake inlets
+  // and should be excluded from beach generation.
+  const keepIndices: boolean[] = lakePoints.map((pt) => {
+    if (!inletExclusions || inletExclusions.length === 0) return true;
+    const excRadius = exclusionRadius ?? beachWidth * 3;
+    return !inletExclusions.some(
+      (inlet) => Math.hypot(pt.x - inlet.x, pt.y - inlet.y) < excRadius
+    );
+  });
+
+  // Build beach polygon only from kept segments.
+  // The polygon is: inner edge (shore points) then outer edge (expanded) in reverse.
+  const keptInner: Point[] = [];
+  const keptOuter: Point[] = [];
+  for (let i = 0; i < lakePoints.length; i++) {
+    if (!keepIndices[i]) continue;
     const point = lakePoints[i];
+    keptInner.push({ x: point.x, y: point.y });
     const dx = point.x - lakeCenter.x;
     const dy = point.y - lakeCenter.y;
     const dist = Math.sqrt(dx * dx + dy * dy);
     const scale = (dist + beachWidth) / dist;
-    beachPolygon.push({
+    keptOuter.push({
       x: lakeCenter.x + dx * scale,
       y: lakeCenter.y + dy * scale,
     });
+  }
+
+  // Combine inner edge + reversed outer edge to form ring polygon
+  const beachPolygon: Point[] = [...keptInner];
+  for (let i = keptOuter.length - 1; i >= 0; i--) {
+    beachPolygon.push(keptOuter[i]);
   }
   return beachPolygon;
 }
@@ -1169,7 +1189,8 @@ export function generateMockTerrain(
   // Step 10: Build beaches
   const beaches = [];
   const beachWidth = worldSize * 0.02;
-  const lakeBeachWidth = worldSize * 0.015;
+  // CITY-579: Lake beaches ~55% smaller than ocean beaches (was only 25% smaller)
+  const lakeBeachWidth = beachWidth * 0.45;
 
   if (coastlinePoints.length > 0) {
     const inlandDir = getInlandDirection(archetype);
@@ -1182,15 +1203,46 @@ export function generateMockTerrain(
     });
   }
 
+  // CITY-579: Collect river-lake connection points (where a river originates
+  // near a lake) so we can suppress beach generation at those inlets.
+  const riverLakeInlets: Point[] = [];
+  for (const river of rivers) {
+    const start = river.points[0];
+    for (const lake of lakes) {
+      const distToCenter = Math.hypot(
+        start.x - lake.center.x,
+        start.y - lake.center.y
+      );
+      if (distToCenter < lake.radius * 1.5) {
+        riverLakeInlets.push(start);
+      }
+    }
+  }
+
   for (let i = 0; i < lakes.length; i++) {
     const lake = lakes[i];
-    const lakeBeachPoints = generateLakeBeach(lake.points, lake.center, lakeBeachWidth);
-    beaches.push({
-      id: `beach-lake-${i + 1}`,
-      beachType: "lake" as const,
-      polygon: { points: lakeBeachPoints },
-      width: lakeBeachWidth,
-    });
+    // CITY-579: Find inlets relevant to this specific lake
+    const lakeInlets = riverLakeInlets.filter(
+      (inlet) =>
+        Math.hypot(inlet.x - lake.center.x, inlet.y - lake.center.y) <
+        lake.radius * 1.5
+    );
+    const lakeBeachPoints = generateLakeBeach(
+      lake.points,
+      lake.center,
+      lakeBeachWidth,
+      lakeInlets,
+      lakeBeachWidth * 3
+    );
+    // CITY-579: Only add beach if enough points remain for a valid polygon
+    if (lakeBeachPoints.length >= 6) {
+      beaches.push({
+        id: `beach-lake-${i + 1}`,
+        beachType: "lake" as const,
+        polygon: { points: lakeBeachPoints },
+        width: lakeBeachWidth,
+      });
+    }
   }
 
   return {
