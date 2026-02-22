@@ -143,17 +143,36 @@ export function useCanvasInit({
           })))
         : generateMockTerrain(WORLD_SIZE, seed, geographicSetting);
 
-      // CITY-573: Log terrain source for debugging fallback detection
+      // CITY-587: Structured terrain source logging with tile/feature counts
       if (tilesWithFeatures.length > 0) {
+        const featureCount = tilesWithFeatures.reduce((sum, t) => {
+          const fc = t.features as unknown as { features?: unknown[] };
+          return sum + (fc?.features?.length ?? 0);
+        }, 0);
         console.info(
-          '[Terrain] Using backend-generated terrain from %d tiles',
-          tilesWithFeatures.length,
-          { seed, geographicSetting: geographicSetting ?? 'default' }
+          '[Terrain] Using backend-generated terrain',
+          {
+            seed,
+            geographicSetting: geographicSetting ?? 'default',
+            tileCount: tilesWithFeatures.length,
+            featureCount,
+          }
         );
       } else {
         console.warn(
           '[Terrain] Falling back to mock terrain generation (no valid tile features found)',
           { seed, geographicSetting: geographicSetting ?? 'default', tilesProvided: !!tiles, tileCount: tiles?.length ?? 0 }
+        );
+      }
+
+      // CITY-590: Log failed tile errors for visibility
+      const failedTile = (tiles as Array<{ terrain_status?: string; terrain_error?: string; id?: string }> | undefined)?.find(
+        (t) => t.terrain_status === 'failed'
+      );
+      if (failedTile) {
+        console.error(
+          '[Terrain] Terrain generation failed',
+          { tileId: failedTile.id, error: failedTile.terrain_error }
         );
       }
 

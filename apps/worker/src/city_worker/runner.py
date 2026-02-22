@@ -3,6 +3,7 @@
 import asyncio
 import logging
 import signal
+import time
 from datetime import UTC, datetime
 from typing import Any
 from uuid import UUID
@@ -274,7 +275,7 @@ class JobRunner:
 
         from city_worker.terrain import TerrainConfig, TerrainGenerator, apply_seed_variation
 
-        logger.info("Terrain generation job with params: %s", params)
+        trace_id = params.get("terrain_trace_id", "unknown")
 
         # Validate required params
         world_id = params.get("world_id")
@@ -299,6 +300,10 @@ class JobRunner:
             # Build terrain config from geographic setting presets + seed variation
             loop = asyncio.get_running_loop()
             geographic_setting = world_settings.get("geographic_setting", "coastal")
+            logger.info(
+                "[Terrain trace=%s] Job picked up: world=%s setting=%s seed=%s",
+                trace_id, world_id, geographic_setting, world_seed,
+            )
             config_kwargs = apply_seed_variation(geographic_setting, seed=int(world_seed))
             config_kwargs["world_seed"] = int(world_seed)
             config_kwargs["geographic_setting"] = geographic_setting
@@ -310,12 +315,26 @@ class JobRunner:
             config = TerrainConfig(**config_kwargs)
             generator = TerrainGenerator(config)
 
+            t_pipeline_start = time.perf_counter()
+
             result = await loop.run_in_executor(
                 None, generator.generate_3x3, int(center_tx), int(center_ty)
             )
 
+            t_gen_end = time.perf_counter()
+
             # Save generated tiles to database
-            await self._save_terrain_tiles(world_id, result)
+            await self._save_terrain_tiles(world_id, result, trace_id)
+
+            t_save_end = time.perf_counter()
+
+            gen_ms = (t_gen_end - t_pipeline_start) * 1000
+            save_ms = (t_save_end - t_gen_end) * 1000
+            total_ms = (t_save_end - t_pipeline_start) * 1000
+            logger.info(
+                "[Terrain trace=%s] Full pipeline complete in %.1fms (generation=%.1fms save=%.1fms) world=%s",
+                trace_id, total_ms, gen_ms, save_ms, world_id,
+            )
 
             # CITY-585: Mark all generated tiles as "ready"
             all_tiles = result.all_tiles()
@@ -331,13 +350,17 @@ class JobRunner:
                 "center_tile": {"tx": center_tx, "ty": center_ty},
             }
         except Exception as e:
-            # CITY-585: Mark center tile as "failed" with error message
-            await self._update_tile_terrain_status(
-                world_id, int(center_tx), int(center_ty), "failed", error=str(e)
-            )
+            # CITY-585/590: Mark center tile as "failed" with error message
+            logger.exception("[Terrain] Generation failed for world=%s: %s", world_id, str(e))
+            try:
+                await self._update_tile_terrain_status(
+                    world_id, int(center_tx), int(center_ty), "failed", error=str(e)
+                )
+            except Exception:
+                logger.exception("[Terrain] Failed to update terrain_status to 'failed'")
             raise
 
-    async def _save_terrain_tiles(self, world_id: UUID, result: Any) -> None:
+    async def _save_terrain_tiles(self, world_id: UUID, result: Any, trace_id: str = "unknown") -> None:
         """Save generated terrain tiles to the database."""
         from city_worker.terrain import TerrainResult
 
@@ -351,14 +374,23 @@ class JobRunner:
                     terrain_dict = tile_data.to_dict()
                     features_dict = tile_data.features_to_geojson()
 
+                    fc_type = features_dict.get("type") if isinstance(features_dict, dict) else None
+                    fc_count = len(features_dict.get("features", [])) if isinstance(features_dict, dict) and fc_type == "FeatureCollection" else 0
+                    logger.info(
+                        "[Terrain trace=%s] Saving tile tx=%s ty=%s feature_count=%d",
+                        trace_id, tile_data.tx, tile_data.ty, fc_count,
+                    )
+
                     await session.execute(
                         text("""
-                            INSERT INTO tiles (id, world_id, tx, ty, terrain_data, features, version)
-                            VALUES (gen_random_uuid(), :world_id, :tx, :ty, :terrain_data, :features, 1)
+                            INSERT INTO tiles (id, world_id, tx, ty, terrain_data, features, terrain_status, version)
+                            VALUES (gen_random_uuid(), :world_id, :tx, :ty, :terrain_data, :features, 'ready', 1)
                             ON CONFLICT (world_id, tx, ty)
                             DO UPDATE SET
                                 terrain_data = EXCLUDED.terrain_data,
                                 features = EXCLUDED.features,
+                                terrain_status = 'ready',
+                                terrain_error = NULL,
                                 version = tiles.version + 1,
                                 updated_at = now()
                         """),
@@ -372,9 +404,8 @@ class JobRunner:
                     )
 
                 logger.info(
-                    "Saved %d terrain tiles for world %s",
-                    len(result.all_tiles()),
-                    world_id,
+                    "[Terrain trace=%s] Saved %d terrain tiles for world %s",
+                    trace_id, len(result.all_tiles()), world_id,
                 )
         finally:
             await session.close()

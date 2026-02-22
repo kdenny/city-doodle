@@ -398,8 +398,8 @@ export function composeTileFeatures(
     for (const dr of tileData.duneRidges) {
       duneRidges.push({ ...dr, id: `${prefix}${dr.id}` });
     }
-    for (const inlet of tileData.inlets) {
-      inlets.push({ ...inlet, id: `${prefix}${inlet.id}` });
+    for (const il of tileData.inlets) {
+      inlets.push({ ...il, id: `${prefix}${il.id}` });
     }
   }
 
