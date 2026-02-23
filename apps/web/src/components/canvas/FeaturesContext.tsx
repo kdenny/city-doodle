@@ -230,6 +230,8 @@ export interface FeaturesDispatchValue {
   clearFeatures: () => void;
   /** Set all features data at once */
   setFeatures: (data: FeaturesData) => void;
+  /** CITY-385: Regenerate street grids for multiple districts with a shared angle */
+  regenerateDistrictGrids: (districtIds: string[], gridAngle: number) => void;
 }
 
 /** Combined interface for backward compatibility (useFeatures / useFeaturesOptional). */
@@ -2234,6 +2236,113 @@ export function FeaturesProvider({
     [worldId, updateFeatures, updateDistrictMutation, toast, transitContext]
   );
 
+  // CITY-385: Regenerate street grids for multiple districts with a shared angle
+  const regenerateDistrictGrids = useCallback(
+    (districtIds: string[], gridAngle: number) => {
+      const currentFeatures = featuresRef.current;
+      const districts = currentFeatures.districts.filter((d) => districtIds.includes(d.id));
+      if (districts.length === 0) return;
+
+      // 1. Regenerate grid for each district with the shared angle
+      const allNewRoads: Road[] = [];
+      const districtUpdates: Array<{ id: string; gridAngle: number }> = [];
+
+      for (const district of districts) {
+        const { roads: newRoads, gridAngle: actualAngle } = regenerateStreetGridWithAngle(
+          district,
+          gridAngle,
+          district.personality?.sprawl_compact ?? 0.5,
+          district.personality?.era_year
+        );
+        allNewRoads.push(...newRoads);
+        districtUpdates.push({ id: district.id, gridAngle: actualAngle });
+      }
+
+      // 2. Regenerate cross-boundary connections between all affected pairs
+      const affectedIds = new Set(districtIds);
+      const allCrossBoundaryRoads: Road[] = [];
+
+      for (const district of districts) {
+        const districtRoads = allNewRoads.filter((r) => r.districtId === district.id);
+        const otherDistricts = currentFeatures.districts.filter((d) => d.id !== district.id);
+        const otherRoads = [
+          // Include regenerated roads from other selected districts
+          ...allNewRoads.filter((r) => r.districtId !== district.id),
+          // Include existing roads from non-selected districts
+          ...currentFeatures.roads.filter(
+            (r) => !affectedIds.has(r.districtId ?? "") && !districtIds.some((id) => r.id.includes(`-${id}-`))
+          ),
+        ];
+        const crossRoads = generateCrossBoundaryConnections(
+          district,
+          districtRoads,
+          otherDistricts,
+          otherRoads
+        );
+        allCrossBoundaryRoads.push(...crossRoads);
+      }
+
+      // Deduplicate cross-boundary roads (each pair may be generated twice)
+      const seenIds = new Set<string>();
+      const uniqueCrossBoundaryRoads = allCrossBoundaryRoads.filter((r) => {
+        if (seenIds.has(r.id)) return false;
+        seenIds.add(r.id);
+        return true;
+      });
+
+      // 3. Update state: replace grids for affected districts
+      updateFeatures((prev) => {
+        const otherRoads = prev.roads.filter(
+          (r) => !affectedIds.has(r.districtId ?? "") && !districtIds.some((id) => r.id.includes(`-${id}-`))
+        );
+        const updatedDistricts = prev.districts.map((d) => {
+          const update = districtUpdates.find((u) => u.id === d.id);
+          return update ? { ...d, gridAngle: update.gridAngle } : d;
+        });
+        return {
+          ...prev,
+          districts: updatedDistricts,
+          roads: [...otherRoads, ...allNewRoads, ...uniqueCrossBoundaryRoads],
+        };
+      });
+
+      // 4. Persist each district's updated grid to API
+      if (worldId) {
+        for (const district of districts) {
+          const update = districtUpdates.find((u) => u.id === district.id);
+          if (!update || pendingCreates.current.has(district.id)) continue;
+
+          const districtRoads = allNewRoads.filter((r) => r.districtId === district.id);
+          const streetGridPayload: Record<string, unknown> = {
+            roads: districtRoads.map((r) => ({
+              id: r.id,
+              name: r.name,
+              roadClass: r.roadClass,
+              districtId: r.districtId,
+              points: r.line.points.map((p) => ({ x: p.x, y: p.y })),
+            })),
+            gridAngle: update.gridAngle,
+            personality: district.personality,
+          };
+          updateDistrictMutation.mutate(
+            { districtId: district.id, data: { street_grid: streetGridPayload }, worldId },
+            {
+              onError: (error) => {
+                console.error(`Failed to regenerate grid for district ${district.id}:`, error);
+              },
+            }
+          );
+        }
+      }
+
+      toast?.addToast(
+        `Regenerated grids for ${districts.length} districts`,
+        "success"
+      );
+    },
+    [worldId, updateFeatures, updateDistrictMutation, toast]
+  );
+
   const updateRoad = useCallback(
     (id: string, updates: Partial<Omit<Road, "id">>) => {
       // Find the current road for potential rollback
@@ -2491,6 +2600,7 @@ export function FeaturesProvider({
     removeCityLimits,
     clearFeatures,
     setFeatures,
+    regenerateDistrictGrids,
   }), [
     addDistrict,
     previewDistrictPlacement,
@@ -2511,6 +2621,7 @@ export function FeaturesProvider({
     removeCityLimits,
     clearFeatures,
     setFeatures,
+    regenerateDistrictGrids,
   ]);
 
   // Combined value for backward-compatible useFeatures/useFeaturesOptional hooks.

@@ -84,8 +84,12 @@ export type SelectedFeature = SelectedDistrict | SelectedRoad | SelectedPOI | Se
 
 interface InspectorPanelProps {
   selection: SelectedFeature;
+  /** CITY-385: Multiple selected districts for batch grid regeneration */
+  multiSelection?: SelectedDistrict[];
   onUpdate?: (feature: SelectedFeature) => void;
   onDelete?: (feature: SelectedFeature) => void;
+  /** CITY-385: Callback to regenerate grids for multiple districts with a shared angle */
+  onRegenerateGrids?: (districtIds: string[], gridAngle: number) => void;
   onClose?: () => void;
   readOnly?: boolean;
 }
@@ -165,11 +169,38 @@ const POI_TYPE_LABELS: Record<string, string> = {
 
 export function InspectorPanel({
   selection,
+  multiSelection,
   onUpdate,
   onDelete,
+  onRegenerateGrids,
   onClose,
   readOnly,
 }: InspectorPanelProps) {
+  // CITY-385: Show multi-district panel when multiple districts are selected
+  if (multiSelection && multiSelection.length > 1) {
+    return (
+      <div className="bg-white/90 backdrop-blur-sm rounded-lg shadow-lg p-4 w-64">
+        <div className="flex items-center justify-between mb-3">
+          <h3 className="text-sm font-semibold text-gray-700">Inspector</h3>
+          {onClose && (
+            <button
+              onClick={onClose}
+              className="text-gray-400 hover:text-gray-600 text-lg leading-none"
+              aria-label="Close inspector"
+            >
+              ×
+            </button>
+          )}
+        </div>
+        <MultiDistrictInspector
+          districts={multiSelection}
+          onRegenerateGrids={readOnly ? undefined : onRegenerateGrids}
+          readOnly={readOnly}
+        />
+      </div>
+    );
+  }
+
   if (!selection) {
     return (
       <div className="bg-white/90 backdrop-blur-sm rounded-lg shadow-lg p-4 w-64">
@@ -679,6 +710,108 @@ interface RoadInspectorProps {
   onUpdate?: (feature: SelectedFeature) => void;
   onDelete?: (feature: SelectedFeature) => void;
   readOnly?: boolean;
+}
+
+// CITY-385: Multi-district inspector for batch grid regeneration
+interface MultiDistrictInspectorProps {
+  districts: SelectedDistrict[];
+  onRegenerateGrids?: (districtIds: string[], gridAngle: number) => void;
+  readOnly?: boolean;
+}
+
+function MultiDistrictInspector({
+  districts,
+  onRegenerateGrids,
+  readOnly,
+}: MultiDistrictInspectorProps) {
+  // Use the average grid angle of selected districts as default
+  const avgAngle = useMemo(() => {
+    const angles = districts
+      .map((d) => d.gridAngle ?? 0)
+      .filter((a) => !isNaN(a));
+    if (angles.length === 0) return 0;
+    return angles.reduce((sum, a) => sum + a, 0) / angles.length;
+  }, [districts]);
+
+  const [sharedAngleDeg, setSharedAngleDeg] = useState(() =>
+    Math.round(radToDeg(avgAngle))
+  );
+
+  // Reset when districts change
+  useEffect(() => {
+    setSharedAngleDeg(Math.round(radToDeg(avgAngle)));
+  }, [avgAngle]);
+
+  const handleRegenerate = () => {
+    if (!onRegenerateGrids) return;
+    const ids = districts.map((d) => d.id);
+    onRegenerateGrids(ids, degToRad(sharedAngleDeg));
+  };
+
+  const districtNames = districts.map((d) => d.name).join(", ");
+
+  return (
+    <div className="space-y-3">
+      <div>
+        <p className="text-xs text-blue-600 font-medium mb-1">
+          {districts.length} districts selected
+        </p>
+        <p className="text-xs text-gray-500 truncate" title={districtNames}>
+          {districtNames}
+        </p>
+      </div>
+
+      <div>
+        <label className="block text-xs font-medium text-gray-600 mb-1">
+          Shared Grid Angle
+        </label>
+        <div className="flex items-center gap-2">
+          <input
+            type="range"
+            min={-45}
+            max={45}
+            step={1}
+            value={sharedAngleDeg}
+            onChange={(e) => setSharedAngleDeg(Number(e.target.value))}
+            className="flex-1 h-1.5 rounded-lg appearance-none cursor-pointer"
+            disabled={readOnly}
+          />
+          <span className="text-xs text-gray-500 w-10 text-right">
+            {sharedAngleDeg}°
+          </span>
+        </div>
+        <div className="flex gap-1 mt-1">
+          {[-15, 0, 15, 45].map((preset) => (
+            <button
+              key={preset}
+              onClick={() => setSharedAngleDeg(preset)}
+              className={`text-[10px] px-1.5 py-0.5 rounded border ${
+                sharedAngleDeg === preset
+                  ? "bg-blue-100 border-blue-300 text-blue-700"
+                  : "bg-gray-50 border-gray-200 text-gray-500 hover:bg-gray-100"
+              }`}
+              disabled={readOnly}
+            >
+              {preset}°
+            </button>
+          ))}
+        </div>
+      </div>
+
+      {!readOnly && onRegenerateGrids && (
+        <button
+          onClick={handleRegenerate}
+          className="w-full text-xs py-1.5 px-3 rounded bg-blue-500 hover:bg-blue-600 text-white font-medium transition-colors"
+        >
+          Regenerate Grids ({districts.length} districts)
+        </button>
+      )}
+
+      <p className="text-[10px] text-gray-400">
+        Grids will align at shared boundaries using the same angle.
+      </p>
+    </div>
+  );
 }
 
 // Road classes available for selection

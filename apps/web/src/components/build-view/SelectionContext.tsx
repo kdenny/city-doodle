@@ -34,6 +34,12 @@ interface SelectionContextValue {
   updateSelection: (feature: SelectedFeature) => void;
   /** Delete the currently selected feature */
   deleteSelection: () => void;
+  /** CITY-385: Additional selected districts for multi-select */
+  multiSelection: SelectedDistrict[];
+  /** CITY-385: Toggle a district in multi-selection (shift+click) */
+  toggleMultiSelect: (feature: SelectedDistrict) => void;
+  /** CITY-385: Clear multi-selection */
+  clearMultiSelection: () => void;
 }
 
 const SelectionContext = createContext<SelectionContextValue | null>(null);
@@ -55,10 +61,13 @@ export function SelectionProvider({
   onDelete,
 }: SelectionProviderProps) {
   const [selection, setSelection] = useState<SelectedFeature>(null);
+  // CITY-385: Multi-select state for districts
+  const [multiSelection, setMultiSelection] = useState<SelectedDistrict[]>([]);
 
   const selectFeature = useCallback(
     (feature: SelectedFeature) => {
       setSelection(feature);
+      setMultiSelection([]); // Clear multi-select on single select
       onSelect?.(feature);
     },
     [onSelect]
@@ -66,6 +75,7 @@ export function SelectionProvider({
 
   const clearSelection = useCallback(() => {
     setSelection(null);
+    setMultiSelection([]);
     onSelect?.(null);
   }, [onSelect]);
 
@@ -84,6 +94,34 @@ export function SelectionProvider({
     }
   }, [selection, onDelete]);
 
+  // CITY-385: Toggle a district in multi-selection
+  const toggleMultiSelect = useCallback(
+    (feature: SelectedDistrict) => {
+      setMultiSelection((prev) => {
+        const exists = prev.find((d) => d.id === feature.id);
+        if (exists) {
+          // Remove from multi-select
+          const next = prev.filter((d) => d.id !== feature.id);
+          // If we removed all multi-selections, keep just the primary selection
+          return next;
+        } else {
+          // Add to multi-select; also include the current primary selection if it's a district
+          let next = [...prev, feature];
+          // If primary selection is a district not in the list, add it too
+          if (selection?.type === "district" && !next.find((d) => d.id === selection.id)) {
+            next = [selection as SelectedDistrict, ...next];
+          }
+          return next;
+        }
+      });
+    },
+    [selection]
+  );
+
+  const clearMultiSelection = useCallback(() => {
+    setMultiSelection([]);
+  }, []);
+
   const value: SelectionContextValue = useMemo(
     () => ({
       selection,
@@ -91,8 +129,11 @@ export function SelectionProvider({
       clearSelection,
       updateSelection,
       deleteSelection,
+      multiSelection,
+      toggleMultiSelect,
+      clearMultiSelection,
     }),
-    [selection, selectFeature, clearSelection, updateSelection, deleteSelection]
+    [selection, selectFeature, clearSelection, updateSelection, deleteSelection, multiSelection, toggleMultiSelect, clearMultiSelection]
   );
 
   return (

@@ -127,6 +127,8 @@ export interface EventStateRef {
     updateDistrict: (id: string, updates: { polygon: { points: Array<{ x: number; y: number }> } }) => void;
   } | null;
   onFeatureSelect: ((feature: SelectedFeature | null) => void) | undefined;
+  /** CITY-385: Shift+click to toggle district multi-selection */
+  onToggleMultiSelect: ((feature: { type: "district"; id: string; name: string; districtType: string; isHistoric: boolean; fillColor?: string; gridAngle?: number }) => void) | undefined;
   isEditingAllowed: boolean;
   viewMode: string;
   setHoveredStationTooltip: Dispatch<SetStateAction<StationTooltip | null>>;
@@ -820,6 +822,20 @@ export function useCanvasEventHandlers({
         if (featuresLayerRef.current) {
           const hitResult = featuresLayerRef.current.hitTest(worldPos.x, worldPos.y);
           if (hitResult) {
+            // CITY-385: Shift+click on a district adds it to multi-selection
+            if (isShiftHeld && hitResult.type === "district" && s.onToggleMultiSelect) {
+              const district = hitResult.feature as District;
+              s.onToggleMultiSelect({
+                type: "district",
+                id: district.id,
+                name: district.name,
+                districtType: district.type,
+                isHistoric: district.isHistoric ?? false,
+                fillColor: district.fillColor,
+                gridAngle: district.gridAngle,
+              });
+              return;
+            }
             const selectedFeature = hitTestResultToSelectedFeature(hitResult);
             s.onFeatureSelect(selectedFeature);
             return;
