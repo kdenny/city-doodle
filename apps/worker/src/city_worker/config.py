@@ -10,6 +10,7 @@ class Settings(BaseSettings):
 
     # Worker configuration
     poll_interval_seconds: float = 1.0
+    max_poll_interval_seconds: float = 30.0
     max_concurrent_jobs: int = 2
     job_timeout_seconds: int = 300
 

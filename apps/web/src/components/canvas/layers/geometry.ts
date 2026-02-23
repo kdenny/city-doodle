@@ -7,7 +7,7 @@
  * see polygonUtils.ts.
  */
 
-import type { Point } from "./types";
+import type { Point, District, PolygonBounds } from "./types";
 
 /**
  * Calculate the bounding box of a polygon.
@@ -123,6 +123,36 @@ export function getPolygonCentroid(polygon: Point[]): Point {
     x: sumX / polygon.length,
     y: sumY / polygon.length,
   };
+}
+
+/**
+ * CITY-236: Compute and attach cached centroid and bounds to a District object.
+ * Call this whenever a district's polygon is created or changed.
+ * Returns the same district reference with _cachedCentroid and _cachedBounds populated.
+ */
+export function computeDistrictCache<T extends District>(district: T): T {
+  const points = district.polygon.points;
+  district._cachedCentroid = getPolygonCentroid(points);
+  district._cachedBounds = getPolygonBounds(points);
+  return district;
+}
+
+/**
+ * CITY-236: Get the centroid for a district, using the cached value if available.
+ * Falls back to computing from the polygon if the cache is missing.
+ */
+export function getDistrictCentroid(district: District): Point {
+  if (district._cachedCentroid) return district._cachedCentroid;
+  return getPolygonCentroid(district.polygon.points);
+}
+
+/**
+ * CITY-236: Get the bounds for a district, using the cached value if available.
+ * Falls back to computing from the polygon if the cache is missing.
+ */
+export function getDistrictBounds(district: District): PolygonBounds {
+  if (district._cachedBounds) return district._cachedBounds;
+  return getPolygonBounds(district.polygon.points);
 }
 
 /**

@@ -43,7 +43,14 @@ def get_engine():
 
         # Transform URL for asyncpg compatibility (sslmode -> ssl)
         db_url = transform_database_url_for_asyncpg(settings.database_url)
-        _engine = create_async_engine(db_url, echo=False)
+        _engine = create_async_engine(
+            db_url,
+            echo=False,
+            pool_size=2,
+            max_overflow=3,
+            pool_recycle=300,
+            pool_pre_ping=True,
+        )
     return _engine
 
 

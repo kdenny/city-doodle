@@ -56,6 +56,99 @@ interface PlacedLabel {
 }
 
 /**
+ * Spatial grid for O(1) amortized AABB collision detection.
+ *
+ * Divides 2D space into fixed-size cells. Labels are inserted into every cell
+ * they overlap. Collision queries only check labels in the same and adjacent
+ * cells (3x3 neighborhood), avoiding the O(n^2) full-scan.
+ */
+class SpatialGrid {
+  private cells: Map<string, PlacedLabel[]> = new Map();
+  private cellSize: number;
+
+  constructor(cellSize: number = 100) {
+    this.cellSize = cellSize;
+  }
+
+  /** Reset the grid, removing all entries. */
+  clear(): void {
+    this.cells.clear();
+  }
+
+  /** Return the cell key for a given world coordinate. */
+  private key(cx: number, cy: number): string {
+    return `${cx},${cy}`;
+  }
+
+  /** Return the cell coordinate for a world position. */
+  private cellCoord(v: number): number {
+    return Math.floor(v / this.cellSize);
+  }
+
+  /** Compute the range of cell coordinates that an AABB (with padding) spans. */
+  private cellRange(
+    label: PlacedLabel,
+    padding: number,
+  ): { minCX: number; minCY: number; maxCX: number; maxCY: number } {
+    return {
+      minCX: this.cellCoord(label.x - padding),
+      minCY: this.cellCoord(label.y - padding),
+      maxCX: this.cellCoord(label.x + label.width + padding),
+      maxCY: this.cellCoord(label.y + label.height + padding),
+    };
+  }
+
+  /** Insert a placed label into every cell it overlaps. */
+  insert(label: PlacedLabel, padding: number): void {
+    const { minCX, minCY, maxCX, maxCY } = this.cellRange(label, padding);
+    for (let cx = minCX; cx <= maxCX; cx++) {
+      for (let cy = minCY; cy <= maxCY; cy++) {
+        const k = this.key(cx, cy);
+        let bucket = this.cells.get(k);
+        if (!bucket) {
+          bucket = [];
+          this.cells.set(k, bucket);
+        }
+        bucket.push(label);
+      }
+    }
+  }
+
+  /**
+   * Check whether a candidate label (with padding) collides with any
+   * previously inserted label. Only examines cells that the candidate
+   * overlaps, so amortized cost is O(1) per query.
+   */
+  hasCollision(newLabel: PlacedLabel, padding: number): boolean {
+    const { minCX, minCY, maxCX, maxCY } = this.cellRange(newLabel, padding);
+
+    // Track already-tested labels to avoid duplicate AABB checks when a label
+    // spans multiple cells.
+    const tested = new Set<PlacedLabel>();
+
+    for (let cx = minCX; cx <= maxCX; cx++) {
+      for (let cy = minCY; cy <= maxCY; cy++) {
+        const bucket = this.cells.get(this.key(cx, cy));
+        if (!bucket) continue;
+        for (const placed of bucket) {
+          if (tested.has(placed)) continue;
+          tested.add(placed);
+          if (
+            newLabel.x - padding < placed.x + placed.width + padding &&
+            newLabel.x + newLabel.width + padding > placed.x - padding &&
+            newLabel.y - padding < placed.y + placed.height + padding &&
+            newLabel.y + newLabel.height + padding > placed.y - padding
+          ) {
+            return true;
+          }
+        }
+      }
+    }
+    return false;
+  }
+}
+
+/**
  * Seeded random number generator for deterministic results.
  */
 class SeededRandom {
@@ -84,7 +177,7 @@ export class LabelLayer {
   private debugGraphics: Graphics;
   private config: LabelConfig;
   private data: LabelLayerData | null = null;
-  private placedLabels: PlacedLabel[] = [];
+  private spatialGrid = new SpatialGrid();
   private showDebug = false;
 
   constructor(config: Partial<LabelConfig> = {}) {
@@ -132,7 +225,7 @@ export class LabelLayer {
     if (this.debugGraphics.clear) {
       this.debugGraphics.clear();
     }
-    this.placedLabels = [];
+    this.spatialGrid.clear();
 
     // Create seeded RNG for deterministic variation
     const rng = new SeededRandom(this.data.seed);
@@ -144,10 +237,7 @@ export class LabelLayer {
 
     // Place labels with collision avoidance
     for (const label of sortedLabels) {
-      const placed = this.placeLabel(label, rng);
-      if (placed) {
-        this.placedLabels.push(placed);
-      }
+      this.placeLabel(label, rng);
     }
   }
 
@@ -206,11 +296,15 @@ export class LabelLayer {
       rotation,
     };
 
-    // Check for collisions with already-placed labels
-    if (this.hasCollision(labelBounds)) {
+    // Check for collisions with already-placed labels using the spatial grid
+    const padding = 4; // Extra padding between labels
+    if (this.spatialGrid.hasCollision(labelBounds, padding)) {
       text.destroy();
       return null;
     }
+
+    // Insert into spatial grid so future labels can collide against it
+    this.spatialGrid.insert(labelBounds, padding);
 
     // Apply transformations
     text.anchor.set(0.5, 0.5);
@@ -233,24 +327,6 @@ export class LabelLayer {
     }
 
     return labelBounds;
-  }
-
-  private hasCollision(newLabel: PlacedLabel): boolean {
-    const padding = 4; // Extra padding between labels
-
-    for (const placed of this.placedLabels) {
-      // Simple AABB collision check
-      if (
-        newLabel.x - padding < placed.x + placed.width + padding &&
-        newLabel.x + newLabel.width + padding > placed.x - padding &&
-        newLabel.y - padding < placed.y + placed.height + padding &&
-        newLabel.y + newLabel.height + padding > placed.y - padding
-      ) {
-        return true;
-      }
-    }
-
-    return false;
   }
 
   destroy(): void {

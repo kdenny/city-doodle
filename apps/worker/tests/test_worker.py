@@ -412,14 +412,31 @@ async def test_poll_and_execute_respects_max_concurrent():
 
 @pytest.mark.asyncio
 async def test_poll_and_execute_no_job_available():
-    """Test _poll_and_execute handles no available jobs."""
+    """Test _poll_and_execute handles no available jobs and returns False."""
     runner = JobRunner()
 
     # Mock _claim_job to return None (no jobs)
     with patch.object(runner, "_claim_job", new_callable=AsyncMock, return_value=None):
-        # Should complete without error
-        await runner._poll_and_execute()
+        result = await runner._poll_and_execute()
+        assert result is False
         assert len(runner._active_jobs) == 0
+
+
+@pytest.mark.asyncio
+async def test_poll_and_execute_returns_true_when_job_found():
+    """Test _poll_and_execute returns True when a job is claimed and executed."""
+    runner = JobRunner()
+    job_id = uuid4()
+
+    with (
+        patch.object(
+            runner, "_claim_job", new_callable=AsyncMock,
+            return_value=(job_id, "export_png", {}),
+        ),
+        patch.object(runner, "_execute_job", new_callable=AsyncMock),
+    ):
+        result = await runner._poll_and_execute()
+        assert result is True
 
 
 # ============================================================================
@@ -457,7 +474,7 @@ def test_compute_retry_delay_progression():
 
 
 # ============================================================================
-# LISTEN/NOTIFY Tests
+# LISTEN/NOTIFY Tests (CITY-605)
 # ============================================================================
 
 
@@ -563,3 +580,109 @@ async def test_poll_and_execute_returns_false_at_capacity():
 
     result = await runner._poll_and_execute()
     assert result is False
+
+
+# ============================================================================
+# Poll Interval Backoff Tests (CITY-603)
+# ============================================================================
+
+
+def test_poll_interval_starts_at_base():
+    """Test poll interval starts at the base poll_interval_seconds."""
+    runner = JobRunner()
+    assert runner._consecutive_empty_polls == 0
+    assert runner._current_interval == 1.0
+    assert runner._compute_poll_interval() == 1.0
+
+
+def test_poll_interval_doubles_on_empty_poll():
+    """Test poll interval doubles with consecutive empty polls."""
+    runner = JobRunner()
+    runner._consecutive_empty_polls = 1
+    assert runner._compute_poll_interval() == 2.0
+    runner._consecutive_empty_polls = 2
+    assert runner._compute_poll_interval() == 4.0
+    runner._consecutive_empty_polls = 3
+    assert runner._compute_poll_interval() == 8.0
+    runner._consecutive_empty_polls = 4
+    assert runner._compute_poll_interval() == 16.0
+
+
+def test_poll_interval_caps_at_max():
+    """Test poll interval caps at max_poll_interval_seconds (default 30s)."""
+    runner = JobRunner()
+    runner._consecutive_empty_polls = 5
+    assert runner._compute_poll_interval() == 30.0  # 1 * 2^5 = 32, capped to 30
+    runner._consecutive_empty_polls = 10
+    assert runner._compute_poll_interval() == 30.0
+    runner._consecutive_empty_polls = 100
+    assert runner._compute_poll_interval() == 30.0
+
+
+def test_poll_interval_resets_on_zero_empty_polls():
+    """Test poll interval resets to base when empty polls counter is zero."""
+    runner = JobRunner()
+    runner._consecutive_empty_polls = 5
+    assert runner._compute_poll_interval() == 30.0
+
+    runner._consecutive_empty_polls = 0
+    assert runner._compute_poll_interval() == 1.0
+
+
+def test_poll_interval_progression():
+    """Test the full backoff progression: 1 -> 2 -> 4 -> 8 -> 16 -> 30 -> 30."""
+    runner = JobRunner()
+    expected = [1.0, 2.0, 4.0, 8.0, 16.0, 30.0, 30.0]
+    for i, exp in enumerate(expected):
+        runner._consecutive_empty_polls = i
+        assert runner._compute_poll_interval() == exp, (
+            f"At empty_polls={i}, expected {exp}, got {runner._compute_poll_interval()}"
+        )
+
+
+def test_poll_interval_respects_custom_max():
+    """Test poll interval respects a custom max_poll_interval_seconds."""
+    with patch("city_worker.runner.settings") as mock_settings:
+        mock_settings.poll_interval_seconds = 1.0
+        mock_settings.max_poll_interval_seconds = 10.0
+        mock_settings.max_concurrent_jobs = 2
+
+        runner = JobRunner()
+        runner._consecutive_empty_polls = 5
+        # 1 * 2^5 = 32, but capped to custom max of 10
+        assert runner._compute_poll_interval() == 10.0
+
+
+def test_poll_interval_respects_custom_base():
+    """Test poll interval respects a custom poll_interval_seconds base."""
+    with patch("city_worker.runner.settings") as mock_settings:
+        mock_settings.poll_interval_seconds = 2.0
+        mock_settings.max_poll_interval_seconds = 60.0
+        mock_settings.max_concurrent_jobs = 2
+
+        runner = JobRunner()
+        runner._consecutive_empty_polls = 0
+        assert runner._compute_poll_interval() == 2.0
+        runner._consecutive_empty_polls = 1
+        assert runner._compute_poll_interval() == 4.0
+        runner._consecutive_empty_polls = 2
+        assert runner._compute_poll_interval() == 8.0
+
+
+def test_job_runner_initializes_backoff_state():
+    """Test JobRunner initializes backoff state correctly."""
+    runner = JobRunner()
+    assert runner._consecutive_empty_polls == 0
+    assert runner._current_interval == 1.0
+
+
+def test_settings_max_poll_interval_default():
+    """Test Settings has max_poll_interval_seconds with default of 30."""
+    s = Settings()
+    assert s.max_poll_interval_seconds == 30.0
+
+
+def test_settings_max_poll_interval_custom():
+    """Test Settings accepts custom max_poll_interval_seconds."""
+    s = Settings(max_poll_interval_seconds=60.0)
+    assert s.max_poll_interval_seconds == 60.0

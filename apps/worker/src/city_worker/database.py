@@ -15,7 +15,14 @@ def _transform_url_for_asyncpg(url: str) -> str:
     return re.sub(r"sslmode=(\w+)", r"ssl=\1", url)
 
 
-engine = create_async_engine(_transform_url_for_asyncpg(settings.database_url), echo=False)
+engine = create_async_engine(
+    _transform_url_for_asyncpg(settings.database_url),
+    echo=False,
+    pool_size=1,
+    max_overflow=1,
+    pool_recycle=300,
+    pool_pre_ping=True,
+)
 async_session = async_sessionmaker(engine, class_=AsyncSession, expire_on_commit=False)
 
 

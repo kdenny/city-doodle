@@ -52,11 +52,16 @@ import type { SelectedFeature } from "../build-view/SelectionContext";
 import { useEditLockOptional } from "../shell/EditLockContext";
 import { useViewModeOptional } from "../shell/ViewModeContext";
 import type { GeographicSetting } from "../../api/types";
-import { useWorldTiles } from "../../api/hooks";
+import { useWorldTiles, useRegenerateTerrain } from "../../api/hooks";
 import { useCanvasInit, type CanvasLayerRefs } from "./hooks/useCanvasInit";
 import { useViewportSync } from "./hooks/useViewportSync";
 import { useLayerSync } from "./hooks/useLayerSync";
 import { useCanvasEventHandlers } from "./hooks/useCanvasEventHandlers";
+import {
+  TerrainLoadingOverlay,
+  TerrainErrorOverlay,
+  deriveTerrainOverlayStatus,
+} from "./TerrainOverlay";
 
 interface MapCanvasProps {
   className?: string;
@@ -169,6 +174,25 @@ export const MapCanvas = forwardRef<MapCanvasHandle, MapCanvasProps>(
   const { data: tiles } = useWorldTiles(worldId || "", {
     enabled: !!worldId,
   });
+
+  // CITY-595: Derive terrain overlay status from tile data
+  const terrainOverlay = useMemo(() => deriveTerrainOverlayStatus(tiles), [tiles]);
+  const [terrainHasLoaded, setTerrainHasLoaded] = useState(false);
+
+  // Track when terrain transitions to ready for the fade-in effect
+  useEffect(() => {
+    if (terrainOverlay.status === "ready" && !terrainHasLoaded) {
+      setTerrainHasLoaded(true);
+    }
+  }, [terrainOverlay.status, terrainHasLoaded]);
+
+  // CITY-595: Regenerate terrain mutation for retry on failure
+  const regenerateTerrain = useRegenerateTerrain();
+  const handleRetryTerrain = useCallback(() => {
+    if (terrainOverlay.failedTileId) {
+      regenerateTerrain.mutate(terrainOverlay.failedTileId);
+    }
+  }, [terrainOverlay.failedTileId, regenerateTerrain]);
 
   // Ref to setTerrainData for use in init effect (avoids stale closure)
   const setTerrainDataRef = useRef(terrainContext?.setTerrainData);
@@ -455,6 +479,19 @@ export const MapCanvas = forwardRef<MapCanvasHandle, MapCanvasProps>(
         <LayerControls
           visibility={layerVisibility}
           onChange={handleVisibilityChange}
+        />
+      )}
+      {/* CITY-595: Terrain loading skeleton overlay */}
+      {isReady && terrainOverlay.status === "loading" && (
+        <TerrainLoadingOverlay visible />
+      )}
+      {/* CITY-595: Terrain error overlay with retry */}
+      {isReady && terrainOverlay.status === "failed" && (
+        <TerrainErrorOverlay
+          visible
+          errorMessage={terrainOverlay.errorMessage}
+          onRetry={handleRetryTerrain}
+          isRetrying={regenerateTerrain.isPending}
         />
       )}
       {/* CITY-376: Station hover tooltip */}
