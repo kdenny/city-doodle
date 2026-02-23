@@ -49,6 +49,7 @@ class JobRunner:
     def __init__(self) -> None:
         self._shutdown = False
         self._active_jobs: set[UUID] = set()
+        self._last_reclaim_time: float = 0.0
 
     async def run(self) -> None:
         """Main run loop - poll for and process jobs until shutdown."""
@@ -121,17 +122,28 @@ class JobRunner:
         the job remains in 'claimed' state indefinitely. This method finds
         those stale jobs and sets them back to 'pending' with an incremented
         retry count so another worker can pick them up.
+
+        Jobs that have exhausted their max_retries are marked FAILED instead
+        of being re-queued.
+
+        Throttled to run at most once every 60 seconds to reduce DB load.
         """
+        now = time.monotonic()
+        if now - self._last_reclaim_time < 60.0:
+            return
+        self._last_reclaim_time = now
+
         cutoff = datetime.now(UTC) - timedelta(seconds=settings.job_timeout_seconds)
         session = await get_session()
         try:
             async with session.begin():
                 result = await session.execute(
                     text("""
-                        SELECT id, retry_count
+                        SELECT id, retry_count, max_retries
                         FROM jobs
                         WHERE status = :claimed
                           AND claimed_at < :cutoff
+                        FOR UPDATE SKIP LOCKED
                     """),
                     {
                         "claimed": JobStatus.CLAIMED.value,
@@ -140,37 +152,66 @@ class JobRunner:
                 )
                 stuck_jobs = result.fetchall()
 
-                for job_id, retry_count in stuck_jobs:
+                for job_id, retry_count, max_retries in stuck_jobs:
                     job_id = UUID(str(job_id))
                     new_retry_count = retry_count + 1
-                    delay_seconds = self._compute_retry_delay(retry_count)
-                    retry_after = datetime.now(UTC) + timedelta(seconds=delay_seconds)
 
-                    await session.execute(
-                        text("""
-                            UPDATE jobs
-                            SET status = :status,
-                                retry_count = :retry_count,
-                                error = :error,
-                                retry_after = :retry_after,
-                                claimed_at = NULL
-                            WHERE id = :job_id
-                        """),
-                        {
-                            "status": JobStatus.PENDING.value,
-                            "retry_count": new_retry_count,
-                            "error": "Reclaimed: job stuck in claimed state past timeout",
-                            "retry_after": retry_after,
-                            "job_id": job_id,
-                        },
-                    )
+                    if new_retry_count >= max_retries:
+                        # Retries exhausted — mark as permanently failed
+                        await session.execute(
+                            text("""
+                                UPDATE jobs
+                                SET status = :status,
+                                    retry_count = :retry_count,
+                                    error = :error,
+                                    claimed_at = NULL,
+                                    completed_at = :now
+                                WHERE id = :job_id
+                            """),
+                            {
+                                "status": JobStatus.FAILED.value,
+                                "retry_count": new_retry_count,
+                                "error": "Reclaimed: job stuck in claimed state past timeout (max retries exhausted)",
+                                "now": datetime.now(UTC),
+                                "job_id": job_id,
+                            },
+                        )
+                        logger.warning(
+                            "Reclaimed stuck job %s — marked FAILED (retry %d >= max_retries %d)",
+                            job_id,
+                            new_retry_count,
+                            max_retries,
+                        )
+                    else:
+                        delay_seconds = self._compute_retry_delay(retry_count)
+                        retry_after = datetime.now(UTC) + timedelta(seconds=delay_seconds)
 
-                    logger.warning(
-                        "Reclaimed stuck job %s (retry %d, next retry after %ds)",
-                        job_id,
-                        new_retry_count,
-                        delay_seconds,
-                    )
+                        await session.execute(
+                            text("""
+                                UPDATE jobs
+                                SET status = :status,
+                                    retry_count = :retry_count,
+                                    error = :error,
+                                    retry_after = :retry_after,
+                                    claimed_at = NULL
+                                WHERE id = :job_id
+                            """),
+                            {
+                                "status": JobStatus.PENDING.value,
+                                "retry_count": new_retry_count,
+                                "error": "Reclaimed: job stuck in claimed state past timeout",
+                                "retry_after": retry_after,
+                                "job_id": job_id,
+                            },
+                        )
+
+                        logger.warning(
+                            "Reclaimed stuck job %s (retry %d/%d, next retry after %ds)",
+                            job_id,
+                            new_retry_count,
+                            max_retries,
+                            delay_seconds,
+                        )
         finally:
             await session.close()
 
