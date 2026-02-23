@@ -21,6 +21,158 @@ import type {
 } from "./types";
 
 /**
+ * Grid-based spatial index for water features (CITY-618).
+ *
+ * Indexes water polygons and rivers by their bounding boxes so that
+ * bridge detection can quickly cull water features that cannot possibly
+ * intersect a given road segment.  Follows the same pattern used by
+ * DistrictSpatialIndex in FeaturesLayer (CITY-351).
+ */
+class WaterSpatialIndex {
+  private cellSize: number;
+  private waterGrid: Map<string, WaterFeature[]> = new Map();
+  private riverGrid: Map<string, RiverFeature[]> = new Map();
+
+  constructor(cellSize: number = 100) {
+    this.cellSize = cellSize;
+  }
+
+  /**
+   * Build the index from water features and rivers.
+   */
+  build(waterFeatures: WaterFeature[], rivers: RiverFeature[]): void {
+    this.waterGrid.clear();
+    this.riverGrid.clear();
+
+    for (const water of waterFeatures) {
+      const points = water.polygon.points;
+      if (points.length < 3) continue;
+
+      let minX = Infinity, maxX = -Infinity, minY = Infinity, maxY = -Infinity;
+      for (const p of points) {
+        if (p.x < minX) minX = p.x;
+        if (p.x > maxX) maxX = p.x;
+        if (p.y < minY) minY = p.y;
+        if (p.y > maxY) maxY = p.y;
+      }
+
+      const minCellX = Math.floor(minX / this.cellSize);
+      const minCellY = Math.floor(minY / this.cellSize);
+      const maxCellX = Math.floor(maxX / this.cellSize);
+      const maxCellY = Math.floor(maxY / this.cellSize);
+
+      for (let cx = minCellX; cx <= maxCellX; cx++) {
+        for (let cy = minCellY; cy <= maxCellY; cy++) {
+          const key = `${cx},${cy}`;
+          let bucket = this.waterGrid.get(key);
+          if (!bucket) {
+            bucket = [];
+            this.waterGrid.set(key, bucket);
+          }
+          bucket.push(water);
+        }
+      }
+    }
+
+    for (const river of rivers) {
+      const points = river.line.points;
+      if (points.length < 2) continue;
+
+      let minX = Infinity, maxX = -Infinity, minY = Infinity, maxY = -Infinity;
+      for (const p of points) {
+        if (p.x < minX) minX = p.x;
+        if (p.x > maxX) maxX = p.x;
+        if (p.y < minY) minY = p.y;
+        if (p.y > maxY) maxY = p.y;
+      }
+
+      // Expand bounds by river width so narrow rivers aren't missed
+      const halfWidth = (river.width || 3) / 2;
+      minX -= halfWidth;
+      maxX += halfWidth;
+      minY -= halfWidth;
+      maxY += halfWidth;
+
+      const minCellX = Math.floor(minX / this.cellSize);
+      const minCellY = Math.floor(minY / this.cellSize);
+      const maxCellX = Math.floor(maxX / this.cellSize);
+      const maxCellY = Math.floor(maxY / this.cellSize);
+
+      for (let cx = minCellX; cx <= maxCellX; cx++) {
+        for (let cy = minCellY; cy <= maxCellY; cy++) {
+          const key = `${cx},${cy}`;
+          let bucket = this.riverGrid.get(key);
+          if (!bucket) {
+            bucket = [];
+            this.riverGrid.set(key, bucket);
+          }
+          bucket.push(river);
+        }
+      }
+    }
+  }
+
+  /**
+   * Return candidate water features whose bounding box overlaps the given
+   * axis-aligned bounding box (defined by two corners).
+   */
+  queryWater(minX: number, minY: number, maxX: number, maxY: number): WaterFeature[] {
+    const seen = new Set<WaterFeature>();
+    const results: WaterFeature[] = [];
+
+    const minCellX = Math.floor(minX / this.cellSize);
+    const minCellY = Math.floor(minY / this.cellSize);
+    const maxCellX = Math.floor(maxX / this.cellSize);
+    const maxCellY = Math.floor(maxY / this.cellSize);
+
+    for (let cx = minCellX; cx <= maxCellX; cx++) {
+      for (let cy = minCellY; cy <= maxCellY; cy++) {
+        const bucket = this.waterGrid.get(`${cx},${cy}`);
+        if (bucket) {
+          for (const w of bucket) {
+            if (!seen.has(w)) {
+              seen.add(w);
+              results.push(w);
+            }
+          }
+        }
+      }
+    }
+
+    return results;
+  }
+
+  /**
+   * Return candidate rivers whose bounding box overlaps the given AABB.
+   */
+  queryRivers(minX: number, minY: number, maxX: number, maxY: number): RiverFeature[] {
+    const seen = new Set<RiverFeature>();
+    const results: RiverFeature[] = [];
+
+    const minCellX = Math.floor(minX / this.cellSize);
+    const minCellY = Math.floor(minY / this.cellSize);
+    const maxCellX = Math.floor(maxX / this.cellSize);
+    const maxCellY = Math.floor(maxY / this.cellSize);
+
+    for (let cx = minCellX; cx <= maxCellX; cx++) {
+      for (let cy = minCellY; cy <= maxCellY; cy++) {
+        const bucket = this.riverGrid.get(`${cx},${cy}`);
+        if (bucket) {
+          for (const r of bucket) {
+            if (!seen.has(r)) {
+              seen.add(r);
+              results.push(r);
+            }
+          }
+        }
+      }
+    }
+
+    return results;
+  }
+}
+
+/**
  * Generate a deterministic bridge ID from road and water feature identifiers.
  * Using stable inputs avoids creating new IDs on every detectBridges() call,
  * which previously caused unnecessary React state updates and re-renders.
@@ -185,11 +337,11 @@ function findRiverIntersection(
 
 /**
  * Detect bridges for a single road crossing water features.
+ * Uses the spatial index to narrow down candidate water features per segment.
  */
 function detectBridgesForRoad(
   road: Road,
-  waterFeatures: WaterFeature[],
-  rivers: RiverFeature[],
+  waterIndex: WaterSpatialIndex,
   config: Required<BridgeDetectionConfig>
 ): Bridge[] {
   const bridges: Bridge[] = [];
@@ -202,8 +354,15 @@ function detectBridgesForRoad(
     const segStart = points[i];
     const segEnd = points[i + 1];
 
-    // Check against water polygons (lakes, oceans)
-    for (const water of waterFeatures) {
+    // Compute segment bounding box for spatial query
+    const segMinX = Math.min(segStart.x, segEnd.x);
+    const segMaxX = Math.max(segStart.x, segEnd.x);
+    const segMinY = Math.min(segStart.y, segEnd.y);
+    const segMaxY = Math.max(segStart.y, segEnd.y);
+
+    // Check against nearby water polygons (lakes, oceans)
+    const nearbyWater = waterIndex.queryWater(segMinX, segMinY, segMaxX, segMaxY);
+    for (const water of nearbyWater) {
       const intersections = findPolygonIntersections(
         segStart,
         segEnd,
@@ -259,8 +418,9 @@ function detectBridgesForRoad(
       }
     }
 
-    // Check against rivers
-    for (const river of rivers) {
+    // Check against nearby rivers
+    const nearbyRivers = waterIndex.queryRivers(segMinX, segMinY, segMaxX, segMaxY);
+    for (const river of nearbyRivers) {
       const crossing = findRiverIntersection(segStart, segEnd, river);
       if (crossing) {
         const bridgeLength = distance(crossing.entry, crossing.exit);
@@ -307,9 +467,13 @@ export function detectBridges(
   const waterFeatures = terrainData.water || [];
   const rivers = terrainData.rivers || [];
 
+  // CITY-618: Build spatial index of water features to avoid O(roads × water)
+  const waterIndex = new WaterSpatialIndex();
+  waterIndex.build(waterFeatures, rivers);
+
   // Check each road for water crossings
   for (const road of roads) {
-    const roadBridges = detectBridgesForRoad(road, waterFeatures, rivers, cfg);
+    const roadBridges = detectBridgesForRoad(road, waterIndex, cfg);
 
     // For intra-district roads (local/collector), limit bridges
     // Inter-district roads (arterial/highway) have no limit

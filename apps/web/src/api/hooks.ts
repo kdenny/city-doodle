@@ -287,25 +287,32 @@ function tileHasTerrainFeatures(tile: Tile): boolean {
   );
 }
 
-/** CITY-585/590/614: Max number of poll cycles before giving up (200 * 3s = 10 minutes).
+/** CITY-585/590/614: Max number of fast poll cycles (200 * 3s = 10 minutes).
  * Coastal/bay terrain generation can take 5-7 minutes on shared-CPU workers. */
-const MAX_TERRAIN_POLL_COUNT = 200;
+const MAX_FAST_POLL_COUNT = 200;
+
+/** CITY-620: Slow poll interval (30s) after fast polling exhausts.
+ * Ensures terrain is eventually picked up even if the worker is slow or was restarted. */
+const SLOW_POLL_INTERVAL_MS = 30_000;
 
 export function useWorldTiles(
   worldId: string,
   options?: Omit<UseQueryOptions<Tile[]>, "queryKey" | "queryFn">
 ) {
-  // CITY-585/590: Track poll count to enforce max poll safety net
+  // CITY-585/590: Track poll count to enforce max fast-poll safety net
   const pollCountRef = useRef(0);
-  // CITY-613: Ensure the "stopped polling" warning is only logged once
+  // CITY-613: Ensure the "switched to slow polling" warning is only logged once
   const hasWarnedRef = useRef(false);
 
   const query = useQuery({
     queryKey: queryKeys.worldTiles(worldId),
     queryFn: () => api.tiles.list(worldId),
     enabled: !!worldId,
-    // CITY-583/585/590: Poll every 3s while tiles are pending/generating.
-    // Stops polling when all tiles are ready, any tile failed, or max polls reached.
+    // CITY-620: Refetch on window focus so returning to the tab picks up ready terrain
+    refetchOnWindowFocus: true,
+    // CITY-583/585/590/620: Poll every 3s while tiles are pending/generating.
+    // After MAX_FAST_POLL_COUNT attempts, switch to slow polling (30s) instead of stopping.
+    // Stops polling only when all tiles are ready or any tile failed.
     refetchInterval: (query) => {
       const tiles = query.state.data;
       if (!tiles || tiles.length === 0) return 3000;
@@ -320,16 +327,17 @@ export function useWorldTiles(
         return false;
       }
 
-      // Safety net: stop polling after MAX_TERRAIN_POLL_COUNT attempts
+      // CITY-620: After fast polling phase, switch to slow polling instead of stopping.
+      // This ensures terrain is eventually picked up even if worker was slow/restarted.
       pollCountRef.current += 1;
-      if (pollCountRef.current >= MAX_TERRAIN_POLL_COUNT) {
+      if (pollCountRef.current >= MAX_FAST_POLL_COUNT) {
         if (!hasWarnedRef.current) {
           console.warn(
-            `[Terrain] Stopped polling after ${MAX_TERRAIN_POLL_COUNT} attempts for world ${worldId}`
+            `[Terrain] Fast polling exhausted (${MAX_FAST_POLL_COUNT} attempts), switching to slow polling (${SLOW_POLL_INTERVAL_MS / 1000}s) for world ${worldId}`
           );
           hasWarnedRef.current = true;
         }
-        return false;
+        return SLOW_POLL_INTERVAL_MS;
       }
 
       return 3000;
