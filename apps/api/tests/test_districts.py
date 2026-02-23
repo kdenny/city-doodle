@@ -614,3 +614,72 @@ class TestDistrictTypes:
             headers={"X-User-Id": TEST_USER_ID},
         )
         assert response.status_code == 422
+
+
+class TestDeleteDistrictCleansUpRoads:
+    """CITY-298: Deleting a district should remove associated road edges and orphaned nodes."""
+
+    @pytest.mark.asyncio
+    async def test_delete_district_removes_road_edges(self, client: AsyncClient):
+        """Road edges belonging to a deleted district should be removed."""
+        headers = {"X-User-Id": TEST_USER_ID}
+
+        # Create a district
+        district_resp = await client.post(
+            f"/worlds/{TEST_WORLD_ID}/districts",
+            json={"world_id": TEST_WORLD_ID, "type": "residential", "geometry": SAMPLE_GEOMETRY},
+            headers=headers,
+        )
+        assert district_resp.status_code == 201
+        district_id = district_resp.json()["id"]
+
+        # Create two road nodes
+        node1_resp = await client.post(
+            f"/worlds/{TEST_WORLD_ID}/road-nodes",
+            json={"world_id": TEST_WORLD_ID, "position": {"x": 10, "y": 10}, "node_type": "intersection"},
+            headers=headers,
+        )
+        assert node1_resp.status_code == 201
+        node1_id = node1_resp.json()["id"]
+
+        node2_resp = await client.post(
+            f"/worlds/{TEST_WORLD_ID}/road-nodes",
+            json={"world_id": TEST_WORLD_ID, "position": {"x": 50, "y": 50}, "node_type": "intersection"},
+            headers=headers,
+        )
+        assert node2_resp.status_code == 201
+        node2_id = node2_resp.json()["id"]
+
+        # Create a road edge linked to the district
+        edge_resp = await client.post(
+            f"/worlds/{TEST_WORLD_ID}/road-edges",
+            json={
+                "world_id": TEST_WORLD_ID,
+                "from_node_id": node1_id,
+                "to_node_id": node2_id,
+                "road_class": "local",
+                "district_id": district_id,
+            },
+            headers=headers,
+        )
+        assert edge_resp.status_code == 201
+        edge_id = edge_resp.json()["id"]
+
+        # Verify the edge exists
+        edge_get = await client.get(f"/road-edges/{edge_id}", headers=headers)
+        assert edge_get.status_code == 200
+
+        # Delete the district
+        delete_resp = await client.delete(f"/districts/{district_id}", headers=headers)
+        assert delete_resp.status_code == 204
+
+        # Verify the edge is gone
+        edge_get2 = await client.get(f"/road-edges/{edge_id}", headers=headers)
+        assert edge_get2.status_code == 404
+
+        # Verify orphaned nodes are also cleaned up
+        node1_get = await client.get(f"/road-nodes/{node1_id}", headers=headers)
+        assert node1_get.status_code == 404
+
+        node2_get = await client.get(f"/road-nodes/{node2_id}", headers=headers)
+        assert node2_get.status_code == 404
