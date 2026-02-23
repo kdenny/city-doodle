@@ -64,6 +64,7 @@ class TerrainConfig:
 
     # Lake parameters
     lake_depth_threshold: float = 0.1  # Depression depth to form lake
+    max_lakes: int = 3  # Max lakes per tile (CITY-490); 0 = unlimited
 
     # Coastline smoothing iterations
     coastline_smoothing: int = 3

@@ -222,18 +222,37 @@ export class TerrainLayer {
       const points = feature.line.points;
       if (points.length < 2) continue;
 
-      this.riverGraphics.setStrokeStyle({
-        width: feature.width,
-        color: COLORS.river,
-        cap: "round",
-        join: "round",
-      });
+      const hasWidths = feature.widths && feature.widths.length === points.length;
 
-      this.riverGraphics.moveTo(points[0].x, points[0].y);
-      for (let i = 1; i < points.length; i++) {
-        this.riverGraphics.lineTo(points[i].x, points[i].y);
+      if (hasWidths) {
+        // CITY-490: Draw per-segment with varying width for tapering effect.
+        for (let i = 0; i < points.length - 1; i++) {
+          const segWidth = (feature.widths![i] + feature.widths![i + 1]) / 2;
+          this.riverGraphics.setStrokeStyle({
+            width: segWidth,
+            color: COLORS.river,
+            cap: "round",
+            join: "round",
+          });
+          this.riverGraphics.moveTo(points[i].x, points[i].y);
+          this.riverGraphics.lineTo(points[i + 1].x, points[i + 1].y);
+          this.riverGraphics.stroke();
+        }
+      } else {
+        // Fallback: uniform width
+        this.riverGraphics.setStrokeStyle({
+          width: feature.width,
+          color: COLORS.river,
+          cap: "round",
+          join: "round",
+        });
+
+        this.riverGraphics.moveTo(points[0].x, points[0].y);
+        for (let i = 1; i < points.length; i++) {
+          this.riverGraphics.lineTo(points[i].x, points[i].y);
+        }
+        this.riverGraphics.stroke();
       }
-      this.riverGraphics.stroke();
     }
   }
 
