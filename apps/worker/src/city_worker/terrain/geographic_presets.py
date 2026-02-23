@@ -35,7 +35,7 @@ GEOGRAPHIC_PRESETS: dict[str, dict[str, Any]] = {
         "bay_min_area": 400.0,
         "bay_max_depth_ratio": 5.0,
         "bay_harbor_min_area": 80000.0,
-        "bay_erosion_strength": 0.8,
+        "bay_erosion_strength": 1.2,
         "barrier_islands_enabled": False,
     },
     # ── River Valley ────────────────────────────────────────────
