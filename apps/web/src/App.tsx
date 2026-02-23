@@ -10,7 +10,8 @@ function WorldEditor() {
   const { worldId } = useParams<{ worldId: string }>()
   const { data: world, isLoading, error } = useWorld(worldId || '', {
     enabled: !!worldId,
-    retry: false,
+    retry: 2,
+    retryDelay: 1000,
   })
 
   if (!worldId) {
