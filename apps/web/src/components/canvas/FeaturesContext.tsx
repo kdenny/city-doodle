@@ -52,13 +52,10 @@ import {
 import type { District, Neighborhood, CityLimits, Road, POI, FeaturesData, Point, DistrictPersonality, RoadClass, Interchange } from "./layers";
 import { DEFAULT_DISTRICT_PERSONALITY, DEFAULT_DENSITY_BY_TYPE } from "./layers/types";
 import type { DistrictType } from "./layers/types";
-import { detectBridges } from "./layers/bridgeDetection";
-import { detectWaterfrontRoads, applyWaterfrontTypes } from "./layers/waterfrontDetection";
+import { applyWaterfrontTypes } from "./layers/waterfrontDetection";
 import {
   generateDistrictGeometry,
-  clipDistrictAgainstExisting,
   regenerateStreetGridForClippedDistrict,
-  regenerateStreetGridWithAngle,
   seedIdToDistrictType,
   type DistrictGenerationConfig,
   type GeneratedDistrict,
@@ -71,7 +68,8 @@ import {
   riverFeatureToWaterFeature,
   type ClipResult,
 } from "./layers/polygonUtils";
-import { generateInterDistrictRoads, generateCrossBoundaryConnections, generateStationAccessRoad } from "./layers/interDistrictRoads";
+import { generateStationAccessRoad } from "./layers/interDistrictRoads";
+import { runInWorker } from "../../workers";
 import {
   districtRequiresArterialAdjacency,
   generateArterialConnections,
@@ -189,7 +187,7 @@ export interface FeaturesDispatchValue {
     position: { x: number; y: number },
     seedId: string,
     config?: AddDistrictConfig
-  ) => AddDistrictResult;
+  ) => Promise<AddDistrictResult>;
   /** Preview district placement to check for water clipping */
   previewDistrictPlacement: (
     position: { x: number; y: number },
@@ -213,7 +211,7 @@ export interface FeaturesDispatchValue {
   /** Update a POI */
   updatePOI: (id: string, updates: Partial<Omit<POI, "id">>) => void;
   /** Update a district */
-  updateDistrict: (id: string, updates: Partial<Omit<District, "id">>) => void;
+  updateDistrict: (id: string, updates: Partial<Omit<District, "id">>) => Promise<void>;
   /** Optimistically update a road's properties. Persists to API and rolls back on failure. */
   updateRoad: (id: string, updates: Partial<Omit<Road, "id">>) => void;
   /** Add a neighborhood with explicit geometry */
@@ -231,7 +229,7 @@ export interface FeaturesDispatchValue {
   /** Set all features data at once */
   setFeatures: (data: FeaturesData) => void;
   /** CITY-385: Regenerate street grids for multiple districts with a shared angle */
-  regenerateDistrictGrids: (districtIds: string[], gridAngle: number) => void;
+  regenerateDistrictGrids: (districtIds: string[], gridAngle: number) => Promise<void>;
 }
 
 /** Combined interface for backward compatibility (useFeatures / useFeaturesOptional). */
@@ -931,23 +929,32 @@ export function FeaturesProvider({
   }, [worldId, apiRoadNetwork]);
 
   // Auto-detect bridges when roads or terrain change (CITY-148)
+  // CITY-235: Runs in Web Worker to avoid blocking the main thread
   useEffect(() => {
-    const timer = setTimeout(() => {
+    let cancelled = false;
+    const timer = setTimeout(async () => {
       const terrainData = terrainContext?.terrainData ?? null;
+      const currentRoads = featuresRef.current.roads;
 
-      // Get current roads from state
-      setFeaturesState((prev) => {
-        if (prev.roads.length === 0) {
-          // No roads, no bridges
-          if (prev.bridges.length === 0) {
-            return prev; // No change needed
-          }
+      if (currentRoads.length === 0) {
+        setFeaturesState((prev) => {
+          if (prev.bridges.length === 0) return prev;
           return { ...prev, bridges: [] };
-        }
+        });
+        return;
+      }
 
-        // Detect bridges for all roads
-        const { bridges } = detectBridges(prev.roads, terrainData);
+      const response = await runInWorker("detectBridges", {
+        type: "detectBridges",
+        roads: currentRoads,
+        terrainData,
+      });
 
+      if (cancelled) return;
+
+      const { bridges } = response.result;
+
+      setFeaturesState((prev) => {
         // CITY-493: Bridge IDs are now deterministic (roadId + waterFeatureId + segment),
         // so we can compare IDs directly for a reliable equality check.
         if (bridges.length === prev.bridges.length) {
@@ -957,31 +964,44 @@ export function FeaturesProvider({
             return prev; // No change needed
           }
         }
-
         return { ...prev, bridges };
       });
     }, 150);
-    return () => clearTimeout(timer);
+    return () => { cancelled = true; clearTimeout(timer); };
   }, [features.roads, terrainContext?.terrainData]);
 
   // Auto-detect waterfront roads when roads or terrain change (CITY-181)
+  // CITY-235: Runs in Web Worker to avoid blocking the main thread
   useEffect(() => {
-    const timer = setTimeout(() => {
+    let cancelled = false;
+    const timer = setTimeout(async () => {
       const terrainData = terrainContext?.terrainData ?? null;
+      const currentRoads = featuresRef.current.roads;
+
+      if (currentRoads.length === 0) return;
+
+      const response = await runInWorker("detectWaterfront", {
+        type: "detectWaterfront",
+        roads: currentRoads,
+        terrainData,
+      });
+
+      if (cancelled) return;
+
+      // Reconstruct the result format expected by applyWaterfrontTypes
+      const result = {
+        waterfrontRoads: new Map(response.result.waterfrontRoads),
+        riverfrontCount: response.result.riverfrontCount,
+        boardwalkCount: response.result.boardwalkCount,
+      };
 
       setFeaturesState((prev) => {
-        if (prev.roads.length === 0) return prev;
-
-        const result = detectWaterfrontRoads(prev.roads, terrainData);
         const updatedRoads = applyWaterfrontTypes(prev.roads, result);
-
-        // If applyWaterfrontTypes returned the same reference, nothing changed
         if (updatedRoads === prev.roads) return prev;
-
         return { ...prev, roads: updatedRoads };
       });
     }, 200); // Slightly longer debounce than bridges since this is lower priority
-    return () => clearTimeout(timer);
+    return () => { cancelled = true; clearTimeout(timer); };
   }, [features.roads, terrainContext?.terrainData]);
 
   // Helper to update features and notify
@@ -997,11 +1017,11 @@ export function FeaturesProvider({
   );
 
   const addDistrict = useCallback(
-    (
+    async (
       position: { x: number; y: number },
       seedId: string,
       config?: AddDistrictConfig
-    ): AddDistrictResult => {
+    ): Promise<AddDistrictResult> => {
       // Extract personality from config; fall back to world settings, then hardcoded defaults
       const personality = config?.personality ?? worldSettingsToPersonality(world?.settings);
 
@@ -1136,10 +1156,11 @@ export function FeaturesProvider({
 
       // CITY-384: Clip against existing districts instead of rejecting overlap
       let adjacentDistrictIds: string[] = [];
-      const districtClipResult = clipDistrictAgainstExisting(
-        generated.district.polygon.points,
-        featuresRef.current.districts,
-      );
+      const districtClipResult = (await runInWorker("clipDistrict", {
+        type: "clipDistrict",
+        newPolygon: generated.district.polygon.points,
+        existingDistricts: featuresRef.current.districts,
+      })).result;
 
       if (districtClipResult.wasClipped) {
         if (districtClipResult.tooSmall || districtClipResult.clippedPolygon.length < 3) {
@@ -1208,19 +1229,20 @@ export function FeaturesProvider({
         }
 
         // Regenerate street grid for the clipped polygon with aligned grid angle and origin
-        const clippedGridResult = regenerateStreetGridForClippedDistrict(
-          districtClipResult.clippedPolygon,
-          generated.district.id,
-          generated.district.type,
+        const clippedGridResult = (await runInWorker("regenerateGrid", {
+          type: "regenerateGrid",
+          clippedPolygon: districtClipResult.clippedPolygon,
+          districtId: generated.district.id,
+          districtType: generated.district.type,
           position,
-          personality.sprawl_compact,
-          adjacentGridAngle ?? generated.district.gridAngle,
-          transitStations.length > 0
+          sprawlCompact: personality.sprawl_compact,
+          gridAngle: adjacentGridAngle ?? generated.district.gridAngle,
+          transitOptions: transitStations.length > 0
             ? { transitStations, transitCar: personality.transit_car }
             : undefined,
           adjacentGridOrigin,
-          personality.era_year
-        );
+          eraYear: personality.era_year,
+        })).result;
         generated.roads = clippedGridResult.roads;
         generated.district.gridAngle = clippedGridResult.gridAngle;
       }
@@ -1269,19 +1291,19 @@ export function FeaturesProvider({
         // Regenerate the street grid for the clipped polygon (CITY-142)
         // Pass the existing gridAngle to preserve orientation
         // Include transit options for transit-oriented grids (CITY-168)
-        const clippedGridResult = regenerateStreetGridForClippedDistrict(
-          clipResult.clippedPolygon,
-          generated.district.id,
-          generated.district.type,
+        const clippedGridResult = (await runInWorker("regenerateGrid", {
+          type: "regenerateGrid",
+          clippedPolygon: clipResult.clippedPolygon,
+          districtId: generated.district.id,
+          districtType: generated.district.type,
           position,
-          personality.sprawl_compact,
-          generated.district.gridAngle,
-          transitStations.length > 0
+          sprawlCompact: personality.sprawl_compact,
+          gridAngle: generated.district.gridAngle,
+          transitOptions: transitStations.length > 0
             ? { transitStations, transitCar: personality.transit_car }
             : undefined,
-          undefined, // adjacentGridOrigin
-          personality.era_year
-        );
+          eraYear: personality.era_year,
+        })).result;
         generated.roads = clippedGridResult.roads;
         generated.district.gridAngle = clippedGridResult.gridAngle;
       }
@@ -1291,13 +1313,14 @@ export function FeaturesProvider({
       // Generate inter-district roads connecting to existing districts (CITY-144)
       // CITY-384: Pass adjacent district IDs so shared-boundary arterials are generated
       const currentFeatures = featuresRef.current;
-      const interDistrictResult = generateInterDistrictRoads(
-        generated.district,
-        currentFeatures.districts,
+      const interDistrictResult = (await runInWorker("interDistrictRoads", {
+        type: "interDistrictRoads",
+        newDistrict: generated.district,
+        existingDistricts: currentFeatures.districts,
         waterFeatures,
-        { avoidWater: true },
-        adjacentDistrictIds
-      );
+        config: { avoidWater: true },
+        adjacentDistrictIds,
+      })).result;
 
       // Combine internal roads with inter-district roads
       let allRoads = [...generated.roads, ...interDistrictResult.roads];
@@ -1305,12 +1328,13 @@ export function FeaturesProvider({
       // Connect collector streets across adjacent district boundaries (CITY-382)
       // This bridges the gap between independently-generated street grids so that
       // adjacent districts have a connected local road network, not just arterial links.
-      const crossBoundaryRoads = generateCrossBoundaryConnections(
-        generated.district,
-        generated.roads,
-        currentFeatures.districts,
-        currentFeatures.roads
-      );
+      const crossBoundaryRoads = (await runInWorker("crossBoundary", {
+        type: "crossBoundary",
+        newDistrict: generated.district,
+        newDistrictRoads: generated.roads,
+        existingDistricts: currentFeatures.districts,
+        existingRoads: currentFeatures.roads,
+      })).result;
       if (crossBoundaryRoads.length > 0) {
         allRoads = [...allRoads, ...crossBoundaryRoads];
       }
@@ -1912,7 +1936,7 @@ export function FeaturesProvider({
   );
 
   const updateDistrict = useCallback(
-    (id: string, updates: Partial<Omit<District, "id">>) => {
+    async (id: string, updates: Partial<Omit<District, "id">>) => {
       // Find the current district for rollback
       const currentDistrict = featuresRef.current.districts.find((d) => d.id === id);
       if (!currentDistrict) return;
@@ -1946,12 +1970,13 @@ export function FeaturesProvider({
         };
 
         // Regenerate street grid with new type's block sizes
-        const { roads: newRoads, gridAngle: actualAngle } = regenerateStreetGridWithAngle(
-          updatedDistrictForGrid,
-          currentDistrict.gridAngle ?? 0,
-          updatedPersonality.sprawl_compact ?? 0.5,
-          updatedPersonality.era_year
-        );
+        const { roads: newRoads, gridAngle: actualAngle } = (await runInWorker("regenerateGridAngle", {
+          type: "regenerateGridAngle",
+          district: updatedDistrictForGrid,
+          newGridAngle: currentDistrict.gridAngle ?? 0,
+          sprawlCompact: updatedPersonality.sprawl_compact ?? 0.5,
+          eraYear: updatedPersonality.era_year,
+        })).result;
 
         // CITY-487: Regenerate cross-boundary connections with new grid
         const updatedDistrictFinal: District = {
@@ -1963,12 +1988,13 @@ export function FeaturesProvider({
         const otherRoadsForCross = currentFeatures.roads.filter(
           (r) => r.districtId !== id && !r.id.includes(`-${id}-`)
         );
-        const crossBoundaryRoads = generateCrossBoundaryConnections(
-          updatedDistrictFinal,
-          newRoads,
-          otherDistricts,
-          otherRoadsForCross
-        );
+        const crossBoundaryRoads = (await runInWorker("crossBoundary", {
+          type: "crossBoundary",
+          newDistrict: updatedDistrictFinal,
+          newDistrictRoads: newRoads,
+          existingDistricts: otherDistricts,
+          existingRoads: otherRoadsForCross,
+        })).result;
 
         // Update district with new type, personality, and regenerated roads
         updateFeatures((prev) => {
@@ -2056,12 +2082,13 @@ export function FeaturesProvider({
           ...updates,
           polygon: updates.polygon!,
         };
-        const { roads: newRoads, gridAngle: actualAngle } = regenerateStreetGridWithAngle(
-          updatedDistrictForPoly,
-          currentDistrict.gridAngle ?? 0,
-          currentDistrict.personality?.sprawl_compact ?? 0.5,
-          currentDistrict.personality?.era_year
-        );
+        const { roads: newRoads, gridAngle: actualAngle } = (await runInWorker("regenerateGridAngle", {
+          type: "regenerateGridAngle",
+          district: updatedDistrictForPoly,
+          newGridAngle: currentDistrict.gridAngle ?? 0,
+          sprawlCompact: currentDistrict.personality?.sprawl_compact ?? 0.5,
+          eraYear: currentDistrict.personality?.era_year,
+        })).result;
 
         // Regenerate cross-boundary connections
         const currentFeaturesForPoly = featuresRef.current;
@@ -2069,12 +2096,13 @@ export function FeaturesProvider({
         const otherRoadsForPolyCross = currentFeaturesForPoly.roads.filter(
           (r) => r.districtId !== id && !r.id.includes(`-${id}-`)
         );
-        const crossBoundaryRoadsPoly = generateCrossBoundaryConnections(
-          updatedDistrictForPoly,
-          newRoads,
-          otherDistrictsForPoly,
-          otherRoadsForPolyCross
-        );
+        const crossBoundaryRoadsPoly = (await runInWorker("crossBoundary", {
+          type: "crossBoundary",
+          newDistrict: updatedDistrictForPoly,
+          newDistrictRoads: newRoads,
+          existingDistricts: otherDistrictsForPoly,
+          existingRoads: otherRoadsForPolyCross,
+        })).result;
 
         updateFeatures((prev) => {
           const otherRoads = prev.roads.filter(
@@ -2128,12 +2156,13 @@ export function FeaturesProvider({
 
       // Handle gridAngle changes by regenerating street grid
       if (updates.gridAngle !== undefined && updates.gridAngle !== currentDistrict.gridAngle) {
-        const { roads: newRoads, gridAngle: actualAngle } = regenerateStreetGridWithAngle(
-          currentDistrict,
-          updates.gridAngle,
-          currentDistrict.personality?.sprawl_compact ?? 0.5,
-          currentDistrict.personality?.era_year
-        );
+        const { roads: newRoads, gridAngle: actualAngle } = (await runInWorker("regenerateGridAngle", {
+          type: "regenerateGridAngle",
+          district: currentDistrict,
+          newGridAngle: updates.gridAngle,
+          sprawlCompact: currentDistrict.personality?.sprawl_compact ?? 0.5,
+          eraYear: currentDistrict.personality?.era_year,
+        })).result;
 
         // CITY-487: Regenerate cross-boundary connections with new grid
         const updatedDistrictForAngle: District = { ...currentDistrict, gridAngle: actualAngle };
@@ -2142,12 +2171,13 @@ export function FeaturesProvider({
         const otherRoadsForAngleCross = currentFeaturesForAngle.roads.filter(
           (r) => r.districtId !== id && !r.id.includes(`-${id}-`)
         );
-        const crossBoundaryRoadsAngle = generateCrossBoundaryConnections(
-          updatedDistrictForAngle,
-          newRoads,
-          otherDistrictsForAngle,
-          otherRoadsForAngleCross
-        );
+        const crossBoundaryRoadsAngle = (await runInWorker("crossBoundary", {
+          type: "crossBoundary",
+          newDistrict: updatedDistrictForAngle,
+          newDistrictRoads: newRoads,
+          existingDistricts: otherDistrictsForAngle,
+          existingRoads: otherRoadsForAngleCross,
+        })).result;
 
         // Update district with new gridAngle and replace its roads
         updateFeatures((prev) => {
@@ -2238,48 +2268,61 @@ export function FeaturesProvider({
 
   // CITY-385: Regenerate street grids for multiple districts with a shared angle
   const regenerateDistrictGrids = useCallback(
-    (districtIds: string[], gridAngle: number) => {
+    async (districtIds: string[], gridAngle: number) => {
       const currentFeatures = featuresRef.current;
       const districts = currentFeatures.districts.filter((d) => districtIds.includes(d.id));
       if (districts.length === 0) return;
 
-      // 1. Regenerate grid for each district with the shared angle
+      // 1. Regenerate grid for each district with the shared angle (parallel via Web Worker)
       const allNewRoads: Road[] = [];
       const districtUpdates: Array<{ id: string; gridAngle: number }> = [];
 
-      for (const district of districts) {
-        const { roads: newRoads, gridAngle: actualAngle } = regenerateStreetGridWithAngle(
-          district,
-          gridAngle,
-          district.personality?.sprawl_compact ?? 0.5,
-          district.personality?.era_year
-        );
+      const gridResults = await Promise.all(
+        districts.map((district) =>
+          runInWorker("regenerateGridAngle", {
+            type: "regenerateGridAngle",
+            district,
+            newGridAngle: gridAngle,
+            sprawlCompact: district.personality?.sprawl_compact ?? 0.5,
+            eraYear: district.personality?.era_year,
+          })
+        )
+      );
+
+      for (let i = 0; i < districts.length; i++) {
+        const { roads: newRoads, gridAngle: actualAngle } = gridResults[i].result;
         allNewRoads.push(...newRoads);
-        districtUpdates.push({ id: district.id, gridAngle: actualAngle });
+        districtUpdates.push({ id: districts[i].id, gridAngle: actualAngle });
       }
 
       // 2. Regenerate cross-boundary connections between all affected pairs
       const affectedIds = new Set(districtIds);
       const allCrossBoundaryRoads: Road[] = [];
 
-      for (const district of districts) {
-        const districtRoads = allNewRoads.filter((r) => r.districtId === district.id);
-        const otherDistricts = currentFeatures.districts.filter((d) => d.id !== district.id);
-        const otherRoads = [
-          // Include regenerated roads from other selected districts
-          ...allNewRoads.filter((r) => r.districtId !== district.id),
-          // Include existing roads from non-selected districts
-          ...currentFeatures.roads.filter(
-            (r) => !affectedIds.has(r.districtId ?? "") && !districtIds.some((id) => r.id.includes(`-${id}-`))
-          ),
-        ];
-        const crossRoads = generateCrossBoundaryConnections(
-          district,
-          districtRoads,
-          otherDistricts,
-          otherRoads
-        );
-        allCrossBoundaryRoads.push(...crossRoads);
+      const crossResults = await Promise.all(
+        districts.map((district) => {
+          const districtRoads = allNewRoads.filter((r) => r.districtId === district.id);
+          const otherDistricts = currentFeatures.districts.filter((d) => d.id !== district.id);
+          const otherRoads = [
+            // Include regenerated roads from other selected districts
+            ...allNewRoads.filter((r) => r.districtId !== district.id),
+            // Include existing roads from non-selected districts
+            ...currentFeatures.roads.filter(
+              (r) => !affectedIds.has(r.districtId ?? "") && !districtIds.some((id) => r.id.includes(`-${id}-`))
+            ),
+          ];
+          return runInWorker("crossBoundary", {
+            type: "crossBoundary",
+            newDistrict: district,
+            newDistrictRoads: districtRoads,
+            existingDistricts: otherDistricts,
+            existingRoads: otherRoads,
+          });
+        })
+      );
+
+      for (const crossResult of crossResults) {
+        allCrossBoundaryRoads.push(...crossResult.result);
       }
 
       // Deduplicate cross-boundary roads (each pair may be generated twice)

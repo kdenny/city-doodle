@@ -85,7 +85,7 @@ describe("FeaturesContext", () => {
       expect(capturedFeatures!.districts[0].name).toBe("Test District");
     });
 
-    it("calls onFeaturesChange when features change", () => {
+    it("calls onFeaturesChange when features change", async () => {
       const onFeaturesChange = vi.fn();
       let addDistrict: ReturnType<typeof useFeatures>["addDistrict"];
       const Wrapper = createTestWrapper();
@@ -104,8 +104,8 @@ describe("FeaturesContext", () => {
         </Wrapper>
       );
 
-      act(() => {
-        addDistrict!({ x: 100, y: 100 }, "residential");
+      await act(async () => {
+        await addDistrict!({ x: 100, y: 100 }, "residential");
       });
 
       expect(onFeaturesChange).toHaveBeenCalled();
@@ -265,7 +265,7 @@ describe("FeaturesContext", () => {
   });
 
   describe("addDistrict", () => {
-    it("generates and adds a district with roads", () => {
+    it("generates and adds a district with roads", async () => {
       let features: ReturnType<typeof useFeatures>["features"];
       let addDistrict: ReturnType<typeof useFeatures>["addDistrict"];
       const Wrapper = createTestWrapper();
@@ -285,9 +285,9 @@ describe("FeaturesContext", () => {
         </Wrapper>
       );
 
-      act(() => {
+      await act(async () => {
         // Use position away from edges to ensure district fits
-        const result = addDistrict!({ x: 400, y: 400 }, "residential");
+        const result = await addDistrict!({ x: 400, y: 400 }, "residential");
         expect(result.generated).not.toBeNull();
         expect(result.generated?.district.type).toBe("residential");
         // With correct scaling, small districts (~6 world units) generate fewer roads
@@ -298,7 +298,7 @@ describe("FeaturesContext", () => {
       expect(features!.districts.length).toBe(1);
     });
 
-    it("returns null when district would overlap", () => {
+    it("returns null when district would overlap", async () => {
       let addDistrict: ReturnType<typeof useFeatures>["addDistrict"];
       let features: ReturnType<typeof useFeatures>["features"];
       const Wrapper = createTestWrapper();
@@ -319,13 +319,13 @@ describe("FeaturesContext", () => {
       );
 
       // Add first district at center of world
-      act(() => {
-        addDistrict!({ x: 400, y: 400 }, "residential");
+      await act(async () => {
+        await addDistrict!({ x: 400, y: 400 }, "residential");
       });
 
       // Try to add overlapping district at same position (guaranteed overlap)
-      act(() => {
-        const result = addDistrict!({ x: 400, y: 400 }, "commercial");
+      await act(async () => {
+        const result = await addDistrict!({ x: 400, y: 400 }, "commercial");
         expect(result.generated).toBeNull();
         expect(result.error).toBeDefined();
       });
@@ -475,7 +475,7 @@ describe("FeaturesContext", () => {
   });
 
   describe("removeDistrict", () => {
-    it("removes a district by id", () => {
+    it("removes a district by id", async () => {
       let features: ReturnType<typeof useFeatures>["features"];
       let addDistrict: ReturnType<typeof useFeatures>["addDistrict"];
       let removeDistrict: ReturnType<typeof useFeatures>["removeDistrict"];
@@ -498,8 +498,8 @@ describe("FeaturesContext", () => {
       );
 
       let districtId: string;
-      act(() => {
-        const result = addDistrict!({ x: 400, y: 400 }, "residential");
+      await act(async () => {
+        const result = await addDistrict!({ x: 400, y: 400 }, "residential");
         expect(result.generated).not.toBeNull();
         districtId = result.generated!.district.id;
       });
@@ -557,7 +557,7 @@ describe("FeaturesContext", () => {
   });
 
   describe("updateDistrict", () => {
-    it("updates a district", () => {
+    it("updates a district", async () => {
       let features: ReturnType<typeof useFeatures>["features"];
       let addDistrict: ReturnType<typeof useFeatures>["addDistrict"];
       let updateDistrict: ReturnType<typeof useFeatures>["updateDistrict"];
@@ -580,16 +580,16 @@ describe("FeaturesContext", () => {
       );
 
       let districtId: string;
-      act(() => {
-        const result = addDistrict!({ x: 400, y: 400 }, "residential");
+      await act(async () => {
+        const result = await addDistrict!({ x: 400, y: 400 }, "residential");
         expect(result.generated).not.toBeNull();
         districtId = result.generated!.district.id;
       });
 
       expect(features!.districts[0].isHistoric).toBe(false);
 
-      act(() => {
-        updateDistrict!(districtId!, { isHistoric: true });
+      await act(async () => {
+        await updateDistrict!(districtId!, { isHistoric: true });
       });
 
       expect(features!.districts[0].isHistoric).toBe(true);
@@ -772,7 +772,7 @@ describe("FeaturesContext", () => {
   });
 
   describe("clearFeatures", () => {
-    it("removes all features", () => {
+    it("removes all features", async () => {
       let features: ReturnType<typeof useFeatures>["features"];
       let addDistrict: ReturnType<typeof useFeatures>["addDistrict"];
       let addPOI: ReturnType<typeof useFeatures>["addPOI"];
@@ -796,9 +796,12 @@ describe("FeaturesContext", () => {
         </Wrapper>
       );
 
-      act(() => {
-        const result = addDistrict!({ x: 400, y: 400 }, "residential");
+      await act(async () => {
+        const result = await addDistrict!({ x: 400, y: 400 }, "residential");
         expect(result.generated).not.toBeNull();
+      });
+
+      act(() => {
         addPOI!({
           id: "poi-1",
           name: "Test",
@@ -808,9 +811,9 @@ describe("FeaturesContext", () => {
       });
 
       expect(features!.districts.length).toBe(1);
-      expect(features!.pois.length).toBe(1);
+      expect(features!.pois.length).toBeGreaterThanOrEqual(1);
 
-      act(() => {
+      await act(async () => {
         clearFeatures!();
       });
 

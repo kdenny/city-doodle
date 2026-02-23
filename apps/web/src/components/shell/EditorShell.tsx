@@ -209,7 +209,7 @@ function PlacementWithSeeds({ children }: { children: ReactNode }) {
         } else if (seed.category === "airport" && !fixedSize) {
           districtSize = AIRPORT_SIZE_WORLD_UNITS;
         }
-        const result = addDistrict(position, seed.id, { personality, seed: generationSeed, size: districtSize, fixedBounds });
+        const result = await addDistrict(position, seed.id, { personality, seed: generationSeed, size: districtSize, fixedBounds });
         if (!result.generated) {
           // District overlapped, in water, or failed — return false to trigger visual error flash
           toast?.addToast(result.error || "Failed to place district", "warning");
