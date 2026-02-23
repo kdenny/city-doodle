@@ -31,6 +31,10 @@ from city_worker.terrain.water import (
 
 logger = logging.getLogger(__name__)
 
+# Water level below which rivers and lakes are suppressed entirely.
+# This prevents stray water features on dry presets like "inland".
+WATER_LEVEL_SUPPRESS_THRESHOLD = 0.2
+
 
 class TerrainGenerator:
     """Generates terrain for a 3x3 tile neighborhood."""
@@ -230,17 +234,21 @@ class TerrainGenerator:
 
         # Rivers (moved before beaches so river geometries can be used
         # to filter out river-adjacent beaches — CITY-546)
-        rivers = extract_rivers(
-            heightfield=heightfield,
-            water_level=cfg.water_level,
-            tile_x=tx,
-            tile_y=ty,
-            tile_size=cfg.tile_size,
-            flow_threshold=cfg.resolution * 0.8,  # Scale with resolution
-            min_length=cfg.min_river_length,
-            flow_accumulation=flow_accumulation,
-            coastline_polys=coastline_polys if coastline_polys else None,
-        )
+        # CITY-551: Skip river extraction when water_level is very low
+        # (e.g. inland preset) to prevent stray water features.
+        rivers: list[TerrainFeature] = []
+        if cfg.water_level >= WATER_LEVEL_SUPPRESS_THRESHOLD:
+            rivers = extract_rivers(
+                heightfield=heightfield,
+                water_level=cfg.water_level,
+                tile_x=tx,
+                tile_y=ty,
+                tile_size=cfg.tile_size,
+                flow_threshold=cfg.resolution * 0.8,  # Scale with resolution
+                min_length=cfg.min_river_length,
+                flow_accumulation=flow_accumulation,
+                coastline_polys=coastline_polys if coastline_polys else None,
+            )
         features.extend(rivers)
 
         # Collect river geometries for beach filtering (CITY-546)
@@ -270,14 +278,18 @@ class TerrainGenerator:
 
         # Lakes (moved before beaches so lake polygons can be used
         # to cap lake beach coverage — CITY-547)
-        lakes = extract_lakes(
-            heightfield=heightfield,
-            water_level=cfg.water_level,
-            tile_x=tx,
-            tile_y=ty,
-            tile_size=cfg.tile_size,
-            max_lakes=cfg.max_lakes,
-        )
+        # CITY-551: Skip lake extraction when water_level is very low
+        # (e.g. inland preset) to prevent stray water features.
+        lakes: list[TerrainFeature] = []
+        if cfg.water_level >= WATER_LEVEL_SUPPRESS_THRESHOLD:
+            lakes = extract_lakes(
+                heightfield=heightfield,
+                water_level=cfg.water_level,
+                tile_x=tx,
+                tile_y=ty,
+                tile_size=cfg.tile_size,
+                max_lakes=cfg.max_lakes,
+            )
         features.extend(lakes)
 
         # Collect lake polygons for beach filtering (CITY-547)
