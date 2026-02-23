@@ -296,6 +296,8 @@ export function useWorldTiles(
 ) {
   // CITY-585/590: Track poll count to enforce max poll safety net
   const pollCountRef = useRef(0);
+  // CITY-613: Ensure the "stopped polling" warning is only logged once
+  const hasWarnedRef = useRef(false);
 
   const query = useQuery({
     queryKey: queryKeys.worldTiles(worldId),
@@ -320,9 +322,12 @@ export function useWorldTiles(
       // Safety net: stop polling after MAX_TERRAIN_POLL_COUNT attempts
       pollCountRef.current += 1;
       if (pollCountRef.current >= MAX_TERRAIN_POLL_COUNT) {
-        console.warn(
-          `[Terrain] Stopped polling after ${MAX_TERRAIN_POLL_COUNT} attempts for world ${worldId}`
-        );
+        if (!hasWarnedRef.current) {
+          console.warn(
+            `[Terrain] Stopped polling after ${MAX_TERRAIN_POLL_COUNT} attempts for world ${worldId}`
+          );
+          hasWarnedRef.current = true;
+        }
         return false;
       }
 
@@ -331,9 +336,10 @@ export function useWorldTiles(
     ...options,
   });
 
-  // Reset poll count when worldId changes
+  // Reset poll count and warning flag when worldId changes
   useEffect(() => {
     pollCountRef.current = 0;
+    hasWarnedRef.current = false;
   }, [worldId]);
 
   return query;
