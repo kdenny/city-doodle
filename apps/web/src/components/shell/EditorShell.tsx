@@ -280,7 +280,7 @@ function SelectionWithFeatures({ children }: { children: ReactNode }) {
           personality: feature.personality,
           gridAngle: feature.gridAngle,
           fillColor: feature.fillColor,
-        });
+        }).catch((err) => console.error("CITY-235: Failed to update district from inspector:", err));
       } else if (feature.type === "road") {
         updateRoad(feature.id, {
           name: feature.name,

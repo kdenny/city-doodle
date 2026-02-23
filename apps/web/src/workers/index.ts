@@ -129,6 +129,11 @@ function getWorker(): Worker | null {
 /**
  * Execute a computation in the Web Worker.
  *
+ * If the worker crashes mid-request (onerror fires), the promise rejects.
+ * When that happens and useFallback has been set to true, we automatically
+ * retry the same request on the main thread so callers don't see a failure
+ * for a transient worker crash.
+ *
  * @returns Promise that resolves with the worker's response
  */
 function sendToWorker(request: WorkerRequest): Promise<WorkerResponse> {
@@ -145,6 +150,17 @@ function sendToWorker(request: WorkerRequest): Promise<WorkerResponse> {
 
     const message: WorkerRequestMessage = { id, request };
     w.postMessage(message);
+  }).catch((err) => {
+    // If the worker crashed and we've switched to fallback mode,
+    // retry this request on the main thread instead of propagating the error.
+    if (useFallback) {
+      console.info(
+        "CITY-235: Retrying request on main thread after worker crash",
+        request.type
+      );
+      return runOnMainThread(request);
+    }
+    throw err;
   });
 }
 
@@ -335,4 +351,13 @@ export function terminateWorker(): void {
  */
 export function isWorkerActive(): boolean {
   return !useFallback && (worker !== null || typeof Worker !== "undefined");
+}
+
+// ---------------------------------------------------------------------------
+// HMR cleanup — terminate the worker when Vite hot-reloads this module
+// to prevent stale worker instances from accumulating during development.
+// ---------------------------------------------------------------------------
+
+if (import.meta.hot) {
+  import.meta.hot.dispose(() => terminateWorker());
 }

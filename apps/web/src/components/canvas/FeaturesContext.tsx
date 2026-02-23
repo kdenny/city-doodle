@@ -1941,6 +1941,7 @@ export function FeaturesProvider({
       const currentDistrict = featuresRef.current.districts.find((d) => d.id === id);
       if (!currentDistrict) return;
 
+      try {
       // Handle district type changes by updating density defaults and regenerating street grid
       // (CITY-297: block sizes vary by type, so grid must be regenerated)
       const typeChanged = updates.type !== undefined && updates.type !== currentDistrict.type;
@@ -2262,6 +2263,10 @@ export function FeaturesProvider({
           );
         }
       }
+      } catch (err) {
+        console.error("CITY-235: updateDistrict worker computation failed:", err);
+        toast?.addToast("Failed to update district. Please try again.", "error");
+      }
     },
     [worldId, updateFeatures, updateDistrictMutation, toast, transitContext]
   );
@@ -2273,6 +2278,7 @@ export function FeaturesProvider({
       const districts = currentFeatures.districts.filter((d) => districtIds.includes(d.id));
       if (districts.length === 0) return;
 
+      try {
       // 1. Regenerate grid for each district with the shared angle (parallel via Web Worker)
       const allNewRoads: Road[] = [];
       const districtUpdates: Array<{ id: string; gridAngle: number }> = [];
@@ -2382,6 +2388,10 @@ export function FeaturesProvider({
         `Regenerated grids for ${districts.length} districts`,
         "success"
       );
+      } catch (err) {
+        console.error("CITY-235: regenerateDistrictGrids worker computation failed:", err);
+        toast?.addToast("Failed to regenerate district grids. Please try again.", "error");
+      }
     },
     [worldId, updateFeatures, updateDistrictMutation, toast]
   );
