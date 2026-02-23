@@ -133,7 +133,35 @@ async def get_or_create_tile(db: AsyncSession, world_id: UUID, tx: int, ty: int)
     # Row already existed (conflict), fetch it
     await db.rollback()
     existing = await get_tile_by_coords(db, world_id, tx, ty)
-    return existing, False  # type: ignore[return-value]
+
+    if existing is not None:
+        return existing, False
+
+    # The conflicting row was deleted between our INSERT and SELECT.
+    # Retry the INSERT once — it should succeed now that the row is gone.
+    logger.warning(
+        "Tile (%s, %d, %d) vanished between conflict and SELECT; retrying INSERT",
+        world_id,
+        tx,
+        ty,
+    )
+    retry_result = await db.execute(stmt)
+    retried_tile = retry_result.scalar_one_or_none()
+
+    if retried_tile is not None:
+        await db.commit()
+        return _to_schema(retried_tile), True
+
+    # Another conflict on the retry — fetch one more time
+    await db.rollback()
+    existing = await get_tile_by_coords(db, world_id, tx, ty)
+    if existing is not None:
+        return existing, False
+
+    raise RuntimeError(
+        f"Failed to get or create tile ({world_id}, {tx}, {ty}) "
+        "after retry — persistent race condition"
+    )
 
 
 def _to_schema(tile: TileModel) -> Tile:
