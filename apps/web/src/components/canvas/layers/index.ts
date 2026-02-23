@@ -46,6 +46,7 @@ export {
   getPolygonBounds,
   splitPolygonWithLine,
   findDistrictAtPoint,
+  WaterSpatialIndex,
 } from "./polygonUtils";
 export type { ClipResult, SplitResult } from "./polygonUtils";
 export type {
