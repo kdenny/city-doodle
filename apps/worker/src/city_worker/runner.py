@@ -49,6 +49,21 @@ class JobRunner:
     def __init__(self) -> None:
         self._shutdown = False
         self._active_jobs: set[UUID] = set()
+        self._consecutive_empty_polls: int = 0
+        self._current_interval: float = settings.poll_interval_seconds
+
+    def _compute_poll_interval(self) -> float:
+        """Compute the next poll interval using exponential backoff.
+
+        Starts at poll_interval_seconds (default 1s), doubles on each
+        consecutive empty poll, and caps at max_poll_interval_seconds
+        (default 30s). Resets to the base interval when a job is found.
+        """
+        if self._consecutive_empty_polls == 0:
+            return settings.poll_interval_seconds
+        base = settings.poll_interval_seconds
+        interval = base * (2 ** self._consecutive_empty_polls)
+        return min(interval, settings.max_poll_interval_seconds)
 
     async def run(self) -> None:
         """Main run loop - poll for and process jobs until shutdown."""
@@ -57,13 +72,18 @@ class JobRunner:
 
         while not self._shutdown:
             try:
-                await self._poll_and_execute()
+                job_found = await self._poll_and_execute()
+                if job_found:
+                    self._consecutive_empty_polls = 0
+                else:
+                    self._consecutive_empty_polls += 1
             except Exception:
                 logger.exception("Error in job polling loop")
-                await asyncio.sleep(settings.poll_interval_seconds)
+                self._consecutive_empty_polls += 1
 
             if not self._shutdown:
-                await asyncio.sleep(settings.poll_interval_seconds)
+                self._current_interval = self._compute_poll_interval()
+                await asyncio.sleep(self._current_interval)
 
         logger.info("Job runner shutting down, waiting for active jobs...")
         await self._wait_for_active_jobs()
@@ -93,14 +113,17 @@ class JobRunner:
                 break
             await asyncio.sleep(0.5)
 
-    async def _poll_and_execute(self) -> None:
-        """Poll for a pending job and execute it."""
+    async def _poll_and_execute(self) -> bool:
+        """Poll for a pending job and execute it.
+
+        Returns True if a job was found and executed, False otherwise.
+        """
         if len(self._active_jobs) >= settings.max_concurrent_jobs:
-            return
+            return False
 
         job = await self._claim_job()
         if job is None:
-            return
+            return False
 
         job_id, job_type, params = job
         self._active_jobs.add(job_id)
@@ -108,6 +131,7 @@ class JobRunner:
             await self._execute_job(job_id, job_type, params)
         finally:
             self._active_jobs.discard(job_id)
+        return True
 
     async def _claim_job(self) -> tuple[UUID, str, dict] | None:
         """Claim a pending job using FOR UPDATE SKIP LOCKED.
@@ -435,12 +459,12 @@ class JobRunner:
 
             t_save_end = time.perf_counter()
 
-            gen_ms = (t_gen_end - t_pipeline_start) * 1000
-            save_ms = (t_save_end - t_gen_end) * 1000
-            total_ms = (t_save_end - t_pipeline_start) * 1000
+            gen_s = t_gen_end - t_pipeline_start
+            save_s = t_save_end - t_gen_end
+            total_s = t_save_end - t_pipeline_start
             logger.info(
-                "[Terrain trace=%s] Full pipeline complete in %.1fms (generation=%.1fms save=%.1fms) world=%s",
-                trace_id, total_ms, gen_ms, save_ms, world_id,
+                "[Terrain trace=%s] Full pipeline complete in %.1fs (generation=%.1fs save=%.1fs) world=%s setting=%s",
+                trace_id, total_s, gen_s, save_s, world_id, geographic_setting,
             )
 
             # CITY-585: Mark all generated tiles as "ready"

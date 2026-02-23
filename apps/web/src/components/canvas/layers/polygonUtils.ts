@@ -9,6 +9,102 @@ import { metersToWorldUnits } from "./districtGenerator";
 import { WORLD_SIZE } from "../../../utils/worldConstants";
 
 /**
+ * CITY-617: Grid-based spatial index for O(1) water feature proximity lookups.
+ *
+ * Divides the world into square cells and maps each cell to the water features
+ * whose bounding box overlaps it. Build once per terrain update via {@link build},
+ * then query with a bounding box to get candidate water features.
+ *
+ * Complexity: O(W) to build (proportional to total bounding-box area); O(1) per query.
+ */
+export class WaterSpatialIndex {
+  private cellSize: number;
+  private grid: Map<string, WaterFeature[]> = new Map();
+
+  constructor(cellSize: number = 50) {
+    this.cellSize = cellSize;
+  }
+
+  /**
+   * Build the index from a set of water features.
+   * @param waterFeatures - Full list of water features to index
+   */
+  build(waterFeatures: WaterFeature[]): void {
+    this.grid.clear();
+
+    for (const water of waterFeatures) {
+      const points = water.polygon.points;
+      if (points.length < 3) continue;
+
+      // Compute axis-aligned bounding box
+      let minX = Infinity, maxX = -Infinity, minY = Infinity, maxY = -Infinity;
+      for (const p of points) {
+        if (p.x < minX) minX = p.x;
+        if (p.x > maxX) maxX = p.x;
+        if (p.y < minY) minY = p.y;
+        if (p.y > maxY) maxY = p.y;
+      }
+
+      const minCellX = Math.floor(minX / this.cellSize);
+      const minCellY = Math.floor(minY / this.cellSize);
+      const maxCellX = Math.floor(maxX / this.cellSize);
+      const maxCellY = Math.floor(maxY / this.cellSize);
+
+      for (let cx = minCellX; cx <= maxCellX; cx++) {
+        for (let cy = minCellY; cy <= maxCellY; cy++) {
+          const key = `${cx},${cy}`;
+          let bucket = this.grid.get(key);
+          if (!bucket) {
+            bucket = [];
+            this.grid.set(key, bucket);
+          }
+          bucket.push(water);
+        }
+      }
+    }
+  }
+
+  /**
+   * Return candidate water features whose bounding box overlaps the given
+   * query bounding box. Results are deduplicated.
+   */
+  queryBounds(minX: number, minY: number, maxX: number, maxY: number): WaterFeature[] {
+    const minCellX = Math.floor(minX / this.cellSize);
+    const minCellY = Math.floor(minY / this.cellSize);
+    const maxCellX = Math.floor(maxX / this.cellSize);
+    const maxCellY = Math.floor(maxY / this.cellSize);
+
+    const seen = new Set<WaterFeature>();
+    const results: WaterFeature[] = [];
+
+    for (let cx = minCellX; cx <= maxCellX; cx++) {
+      for (let cy = minCellY; cy <= maxCellY; cy++) {
+        const key = `${cx},${cy}`;
+        const bucket = this.grid.get(key);
+        if (bucket) {
+          for (const water of bucket) {
+            if (!seen.has(water)) {
+              seen.add(water);
+              results.push(water);
+            }
+          }
+        }
+      }
+    }
+
+    return results;
+  }
+
+  /**
+   * Return candidate water features near a single point (queries the cell
+   * containing the point plus a buffer).
+   */
+  queryPoint(x: number, y: number, buffer: number = 0): WaterFeature[] {
+    return this.queryBounds(x - buffer, y - buffer, x + buffer, y + buffer);
+  }
+}
+
+/**
  * Check if a point is inside a polygon using ray casting algorithm.
  */
 export function pointInPolygon(point: Point, polygon: Point[]): boolean {
@@ -112,14 +208,24 @@ export function polygonArea(points: Point[]): number {
 
 /**
  * Check if a district polygon overlaps with any water features.
+ *
+ * CITY-617: When a {@link WaterSpatialIndex} is provided, only nearby water
+ * features are tested instead of the full list, reducing O(n*m) to O(n*k)
+ * where k is the number of nearby features.
  */
 export function overlapsWater(
   districtPoints: Point[],
-  waterFeatures: WaterFeature[]
+  waterFeatures: WaterFeature[],
+  spatialIndex?: WaterSpatialIndex
 ): boolean {
   const districtBounds = getPolygonBounds(districtPoints);
 
-  for (const water of waterFeatures) {
+  // CITY-617: Use spatial index to narrow candidates when available
+  const candidates = spatialIndex
+    ? spatialIndex.queryBounds(districtBounds.minX, districtBounds.minY, districtBounds.maxX, districtBounds.maxY)
+    : waterFeatures;
+
+  for (const water of candidates) {
     const waterBounds = getPolygonBounds(water.polygon.points);
 
     // Quick bounds check
@@ -273,19 +379,36 @@ function lineLineIntersection(
  * For simplicity, we use a point-based approach:
  * 1. Find points inside land (not in any water)
  * 2. Reconstruct polygon from valid segments
+ *
+ * CITY-617: When a {@link WaterSpatialIndex} is provided, only nearby water
+ * features are tested instead of the full list.
  */
 export function clipDistrictToLand(
   districtPoints: Point[],
-  waterFeatures: WaterFeature[]
+  waterFeatures: WaterFeature[],
+  spatialIndex?: WaterSpatialIndex
 ): Point[] {
   if (waterFeatures.length === 0) {
+    return districtPoints;
+  }
+
+  // CITY-617: Use spatial index to narrow candidates when available
+  let candidates: WaterFeature[];
+  if (spatialIndex) {
+    const bounds = getPolygonBounds(districtPoints);
+    candidates = spatialIndex.queryBounds(bounds.minX, bounds.minY, bounds.maxX, bounds.maxY);
+  } else {
+    candidates = waterFeatures;
+  }
+
+  if (candidates.length === 0) {
     return districtPoints;
   }
 
   // For each water feature, clip the district
   let result = [...districtPoints];
 
-  for (const water of waterFeatures) {
+  for (const water of candidates) {
     const waterBounds = getPolygonBounds(water.polygon.points);
     const districtBounds = getPolygonBounds(result);
 
@@ -720,18 +843,23 @@ export function findDistrictAtPoint(
 /**
  * Clip a district polygon against water features and validate.
  *
+ * CITY-617: When a {@link WaterSpatialIndex} is provided, it is passed through
+ * to {@link overlapsWater} and {@link clipDistrictToLand} for faster lookups.
+ *
  * @param districtPoints - The district polygon to clip
  * @param waterFeatures - Water features to clip against
  * @param districtType - Type of district for minimum size rules
+ * @param spatialIndex - Optional spatial index for faster water feature lookups
  * @returns ClipResult with clipped polygon and validation info
  */
 export function clipAndValidateDistrict(
   districtPoints: Point[],
   waterFeatures: WaterFeature[],
-  districtType: string
+  districtType: string,
+  spatialIndex?: WaterSpatialIndex
 ): ClipResult {
   const originalArea = Math.abs(polygonArea(districtPoints));
-  const hasWaterOverlap = overlapsWater(districtPoints, waterFeatures);
+  const hasWaterOverlap = overlapsWater(districtPoints, waterFeatures, spatialIndex);
 
   if (!hasWaterOverlap) {
     return {
@@ -744,7 +872,7 @@ export function clipAndValidateDistrict(
     };
   }
 
-  const clippedPolygon = clipDistrictToLand(districtPoints, waterFeatures);
+  const clippedPolygon = clipDistrictToLand(districtPoints, waterFeatures, spatialIndex);
   const clippedArea = clippedPolygon.length >= 3 ? Math.abs(polygonArea(clippedPolygon)) : 0;
   const tooSmall = !meetsMinimumSize(clippedPolygon, districtType);
 

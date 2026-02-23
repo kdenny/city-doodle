@@ -244,8 +244,25 @@ async def get_or_create_tile(
         )
     except Exception:
         logger.exception(
-            "[Terrain trace=%s] Failed to queue job: world=%s tx=%s ty=%s",
-            terrain_trace_id, world_id, tx, ty,
+            "[Terrain trace=%s] Failed to queue job: world=%s tx=%s ty=%s — deleting orphaned tile %s",
+            terrain_trace_id, world_id, tx, ty, tile.id,
+        )
+        # Roll back any broken session state before attempting cleanup
+        await db.rollback()
+        # Delete the orphaned tile so it doesn't stay in 'pending' with no job
+        try:
+            orphan = await tile_repo.get_tile(db, tile.id)
+            if orphan is not None:
+                await db.delete(orphan)
+                await db.commit()
+        except Exception:
+            logger.exception(
+                "[Terrain trace=%s] Failed to clean up orphaned tile %s",
+                terrain_trace_id, tile.id,
+            )
+        raise HTTPException(
+            status_code=status.HTTP_503_SERVICE_UNAVAILABLE,
+            detail="Terrain generation job could not be queued. Please retry.",
         )
 
     return tile
@@ -314,6 +331,23 @@ async def regenerate_terrain(
         logger.exception(
             "[Terrain] Failed to queue terrain regeneration job: tile_id=%s world_id=%s",
             tile_id, tile_model.world_id,
+        )
+        # Roll back any broken session state before attempting cleanup
+        await db.rollback()
+        # Revert terrain_status so the tile doesn't stay orphaned in 'pending'
+        try:
+            tile_model.terrain_status = "failed"
+            tile_model.terrain_error = "Failed to queue terrain generation job"
+            await db.commit()
+            await db.refresh(tile_model)
+        except Exception:
+            logger.exception(
+                "[Terrain] Failed to revert terrain_status for tile %s",
+                tile_id,
+            )
+        raise HTTPException(
+            status_code=status.HTTP_503_SERVICE_UNAVAILABLE,
+            detail="Terrain generation job could not be queued. Please retry.",
         )
 
     return tile_repo._to_schema(tile_model)
