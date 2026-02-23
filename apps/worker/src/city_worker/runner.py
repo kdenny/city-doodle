@@ -235,7 +235,7 @@ class JobRunner:
                     """),
                     {
                         "status": status.value,
-                        "result": result,
+                        "result": json.dumps(result, cls=_NumpySafeEncoder) if result else None,
                         "error": error,
                         "now": datetime.now(UTC),
                         "job_id": job_id,
