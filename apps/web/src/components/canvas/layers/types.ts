@@ -54,7 +54,9 @@ export interface CoastlineFeature {
 export interface RiverFeature {
   id: string;
   line: Line;
-  width: number; // varies along length
+  width: number; // max width (backward compat)
+  /** Per-vertex widths for tapering (CITY-490). Length matches line.points. */
+  widths?: number[];
   /** Auto-generated or user-edited name */
   name?: string;
 }
@@ -208,6 +210,15 @@ export type RoadClass =
   | "local"
   | "trail";
 
+/**
+ * Waterfront road type for roads adjacent to water features.
+ * - "riverfront_drive": Road running along a river, lake, or ocean waterfront.
+ *   Rendered wider with a landscaped median color.
+ * - "boardwalk": Pedestrian path adjacent to a beach. Rendered with wooden
+ *   plank-style dashed pattern.
+ */
+export type WaterfrontType = "riverfront_drive" | "boardwalk";
+
 export interface Road {
   id: string;
   name?: string;
@@ -215,6 +226,12 @@ export interface Road {
   line: Line;
   /** The district this road belongs to, if any. Used for ownership association. */
   districtId?: string;
+  /**
+   * CITY-181: Waterfront designation for roads adjacent to water features.
+   * Set by `detectWaterfrontRoads()` after terrain and road generation.
+   * Null/undefined means the road is not a waterfront road.
+   */
+  waterfrontType?: WaterfrontType;
 }
 
 /**

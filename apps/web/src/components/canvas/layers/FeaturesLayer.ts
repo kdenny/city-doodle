@@ -49,6 +49,7 @@ import type {
   POIType,
   Point,
   WaterCrossingType,
+  WaterfrontType,
   Interchange,
 } from "./types";
 
@@ -124,6 +125,44 @@ const ROAD_STYLES: Record<RoadClass, RoadStyle> = {
     casingColor: 0x000000,
     dashed: true,
     minZoom: 0.4, // CITY-557: Only when zoomed in (was 0.15, CITY-500)
+  },
+};
+
+// CITY-181: Waterfront road style overrides.
+// Waterfront roads render with a distinct style on top of their base road class.
+// The base road (casing + fill) is drawn normally; the waterfront overlay adds
+// a colored median line and/or modified width.
+interface WaterfrontStyle {
+  /** Width multiplier applied to the base road width */
+  widthMultiplier: number;
+  /** Median line color (drawn as a thinner line on top of the fill) */
+  medianColor: number;
+  /** Median line width as a fraction of the scaled road width */
+  medianWidthFraction: number;
+  /** Override fill color (replaces the base road class color) */
+  fillColor: number;
+  /** Override casing color */
+  casingColor: number;
+  /** Whether to use dashed rendering (for boardwalks) */
+  dashed: boolean;
+}
+
+const WATERFRONT_STYLES: Record<WaterfrontType, WaterfrontStyle> = {
+  riverfront_drive: {
+    widthMultiplier: 1.4, // 40% wider than base
+    medianColor: 0x5ba882, // Green median (landscaped divider)
+    medianWidthFraction: 0.25, // Median is 25% of road width
+    fillColor: 0x999999, // Slightly darker fill than standard arterial
+    casingColor: 0x556b5e, // Dark green-gray casing
+    dashed: false,
+  },
+  boardwalk: {
+    widthMultiplier: 1.2,
+    medianColor: 0x000000, // Unused for boardwalk
+    medianWidthFraction: 0,
+    fillColor: 0xc8a26e, // Warm wood/plank color
+    casingColor: 0x8b6e4e, // Darker wood edge
+    dashed: true, // Plank-style dashes
   },
 };
 
@@ -1028,18 +1067,25 @@ setVisibility(visibility: LayerVisibility & { neighborhoods?: boolean; cityLimit
     // Draw road casings first (outlines) - only for roads that have casings
     for (const road of visibleRoads) {
       const style = ROAD_STYLES[road.roadClass];
+      const wfStyle = road.waterfrontType ? WATERFRONT_STYLES[road.waterfrontType] : null;
       const points = road.line.points;
 
       if (points.length < 2) continue;
-      if (style.casingWidth <= 0) continue;
 
-      const scaledWidth = Math.max(MIN_ROAD_WIDTH, style.width * zoomScale);
-      const casingWidth = Math.max(MIN_CASING_WIDTH, scaledWidth + style.casingWidth * 2);
+      // CITY-181: Waterfront roads may override casing color and width
+      const effectiveCasingWidth = wfStyle ? style.casingWidth * wfStyle.widthMultiplier : style.casingWidth;
+      const effectiveCasingColor = wfStyle ? wfStyle.casingColor : style.casingColor;
+
+      if (effectiveCasingWidth <= 0) continue;
+
+      const baseWidth = wfStyle ? style.width * wfStyle.widthMultiplier : style.width;
+      const scaledWidth = Math.max(MIN_ROAD_WIDTH, baseWidth * zoomScale);
+      const casingWidth = Math.max(MIN_CASING_WIDTH, scaledWidth + effectiveCasingWidth * 2);
 
       // Draw casing (outline)
       this.roadsGraphics.setStrokeStyle({
         width: casingWidth,
-        color: style.casingColor,
+        color: effectiveCasingColor,
         cap: "round",
         join: "round",
       });
@@ -1054,20 +1100,41 @@ setVisibility(visibility: LayerVisibility & { neighborhoods?: boolean; cityLimit
     // Draw road fills
     for (const road of visibleRoads) {
       const style = ROAD_STYLES[road.roadClass];
+      const wfStyle = road.waterfrontType ? WATERFRONT_STYLES[road.waterfrontType] : null;
       const points = road.line.points;
 
       if (points.length < 2) continue;
 
-      const scaledWidth = Math.max(MIN_ROAD_WIDTH, style.width * zoomScale);
+      const baseWidth = wfStyle ? style.width * wfStyle.widthMultiplier : style.width;
+      const scaledWidth = Math.max(MIN_ROAD_WIDTH, baseWidth * zoomScale);
+      const effectiveColor = wfStyle ? wfStyle.fillColor : style.color;
+      const isDashed = wfStyle ? wfStyle.dashed : style.dashed;
 
-      if (style.dashed) {
-        // Draw dashed line for trails
-        this.drawDashedLine(points, scaledWidth, style.color);
+      if (isDashed) {
+        // Draw dashed line for trails and boardwalks
+        this.drawDashedLine(points, scaledWidth, effectiveColor);
       } else {
         // Draw solid road fill
         this.roadsGraphics.setStrokeStyle({
           width: scaledWidth,
-          color: style.color,
+          color: effectiveColor,
+          cap: "round",
+          join: "round",
+        });
+
+        this.roadsGraphics.moveTo(points[0].x, points[0].y);
+        for (let i = 1; i < points.length; i++) {
+          this.roadsGraphics.lineTo(points[i].x, points[i].y);
+        }
+        this.roadsGraphics.stroke();
+      }
+
+      // CITY-181: Draw landscaped median line for riverfront drives
+      if (wfStyle && wfStyle.medianWidthFraction > 0 && !isDashed) {
+        const medianWidth = Math.max(0.2, scaledWidth * wfStyle.medianWidthFraction);
+        this.roadsGraphics.setStrokeStyle({
+          width: medianWidth,
+          color: wfStyle.medianColor,
           cap: "round",
           join: "round",
         });

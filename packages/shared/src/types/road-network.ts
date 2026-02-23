@@ -19,6 +19,13 @@ export type RoadClass =
   | 'trail'        // Trails, paths, service roads
 
 /**
+ * CITY-181: Waterfront road type for roads adjacent to water features.
+ * - "riverfront_drive": Road running along a river, lake, or ocean waterfront.
+ * - "boardwalk": Pedestrian path adjacent to a beach.
+ */
+export type WaterfrontType = 'riverfront_drive' | 'boardwalk'
+
+/**
  * Node types for special intersection handling
  */
 export type NodeType =
@@ -74,6 +81,8 @@ export interface RoadEdge {
   lanes: number
   /** District ID this road belongs to (if any) */
   district_id?: string
+  /** CITY-181: Waterfront designation (null = not waterfront) */
+  waterfront_type?: WaterfrontType
   /** Timestamp */
   created_at: string
   updated_at: string
@@ -112,6 +121,7 @@ export interface RoadEdgeCreate {
   is_one_way?: boolean
   lanes?: number
   district_id?: string
+  waterfront_type?: WaterfrontType
 }
 
 /**
@@ -133,6 +143,7 @@ export interface RoadEdgeUpdate {
   name?: string
   is_one_way?: boolean
   lanes?: number
+  waterfront_type?: WaterfrontType
 }
 
 /**

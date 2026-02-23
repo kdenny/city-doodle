@@ -35,7 +35,7 @@ GEOGRAPHIC_PRESETS: dict[str, dict[str, Any]] = {
         "bay_min_area": 400.0,
         "bay_max_depth_ratio": 5.0,
         "bay_harbor_min_area": 80000.0,
-        "bay_erosion_strength": 0.8,
+        "bay_erosion_strength": 1.2,
         "barrier_islands_enabled": False,
     },
     # ── River Valley ────────────────────────────────────────────
@@ -62,6 +62,7 @@ GEOGRAPHIC_PRESETS: dict[str, dict[str, Any]] = {
         "bay_enabled": False,
         "barrier_islands_enabled": False,
         "min_river_length": 8,
+        "max_lakes": 8,  # CITY-490: lakefront cities should have more lakes
     },
     # ── Inland ──────────────────────────────────────────────────
     # No coastline.  Very low water level so almost all terrain is

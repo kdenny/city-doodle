@@ -1,14 +1,19 @@
 """Water feature generation for terrain (coastlines, rivers, lakes)."""
 
+import logging
 from typing import Any
 
 import numpy as np
 from numpy.typing import NDArray
+from scipy.ndimage import binary_dilation
 from shapely import concave_hull
+from shapely.errors import GEOSException, TopologicalError
 from shapely.geometry import LineString, MultiPoint, MultiPolygon, Polygon
 from shapely.ops import unary_union
 
 from city_worker.terrain.types import DEFAULT_LAKE_TYPE, LakeType, TerrainFeature
+
+logger = logging.getLogger(__name__)
 
 
 def _fractal_perturb_ring(
@@ -173,8 +178,8 @@ def _apply_fractal_to_polygon(
         fixed = result.buffer(0)
         if isinstance(fixed, Polygon) and fixed.is_valid:
             return fixed
-    except Exception:
-        pass
+    except (GEOSException, TopologicalError, ValueError) as e:
+        logger.warning("Fractal perturbation failed for polygon: %s", e)
     return poly
 
 
@@ -259,7 +264,8 @@ def _cells_to_polygon(
             if isinstance(buffered, Polygon) and buffered.is_valid:
                 return buffered
         return None
-    except Exception:
+    except (GEOSException, TopologicalError, ValueError) as e:
+        logger.warning("Failed to create polygon from boundary cells: %s", e)
         return None
 
 
@@ -341,6 +347,141 @@ def _chaikin_smooth(
     return pts
 
 
+def _interpolate_widths(
+    original_coords: list[tuple[float, float]],
+    original_widths: list[float],
+    target_coords: list[tuple[float, float]],
+) -> list[float]:
+    """Interpolate per-vertex widths from original path onto target coordinates.
+
+    Uses cumulative-distance parameterisation: for each target vertex, find its
+    nearest position along the original path and linearly interpolate the width.
+
+    Args:
+        original_coords: Coordinates of the original (pre-simplification) path
+        original_widths: Width value at each original vertex
+        target_coords: Coordinates of the target (post-smoothing) path
+
+    Returns:
+        Width value for each target vertex
+    """
+    import math as _math
+
+    if len(original_coords) < 2 or len(original_widths) < 2:
+        fallback = original_widths[0] if original_widths else 1.0
+        return [fallback] * len(target_coords)
+
+    # Build cumulative distance along original path
+    cum_dist = [0.0]
+    for k in range(1, len(original_coords)):
+        dx = original_coords[k][0] - original_coords[k - 1][0]
+        dy = original_coords[k][1] - original_coords[k - 1][1]
+        cum_dist.append(cum_dist[-1] + _math.hypot(dx, dy))
+
+    total_len = cum_dist[-1]
+    if total_len < 1e-10:
+        return [original_widths[0]] * len(target_coords)
+
+    # Build cumulative distance along target path
+    target_cum = [0.0]
+    for k in range(1, len(target_coords)):
+        dx = target_coords[k][0] - target_coords[k - 1][0]
+        dy = target_coords[k][1] - target_coords[k - 1][1]
+        target_cum.append(target_cum[-1] + _math.hypot(dx, dy))
+
+    target_total = target_cum[-1]
+
+    result: list[float] = []
+    for k in range(len(target_coords)):
+        # Normalise position along target path to [0, 1]
+        if target_total > 1e-10:
+            t = target_cum[k] / target_total
+        else:
+            t = 0.0
+
+        # Map to distance along original path
+        d = t * total_len
+
+        # Binary-search for the segment in the original path
+        lo, hi = 0, len(cum_dist) - 1
+        while lo < hi - 1:
+            mid = (lo + hi) // 2
+            if cum_dist[mid] <= d:
+                lo = mid
+            else:
+                hi = mid
+
+        seg_len = cum_dist[hi] - cum_dist[lo]
+        if seg_len > 1e-10:
+            frac = (d - cum_dist[lo]) / seg_len
+        else:
+            frac = 0.0
+        frac = max(0.0, min(1.0, frac))
+
+        w = original_widths[lo] + (original_widths[hi] - original_widths[lo]) * frac
+        result.append(w)
+
+    return result
+
+
+def _suppress_parallel_rivers(
+    features: list[TerrainFeature],
+    proximity_threshold: float,
+    overlap_fraction: float = 0.30,
+) -> list[TerrainFeature]:
+    """Suppress shorter rivers that run parallel to longer ones (CITY-490).
+
+    Two rivers are considered parallel if more than *overlap_fraction* of
+    the shorter river's vertices are within *proximity_threshold* distance
+    of the longer river's LineString.
+
+    Args:
+        features: List of river TerrainFeatures
+        proximity_threshold: Maximum distance (world units) to consider
+            two rivers as parallel
+        overlap_fraction: Fraction of the shorter river's vertices that
+            must be proximate to trigger suppression
+
+    Returns:
+        Filtered list with redundant parallel rivers removed
+    """
+    if len(features) <= 1:
+        return features
+
+    # Sort by length descending so longer rivers are kept preferentially
+    indexed = list(enumerate(features))
+    indexed.sort(key=lambda x: x[1].properties.get("length", 0), reverse=True)
+
+    suppressed: set[int] = set()
+
+    for a_pos in range(len(indexed)):
+        a_idx, a_feat = indexed[a_pos]
+        if a_idx in suppressed:
+            continue
+        a_line = LineString(a_feat.geometry["coordinates"])
+
+        for b_pos in range(a_pos + 1, len(indexed)):
+            b_idx, b_feat = indexed[b_pos]
+            if b_idx in suppressed:
+                continue
+
+            b_coords = b_feat.geometry["coordinates"]
+            if not b_coords:
+                continue
+
+            # Count how many of b's vertices are within threshold of a
+            from shapely.geometry import Point as _Point
+            close_count = 0
+            for bx, by in b_coords:
+                if a_line.distance(_Point(bx, by)) <= proximity_threshold:
+                    close_count += 1
+
+            if close_count / len(b_coords) >= overlap_fraction:
+                suppressed.add(b_idx)
+
+    return [f for i, f in enumerate(features) if i not in suppressed]
+
+
 def extract_rivers(
     heightfield: NDArray[np.float64],
     water_level: float,
@@ -351,6 +492,7 @@ def extract_rivers(
     min_length: int = 10,
     flow_accumulation: NDArray[np.float64] | None = None,
     coastline_polys: list[Polygon] | None = None,
+    parallel_proximity_cells: int = 5,
 ) -> list[TerrainFeature]:
     """Extract river linestrings from heightfield.
 
@@ -364,6 +506,9 @@ def extract_rivers(
         flow_accumulation: Pre-computed flow accumulation array (avoids recomputation)
         coastline_polys: Optional coastline polygons for snapping river
             endpoints to the actual coastline geometry (CITY-576)
+        parallel_proximity_cells: Distance in grid cells within which two
+            rivers are considered parallel (CITY-490). Set to 0 to disable
+            parallel river suppression.
 
     Returns:
         List of river LineString features
@@ -442,13 +587,36 @@ def extract_rivers(
 
                 if next_cell is None:
                     # Extend the river downhill to the coastline even
-                    # if cells are not part of river_mask (CITY-553).
-                    # Walk up to 12 cells downhill to reach water
-                    # (CITY-576: increased from 6 to traverse gentle
-                    # coastal slopes).
+                    # if cells are not part of river_mask.
+                    # CITY-553: Use adaptive step limit based on local
+                    # terrain gradient instead of a fixed limit.  Steep
+                    # slopes need only a few cells; gradual slopes may
+                    # need many more to reach the water_level contour.
                     if heightfield[ci, cj] >= water_level:
+                        # --- compute local gradient from the last
+                        # segment of the traced path (up to 4 cells) ---
+                        lookback = min(4, len(path))
+                        if lookback >= 2:
+                            h_start = heightfield[path[-lookback][0], path[-lookback][1]]
+                            h_end = heightfield[ci, cj]
+                            gradient = abs(h_start - h_end) / lookback
+                        else:
+                            gradient = 0.0
+
+                        # Map gradient to max extension steps:
+                        #   steep  (gradient >= 0.05) -> 3 steps
+                        #   gentle (gradient <= 0.005) -> 12 steps
+                        if gradient >= 0.05:
+                            max_ext = 3
+                        elif gradient <= 0.005:
+                            max_ext = 12
+                        else:
+                            # Linear interpolation between 12 and 3
+                            t = (gradient - 0.005) / (0.05 - 0.005)
+                            max_ext = int(round(12 - 9 * t))
+
                         ei, ej = ci, cj
-                        for _step in range(12):
+                        for _step in range(max_ext):
                             best_next = None
                             best_h = heightfield[ei, ej]
                             for di, dj in directions:
@@ -465,7 +633,8 @@ def extract_rivers(
                             visited[best_next[0], best_next[1]] = True
                             path.append(best_next)
                             ei, ej = best_next
-                            if heightfield[ei, ej] < water_level:
+                            # Stop once we reach the water_level contour
+                            if heightfield[ei, ej] <= water_level:
                                 break
                     break
 
@@ -479,6 +648,7 @@ def extract_rivers(
                 max_flow = max(path_flows)
                 avg_flow = sum(path_flows) / len(path_flows)
 
+                # CITY-490: Per-vertex width based on local flow accumulation.
                 # Flow-based width: log-scale so tributaries aren't invisible
                 # but main rivers are noticeably wider.
                 # Maps flow_threshold..max_possible to ~1.5..8.0 world-unit width
@@ -486,13 +656,19 @@ def extract_rivers(
 
                 width_min = cell_size * 0.3
                 width_max = cell_size * 1.5
-                log_flow = _math.log1p(max_flow)
                 log_thresh = _math.log1p(flow_threshold)
                 log_cap = _math.log1p(flow_threshold * 20)
-                t_width = min(
-                    (log_flow - log_thresh) / max(log_cap - log_thresh, 1e-6), 1.0
-                )
-                width = width_min + (width_max - width_min) * t_width
+
+                def _flow_to_width(f: float) -> float:
+                    """Convert a single flow value to a width."""
+                    lf = _math.log1p(f)
+                    t = min((lf - log_thresh) / max(log_cap - log_thresh, 1e-6), 1.0)
+                    t = max(t, 0.0)
+                    return width_min + (width_max - width_min) * t
+
+                # Per-vertex widths along the raw path
+                raw_widths = [_flow_to_width(f) for f in path_flows]
+                width = max(raw_widths)  # overall max width for backward compat
 
                 # Convert to world coordinates
                 coords = [
@@ -525,16 +701,21 @@ def extract_rivers(
                                     cpoly.exterior.project(end_point)
                                 )
                                 best_snap = (nearest.x, nearest.y)
-                        except Exception:
-                            pass
+                        except (GEOSException, TopologicalError) as e:
+                            logger.warning("River endpoint snap to coastline failed: %s", e)
                     if best_snap is not None and best_dist <= snap_threshold:
                         coords[-1] = best_snap
 
                 # Simplify then apply Chaikin subdivision for smoother curves
                 line = LineString(coords)
-                simplified = line.simplify(cell_size * 0.5, preserve_topology=True)
-                smoothed = _chaikin_smooth(list(simplified.coords), iterations=4)
+                simplified = line.simplify(cell_size * 0.3, preserve_topology=True)
+                smoothed = _chaikin_smooth(list(simplified.coords), iterations=6)
                 smoothed_line = LineString(smoothed)
+
+                # CITY-490: Interpolate per-vertex widths onto the
+                # smoothed line. Build cumulative-distance parameterisation
+                # of the original path, then sample at each smoothed vertex.
+                smoothed_widths = _interpolate_widths(coords, raw_widths, list(smoothed_line.coords))
 
                 features.append(
                     TerrainFeature(
@@ -546,11 +727,19 @@ def extract_rivers(
                         properties={
                             "length": smoothed_line.length,
                             "width": round(width, 2),
+                            "widths": [round(w, 2) for w in smoothed_widths],
                             "max_flow": round(max_flow, 1),
                             "avg_flow": round(avg_flow, 1),
                         },
                     )
                 )
+
+    # CITY-490: Suppress parallel rivers that run too close together.
+    # The shorter river is removed when >30% of its vertices are within
+    # N cells of a longer river.
+    if parallel_proximity_cells > 0 and len(features) > 1:
+        proximity_threshold = parallel_proximity_cells * cell_size
+        features = _suppress_parallel_rivers(features, proximity_threshold)
 
     return features
 
@@ -754,25 +943,12 @@ def extract_beaches(
     # Only include cells with gentle slopes
     beach_mask = beach_mask & (slope <= max_slope)
 
-    # Beach must be adjacent to water
+    # Beach must be adjacent to water — use binary dilation with a 3x3
+    # structuring element (8-connectivity) to find all cells neighbouring
+    # water, then intersect with the beach candidate mask.
     water_mask = heightfield < water_level
-    adjacent_to_water = np.zeros_like(beach_mask)
-    for i in range(h):
-        for j in range(w):
-            if beach_mask[i, j]:
-                # Check 8-connectivity for water adjacency
-                for di in [-1, 0, 1]:
-                    for dj in [-1, 0, 1]:
-                        if di == 0 and dj == 0:
-                            continue
-                        ni, nj = i + di, j + dj
-                        if 0 <= ni < h and 0 <= nj < w and water_mask[ni, nj]:
-                            adjacent_to_water[i, j] = True
-                            break
-                    if adjacent_to_water[i, j]:
-                        break
-
-    beach_mask = beach_mask & adjacent_to_water
+    dilated_water = binary_dilation(water_mask, structure=np.ones((3, 3)))
+    beach_mask = beach_mask & dilated_water
 
     # Pre-compute river buffer zones for filtering (CITY-546).
     # Buffer each river line by its width (or a minimum) to create
@@ -784,8 +960,8 @@ def extract_beaches(
                 buf = rline.buffer(cell_size * 3)
                 if buf.is_valid and not buf.is_empty:
                     river_buffers.append(buf)
-            except Exception:
-                pass
+            except (GEOSException, TopologicalError) as e:
+                logger.warning("Failed to buffer river line for beach exclusion: %s", e)
 
     # Track per-lake beach coverage so we can cap it (CITY-547).
     # Key = index into lake_polygons, value = accumulated beach perimeter.
@@ -850,8 +1026,8 @@ def extract_beaches(
                                     if overlap > poly.area * 0.3:
                                         skip = True
                                         break
-                                except Exception:
-                                    pass
+                                except (GEOSException, TopologicalError) as e:
+                                    logger.warning("Beach-river intersection check failed: %s", e)
                             if skip:
                                 continue
 
@@ -864,8 +1040,8 @@ def extract_beaches(
                                     if overlap > poly.area * 0.5:
                                         skip = True
                                         break
-                                except Exception:
-                                    pass
+                                except (GEOSException, TopologicalError) as e:
+                                    logger.warning("Beach-lagoon intersection check failed: %s", e)
                             if skip:
                                 continue
 
@@ -879,8 +1055,8 @@ def extract_beaches(
                                     if overlap > poly.area * 0.4:
                                         skip = True
                                         break
-                                except Exception:
-                                    pass
+                                except (GEOSException, TopologicalError) as e:
+                                    logger.warning("Beach-bay intersection check failed: %s", e)
                             if skip:
                                 continue
 
@@ -899,14 +1075,14 @@ def extract_beaches(
                                         if river_buffers:
                                             for rbuf in river_buffers:
                                                 try:
-                                                    if poly.distance(rbuf) < cell_size * 2:
+                                                    if poly.distance(rbuf) < cell_size * 4:
                                                         beach_type = "river"
                                                         break
-                                                except Exception:
-                                                    pass
+                                                except (GEOSException, TopologicalError) as e:
+                                                    logger.warning("Lake beach-river distance check failed: %s", e)
                                         break
-                                except Exception:
-                                    pass
+                                except (GEOSException, TopologicalError) as e:
+                                    logger.warning("Beach-lake intersection check failed: %s", e)
                         if beach_type == "river":
                             continue
 
@@ -916,8 +1092,18 @@ def extract_beaches(
                             used = lake_beach_perimeter.get(matched_lake_idx, 0.0)
                             if lake_perim > 0 and used >= lake_perim * lake_perimeter_cap:
                                 continue
+                            # Per-segment arc cap: no single beach segment may
+                            # exceed 10% of the lake perimeter (CITY-547).
+                            segment_cap = lake_perim * 0.10
+                            seg_len = poly.length
+                            if seg_len > segment_cap:
+                                continue
+                            # Also check that adding this segment wouldn't
+                            # exceed the overall 20% budget.
+                            if lake_perim > 0 and used + seg_len > lake_perim * lake_perimeter_cap:
+                                continue
                             # Track how much perimeter this beach consumes
-                            lake_beach_perimeter[matched_lake_idx] = used + poly.length
+                            lake_beach_perimeter[matched_lake_idx] = used + seg_len
 
                         area = len(segment_cells) * cell_size * cell_size
                         perimeter = poly.length
@@ -1046,6 +1232,7 @@ def extract_lakes(
     tile_size: float,
     min_area_cells: int = 50,
     min_depth: float = 0.015,
+    max_lakes: int = 3,
 ) -> list[TerrainFeature]:
     """Extract lake polygons from heightfield depressions.
 
@@ -1062,7 +1249,21 @@ def extract_lakes(
             from 20 to 50 to filter noise-generated micro-depressions)
         min_depth: Minimum average depth below water_level to qualify as a
             lake. Shallow depressions from heightfield noise are filtered out.
+        max_lakes: Maximum number of lakes to keep per tile (CITY-490).
+            Lakes are sorted by area descending and only the top max_lakes
+            are returned. Set to 0 or negative to disable the cap.
     """
+    # CITY-549: Enforce a floor so callers cannot bypass the CITY-529
+    # noise filter by passing a smaller min_area_cells value.
+    min_area_cells = max(min_area_cells, 50)
+
+    # CITY-549: Scale min_depth with water_level so that low water-level
+    # presets get a proportionally stricter depth filter.  At the default
+    # water_level (0.35) this gives 0.035 which is already above the old
+    # hard-coded 0.015; for very low water_levels the floor of the
+    # caller-supplied min_depth still applies.
+    effective_min_depth = max(min_depth, water_level * 0.1)
+
     h, w = heightfield.shape
     cell_size = tile_size / w
 
@@ -1095,7 +1296,7 @@ def extract_lakes(
                         water_level - heightfield[ci, cj]
                         for ci, cj in region_cells
                     ]))
-                    if avg_depth < min_depth:
+                    if avg_depth < effective_min_depth:
                         continue
 
                     poly = _cells_to_polygon(
@@ -1120,5 +1321,12 @@ def extract_lakes(
                                 properties=properties,
                             )
                         )
+
+    # CITY-490: Cap lake count per tile. Sort by area descending and
+    # keep only the largest lakes to avoid unrealistically dense lake
+    # clusters from noisy heightfields.
+    if max_lakes > 0 and len(features) > max_lakes:
+        features.sort(key=lambda f: f.properties.get("area", 0), reverse=True)
+        features = features[:max_lakes]
 
     return features

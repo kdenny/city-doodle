@@ -9,6 +9,7 @@ from sqlalchemy.ext.asyncio import AsyncSession
 
 from city_api.models.district import District as DistrictModel
 from city_api.models.district import DISTRICT_TYPE_DEFAULTS
+from city_api.repositories import road_network as road_network_repo
 from city_api.schemas import District, DistrictCreate, DistrictUpdate
 
 logger = logging.getLogger(__name__)
@@ -178,7 +179,15 @@ async def update_district(
 
 
 async def delete_district(db: AsyncSession, district_id: UUID) -> bool:
-    """Delete a district."""
+    """Delete a district and clean up associated road edges/nodes (CITY-298)."""
+    edges_deleted, nodes_deleted = await road_network_repo.delete_edges_by_district(
+        db, district_id
+    )
+    if edges_deleted or nodes_deleted:
+        logger.info(
+            "CITY-298: Cleaned up %d edges and %d orphaned nodes for district %s",
+            edges_deleted, nodes_deleted, district_id,
+        )
     result = await db.execute(
         delete(DistrictModel).where(DistrictModel.id == district_id)
     )
@@ -187,7 +196,19 @@ async def delete_district(db: AsyncSession, district_id: UUID) -> bool:
 
 
 async def clear_districts(db: AsyncSession, world_id: UUID) -> int:
-    """Delete all districts in a world. Returns count of deleted districts."""
+    """Delete all districts in a world. Returns count of deleted districts.
+
+    Also cleans up associated road edges/nodes (CITY-298).
+    """
+    # Get all district IDs first for cleanup
+    district_rows = await db.execute(
+        select(DistrictModel.id).where(DistrictModel.world_id == world_id)
+    )
+    district_ids = [row[0] for row in district_rows]
+
+    for district_id in district_ids:
+        await road_network_repo.delete_edges_by_district(db, district_id)
+
     result = await db.execute(
         delete(DistrictModel).where(DistrictModel.world_id == world_id)
     )

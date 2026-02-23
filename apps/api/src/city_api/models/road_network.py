@@ -35,6 +35,13 @@ class RoadClass(str, Enum):
     TRAIL = "trail"
 
 
+class WaterfrontType(str, Enum):
+    """CITY-181: Waterfront road type for roads adjacent to water features."""
+
+    RIVERFRONT_DRIVE = "riverfront_drive"
+    BOARDWALK = "boardwalk"
+
+
 class NodeType(str, Enum):
     """Node types for intersection handling."""
 
@@ -140,6 +147,16 @@ class RoadEdge(Base):
     lanes: Mapped[int] = mapped_column(Integer, nullable=False, default=2)
     # District this road belongs to (optional)
     district_id: Mapped[uuid.UUID | None] = mapped_column(Uuid, nullable=True)
+    # CITY-181: Waterfront designation (null = not waterfront)
+    waterfront_type: Mapped[str | None] = mapped_column(
+        PGEnum(
+            "riverfront_drive", "boardwalk",
+            name="waterfront_type",
+            create_type=False,
+        ),
+        nullable=True,
+        default=None,
+    )
     created_at: Mapped[datetime] = mapped_column(
         DateTime(timezone=True), server_default=func.now(), nullable=False
     )

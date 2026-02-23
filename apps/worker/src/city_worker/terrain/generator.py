@@ -20,6 +20,7 @@ from city_worker.terrain.barrier_islands import (
     BarrierIslandConfig,
     extract_barrier_islands,
 )
+from city_worker.terrain.deltas import extract_deltas
 from city_worker.terrain.water import (
     calculate_flow_accumulation,
     extract_beaches,
@@ -258,6 +259,23 @@ class TerrainGenerator:
 
         t_rivers = time.perf_counter()
 
+        # River deltas and estuaries (CITY-179)
+        delta_seed = abs(cfg.world_seed ^ (tx * 8311 + ty * 8317))
+        deltas = extract_deltas(
+            rivers=rivers,
+            heightfield=heightfield,
+            water_level=cfg.water_level,
+            flow_accumulation=flow_accumulation,
+            tile_x=tx,
+            tile_y=ty,
+            tile_size=cfg.tile_size,
+            seed=delta_seed,
+            min_flow=cfg.resolution * 0.4,  # Lower threshold than rivers
+        )
+        features.extend(deltas)
+
+        t_deltas = time.perf_counter()
+
         # Lakes (moved before beaches so lake polygons can be used
         # to cap lake beach coverage — CITY-547)
         # CITY-551: Skip lake extraction when water_level is very low
@@ -270,6 +288,7 @@ class TerrainGenerator:
                 tile_x=tx,
                 tile_y=ty,
                 tile_size=cfg.tile_size,
+                max_lakes=cfg.max_lakes,
             )
         features.extend(lakes)
 
@@ -335,7 +354,8 @@ class TerrainGenerator:
             (t_barriers - t_bays) * 1000,
             (t_beaches - t_lakes) * 1000,
             (t_rivers - t_barriers) * 1000,
-            (t_lakes - t_rivers) * 1000,
+            (t_deltas - t_rivers) * 1000,
+            (t_lakes - t_deltas) * 1000,
             (t_contours - t_beaches) * 1000,
             (t_clip - t_contours) * 1000,
         )
@@ -343,7 +363,7 @@ class TerrainGenerator:
         logger.info(
             "[Terrain] Tile (%d, %d) phase timings: heightfield=%.1fms mask=%.1fms erosion=%.1fms "
             "flow=%.1fms coastlines=%.1fms bays=%.1fms barriers=%.1fms beaches=%.1fms "
-            "rivers=%.1fms lakes=%.1fms contours=%.1fms clip=%.1fms total=%.1fms features=%d",
+            "rivers=%.1fms deltas=%.1fms lakes=%.1fms contours=%.1fms clip=%.1fms total=%.1fms features=%d",
             tx, ty, *timing_values, total_ms, len(features),
         )
 

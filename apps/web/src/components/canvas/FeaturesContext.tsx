@@ -53,6 +53,7 @@ import type { District, Neighborhood, CityLimits, Road, POI, FeaturesData, Point
 import { DEFAULT_DISTRICT_PERSONALITY, DEFAULT_DENSITY_BY_TYPE } from "./layers/types";
 import type { DistrictType } from "./layers/types";
 import { detectBridges } from "./layers/bridgeDetection";
+import { detectWaterfrontRoads, applyWaterfrontTypes } from "./layers/waterfrontDetection";
 import {
   generateDistrictGeometry,
   clipDistrictAgainstExisting,
@@ -961,6 +962,26 @@ export function FeaturesProvider({
     return () => clearTimeout(timer);
   }, [features.roads, terrainContext?.terrainData]);
 
+  // Auto-detect waterfront roads when roads or terrain change (CITY-181)
+  useEffect(() => {
+    const timer = setTimeout(() => {
+      const terrainData = terrainContext?.terrainData ?? null;
+
+      setFeaturesState((prev) => {
+        if (prev.roads.length === 0) return prev;
+
+        const result = detectWaterfrontRoads(prev.roads, terrainData);
+        const updatedRoads = applyWaterfrontTypes(prev.roads, result);
+
+        // If applyWaterfrontTypes returned the same reference, nothing changed
+        if (updatedRoads === prev.roads) return prev;
+
+        return { ...prev, roads: updatedRoads };
+      });
+    }, 200); // Slightly longer debounce than bridges since this is lower priority
+    return () => clearTimeout(timer);
+  }, [features.roads, terrainContext?.terrainData]);
+
   // Helper to update features and notify
   const updateFeatures = useCallback(
     (updater: (prev: FeaturesData) => FeaturesData) => {
@@ -1611,7 +1632,17 @@ export function FeaturesProvider({
       const generated = generateDistrictGeometry(position, seedId, generationConfig);
 
       // Check for water overlap
-      const waterFeatures = terrainContext?.getWaterFeatures() ?? [];
+      const waterFeatures = [...(terrainContext?.getWaterFeatures() ?? [])];
+
+      // CITY-552: Include rivers in preview clipping (parks exempt)
+      const districtType = seedIdToDistrictType(seedId);
+      if (districtType !== "park") {
+        const rivers = terrainContext?.getRiverFeatures() ?? [];
+        for (const river of rivers) {
+          waterFeatures.push(riverFeatureToWaterFeature(river));
+        }
+      }
+
       return clipAndValidateDistrict(
         generated.district.polygon.points,
         waterFeatures,
@@ -1683,6 +1714,20 @@ export function FeaturesProvider({
       const districtToRemove = featuresRef.current.districts.find((d) => d.id === id);
       if (!districtToRemove) return;
 
+      // CITY-281: Clean up transit stations that belong to this district
+      if (transitContext?.transitNetwork) {
+        const orphanedStations = transitContext.transitNetwork.stations.filter(
+          (s) => s.district_id === id
+        );
+        for (const station of orphanedStations) {
+          if (station.station_type === "rail") {
+            transitContext.removeRailStation(station.id);
+          } else if (station.station_type === "subway") {
+            transitContext.removeSubwayStation(station.id);
+          }
+        }
+      }
+
       // Optimistically remove district, its roads, and its auto-generated POIs from local state
       updateFeatures((prev) => {
         return {
@@ -1714,7 +1759,7 @@ export function FeaturesProvider({
         );
       }
     },
-    [worldId, updateFeatures, deleteDistrictMutation, toast]
+    [worldId, updateFeatures, deleteDistrictMutation, toast, transitContext]
   );
 
   const removeRoad = useCallback(
@@ -1906,9 +1951,29 @@ export function FeaturesProvider({
           updatedPersonality.era_year
         );
 
+        // CITY-487: Regenerate cross-boundary connections with new grid
+        const updatedDistrictFinal: District = {
+          ...updatedDistrictForGrid,
+          gridAngle: actualAngle,
+        };
+        const currentFeatures = featuresRef.current;
+        const otherDistricts = currentFeatures.districts.filter((d) => d.id !== id);
+        const otherRoadsForCross = currentFeatures.roads.filter(
+          (r) => r.districtId !== id && !r.id.includes(`-${id}-`)
+        );
+        const crossBoundaryRoads = generateCrossBoundaryConnections(
+          updatedDistrictFinal,
+          newRoads,
+          otherDistricts,
+          otherRoadsForCross
+        );
+
         // Update district with new type, personality, and regenerated roads
         updateFeatures((prev) => {
-          const otherRoads = prev.roads.filter((r) => !r.id.startsWith(id));
+          // Remove old internal roads AND old cross-boundary connectors involving this district
+          const otherRoads = prev.roads.filter(
+            (r) => !r.id.startsWith(id) && !r.id.includes(`-${id}-`)
+          );
           return {
             ...prev,
             districts: prev.districts.map((d) =>
@@ -1916,7 +1981,7 @@ export function FeaturesProvider({
                 ? { ...d, ...updates, type: newType, personality: updatedPersonality, gridAngle: actualAngle }
                 : d
             ),
-            roads: [...otherRoads, ...newRoads],
+            roads: [...otherRoads, ...newRoads, ...crossBoundaryRoads],
           };
         });
 
@@ -1964,6 +2029,23 @@ export function FeaturesProvider({
         return;
       }
 
+      // CITY-288: When polygon changes, revalidate that transit stations still fall inside
+      if (updates.polygon && transitContext?.transitNetwork) {
+        const newPoints = updates.polygon.points;
+        const orphanedStations = transitContext.transitNetwork.stations.filter(
+          (s) =>
+            s.district_id === id &&
+            !pointInPolygon({ x: s.position_x, y: s.position_y }, newPoints)
+        );
+        for (const station of orphanedStations) {
+          if (station.station_type === "rail") {
+            transitContext.removeRailStation(station.id);
+          } else if (station.station_type === "subway") {
+            transitContext.removeSubwayStation(station.id);
+          }
+        }
+      }
+
       // Handle gridAngle changes by regenerating street grid
       if (updates.gridAngle !== undefined && updates.gridAngle !== currentDistrict.gridAngle) {
         const { roads: newRoads, gridAngle: actualAngle } = regenerateStreetGridWithAngle(
@@ -1973,15 +2055,32 @@ export function FeaturesProvider({
           currentDistrict.personality?.era_year
         );
 
+        // CITY-487: Regenerate cross-boundary connections with new grid
+        const updatedDistrictForAngle: District = { ...currentDistrict, gridAngle: actualAngle };
+        const currentFeaturesForAngle = featuresRef.current;
+        const otherDistrictsForAngle = currentFeaturesForAngle.districts.filter((d) => d.id !== id);
+        const otherRoadsForAngleCross = currentFeaturesForAngle.roads.filter(
+          (r) => r.districtId !== id && !r.id.includes(`-${id}-`)
+        );
+        const crossBoundaryRoadsAngle = generateCrossBoundaryConnections(
+          updatedDistrictForAngle,
+          newRoads,
+          otherDistrictsForAngle,
+          otherRoadsForAngleCross
+        );
+
         // Update district with new gridAngle and replace its roads
         updateFeatures((prev) => {
-          const otherRoads = prev.roads.filter((r) => r.districtId !== id);
+          // Remove old internal roads AND old cross-boundary connectors involving this district
+          const otherRoads = prev.roads.filter(
+            (r) => r.districtId !== id && !r.id.includes(`-${id}-`)
+          );
           return {
             ...prev,
             districts: prev.districts.map((d) =>
               d.id === id ? { ...d, ...updates, gridAngle: actualAngle } : d
             ),
-            roads: [...otherRoads, ...newRoads],
+            roads: [...otherRoads, ...newRoads, ...crossBoundaryRoadsAngle],
           };
         });
 
@@ -2054,7 +2153,7 @@ export function FeaturesProvider({
         }
       }
     },
-    [worldId, updateFeatures, updateDistrictMutation, toast]
+    [worldId, updateFeatures, updateDistrictMutation, toast, transitContext]
   );
 
   const updateRoad = useCallback(

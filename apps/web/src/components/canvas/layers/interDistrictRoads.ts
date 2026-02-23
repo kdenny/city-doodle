@@ -25,8 +25,8 @@
  *   messy. Collectors provide enough connectivity for the road network.
  * - Adjacency detection uses vertex-to-vertex distance (approximation). Very thin
  *   or oddly-shaped district gaps may not be detected.
- * - Cross-boundary connections are generated at district placement time only — they
- *   are NOT regenerated when districts are moved or reshaped.
+ * - Cross-boundary connections are regenerated when district type or grid angle
+ *   changes (CITY-487).
  */
 
 import type { District, DistrictType, Road, Point, RoadClass, WaterFeature } from "./types";

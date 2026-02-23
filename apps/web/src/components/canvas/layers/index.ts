@@ -69,6 +69,7 @@ export type {
   WaterCrossingType,
   Interchange,
   InterchangeType,
+  WaterfrontType,
   FeaturesData,
   LabelData,
   LabelConfig,
@@ -86,6 +87,8 @@ export { generateStationAccessRoad } from "./interDistrictRoads";
 export { detectInterchanges } from "./interchangeDetection";
 export { detectBridges, roadCrossesWater } from "./bridgeDetection";
 export type { BridgeDetectionConfig, BridgeDetectionResult } from "./bridgeDetection";
+export { detectWaterfrontRoads, applyWaterfrontTypes } from "./waterfrontDetection";
+export type { WaterfrontDetectionConfig, WaterfrontDetectionResult } from "./waterfrontDetection";
 export {
   requiresArterialAdjacency,
   districtRequiresArterialAdjacency,

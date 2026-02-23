@@ -64,6 +64,7 @@ class TerrainConfig:
 
     # Lake parameters
     lake_depth_threshold: float = 0.1  # Depression depth to form lake
+    max_lakes: int = 3  # Max lakes per tile (CITY-490); 0 = unlimited
 
     # Coastline smoothing iterations
     coastline_smoothing: int = 3
@@ -102,7 +103,7 @@ class TerrainConfig:
 class TerrainFeature:
     """A single terrain feature in GeoJSON-like format."""
 
-    type: str  # "coastline", "river", "lake", "contour", "beach", "bay", "barrier_island", "lagoon", "tidal_flat", "dune_ridge", "inlet"
+    type: str  # "coastline", "river", "lake", "contour", "beach", "bay", "barrier_island", "lagoon", "tidal_flat", "dune_ridge", "inlet", "delta_channel", "wetland", "estuary"
     geometry: dict[str, Any]  # GeoJSON geometry
     properties: dict[str, Any] = field(default_factory=dict)
 

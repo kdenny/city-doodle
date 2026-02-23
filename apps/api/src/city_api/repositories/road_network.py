@@ -342,6 +342,49 @@ def _calculate_connectivity(nodes: list[RoadNode], edges: list[RoadEdge]) -> flo
     return 1.0 / components if components > 0 else 1.0
 
 
+async def delete_edges_by_district(db: AsyncSession, district_id: UUID) -> tuple[int, int]:
+    """Delete all road edges belonging to a district and clean up orphaned nodes.
+
+    CITY-298: When a district is deleted, its associated road edges and any
+    nodes that become orphaned (no remaining edges) must be removed.
+
+    Returns (edges_deleted, nodes_deleted).
+    """
+    # Collect node IDs referenced by the edges we're about to delete
+    edge_rows = await db.execute(
+        select(RoadEdgeModel.from_node_id, RoadEdgeModel.to_node_id).where(
+            RoadEdgeModel.district_id == district_id
+        )
+    )
+    candidate_node_ids: set[UUID] = set()
+    for row in edge_rows:
+        candidate_node_ids.add(row[0])
+        candidate_node_ids.add(row[1])
+
+    # Delete the edges
+    result = await db.execute(
+        delete(RoadEdgeModel).where(RoadEdgeModel.district_id == district_id)
+    )
+    edges_deleted = result.rowcount
+
+    # Delete orphaned nodes (nodes with no remaining edges)
+    nodes_deleted = 0
+    for node_id in candidate_node_ids:
+        remaining = await db.execute(
+            select(RoadEdgeModel.id).where(
+                (RoadEdgeModel.from_node_id == node_id)
+                | (RoadEdgeModel.to_node_id == node_id)
+            ).limit(1)
+        )
+        if remaining.first() is None:
+            await db.execute(
+                delete(RoadNodeModel).where(RoadNodeModel.id == node_id)
+            )
+            nodes_deleted += 1
+
+    return edges_deleted, nodes_deleted
+
+
 async def clear_road_network(db: AsyncSession, world_id: UUID) -> int:
     """Delete all nodes and edges in a world. Returns count of deleted nodes.
 

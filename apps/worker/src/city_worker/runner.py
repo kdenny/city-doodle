@@ -4,7 +4,7 @@ import asyncio
 import logging
 import signal
 import time
-from datetime import UTC, datetime
+from datetime import UTC, datetime, timedelta
 from typing import Any
 from uuid import UUID
 
@@ -86,6 +86,8 @@ class JobRunner:
     async def _claim_job(self) -> tuple[UUID, str, dict] | None:
         """Claim a pending job using FOR UPDATE SKIP LOCKED.
 
+        Only claims jobs whose retry_after is null or in the past.
+
         Returns (job_id, job_type, params) or None if no job available.
         """
         session = await get_session()
@@ -96,11 +98,12 @@ class JobRunner:
                         SELECT id, type, params
                         FROM jobs
                         WHERE status = :pending
+                          AND (retry_after IS NULL OR retry_after <= :now)
                         ORDER BY created_at ASC
                         LIMIT 1
                         FOR UPDATE SKIP LOCKED
                     """),
-                    {"pending": JobStatus.PENDING.value},
+                    {"pending": JobStatus.PENDING.value, "now": datetime.now(UTC)},
                 )
                 row = result.fetchone()
 
@@ -128,8 +131,20 @@ class JobRunner:
         finally:
             await session.close()
 
+    @staticmethod
+    def _compute_retry_delay(retry_count: int) -> int:
+        """Compute exponential backoff delay in seconds.
+
+        delay = min(2^retry_count * 30, 300) seconds
+        """
+        return min(2**retry_count * 30, 300)
+
     async def _execute_job(self, job_id: UUID, job_type: str, params: dict) -> None:
-        """Execute a job and update its status."""
+        """Execute a job and update its status.
+
+        On failure, retries with exponential backoff if retry_count < max_retries.
+        After max retries are exhausted, marks the job as permanently FAILED.
+        """
         logger.info("Executing job %s (type: %s)", job_id, job_type)
         result: dict[str, Any] | None = None
         error: str | None = None
@@ -141,7 +156,15 @@ class JobRunner:
         except Exception as e:
             logger.exception("Job %s failed", job_id)
             error = str(e)
+            # Check if we can retry
+            retry_count, max_retries = await self._get_retry_info(job_id)
+            if retry_count < max_retries:
+                await self._retry_job(job_id, retry_count, error)
+                return
             status = JobStatus.FAILED
+            logger.warning(
+                "Job %s permanently failed after %d retries", job_id, retry_count
+            )
 
         await self._update_job_status(job_id, status, result, error)
 
@@ -189,6 +212,64 @@ class JobRunner:
                         "result": result,
                         "error": error,
                         "now": datetime.now(UTC),
+                        "job_id": job_id,
+                    },
+                )
+        finally:
+            await session.close()
+
+    async def _get_retry_info(self, job_id: UUID) -> tuple[int, int]:
+        """Get retry_count and max_retries for a job."""
+        session = await get_session()
+        try:
+            result = await session.execute(
+                text("SELECT retry_count, max_retries FROM jobs WHERE id = :job_id"),
+                {"job_id": job_id},
+            )
+            row = result.fetchone()
+            if row is None:
+                return (0, 3)
+            return (row[0], row[1])
+        finally:
+            await session.close()
+
+    async def _retry_job(
+        self, job_id: UUID, retry_count: int, error: str
+    ) -> None:
+        """Re-queue a failed job for retry with exponential backoff.
+
+        Increments retry_count, sets status back to PENDING, and schedules
+        the retry after an exponential backoff delay.
+        """
+        new_retry_count = retry_count + 1
+        delay_seconds = self._compute_retry_delay(retry_count)
+        retry_after = datetime.now(UTC) + timedelta(seconds=delay_seconds)
+
+        logger.info(
+            "Retrying job %s (attempt %d) after %ds delay",
+            job_id,
+            new_retry_count,
+            delay_seconds,
+        )
+
+        session = await get_session()
+        try:
+            async with session.begin():
+                await session.execute(
+                    text("""
+                        UPDATE jobs
+                        SET status = :status,
+                            retry_count = :retry_count,
+                            error = :error,
+                            retry_after = :retry_after,
+                            completed_at = NULL
+                        WHERE id = :job_id
+                    """),
+                    {
+                        "status": JobStatus.PENDING.value,
+                        "retry_count": new_retry_count,
+                        "error": error,
+                        "retry_after": retry_after,
                         "job_id": job_id,
                     },
                 )

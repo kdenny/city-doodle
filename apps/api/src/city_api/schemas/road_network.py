@@ -18,6 +18,13 @@ class RoadClass(str, Enum):
     TRAIL = "trail"
 
 
+class WaterfrontType(str, Enum):
+    """CITY-181: Waterfront road type for roads adjacent to water features."""
+
+    RIVERFRONT_DRIVE = "riverfront_drive"
+    BOARDWALK = "boardwalk"
+
+
 class NodeType(str, Enum):
     """Node types for intersection handling."""
 
@@ -97,6 +104,7 @@ class RoadEdgeCreate(BaseModel):
     is_one_way: bool = False
     lanes: int = 2
     district_id: UUID | None = None
+    waterfront_type: WaterfrontType | None = None
 
 
 class RoadEdgeUpdate(BaseModel):
@@ -108,6 +116,7 @@ class RoadEdgeUpdate(BaseModel):
     name: str | None = None
     is_one_way: bool | None = None
     lanes: int | None = None
+    waterfront_type: WaterfrontType | None = None
 
 
 class RoadEdge(BaseModel):
@@ -125,6 +134,7 @@ class RoadEdge(BaseModel):
     is_one_way: bool
     lanes: int
     district_id: UUID | None = None
+    waterfront_type: WaterfrontType | None = None
     created_at: datetime
     updated_at: datetime
 
