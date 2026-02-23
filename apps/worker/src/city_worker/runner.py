@@ -498,7 +498,7 @@ class JobRunner:
                     await session.execute(
                         text("""
                             INSERT INTO tiles (id, world_id, tx, ty, terrain_data, features, terrain_status, version)
-                            VALUES (gen_random_uuid(), :world_id, :tx, :ty, :terrain_data::jsonb, :features::jsonb, 'ready', 1)
+                            VALUES (gen_random_uuid(), :world_id, :tx, :ty, CAST(:terrain_data AS jsonb), CAST(:features AS jsonb), 'ready', 1)
                             ON CONFLICT (world_id, tx, ty)
                             DO UPDATE SET
                                 terrain_data = EXCLUDED.terrain_data,
