@@ -32,6 +32,7 @@ import type {
   TerrainData,
   WaterfrontType,
 } from "./types";
+import { getPolygonBounds } from "./polygonUtils";
 
 /**
  * Configuration for waterfront detection.
@@ -67,6 +68,155 @@ export interface WaterfrontDetectionResult {
   riverfrontCount: number;
   /** Total count of boardwalks detected */
   boardwalkCount: number;
+}
+
+/**
+ * CITY-617: Grid-based spatial index for water polygon boundary queries.
+ *
+ * Each water feature is inserted into every cell its bounding box overlaps,
+ * expanded by a buffer. A point query returns only water features whose
+ * expanded bounding box covers the queried cell.
+ */
+class WaterBoundarySpatialIndex {
+  private cellSize: number;
+  private grid: Map<string, WaterFeature[]> = new Map();
+
+  constructor(cellSize: number = 50) {
+    this.cellSize = cellSize;
+  }
+
+  build(waterFeatures: WaterFeature[], buffer: number): void {
+    this.grid.clear();
+    for (const water of waterFeatures) {
+      const bounds = getPolygonBounds(water.polygon.points);
+      const minCellX = Math.floor((bounds.minX - buffer) / this.cellSize);
+      const minCellY = Math.floor((bounds.minY - buffer) / this.cellSize);
+      const maxCellX = Math.floor((bounds.maxX + buffer) / this.cellSize);
+      const maxCellY = Math.floor((bounds.maxY + buffer) / this.cellSize);
+
+      for (let cx = minCellX; cx <= maxCellX; cx++) {
+        for (let cy = minCellY; cy <= maxCellY; cy++) {
+          const key = `${cx},${cy}`;
+          let bucket = this.grid.get(key);
+          if (!bucket) {
+            bucket = [];
+            this.grid.set(key, bucket);
+          }
+          bucket.push(water);
+        }
+      }
+    }
+  }
+
+  getCandidates(x: number, y: number): WaterFeature[] {
+    const key = `${Math.floor(x / this.cellSize)},${Math.floor(y / this.cellSize)}`;
+    return this.grid.get(key) || [];
+  }
+}
+
+/**
+ * CITY-617: Grid-based spatial index for river centerline queries.
+ *
+ * Each river is inserted into every cell its bounding box (expanded by
+ * half-width + buffer) overlaps.
+ */
+class RiverBoundarySpatialIndex {
+  private cellSize: number;
+  private grid: Map<string, RiverFeature[]> = new Map();
+
+  constructor(cellSize: number = 50) {
+    this.cellSize = cellSize;
+  }
+
+  build(rivers: RiverFeature[], buffer: number): void {
+    this.grid.clear();
+    for (const river of rivers) {
+      const pts = river.line.points;
+      if (pts.length < 2) continue;
+
+      let minX = Infinity, maxX = -Infinity, minY = Infinity, maxY = -Infinity;
+      for (const p of pts) {
+        if (p.x < minX) minX = p.x;
+        if (p.x > maxX) maxX = p.x;
+        if (p.y < minY) minY = p.y;
+        if (p.y > maxY) maxY = p.y;
+      }
+
+      // Expand by half the river width + buffer
+      const expand = (river.width || 3) / 2 + buffer;
+      const minCellX = Math.floor((minX - expand) / this.cellSize);
+      const minCellY = Math.floor((minY - expand) / this.cellSize);
+      const maxCellX = Math.floor((maxX + expand) / this.cellSize);
+      const maxCellY = Math.floor((maxY + expand) / this.cellSize);
+
+      for (let cx = minCellX; cx <= maxCellX; cx++) {
+        for (let cy = minCellY; cy <= maxCellY; cy++) {
+          const key = `${cx},${cy}`;
+          let bucket = this.grid.get(key);
+          if (!bucket) {
+            bucket = [];
+            this.grid.set(key, bucket);
+          }
+          bucket.push(river);
+        }
+      }
+    }
+  }
+
+  getCandidates(x: number, y: number): RiverFeature[] {
+    const key = `${Math.floor(x / this.cellSize)},${Math.floor(y / this.cellSize)}`;
+    return this.grid.get(key) || [];
+  }
+}
+
+/**
+ * CITY-617: Grid-based spatial index for beach polygon boundary queries.
+ */
+class BeachBoundarySpatialIndex {
+  private cellSize: number;
+  private grid: Map<string, BeachFeature[]> = new Map();
+
+  constructor(cellSize: number = 50) {
+    this.cellSize = cellSize;
+  }
+
+  build(beaches: BeachFeature[], buffer: number): void {
+    this.grid.clear();
+    for (const beach of beaches) {
+      const bounds = getPolygonBounds(beach.polygon.points);
+      const minCellX = Math.floor((bounds.minX - buffer) / this.cellSize);
+      const minCellY = Math.floor((bounds.minY - buffer) / this.cellSize);
+      const maxCellX = Math.floor((bounds.maxX + buffer) / this.cellSize);
+      const maxCellY = Math.floor((bounds.maxY + buffer) / this.cellSize);
+
+      for (let cx = minCellX; cx <= maxCellX; cx++) {
+        for (let cy = minCellY; cy <= maxCellY; cy++) {
+          const key = `${cx},${cy}`;
+          let bucket = this.grid.get(key);
+          if (!bucket) {
+            bucket = [];
+            this.grid.set(key, bucket);
+          }
+          bucket.push(beach);
+        }
+      }
+    }
+  }
+
+  getCandidates(x: number, y: number): BeachFeature[] {
+    const key = `${Math.floor(x / this.cellSize)},${Math.floor(y / this.cellSize)}`;
+    return this.grid.get(key) || [];
+  }
+}
+
+/**
+ * CITY-617: Bundled spatial indices for waterfront detection.
+ * Built once per detectWaterfrontRoads() call.
+ */
+interface WaterfrontSpatialIndices {
+  waterIndex: WaterBoundarySpatialIndex;
+  riverIndex: RiverBoundarySpatialIndex;
+  beachIndex: BeachBoundarySpatialIndex;
 }
 
 /**
@@ -125,10 +275,17 @@ function pointToRiverDistance(point: Point, river: RiverFeature): number {
 
 /**
  * Calculate the minimum distance from a point to any beach polygon boundary.
+ *
+ * CITY-617: When a spatial index is provided, only nearby beaches are checked.
  */
-function pointToNearestBeachDistance(point: Point, beaches: BeachFeature[]): number {
+function pointToNearestBeachDistance(
+  point: Point,
+  beaches: BeachFeature[],
+  beachIndex?: BeachBoundarySpatialIndex
+): number {
+  const candidates = beachIndex ? beachIndex.getCandidates(point.x, point.y) : beaches;
   let minDist = Infinity;
-  for (const beach of beaches) {
+  for (const beach of candidates) {
     const d = pointToPolygonBoundaryDistance(point, beach.polygon.points);
     if (d < minDist) minDist = d;
   }
@@ -138,20 +295,25 @@ function pointToNearestBeachDistance(point: Point, beaches: BeachFeature[]): num
 /**
  * Calculate the minimum distance from a point to any water feature
  * (water polygons + rivers).
+ *
+ * CITY-617: When spatial indices are provided, only nearby features are checked.
  */
 function pointToNearestWaterDistance(
   point: Point,
   waterFeatures: WaterFeature[],
-  rivers: RiverFeature[]
+  rivers: RiverFeature[],
+  indices?: WaterfrontSpatialIndices
 ): number {
   let minDist = Infinity;
 
-  for (const water of waterFeatures) {
+  const waterCandidates = indices ? indices.waterIndex.getCandidates(point.x, point.y) : waterFeatures;
+  for (const water of waterCandidates) {
     const d = pointToPolygonBoundaryDistance(point, water.polygon.points);
     if (d < minDist) minDist = d;
   }
 
-  for (const river of rivers) {
+  const riverCandidates = indices ? indices.riverIndex.getCandidates(point.x, point.y) : rivers;
+  for (const river of riverCandidates) {
     const d = pointToRiverDistance(point, river);
     if (d < minDist) minDist = d;
   }
@@ -212,13 +374,17 @@ function sampleRoadPoints(road: Road, count: number): Point[] {
 /**
  * Determine waterfront type for a single road.
  * Returns null if the road is not a waterfront road.
+ *
+ * CITY-617: When spatial indices are provided, only nearby features are checked
+ * per sample point instead of iterating all features.
  */
 function classifyRoad(
   road: Road,
   waterFeatures: WaterFeature[],
   rivers: RiverFeature[],
   beaches: BeachFeature[],
-  config: Required<WaterfrontDetectionConfig>
+  config: Required<WaterfrontDetectionConfig>,
+  indices?: WaterfrontSpatialIndices
 ): WaterfrontType | null {
   const pts = road.line.points;
   if (pts.length < 2) return null;
@@ -230,13 +396,13 @@ function classifyRoad(
   let nearBeachCount = 0;
 
   for (const sample of samples) {
-    const waterDist = pointToNearestWaterDistance(sample, waterFeatures, rivers);
+    const waterDist = pointToNearestWaterDistance(sample, waterFeatures, rivers, indices);
     if (waterDist <= config.waterfrontThreshold) {
       nearWaterCount++;
     }
 
     if (beaches.length > 0) {
-      const beachDist = pointToNearestBeachDistance(sample, beaches);
+      const beachDist = pointToNearestBeachDistance(sample, beaches, indices?.beachIndex);
       if (beachDist <= config.boardwalkThreshold) {
         nearBeachCount++;
       }
@@ -269,6 +435,10 @@ function classifyRoad(
  * terrain data. Roads within threshold distance of water for a sufficient
  * fraction of their length are classified as waterfront.
  *
+ * CITY-617: Builds spatial indices once for water features, rivers, and beaches,
+ * then passes them to per-road classification for O(1) proximity lookups instead
+ * of O(n) brute-force iteration.
+ *
  * @param roads - All roads in the world
  * @param terrainData - Terrain data containing water features, rivers, and beaches
  * @param config - Optional configuration overrides
@@ -297,8 +467,19 @@ export function detectWaterfrontRoads(
     return { waterfrontRoads, riverfrontCount, boardwalkCount };
   }
 
+  // CITY-617: Build spatial indices once for all feature types.
+  // The buffer ensures features near a cell boundary are still found.
+  const maxBuffer = Math.max(cfg.waterfrontThreshold, cfg.boardwalkThreshold);
+  const waterIndex = new WaterBoundarySpatialIndex();
+  waterIndex.build(waterFeatures, maxBuffer);
+  const riverIndex = new RiverBoundarySpatialIndex();
+  riverIndex.build(rivers, maxBuffer);
+  const beachIndex = new BeachBoundarySpatialIndex();
+  beachIndex.build(beaches, maxBuffer);
+  const indices: WaterfrontSpatialIndices = { waterIndex, riverIndex, beachIndex };
+
   for (const road of roads) {
-    const classification = classifyRoad(road, waterFeatures, rivers, beaches, cfg);
+    const classification = classifyRoad(road, waterFeatures, rivers, beaches, cfg, indices);
     if (classification) {
       waterfrontRoads.set(road.id, classification);
       if (classification === "riverfront_drive") {
