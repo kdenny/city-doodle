@@ -252,6 +252,85 @@ describe("SnapEngine", () => {
     });
   });
 
+  describe("removeSegmentsByGeometryId", () => {
+    it("removes segments for a specific geometry ID", () => {
+      const segments: SnapLineSegment[] = [
+        {
+          p1: { x: 0, y: 0 },
+          p2: { x: 100, y: 0 },
+          geometryId: "district-a",
+          geometryType: "district",
+        },
+        {
+          p1: { x: 0, y: 50 },
+          p2: { x: 100, y: 50 },
+          geometryId: "district-b",
+          geometryType: "district",
+        },
+      ];
+      engine.insertSegments(segments);
+
+      // Both should snap
+      expect(engine.findSnapPoint(50, 5).snapPoint).not.toBeNull();
+      expect(engine.findSnapPoint(50, 45).snapPoint).not.toBeNull();
+
+      // Remove district-a
+      engine.removeSegmentsByGeometryId("district-a");
+
+      // district-a should no longer snap
+      expect(engine.findSnapPoint(50, 5).snapPoint).toBeNull();
+      // district-b should still snap
+      expect(engine.findSnapPoint(50, 45).snapPoint).not.toBeNull();
+    });
+
+    it("handles removing a non-existent geometry ID gracefully", () => {
+      const segments: SnapLineSegment[] = [
+        {
+          p1: { x: 0, y: 0 },
+          p2: { x: 100, y: 0 },
+          geometryId: "district-a",
+          geometryType: "district",
+        },
+      ];
+      engine.insertSegments(segments);
+
+      // Remove non-existent ID — should not throw
+      engine.removeSegmentsByGeometryId("non-existent");
+
+      // Original segment should still be there
+      expect(engine.findSnapPoint(50, 5).snapPoint).not.toBeNull();
+    });
+
+    it("supports incremental update pattern (remove then re-insert)", () => {
+      // Initial state: district at y=0
+      engine.insertSegments([
+        {
+          p1: { x: 0, y: 0 },
+          p2: { x: 100, y: 0 },
+          geometryId: "district-a",
+          geometryType: "district",
+        },
+      ]);
+      expect(engine.findSnapPoint(50, 5).snapPoint).not.toBeNull();
+
+      // Incremental update: move district-a to y=200
+      engine.removeSegmentsByGeometryId("district-a");
+      engine.insertSegments([
+        {
+          p1: { x: 0, y: 200 },
+          p2: { x: 100, y: 200 },
+          geometryId: "district-a",
+          geometryType: "district",
+        },
+      ]);
+
+      // Old position should not snap
+      expect(engine.findSnapPoint(50, 5).snapPoint).toBeNull();
+      // New position should snap
+      expect(engine.findSnapPoint(50, 195).snapPoint).not.toBeNull();
+    });
+  });
+
   describe("bounds", () => {
     it("returns null bounds when empty", () => {
       expect(engine.getBounds()).toBeNull();
