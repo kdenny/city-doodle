@@ -10,15 +10,19 @@ They feature:
 Reference examples: Outer Banks, Miami Beach, Fire Island, Galveston.
 """
 
+import logging
 from dataclasses import dataclass
 from typing import Any
 
 import numpy as np
 from numpy.typing import NDArray
+from shapely.errors import GEOSException, TopologicalError
 from shapely.geometry import LineString, MultiPolygon, Point, Polygon
 from shapely.ops import unary_union
 
 from city_worker.terrain.types import TerrainFeature
+
+logger = logging.getLogger(__name__)
 
 
 @dataclass
@@ -396,8 +400,8 @@ def generate_island_chain(
                             "has_inlet_start": start_idx in inlet_positions,
                             "has_inlet_end": end_idx in inlet_positions,
                         })
-            except Exception:
-                pass  # Skip invalid polygons
+            except (GEOSException, TopologicalError, ValueError) as e:
+                logger.warning("Skipping invalid barrier island polygon: %s", e)
 
     return islands
 
@@ -460,8 +464,8 @@ def generate_lagoon(
             poly = Polygon(lagoon_points)
             if poly.is_valid and poly.area > 0:
                 return poly.simplify(cell_size, preserve_topology=True)
-        except Exception:
-            pass
+        except (GEOSException, TopologicalError, ValueError) as e:
+            logger.warning("Failed to create lagoon polygon: %s", e)
 
     return None
 
@@ -507,8 +511,8 @@ def generate_tidal_flats(
                         flats.append(flat_area)
                     elif isinstance(flat_area, MultiPolygon):
                         flats.extend(flat_area.geoms)
-        except Exception:
-            pass
+        except (GEOSException, TopologicalError) as e:
+            logger.warning("Failed to generate tidal flat for island: %s", e)
 
     return flats
 
@@ -560,8 +564,8 @@ def generate_dune_ridges(
                     ridge = LineString(ridge_coords)
                     if ridge.is_valid and ridge.length > 0:
                         ridges.append(ridge.simplify(1.0, preserve_topology=True))
-        except Exception:
-            pass
+        except (GEOSException, TopologicalError, ValueError) as e:
+            logger.warning("Failed to generate dune ridge for island: %s", e)
 
     return ridges
 

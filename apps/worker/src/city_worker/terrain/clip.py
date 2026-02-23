@@ -10,6 +10,7 @@ downstream rendering never sees out-of-bounds geometry.
 import logging
 from typing import Any
 
+from shapely.errors import GEOSException, TopologicalError
 from shapely.geometry import (
     GeometryCollection,
     LineString,
@@ -44,8 +45,8 @@ def _geojson_to_shapely(geometry: dict[str, Any]) -> BaseGeometry | None:
         return None
     try:
         return shape(geometry)
-    except Exception:
-        logger.debug("Failed to parse geometry: %s", geometry.get("type"))
+    except (GEOSException, TopologicalError, ValueError) as e:
+        logger.warning("Failed to parse geometry type=%s: %s", geometry.get("type"), e)
         return None
 
 
@@ -143,8 +144,8 @@ def clip_feature_to_tile(
     # Perform the intersection.
     try:
         clipped = geom.intersection(tile_box)
-    except Exception:
-        logger.debug("Intersection failed for %s feature", feature.type)
+    except (GEOSException, TopologicalError) as e:
+        logger.warning("Intersection failed for %s feature: %s", feature.type, e)
         return None
 
     if clipped.is_empty:
