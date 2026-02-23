@@ -123,7 +123,7 @@ function pointToSegmentDistance(p: Point, a: Point, b: Point): number {
 /**
  * Extended config that includes personality settings for the district.
  */
-interface AddDistrictConfig extends DistrictGenerationConfig {
+export interface AddDistrictConfig extends DistrictGenerationConfig {
   /** Personality settings to apply to the district */
   personality?: DistrictPersonality;
   /**

@@ -11,18 +11,8 @@
 import { createContext, useContext } from "react";
 import type { District, CityLimits } from "./layers";
 import type { City } from "../../api/types";
-import type { AddDistrictResult } from "./FeaturesContext";
+import type { AddDistrictResult, AddDistrictConfig } from "./FeaturesContext";
 import type { ClipResult } from "./layers/polygonUtils";
-import type { DistrictPersonality } from "./layers/types";
-import type { DistrictGenerationConfig } from "./layers/districtGenerator";
-
-/**
- * Extended config that includes personality settings for the district.
- */
-interface AddDistrictConfig extends DistrictGenerationConfig {
-  personality?: DistrictPersonality;
-  seed?: number;
-}
 
 /** Read-only district state. */
 export interface DistrictsStateValue {
