@@ -1238,15 +1238,15 @@ export function FeaturesProvider({
         }
       }
 
-      // CITY-619: Build spatial index for fast water candidate filtering
-      const waterIndex = new WaterSpatialIndex();
-      waterIndex.build(waterFeatures);
+      // CITY-617/619: Build spatial index once for water feature lookups
+      const waterSpatialIndex = new WaterSpatialIndex();
+      waterSpatialIndex.build(waterFeatures);
 
       const clipResult = clipAndValidateDistrict(
         generated.district.polygon.points,
         waterFeatures,
         generated.district.type,
-        waterIndex
+        waterSpatialIndex
       );
 
       // If district is completely in water, reject placement
@@ -1651,15 +1651,15 @@ export function FeaturesProvider({
         }
       }
 
-      // CITY-619: Build spatial index for fast water candidate filtering
-      const waterIndex = new WaterSpatialIndex();
-      waterIndex.build(waterFeatures);
+      // CITY-617/619: Build spatial index once for water feature lookups
+      const waterSpatialIndex = new WaterSpatialIndex();
+      waterSpatialIndex.build(waterFeatures);
 
       return clipAndValidateDistrict(
         generated.district.polygon.points,
         waterFeatures,
         generated.district.type,
-        waterIndex
+        waterSpatialIndex
       );
     },
     [world, terrainContext]
