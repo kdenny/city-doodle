@@ -1,6 +1,7 @@
 """FastAPI application entry point."""
 
 import logging
+import re
 import traceback
 
 from fastapi import FastAPI, Request
@@ -8,7 +9,7 @@ from fastapi.middleware.cors import CORSMiddleware
 from fastapi.middleware.gzip import GZipMiddleware
 from fastapi.responses import JSONResponse
 from pydantic import ValidationError
-from sqlalchemy.exc import DataError, IntegrityError, OperationalError
+from sqlalchemy.exc import DBAPIError, DataError, IntegrityError, OperationalError
 
 from city_api.config import settings
 from city_api.routers import auth_router
@@ -167,23 +168,64 @@ async def validation_error_handler(request: Request, exc: ValidationError):
     )
 
 
+@app.exception_handler(DBAPIError)
+async def dbapi_error_handler(request: Request, exc: DBAPIError):
+    """Handle database DBAPI errors not caught by more specific handlers.
+
+    Catches asyncpg-specific exceptions (e.g. InternalServerError) that SQLAlchemy
+    wraps as DBAPIError but not as OperationalError. Returns 503 to indicate the
+    database is temporarily unavailable.
+    """
+    logger.error(
+        f"Database DBAPI error on {request.method} {request.url}: {exc}\n"
+        f"{traceback.format_exc()}"
+    )
+    return JSONResponse(
+        status_code=503,
+        content={
+            "detail": "Database temporarily unavailable",
+            "error_type": "DBAPIError",
+        },
+    )
+
+
+def _add_cors_headers(response: JSONResponse, request: Request) -> JSONResponse:
+    """Add CORS headers to a response based on the request's Origin header."""
+    origin = request.headers.get("origin")
+    if not origin:
+        return response
+
+    allowed = origin in origins
+    if not allowed and vercel_preview_regex:
+        allowed = bool(re.match(vercel_preview_regex, origin))
+
+    if allowed:
+        response.headers["Access-Control-Allow-Origin"] = origin
+        response.headers["Access-Control-Allow-Credentials"] = "true"
+        response.headers["Vary"] = "Origin"
+
+    return response
+
+
 @app.exception_handler(Exception)
 async def global_exception_handler(request: Request, exc: Exception):
     """Global exception handler that logs errors and returns proper JSON responses.
 
-    This ensures that:
-    1. All errors are logged with stack traces for debugging
-    2. CORS headers are included in error responses (handled by middleware)
-    3. The frontend gets consistent error responses
+    IMPORTANT: Starlette routes @app.exception_handler(Exception) to
+    ServerErrorMiddleware, which runs OUTSIDE the CORS middleware stack. This means
+    responses from this handler do NOT get CORS headers automatically. We must add
+    them manually so the frontend can read error responses instead of seeing
+    opaque "Failed to fetch" CORS errors.
     """
     logger.error(
         f"Unhandled exception on {request.method} {request.url}: {exc}\n"
         f"{traceback.format_exc()}"
     )
-    return JSONResponse(
+    response = JSONResponse(
         status_code=500,
         content={
             "detail": "Internal server error",
             "error_type": type(exc).__name__,
         },
     )
+    return _add_cors_headers(response, request)
