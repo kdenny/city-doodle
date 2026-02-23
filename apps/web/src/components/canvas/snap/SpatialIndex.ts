@@ -104,6 +104,24 @@ export class SpatialIndex {
   }
 
   /**
+   * Removes all segments with the given geometryId from every cell.
+   *
+   * Note: bounds are NOT recomputed (shrinking the bounding box would require
+   * scanning every remaining segment). This is acceptable because bounds are
+   * only used for informational purposes, not for correctness of snap queries.
+   */
+  removeByGeometryId(geometryId: string): void {
+    for (const [key, segments] of this.cells) {
+      const filtered = segments.filter((s) => s.geometryId !== geometryId);
+      if (filtered.length === 0) {
+        this.cells.delete(key);
+      } else if (filtered.length !== segments.length) {
+        this.cells.set(key, filtered);
+      }
+    }
+  }
+
+  /**
    * Queries all line segments within a radius of a point.
    */
   query(point: Point, radius: number): SnapLineSegment[] {

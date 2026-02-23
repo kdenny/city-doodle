@@ -184,6 +184,17 @@ export class SnapEngine {
   }
 
   /**
+   * Removes all segments associated with a specific geometry ID.
+   *
+   * Enables incremental updates: instead of clearing and re-inserting
+   * everything, callers can remove only the segments for a changed
+   * geometry and re-insert its new segments.
+   */
+  removeSegmentsByGeometryId(geometryId: string): void {
+    this.index.removeByGeometryId(geometryId);
+  }
+
+  /**
    * Finds the best snap point near a cursor position.
    */
   findSnapPoint(cursorX: number, cursorY: number): SnapResult {

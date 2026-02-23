@@ -351,24 +351,51 @@ export function useLayerSync(params: UseLayerSyncParams) {
   }, [isReady, selectionContext?.selection, featuresContext?.features.districts]);
 
   // Update snap engine with district perimeters (CITY-147)
+  // CITY-248: Incremental updates — only add/remove segments for changed districts
+  // instead of clearing and rebuilding the entire index on every change.
   // CITY-231: Debounce by 100ms so rapid district additions don't cause N rebuilds
+  const prevDistrictFingerprintsRef = useRef<Map<string, string>>(new Map());
   useEffect(() => {
     if (!isReady) return;
 
     const timer = setTimeout(() => {
       const districts = featuresContext?.features.districts || [];
-      const segments: SnapLineSegment[] = [];
+      const prevFingerprints = prevDistrictFingerprintsRef.current;
+      const nextFingerprints = new Map<string, string>();
+
+      // Build fingerprints for current districts
       for (const district of districts) {
         const points = district.polygon.points;
+        // Simple fingerprint: concatenate all point coords
+        const fp = points.map((p) => `${p.x},${p.y}`).join(";");
+        nextFingerprints.set(district.id, fp);
+      }
+
+      // Determine which districts were removed or changed — remove their old segments
+      for (const [id, fp] of prevFingerprints) {
+        if (!nextFingerprints.has(id) || nextFingerprints.get(id) !== fp) {
+          snapEngine.removeSegmentsByGeometryId(id);
+        }
+      }
+
+      // Determine which districts were added or changed — insert their new segments
+      for (const district of districts) {
+        const prevFp = prevFingerprints.get(district.id);
+        const nextFp = nextFingerprints.get(district.id)!;
+        if (prevFp === nextFp) continue; // unchanged — skip
+
+        const points = district.polygon.points;
         if (points.length < 3) continue;
+        const segments: SnapLineSegment[] = [];
         for (let i = 0; i < points.length; i++) {
           const p1 = points[i];
           const p2 = points[(i + 1) % points.length];
           segments.push({ p1, p2, geometryId: district.id, geometryType: "district" });
         }
+        snapEngine.insertSegments(segments);
       }
-      snapEngine.clear();
-      snapEngine.insertSegments(segments);
+
+      prevDistrictFingerprintsRef.current = nextFingerprints;
     }, 100);
 
     return () => clearTimeout(timer);
