@@ -8,7 +8,7 @@ import { CityNeedsModal } from "./CityNeedsModal";
 import { ScaleBar } from "./ScaleBar";
 import { InspectorPanel, type SelectedFeature } from "./InspectorPanel";
 import { useSelectionContextOptional } from "./SelectionContext";
-import { useFeaturesDispatchOptional } from "../canvas/FeaturesContext";
+import { useDistrictsDispatchOptional } from "../canvas/DistrictsContext";
 import { useZoomOptional } from "../shell/ZoomContext";
 import { useDrawingOptional } from "../canvas/DrawingContext";
 import { usePopulationStats } from "../canvas";
@@ -64,13 +64,13 @@ export function BuildView({
   const onSelectionClear = onSelectionClearProp ?? selectionContext?.clearSelection;
   const multiSelection = selectionContext?.multiSelection ?? [];
 
-  // CITY-385: Get features dispatch for multi-district grid regeneration
-  const featuresDispatch = useFeaturesDispatchOptional();
+  // CITY-385: Get districts dispatch for multi-district grid regeneration
+  const districtsDispatch = useDistrictsDispatchOptional();
   const handleRegenerateGrids = useCallback(
     (districtIds: string[], gridAngle: number) => {
-      featuresDispatch?.regenerateDistrictGrids?.(districtIds, gridAngle);
+      districtsDispatch?.regenerateDistrictGrids?.(districtIds, gridAngle);
     },
-    [featuresDispatch]
+    [districtsDispatch]
   );
 
   // Get drawing context for polygon drawing mode
