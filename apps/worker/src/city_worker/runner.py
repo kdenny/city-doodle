@@ -57,6 +57,11 @@ class JobRunner:
 
         while not self._shutdown:
             try:
+                await self._reclaim_stuck_jobs()
+            except Exception:
+                logger.exception("Error reclaiming stuck jobs")
+
+            try:
                 await self._poll_and_execute()
             except Exception:
                 logger.exception("Error in job polling loop")
@@ -108,6 +113,66 @@ class JobRunner:
             await self._execute_job(job_id, job_type, params)
         finally:
             self._active_jobs.discard(job_id)
+
+    async def _reclaim_stuck_jobs(self) -> None:
+        """Reclaim jobs stuck in 'claimed' state past the timeout.
+
+        If a worker crashes after claiming a job but before completing it,
+        the job remains in 'claimed' state indefinitely. This method finds
+        those stale jobs and sets them back to 'pending' with an incremented
+        retry count so another worker can pick them up.
+        """
+        cutoff = datetime.now(UTC) - timedelta(seconds=settings.job_timeout_seconds)
+        session = await get_session()
+        try:
+            async with session.begin():
+                result = await session.execute(
+                    text("""
+                        SELECT id, retry_count
+                        FROM jobs
+                        WHERE status = :claimed
+                          AND claimed_at < :cutoff
+                    """),
+                    {
+                        "claimed": JobStatus.CLAIMED.value,
+                        "cutoff": cutoff,
+                    },
+                )
+                stuck_jobs = result.fetchall()
+
+                for job_id, retry_count in stuck_jobs:
+                    job_id = UUID(str(job_id))
+                    new_retry_count = retry_count + 1
+                    delay_seconds = self._compute_retry_delay(retry_count)
+                    retry_after = datetime.now(UTC) + timedelta(seconds=delay_seconds)
+
+                    await session.execute(
+                        text("""
+                            UPDATE jobs
+                            SET status = :status,
+                                retry_count = :retry_count,
+                                error = :error,
+                                retry_after = :retry_after,
+                                claimed_at = NULL
+                            WHERE id = :job_id
+                        """),
+                        {
+                            "status": JobStatus.PENDING.value,
+                            "retry_count": new_retry_count,
+                            "error": "Reclaimed: job stuck in claimed state past timeout",
+                            "retry_after": retry_after,
+                            "job_id": job_id,
+                        },
+                    )
+
+                    logger.warning(
+                        "Reclaimed stuck job %s (retry %d, next retry after %ds)",
+                        job_id,
+                        new_retry_count,
+                        delay_seconds,
+                    )
+        finally:
+            await session.close()
 
     async def _claim_job(self) -> tuple[UUID, str, dict] | None:
         """Claim a pending job using FOR UPDATE SKIP LOCKED.
