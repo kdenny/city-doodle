@@ -1,14 +1,23 @@
-"""Job runner - polls and executes jobs from the database."""
+"""Job runner - uses Postgres LISTEN/NOTIFY for push-based job dispatch.
+
+The worker creates a dedicated asyncpg connection (outside the SQLAlchemy pool)
+that LISTENs on the ``new_job`` channel.  When the API inserts a job and sends
+``NOTIFY new_job``, the worker wakes up immediately and claims the job.
+A 60-second fallback timeout ensures no jobs are permanently stuck even if a
+notification is missed.
+"""
 
 import asyncio
 import json
 import logging
+import re
 import signal
 import time
 from datetime import UTC, datetime, timedelta
 from typing import Any
 from uuid import UUID
 
+import asyncpg
 from sqlalchemy import text
 
 from city_worker.config import settings
@@ -16,6 +25,18 @@ from city_worker.database import get_session
 from city_worker.models import JobStatus, JobType
 
 logger = logging.getLogger(__name__)
+
+
+def _make_asyncpg_dsn(sqlalchemy_url: str) -> str:
+    """Convert a SQLAlchemy async URL to a plain asyncpg DSN.
+
+    SQLAlchemy URLs use the ``postgresql+asyncpg://`` scheme, but asyncpg
+    expects ``postgresql://`` (or ``postgres://``).  We also convert the
+    ``sslmode`` query-parameter to ``ssl`` which asyncpg understands.
+    """
+    dsn = sqlalchemy_url.replace("postgresql+asyncpg://", "postgresql://", 1)
+    dsn = re.sub(r"sslmode=(\w+)", r"ssl=\1", dsn)
+    return dsn
 
 
 class _NumpySafeEncoder(json.JSONEncoder):
@@ -44,28 +65,109 @@ class _NumpySafeEncoder(json.JSONEncoder):
 
 
 class JobRunner:
-    """Polls the database for pending jobs and executes them."""
+    """Listens for new-job notifications and executes them.
+
+    Uses Postgres LISTEN/NOTIFY for push-based wakeup with a configurable
+    fallback timeout (default 60 s) so jobs are never permanently stuck.
+    """
+
+    CHANNEL = "new_job"
 
     def __init__(self) -> None:
         self._shutdown = False
         self._active_jobs: set[UUID] = set()
+        self._listen_conn: asyncpg.Connection | None = None
+        self._notify_event: asyncio.Event = asyncio.Event()
+
+    # ------------------------------------------------------------------
+    # LISTEN connection management
+    # ------------------------------------------------------------------
+
+    async def _connect_listen(self) -> None:
+        """Create (or recreate) the dedicated LISTEN connection."""
+        dsn = _make_asyncpg_dsn(settings.database_url)
+        try:
+            self._listen_conn = await asyncpg.connect(dsn)
+            await self._listen_conn.add_listener(self.CHANNEL, self._on_notify)
+            logger.info("LISTEN connection established on channel '%s'", self.CHANNEL)
+        except Exception:
+            logger.exception("Failed to establish LISTEN connection")
+            self._listen_conn = None
+
+    async def _close_listen(self) -> None:
+        """Cleanly close the LISTEN connection."""
+        if self._listen_conn is not None:
+            try:
+                await self._listen_conn.close()
+            except Exception:
+                logger.debug("Error closing LISTEN connection", exc_info=True)
+            finally:
+                self._listen_conn = None
+
+    def _on_notify(
+        self,
+        connection: asyncpg.Connection,
+        pid: int,
+        channel: str,
+        payload: str,
+    ) -> None:
+        """Callback invoked by asyncpg when a notification arrives."""
+        logger.debug("Received NOTIFY on '%s' (pid=%s)", channel, pid)
+        self._notify_event.set()
+
+    async def _ensure_listen(self) -> None:
+        """Make sure the LISTEN connection is alive; reconnect if not."""
+        if self._listen_conn is not None:
+            try:
+                # Lightweight health check
+                await self._listen_conn.fetchval("SELECT 1")
+                return
+            except Exception:
+                logger.warning("LISTEN connection lost, reconnecting...")
+                await self._close_listen()
+
+        await self._connect_listen()
+
+    # ------------------------------------------------------------------
+    # Main run loop
+    # ------------------------------------------------------------------
 
     async def run(self) -> None:
-        """Main run loop - poll for and process jobs until shutdown."""
+        """Main run loop - wait for notifications and process jobs."""
         logger.info("Job runner starting...")
         self._setup_signal_handlers()
 
+        await self._connect_listen()
+
         while not self._shutdown:
             try:
-                await self._poll_and_execute()
-            except Exception:
-                logger.exception("Error in job polling loop")
-                await asyncio.sleep(settings.poll_interval_seconds)
+                # Ensure LISTEN connection is healthy (reconnect if needed)
+                await self._ensure_listen()
 
-            if not self._shutdown:
+                # Wait for a notification OR timeout (safety-net poll)
+                self._notify_event.clear()
+                try:
+                    await asyncio.wait_for(
+                        self._notify_event.wait(),
+                        timeout=settings.listen_timeout_seconds,
+                    )
+                    logger.debug("Woke up via NOTIFY")
+                except asyncio.TimeoutError:
+                    logger.debug("Fallback poll (no notification in %.0fs)", settings.listen_timeout_seconds)
+
+                # Drain all available jobs (there may be more than one)
+                while not self._shutdown:
+                    claimed = await self._poll_and_execute()
+                    if not claimed:
+                        break
+
+            except Exception:
+                logger.exception("Error in job runner loop")
+                # Brief back-off before retrying the loop
                 await asyncio.sleep(settings.poll_interval_seconds)
 
         logger.info("Job runner shutting down, waiting for active jobs...")
+        await self._close_listen()
         await self._wait_for_active_jobs()
         logger.info("Job runner stopped")
 
@@ -79,6 +181,8 @@ class JobRunner:
         """Handle shutdown signal."""
         logger.info("Shutdown signal received")
         self._shutdown = True
+        # Wake the event loop so we don't wait for the full listen timeout
+        self._notify_event.set()
 
     async def _wait_for_active_jobs(self, timeout: float = 30.0) -> None:
         """Wait for active jobs to complete with timeout."""
@@ -93,14 +197,17 @@ class JobRunner:
                 break
             await asyncio.sleep(0.5)
 
-    async def _poll_and_execute(self) -> None:
-        """Poll for a pending job and execute it."""
+    async def _poll_and_execute(self) -> bool:
+        """Poll for a pending job and execute it.
+
+        Returns True if a job was claimed and executed, False otherwise.
+        """
         if len(self._active_jobs) >= settings.max_concurrent_jobs:
-            return
+            return False
 
         job = await self._claim_job()
         if job is None:
-            return
+            return False
 
         job_id, job_type, params = job
         self._active_jobs.add(job_id)
@@ -108,6 +215,7 @@ class JobRunner:
             await self._execute_job(job_id, job_type, params)
         finally:
             self._active_jobs.discard(job_id)
+        return True
 
     async def _claim_job(self) -> tuple[UUID, str, dict] | None:
         """Claim a pending job using FOR UPDATE SKIP LOCKED.
@@ -435,12 +543,13 @@ class JobRunner:
 
             t_save_end = time.perf_counter()
 
-            gen_ms = (t_gen_end - t_pipeline_start) * 1000
-            save_ms = (t_save_end - t_gen_end) * 1000
-            total_ms = (t_save_end - t_pipeline_start) * 1000
+            gen_s = t_gen_end - t_pipeline_start
+            save_s = t_save_end - t_gen_end
+            total_s = t_save_end - t_pipeline_start
             logger.info(
-                "[Terrain trace=%s] Full pipeline complete in %.1fms (generation=%.1fms save=%.1fms) world=%s",
-                trace_id, total_ms, gen_ms, save_ms, world_id,
+                "[Terrain] Generated 3x3 in %.1fs (generation=%.1fs save=%.1fs) "
+                "geographic_setting=%s world=%s trace=%s",
+                total_s, gen_s, save_s, geographic_setting, world_id, trace_id,
             )
 
             # CITY-585: Mark all generated tiles as "ready"

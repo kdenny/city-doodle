@@ -1,13 +1,16 @@
 """Job repository - data access for background jobs."""
 
+import logging
 from datetime import UTC, datetime
 from uuid import UUID
 
-from sqlalchemy import select
+from sqlalchemy import select, text
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from city_api.models import Job as JobModel
 from city_api.schemas import Job, JobCreate, JobStatus
+
+logger = logging.getLogger(__name__)
 
 
 def _ensure_utc(dt: datetime | None) -> datetime | None:
@@ -20,7 +23,12 @@ def _ensure_utc(dt: datetime | None) -> datetime | None:
 
 
 async def create_job(db: AsyncSession, job_create: JobCreate, user_id: UUID) -> Job:
-    """Create a new job."""
+    """Create a new job.
+
+    After committing the job, sends a Postgres NOTIFY on the 'new_job' channel
+    so that workers using LISTEN wake up immediately instead of waiting for
+    their next poll cycle.
+    """
     job = JobModel(
         user_id=user_id,
         type=job_create.type.value,
@@ -31,6 +39,15 @@ async def create_job(db: AsyncSession, job_create: JobCreate, user_id: UUID) -> 
     db.add(job)
     await db.commit()
     await db.refresh(job)
+
+    # Notify workers that a new job is available.
+    # This runs after commit so listeners only see committed rows.
+    try:
+        await db.execute(text("NOTIFY new_job"))
+        await db.commit()
+    except Exception:
+        logger.warning("Failed to send NOTIFY new_job", exc_info=True)
+
     return _to_schema(job)
 
 
