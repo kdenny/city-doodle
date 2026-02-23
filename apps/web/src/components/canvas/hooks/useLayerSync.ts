@@ -230,9 +230,9 @@ export function useLayerSync(params: UseLayerSyncParams) {
       terrainData.duneRidges.length > 0 ||
       terrainData.inlets.length > 0;
     if (hasAnyTerrain) {
-      // CITY-573: Log when real terrain replaces mock terrain
+      // CITY-573/595: Log when real terrain arrives and replaces the empty loading state
       console.info(
-        '[Terrain] Real terrain replacing mock terrain from %d API tiles',
+        '[Terrain] Real terrain loaded from %d API tiles',
         tilesWithFeatures.length,
         {
           waterFeatures: terrainData.water.length,
