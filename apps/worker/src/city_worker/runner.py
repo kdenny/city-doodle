@@ -422,18 +422,18 @@ class JobRunner:
             config = TerrainConfig(**config_kwargs)
             generator = TerrainGenerator(config)
 
-            t_pipeline_start = time.time()
+            t_pipeline_start = time.perf_counter()
 
             result = await loop.run_in_executor(
                 None, generator.generate_3x3, int(center_tx), int(center_ty)
             )
 
-            t_gen_end = time.time()
+            t_gen_end = time.perf_counter()
 
             # Save generated tiles to database
             await self._save_terrain_tiles(world_id, result, trace_id)
 
-            t_save_end = time.time()
+            t_save_end = time.perf_counter()
 
             gen_s = t_gen_end - t_pipeline_start
             save_s = t_save_end - t_gen_end
