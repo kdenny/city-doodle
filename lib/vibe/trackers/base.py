@@ -1,8 +1,20 @@
 """Abstract base class for ticket trackers."""
 
 from abc import ABC, abstractmethod
-from dataclasses import dataclass
+from dataclasses import dataclass, field
 from typing import Any
+
+
+@dataclass
+class Project:
+    """Represents a project from a tracker."""
+
+    id: str
+    name: str
+    description: str
+    state: str  # e.g., "planned", "started", "completed", "canceled"
+    url: str
+    raw: dict[str, Any]
 
 
 @dataclass
@@ -16,23 +28,18 @@ class Ticket:
     labels: list[str]
     url: str
     raw: dict[str, Any]
+    # Extended fields (optional, may be None for backwards compatibility)
+    priority: int | None = None  # 0=none, 1=urgent, 2=high, 3=medium, 4=low
+    assignee: str | None = None  # Assignee name
+    project: str | None = None  # Project name
+    project_id: str | None = None  # Project ID
+    parent_id: str | None = None  # Parent ticket identifier
+    parent_title: str | None = None  # Parent ticket title
+    children: list["Ticket"] = field(default_factory=list)  # Sub-tasks
 
 
 class TrackerBase(ABC):
     """Abstract base class for ticket tracker integrations."""
-
-    @staticmethod
-    def _normalize_labels(label_names: list[str]) -> list[str]:
-        """Split comma-separated label strings into individual labels.
-
-        Handles the case where labels are passed as ["Bug,Frontend,Backend"]
-        instead of ["Bug", "Frontend", "Backend"].
-        """
-        normalized: list[str] = []
-        for name in label_names:
-            parts = [part.strip() for part in name.split(",")]
-            normalized.extend(part for part in parts if part)
-        return normalized
 
     @property
     @abstractmethod
@@ -81,6 +88,19 @@ class TrackerBase(ABC):
     ) -> Ticket:
         """Update an existing ticket."""
         pass
+
+    @staticmethod
+    def _normalize_labels(label_names: list[str]) -> list[str]:
+        """Split comma-separated label strings into individual labels.
+
+        Handles the case where callers pass ["Bug,Frontend,Low Risk"] as a
+        single string instead of separate strings.
+        """
+        normalized: list[str] = []
+        for name in label_names:
+            parts = [part.strip() for part in name.split(",")]
+            normalized.extend(part for part in parts if part)
+        return normalized
 
     def comment_ticket(self, ticket_id: str, body: str) -> None:
         """Add a comment to a ticket. Override in trackers that support comments."""

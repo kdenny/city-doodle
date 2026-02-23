@@ -5,9 +5,19 @@ from typing import Any
 
 import requests
 
-from lib.vibe.trackers.base import Ticket, TrackerBase
+from lib.vibe.trackers.base import Project, Ticket, TrackerBase
 
 LINEAR_API_URL = "https://api.linear.app/graphql"
+
+# Priority mapping: Linear uses integers, we expose friendly names
+PRIORITY_MAP = {
+    "none": 0,
+    "urgent": 1,
+    "high": 2,
+    "medium": 3,
+    "low": 4,
+}
+PRIORITY_NAMES = {v: k for k, v in PRIORITY_MAP.items()}
 
 
 class LinearTracker(TrackerBase):
@@ -64,28 +74,54 @@ class LinearTracker(TrackerBase):
         response.raise_for_status()
         return response.json()
 
-    def get_ticket(self, ticket_id: str) -> Ticket | None:
-        """Fetch a single ticket by ID or identifier."""
-        query = """
-        query GetIssue($id: String!) {
-            issue(id: $id) {
+    def get_ticket(self, ticket_id: str, include_children: bool = False) -> Ticket | None:
+        """Fetch a single ticket by ID or identifier.
+
+        Args:
+            ticket_id: The ticket ID or identifier (e.g., "PROJ-123")
+            include_children: If True, fetch sub-tasks (children)
+        """
+        # Build children fragment conditionally
+        children_fragment = (
+            """
+                children {
+                    nodes {
+                        id
+                        identifier
+                        title
+                        state { name }
+                    }
+                }
+        """
+            if include_children
+            else ""
+        )
+
+        query = f"""
+        query GetIssue($id: String!) {{
+            issue(id: $id) {{
                 id
                 identifier
                 title
                 description
-                state { id name }
-                team { id }
-                labels { nodes { name } }
+                state {{ id name }}
+                team {{ id }}
+                labels {{ nodes {{ name }} }}
                 url
-            }
-        }
+                priority
+                assignee {{ id name email }}
+                project {{ id name }}
+                parent {{ id identifier title }}
+                {children_fragment}
+            }}
+        }}
         """
         try:
             result = self._execute_query(query, {"id": ticket_id})
             issue = result.get("data", {}).get("issue")
             if not issue:
                 return None
-            return self._parse_issue(issue)
+            return self._parse_issue(issue, include_children=include_children)
         except Exception:
             return None
 
@@ -94,8 +130,24 @@ class LinearTracker(TrackerBase):
         status: str | None = None,
         labels: list[str] | None = None,
         limit: int = 50,
+        project: str | None = None,
+        parent: str | None = None,
+        priority: str | None = None,
+        assignee: str | None = None,
+        unassigned: bool = False,
     ) -> list[Ticket]:
-        """List tickets with optional filters."""
+        """List tickets with optional filters.
+
+        Args:
+            status: Filter by status name (e.g., "In Progress", "Done")
+            labels: Filter by label names
+            limit: Maximum number of tickets to return
+            project: Filter by project name
+            parent: Filter by parent ticket identifier (shows sub-tasks)
+            priority: Filter by priority ("urgent", "high", "medium", "low", "none")
+            assignee: Filter by assignee name or "me" for current user
+            unassigned: If True, show only unassigned tickets
+        """
         query = """
         query ListIssues($first: Int!, $filter: IssueFilter) {
             issues(first: $first, filter: $filter) {
@@ -107,6 +159,10 @@ class LinearTracker(TrackerBase):
                     state { name }
                     labels { nodes { name } }
                     url
+                    priority
+                    assignee { name }
+                    project { name }
+                    parent { identifier }
                 }
             }
         }
@@ -118,6 +174,35 @@ class LinearTracker(TrackerBase):
             filter_obj["state"] = {"name": {"eq": status}}
         if labels:
             filter_obj["labels"] = {"name": {"in": labels}}
+        if project:
+            # Need to resolve project name to ID
+            project_id = self._get_project_id(project)
+            if project_id:
+                filter_obj["project"] = {"id": {"eq": project_id}}
+        if parent:
+            # Resolve parent identifier to UUID
+            parent_ticket = self.get_ticket(parent)
+            if parent_ticket:
+                parent_uuid = parent_ticket.raw.get("id")
+                if parent_uuid:
+                    filter_obj["parent"] = {"id": {"eq": parent_uuid}}
+        if priority:
+            priority_int = PRIORITY_MAP.get(priority.lower())
+            if priority_int is not None:
+                filter_obj["priority"] = {"eq": priority_int}
+        if unassigned:
+            filter_obj["assignee"] = {"null": True}
+        elif assignee:
+            if assignee.lower() == "me":
+                # Use viewer's ID
+                viewer_id = self._get_viewer_id()
+                if viewer_id:
+                    filter_obj["assignee"] = {"id": {"eq": viewer_id}}
+            else:
+                # Search by name
+                user_id = self._get_user_id_by_name(assignee)
+                if user_id:
+                    filter_obj["assignee"] = {"id": {"eq": user_id}}
 
         variables: dict[str, Any] = {"first": limit}
         if filter_obj:
@@ -135,8 +220,26 @@ class LinearTracker(TrackerBase):
         title: str,
         description: str,
         labels: list[str] | None = None,
+        project: str | None = None,
+        project_id: str | None = None,
+        parent: str | None = None,
+        parent_id: str | None = None,
+        priority: str | None = None,
+        assignee: str | None = None,
     ) -> Ticket:
-        """Create a new ticket in Linear."""
+        """Create a new ticket in Linear.
+
+        Args:
+            title: Ticket title
+            description: Ticket description
+            labels: List of label names to apply
+            project: Project name to add ticket to
+            project_id: Project UUID (alternative to name)
+            parent: Parent ticket identifier (e.g., "PROJ-100") for sub-task
+            parent_id: Parent ticket UUID (alternative to identifier)
+            priority: Priority level ("urgent", "high", "medium", "low", "none")
+            assignee: Assignee name or "me" for self-assignment
+        """
         mutation = """
         mutation CreateIssue($input: IssueCreateInput!) {
             issueCreate(input: $input) {
@@ -149,6 +252,10 @@ class LinearTracker(TrackerBase):
                     state { name }
                     labels { nodes { name } }
                     url
+                    priority
+                    assignee { name }
+                    project { id name }
+                    parent { identifier title }
                 }
             }
         }
@@ -164,6 +271,41 @@ class LinearTracker(TrackerBase):
             if label_ids:
                 input_obj["labelIds"] = label_ids
 
+        # Project support
+        if project_id:
+            input_obj["projectId"] = project_id
+        elif project:
+            resolved_project_id = self._get_project_id(project)
+            if resolved_project_id:
+                input_obj["projectId"] = resolved_project_id
+
+        # Parent (sub-task) support
+        if parent_id:
+            input_obj["parentId"] = parent_id
+        elif parent:
+            parent_ticket = self.get_ticket(parent)
+            if parent_ticket:
+                parent_uuid = parent_ticket.raw.get("id")
+                if parent_uuid:
+                    input_obj["parentId"] = parent_uuid
+
+        # Priority support
+        if priority:
+            priority_int = PRIORITY_MAP.get(priority.lower())
+            if priority_int is not None:
+                input_obj["priority"] = priority_int
+
+        # Assignee support
+        if assignee:
+            if assignee.lower() == "me":
+                viewer_id = self._get_viewer_id()
+                if viewer_id:
+                    input_obj["assigneeId"] = viewer_id
+            else:
+                user_id = self._get_user_id_by_name(assignee)
+                if user_id:
+                    input_obj["assigneeId"] = user_id
+
         result = self._execute_query(mutation, {"input": input_obj})
         issue = result.get("data", {}).get("issueCreate", {}).get("issue")
         if not issue:
@@ -177,18 +319,49 @@ class LinearTracker(TrackerBase):
         description: str | None = None,
         status: str | None = None,
         labels: list[str] | None = None,
+        project: str | None = None,
+        project_id: str | None = None,
+        remove_project: bool = False,
+        parent: str | None = None,
+        parent_id: str | None = None,
+        remove_parent: bool = False,
+        priority: str | None = None,
+        assignee: str | None = None,
+        unassign: bool = False,
     ) -> Ticket:
-        """Update an existing ticket."""
+        """Update an existing ticket.
+
+        Args:
+            ticket_id: The ticket ID or identifier
+            title: New title
+            description: New description
+            status: New status name
+            labels: New labels (replaces existing)
+            project: Project name to add ticket to
+            project_id: Project UUID
+            remove_project: If True, remove from current project
+            parent: Parent ticket identifier for sub-task
+            parent_id: Parent ticket UUID
+            remove_parent: If True, remove parent (make standalone)
+            priority: Priority level
+            assignee: Assignee name or "me"
+            unassign: If True, remove assignee
+        """
         input_obj: dict[str, Any] = {}
         if title:
             input_obj["title"] = title
         if description:
             input_obj["description"] = description
-        if status:
-            # Resolve status name to workflow state ID
+
+        # We may need the issue for status or label resolution
+        issue = None
+        if status or labels:
             issue = self.get_ticket(ticket_id)
             if not issue:
                 raise RuntimeError(f"Ticket not found: {ticket_id}")
+
+        if status:
+            # Resolve status name to workflow state ID
             team_id = (issue.raw.get("team") or {}).get("id") or self._team_id
             if not team_id:
                 raise RuntimeError("Cannot resolve status: issue has no team")
@@ -201,13 +374,52 @@ class LinearTracker(TrackerBase):
             input_obj["stateId"] = state_id
 
         if labels:
-            issue = issue if status else self.get_ticket(ticket_id)
-            if not issue:
-                raise RuntimeError(f"Ticket not found: {ticket_id}")
             team_id = (issue.raw.get("team") or {}).get("id") or self._team_id
-            label_ids = self._get_or_create_label_ids(team_id, labels)
-            if label_ids:
-                input_obj["labelIds"] = label_ids
+            if team_id:
+                label_ids = self._get_or_create_label_ids(team_id, labels)
+                if label_ids:
+                    input_obj["labelIds"] = label_ids
+
+        # Project support
+        if remove_project:
+            input_obj["projectId"] = None
+        elif project_id:
+            input_obj["projectId"] = project_id
+        elif project:
+            resolved_project_id = self._get_project_id(project)
+            if resolved_project_id:
+                input_obj["projectId"] = resolved_project_id
+
+        # Parent (sub-task) support
+        if remove_parent:
+            input_obj["parentId"] = None
+        elif parent_id:
+            input_obj["parentId"] = parent_id
+        elif parent:
+            parent_ticket = self.get_ticket(parent)
+            if parent_ticket:
+                parent_uuid = parent_ticket.raw.get("id")
+                if parent_uuid:
+                    input_obj["parentId"] = parent_uuid
+
+        # Priority support
+        if priority:
+            priority_int = PRIORITY_MAP.get(priority.lower())
+            if priority_int is not None:
+                input_obj["priority"] = priority_int
+
+        # Assignee support
+        if unassign:
+            input_obj["assigneeId"] = None
+        elif assignee:
+            if assignee.lower() == "me":
+                viewer_id = self._get_viewer_id()
+                if viewer_id:
+                    input_obj["assigneeId"] = viewer_id
+            else:
+                user_id = self._get_user_id_by_name(assignee)
+                if user_id:
+                    input_obj["assigneeId"] = user_id
 
         mutation = """
         mutation UpdateIssue($id: String!, $input: IssueUpdateInput!) {
@@ -221,6 +433,10 @@ class LinearTracker(TrackerBase):
                     state { name }
                     labels { nodes { name } }
                     url
+                    priority
+                    assignee { name }
+                    project { id name }
+                    parent { identifier title }
                 }
             }
         }
@@ -268,54 +484,6 @@ class LinearTracker(TrackerBase):
 
         return len(issues) == 0, issues
 
-    def _get_or_create_label_ids(self, team_id: str | None, label_names: list[str]) -> list[str]:
-        """Resolve label names to IDs, creating any that don't exist."""
-        if not team_id or not label_names:
-            return []
-        label_names = self._normalize_labels(label_names)
-        # Build name->id map for existing team labels (first: 250 to avoid
-        # default pagination cutting off results when many labels exist)
-        query = """
-        query TeamLabels($teamId: String!) {
-            team(id: $teamId) {
-                labels(first: 250) { nodes { id name } }
-            }
-        }
-        """
-        try:
-            result = self._execute_query(query, {"teamId": team_id})
-            nodes = result.get("data", {}).get("team", {}).get("labels", {}).get("nodes", [])
-            name_to_id = {n.get("name", ""): n["id"] for n in nodes if n.get("id")}
-        except Exception:
-            name_to_id = {}
-
-        ids = []
-        for name in label_names:
-            if name in name_to_id:
-                ids.append(name_to_id[name])
-            else:
-                new_id = self._create_label(team_id, name)
-                if new_id:
-                    ids.append(new_id)
-        return ids
-
-    def _create_label(self, team_id: str, name: str) -> str | None:
-        """Create a new label in Linear and return its ID."""
-        mutation = """
-        mutation CreateLabel($input: IssueLabelCreateInput!) {
-            issueLabelCreate(input: $input) {
-                success
-                issueLabel { id name }
-            }
-        }
-        """
-        try:
-            result = self._execute_query(mutation, {"input": {"name": name, "teamId": team_id}})
-            label = result.get("data", {}).get("issueLabelCreate", {}).get("issueLabel")
-            return label.get("id") if label else None
-        except Exception:
-            return None
-
     def _get_label_ids(self, team_id: str | None, label_names: list[str]) -> list[str]:
         """Resolve label names to Linear label IDs for the team."""
         if not team_id or not label_names:
@@ -336,22 +504,76 @@ class LinearTracker(TrackerBase):
         except Exception:
             return []
 
-    def list_labels(self) -> list[dict[str, str]]:
-        """List all labels (team + workspace) with their IDs."""
+    def _get_or_create_label_ids(self, team_id: str | None, label_names: list[str]) -> list[str]:
+        """Resolve label names to IDs, creating any that don't exist."""
+        if not team_id or not label_names:
+            return []
+        # First try to resolve all labels
+        existing_ids = self._get_label_ids(team_id, label_names)
+        if len(existing_ids) == len(label_names):
+            return existing_ids
+
+        # Some labels are missing — figure out which ones and create them
+        query = """
+        query TeamLabels($teamId: String!) {
+            team(id: $teamId) {
+                labels(first: 250) { nodes { id name } }
+            }
+        }
+        """
         try:
-            result = self._execute_query(
-                """
-                query ListLabels {
-                    issueLabels(first: 250) {
-                        nodes {
-                            id
-                            name
-                            color
-                        }
-                    }
+            result = self._execute_query(query, {"teamId": team_id})
+            nodes = result.get("data", {}).get("team", {}).get("labels", {}).get("nodes", [])
+            name_to_id = {n.get("name", ""): n["id"] for n in nodes if n.get("id")}
+
+            label_ids = []
+            for name in label_names:
+                if name in name_to_id:
+                    label_ids.append(name_to_id[name])
+                else:
+                    new_id = self._create_label(team_id, name)
+                    if new_id:
+                        label_ids.append(new_id)
+            return label_ids
+        except Exception:
+            return existing_ids
+
+    def _create_label(self, team_id: str, name: str) -> str | None:
+        """Create a label in Linear and return its ID."""
+        mutation = """
+        mutation CreateLabel($input: IssueLabelCreateInput!) {
+            issueLabelCreate(input: $input) {
+                success
+                issueLabel { id name }
+            }
+        }
+        """
+        try:
+            result = self._execute_query(mutation, {"input": {"name": name, "teamId": team_id}})
+            label = result.get("data", {}).get("issueLabelCreate", {}).get("issueLabel")
+            return label.get("id") if label else None
+        except Exception:
+            return None
+
+    def list_labels(self) -> list[dict[str, str]]:
+        """List all labels with their IDs for the configured team."""
+        query = """
+        query ListLabels($teamId: String) {
+            issueLabels(filter: { team: { id: { eq: $teamId } } }, first: 250) {
+                nodes {
+                    id
+                    name
+                    color
                 }
-                """
-            )
+            }
+        }
+        """
+        variables = {}
+        if self._team_id:
+            variables["teamId"] = self._team_id
+
+        try:
+            result = self._execute_query(query, variables if variables else None)
             nodes = result.get("data", {}).get("issueLabels", {}).get("nodes", [])
             return [
                 {
@@ -388,44 +610,36 @@ class LinearTracker(TrackerBase):
         except Exception:
             return None
 
-    def _parse_issue(self, issue: dict) -> Ticket:
-        """Parse a Linear issue into a Ticket."""
-        state = issue.get("state") or {}
-        return Ticket(
-            id=issue.get("identifier", issue.get("id", "")),
-            title=issue.get("title", ""),
-            description=issue.get("description", ""),
-            status=state.get("name", ""),
-            labels=[label["name"] for label in issue.get("labels", {}).get("nodes", [])],
-            url=issue.get("url", ""),
-            raw=issue,
-        )
-
-    def _resolve_issue_id(self, ticket_id: str) -> str | None:
-        """Resolve a ticket identifier (e.g. CITY-123) to a Linear UUID."""
-        ticket = self.get_ticket(ticket_id)
-        if not ticket:
-            return None
-        return ticket.raw.get("id")
-
-    def add_blocking(self, blocker_id: str, blocked_id: str) -> bool:
-        """Create a blocking relationship: blocker_id blocks blocked_id.
+    def create_relation(
+        self,
+        blocker_id: str,
+        blocked_id: str,
+        relation_type: str = "blocks",
+    ) -> bool:
+        """Create a blocking relationship between two issues.
 
         Args:
-            blocker_id: The ticket that blocks (prerequisite)
-            blocked_id: The ticket that is blocked (dependent)
+            blocker_id: The issue that blocks (prerequisite)
+            blocked_id: The issue that is blocked (dependent)
+            relation_type: Type of relation ("blocks" or "related")
 
         Returns:
-            True if relationship was created successfully.
+            True if relation was created successfully
         """
-        # Resolve identifiers to UUIDs
-        blocker_uuid = self._resolve_issue_id(blocker_id)
-        blocked_uuid = self._resolve_issue_id(blocked_id)
+        # First resolve identifiers to UUIDs if needed
+        blocker = self.get_ticket(blocker_id)
+        blocked = self.get_ticket(blocked_id)
+
+        if not blocker:
+            raise RuntimeError(f"Ticket not found: {blocker_id}")
+        if not blocked:
+            raise RuntimeError(f"Ticket not found: {blocked_id}")
+
+        blocker_uuid = blocker.raw.get("id")
+        blocked_uuid = blocked.raw.get("id")
 
         if not blocker_uuid or not blocked_uuid:
-            raise RuntimeError(
-                f"Could not resolve ticket IDs: {blocker_id}={blocker_uuid}, {blocked_id}={blocked_uuid}"
-            )
+            raise RuntimeError("Cannot create relation: missing issue UUIDs")
 
         mutation = """
         mutation CreateIssueRelation($input: IssueRelationCreateInput!) {
@@ -438,11 +652,11 @@ class LinearTracker(TrackerBase):
             }
         }
         """
-        # In Linear, "blocks" relation type means: issueId blocks relatedIssueId
+
         input_obj = {
             "issueId": blocker_uuid,
             "relatedIssueId": blocked_uuid,
-            "type": "blocks",
+            "type": relation_type,
         }
 
         try:
@@ -450,129 +664,138 @@ class LinearTracker(TrackerBase):
             success = result.get("data", {}).get("issueRelationCreate", {}).get("success", False)
             return success
         except Exception as e:
-            raise RuntimeError(f"Failed to create blocking relationship: {e}") from e
+            raise RuntimeError(f"Failed to create relation: {e}") from e
 
-    def remove_blocking(self, blocker_id: str, blocked_id: str) -> bool:
-        """Remove a blocking relationship between two tickets.
+    def _parse_issue(self, issue: dict, include_children: bool = False) -> Ticket:
+        """Parse a Linear issue into a Ticket."""
+        state = issue.get("state") or {}
+        assignee = issue.get("assignee") or {}
+        project = issue.get("project") or {}
+        parent = issue.get("parent") or {}
+
+        # Parse children if present
+        children: list[Ticket] = []
+        if include_children and "children" in issue:
+            children_nodes = issue.get("children", {}).get("nodes", [])
+            children = [self._parse_issue(child) for child in children_nodes]
+
+        return Ticket(
+            id=issue.get("identifier", issue.get("id", "")),
+            title=issue.get("title", ""),
+            description=issue.get("description", ""),
+            status=state.get("name", ""),
+            labels=[label["name"] for label in issue.get("labels", {}).get("nodes", [])],
+            url=issue.get("url", ""),
+            raw=issue,
+            priority=issue.get("priority"),
+            assignee=assignee.get("name"),
+            project=project.get("name"),
+            project_id=project.get("id"),
+            parent_id=parent.get("identifier"),
+            parent_title=parent.get("title"),
+            children=children,
+        )
+
+    # -------------------------------------------------------------------------
+    # Project Management
+    # -------------------------------------------------------------------------
+
+    def list_projects(
+        self,
+        state: str | None = None,
+        limit: int = 50,
+    ) -> list[Project]:
+        """List projects accessible to the team.
 
         Args:
-            blocker_id: The ticket that blocks (prerequisite)
-            blocked_id: The ticket that is blocked (dependent)
-
-        Returns:
-            True if relationship was removed successfully.
-        """
-        # First, find the relation ID
-        blocker_uuid = self._resolve_issue_id(blocker_id)
-        if not blocker_uuid:
-            raise RuntimeError(f"Could not resolve ticket ID: {blocker_id}")
-
-        # Query relations for the blocker issue
-        query = """
-        query GetIssueRelations($id: String!) {
-            issue(id: $id) {
-                relations {
-                    nodes {
-                        id
-                        type
-                        relatedIssue {
-                            identifier
-                        }
-                    }
-                }
-            }
-        }
-        """
-        try:
-            result = self._execute_query(query, {"id": blocker_id})
-            relations = (
-                result.get("data", {}).get("issue", {}).get("relations", {}).get("nodes", [])
-            )
-
-            # Find the blocking relation to the blocked ticket
-            relation_id = None
-            for rel in relations:
-                if rel.get("type") == "blocks":
-                    related = rel.get("relatedIssue", {})
-                    if related.get("identifier") == blocked_id:
-                        relation_id = rel.get("id")
-                        break
-
-            if not relation_id:
-                return False  # No such relation exists
-
-            # Delete the relation
-            mutation = """
-            mutation DeleteIssueRelation($id: String!) {
-                issueRelationDelete(id: $id) {
-                    success
-                }
-            }
-            """
-            result = self._execute_query(mutation, {"id": relation_id})
-            return result.get("data", {}).get("issueRelationDelete", {}).get("success", False)
-        except Exception as e:
-            raise RuntimeError(f"Failed to remove blocking relationship: {e}") from e
-
-    def get_blocking_relationships(self, ticket_id: str) -> dict[str, list[str]]:
-        """Get blocking relationships for a ticket.
-
-        Returns:
-            Dict with 'blocks' (tickets this one blocks) and 'blocked_by' (tickets blocking this one).
+            state: Filter by project state ("planned", "started", "completed", "canceled")
+            limit: Maximum number of projects to return
         """
         query = """
-        query GetIssueRelations($id: String!) {
-            issue(id: $id) {
-                relations {
-                    nodes {
-                        type
-                        relatedIssue {
-                            identifier
-                            title
-                        }
-                    }
-                }
-                inverseRelations {
-                    nodes {
-                        type
-                        issue {
-                            identifier
-                            title
-                        }
-                    }
-                }
-            }
-        }
-        """
-        try:
-            result = self._execute_query(query, {"id": ticket_id})
-            issue = result.get("data", {}).get("issue", {})
-
-            blocks = []
-            blocked_by = []
-
-            # Relations where this issue is the source
-            for rel in issue.get("relations", {}).get("nodes", []):
-                if rel.get("type") == "blocks":
-                    related = rel.get("relatedIssue", {})
-                    blocks.append(related.get("identifier", ""))
-
-            # Inverse relations where this issue is the target
-            for rel in issue.get("inverseRelations", {}).get("nodes", []):
-                if rel.get("type") == "blocks":
-                    source = rel.get("issue", {})
-                    blocked_by.append(source.get("identifier", ""))
-
-            return {"blocks": blocks, "blocked_by": blocked_by}
-        except Exception:
-            return {"blocks": [], "blocked_by": []}
-
-    def list_projects(self) -> list[dict[str, str]]:
-        """List all projects for the configured team."""
-        query = """
-        query ListProjects($teamId: String) {
-            projects(filter: { accessibleTeams: { id: { eq: $teamId } } }, first: 100) {
+        query ListProjects($first: Int!, $filter: ProjectFilter) {
+            projects(first: $first, filter: $filter) {
                 nodes {
+                    id
+                    name
+                    description
+                    state
+                    url
+                    startDate
+                    targetDate
+                }
+            }
+        }
+        """
+        filter_obj: dict[str, Any] = {}
+        if self._team_id:
+            filter_obj["accessibleTeams"] = {"id": {"eq": self._team_id}}
+        if state:
+            filter_obj["state"] = {"eq": state}
+
+        variables: dict[str, Any] = {"first": limit}
+        if filter_obj:
+            variables["filter"] = filter_obj
+
+        try:
+            result = self._execute_query(query, variables)
+            nodes = result.get("data", {}).get("projects", {}).get("nodes", [])
+            return [self._parse_project(p) for p in nodes]
+        except Exception:
+            return []
+
+    def get_project(self, project_id: str) -> Project | None:
+        """Get a project by ID or name.
+
+        Args:
+            project_id: Project UUID or name
+        """
+        # Try by ID first
+        query = """
+        query GetProject($id: String!) {
+            project(id: $id) {
+                id
+                name
+                description
+                state
+                url
+                startDate
+                targetDate
+            }
+        }
+        """
+        try:
+            result = self._execute_query(query, {"id": project_id})
+            project = result.get("data", {}).get("project")
+            if project:
+                return self._parse_project(project)
+        except Exception:
+            pass
+
+        # Try by name
+        projects = self.list_projects()
+        for p in projects:
+            if p.name.lower() == project_id.lower():
+                return p
+        return None
+
+    def create_project(
+        self,
+        name: str,
+        description: str = "",
+        state: str = "planned",
+    ) -> Project:
+        """Create a new project.
+
+        Args:
+            name: Project name
+            description: Project description
+            state: Initial state ("planned", "started", "completed", "canceled")
+        """
+        mutation = """
+        mutation CreateProject($input: ProjectCreateInput!) {
+            projectCreate(input: $input) {
+                success
+                project {
                     id
                     name
                     description
@@ -582,59 +805,114 @@ class LinearTracker(TrackerBase):
             }
         }
         """
-        variables = {}
+        input_obj: dict[str, Any] = {
+            "name": name,
+            "description": description,
+            "state": state,
+        }
         if self._team_id:
-            variables["teamId"] = self._team_id
+            input_obj["teamIds"] = [self._team_id]
 
-        try:
-            result = self._execute_query(query, variables if variables else None)
-            nodes = result.get("data", {}).get("projects", {}).get("nodes", [])
-            return [
-                {
-                    "id": node.get("id", ""),
-                    "name": node.get("name", ""),
-                    "description": node.get("description", ""),
-                    "state": node.get("state", ""),
-                    "url": node.get("url", ""),
-                }
-                for node in nodes
-            ]
-        except Exception:
-            return []
+        result = self._execute_query(mutation, {"input": input_obj})
+        project = result.get("data", {}).get("projectCreate", {}).get("project")
+        if not project:
+            raise RuntimeError("Failed to create project")
+        return self._parse_project(project)
+
+    def _parse_project(self, project: dict) -> Project:
+        """Parse a Linear project into a Project."""
+        return Project(
+            id=project.get("id", ""),
+            name=project.get("name", ""),
+            description=project.get("description", ""),
+            state=project.get("state", ""),
+            url=project.get("url", ""),
+            raw=project,
+        )
 
     def _get_project_id(self, project_name: str) -> str | None:
-        """Resolve project name to project ID."""
+        """Resolve project name to ID."""
         projects = self.list_projects()
-        for proj in projects:
-            if proj.get("name", "").lower() == project_name.lower():
-                return proj.get("id")
+        for p in projects:
+            if p.name.lower() == project_name.lower():
+                return p.id
         return None
 
-    def set_project(self, ticket_id: str, project_id: str) -> bool:
-        """Assign a ticket to a project.
+    # -------------------------------------------------------------------------
+    # User Management (for assignee support)
+    # -------------------------------------------------------------------------
 
-        Args:
-            ticket_id: The ticket identifier (e.g. CITY-123)
-            project_id: The project UUID
-
-        Returns:
-            True if assignment was successful.
-        """
-        issue_uuid = self._resolve_issue_id(ticket_id)
-        if not issue_uuid:
-            raise RuntimeError(f"Could not resolve ticket ID: {ticket_id}")
-
-        mutation = """
-        mutation UpdateIssue($id: String!, $input: IssueUpdateInput!) {
-            issueUpdate(id: $id, input: $input) {
-                success
+    def _get_viewer_id(self) -> str | None:
+        """Get the current authenticated user's ID."""
+        query = """
+        query {
+            viewer {
+                id
             }
         }
         """
         try:
-            result = self._execute_query(
-                mutation, {"id": ticket_id, "input": {"projectId": project_id}}
-            )
-            return result.get("data", {}).get("issueUpdate", {}).get("success", False)
-        except Exception as e:
-            raise RuntimeError(f"Failed to set project: {e}") from e
+            result = self._execute_query(query)
+            return result.get("data", {}).get("viewer", {}).get("id")
+        except Exception:
+            return None
+
+    def _get_user_id_by_name(self, name: str) -> str | None:
+        """Find a user ID by name or email."""
+        query = """
+        query {
+            users {
+                nodes {
+                    id
+                    name
+                    email
+                    displayName
+                }
+            }
+        }
+        """
+        try:
+            result = self._execute_query(query)
+            users = result.get("data", {}).get("users", {}).get("nodes", [])
+            name_lower = name.lower()
+            for user in users:
+                if (
+                    user.get("name", "").lower() == name_lower
+                    or user.get("email", "").lower() == name_lower
+                    or user.get("displayName", "").lower() == name_lower
+                ):
+                    return user.get("id")
+            return None
+        except Exception:
+            return None
+
+    def list_users(self) -> list[dict[str, str]]:
+        """List all users in the organization."""
+        query = """
+        query {
+            users {
+                nodes {
+                    id
+                    name
+                    email
+                    displayName
+                    active
+                }
+            }
+        }
+        """
+        try:
+            result = self._execute_query(query)
+            users = result.get("data", {}).get("users", {}).get("nodes", [])
+            return [
+                {
+                    "id": u.get("id", ""),
+                    "name": u.get("name", ""),
+                    "email": u.get("email", ""),
+                    "display_name": u.get("displayName", ""),
+                    "active": u.get("active", True),
+                }
+                for u in users
+            ]
+        except Exception:
+            return []
