@@ -1632,7 +1632,17 @@ export function FeaturesProvider({
       const generated = generateDistrictGeometry(position, seedId, generationConfig);
 
       // Check for water overlap
-      const waterFeatures = terrainContext?.getWaterFeatures() ?? [];
+      const waterFeatures = [...(terrainContext?.getWaterFeatures() ?? [])];
+
+      // CITY-552: Include rivers in preview clipping (parks exempt)
+      const districtType = seedIdToDistrictType(seedId);
+      if (districtType !== "park") {
+        const rivers = terrainContext?.getRiverFeatures() ?? [];
+        for (const river of rivers) {
+          waterFeatures.push(riverFeatureToWaterFeature(river));
+        }
+      }
+
       return clipAndValidateDistrict(
         generated.district.polygon.points,
         waterFeatures,
