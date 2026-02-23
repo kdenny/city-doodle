@@ -435,12 +435,13 @@ class JobRunner:
 
             t_save_end = time.perf_counter()
 
-            gen_ms = (t_gen_end - t_pipeline_start) * 1000
-            save_ms = (t_save_end - t_gen_end) * 1000
-            total_ms = (t_save_end - t_pipeline_start) * 1000
+            gen_s = t_gen_end - t_pipeline_start
+            save_s = t_save_end - t_gen_end
+            total_s = t_save_end - t_pipeline_start
             logger.info(
-                "[Terrain trace=%s] Full pipeline complete in %.1fms (generation=%.1fms save=%.1fms) world=%s",
-                trace_id, total_ms, gen_ms, save_ms, world_id,
+                "[Terrain] Generated 3x3 in %.1fs (generation=%.1fs save=%.1fs) "
+                "geographic_setting=%s world=%s trace=%s",
+                total_s, gen_s, save_s, geographic_setting, world_id, trace_id,
             )
 
             # CITY-585: Mark all generated tiles as "ready"

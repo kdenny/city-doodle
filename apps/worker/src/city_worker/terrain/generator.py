@@ -74,11 +74,11 @@ class TerrainGenerator:
         assert center_data is not None
 
         total_features = sum(len(t.features) for t in [center_data, *tiles.values()])
-        total_ms = (time.perf_counter() - t_start) * 1000
+        total_s = (time.perf_counter() - t_start)
 
         logger.info(
-            "[Terrain] 3x3 generation complete in %.1fms (9 tiles, %d features)",
-            total_ms, total_features,
+            "[Terrain] Generated 3x3 in %.1fs (9 tiles, %d features) geographic_setting=%s",
+            total_s, total_features, self.config.geographic_setting,
         )
 
         return TerrainResult(center=center_data, neighbors=tiles)
@@ -341,30 +341,32 @@ class TerrainGenerator:
 
         t_clip = time.perf_counter()
 
-        # Log per-phase timing summary (CITY-591)
-        # Note: execution order is barriers -> rivers -> lakes -> beaches,
-        # but log labels match the ticket spec order.
-        timing_values = (
-            (t_heightfield - t0) * 1000,
-            (t_mask - t_heightfield) * 1000,
-            (t_erosion - t_mask) * 1000,
-            (t_flow - t_erosion) * 1000,
-            (t_coastlines - t_flow) * 1000,
-            (t_bays - t_coastlines) * 1000,
-            (t_barriers - t_bays) * 1000,
-            (t_beaches - t_lakes) * 1000,
-            (t_rivers - t_barriers) * 1000,
-            (t_deltas - t_rivers) * 1000,
-            (t_lakes - t_deltas) * 1000,
-            (t_contours - t_beaches) * 1000,
-            (t_clip - t_contours) * 1000,
-        )
+        # CITY-594: Log per-phase timing summary with geographic_setting.
+        # Tuple order matches actual execution order in this method.
         total_ms = (t_clip - t0) * 1000
+        timing_values = (
+            (t_heightfield - t0) * 1000,       # heightfield
+            (t_mask - t_heightfield) * 1000,    # mask
+            (t_erosion - t_mask) * 1000,        # erosion
+            (t_flow - t_erosion) * 1000,        # flow
+            (t_coastlines - t_flow) * 1000,     # coastlines
+            (t_bays - t_coastlines) * 1000,     # bays
+            (t_barriers - t_bays) * 1000,       # barriers
+            (t_rivers - t_barriers) * 1000,     # rivers
+            (t_deltas - t_rivers) * 1000,       # deltas
+            (t_lakes - t_deltas) * 1000,        # lakes
+            (t_beaches - t_lakes) * 1000,       # beaches
+            (t_contours - t_beaches) * 1000,    # contours
+            (t_clip - t_contours) * 1000,       # clip
+        )
         logger.info(
-            "[Terrain] Tile (%d, %d) phase timings: heightfield=%.1fms mask=%.1fms erosion=%.1fms "
-            "flow=%.1fms coastlines=%.1fms bays=%.1fms barriers=%.1fms beaches=%.1fms "
-            "rivers=%.1fms deltas=%.1fms lakes=%.1fms contours=%.1fms clip=%.1fms total=%.1fms features=%d",
-            tx, ty, *timing_values, total_ms, len(features),
+            "[Terrain] Tile (%d, %d) generated in %.1fms "
+            "(heightfield=%.1fms mask=%.1fms erosion=%.1fms "
+            "flow=%.1fms coastlines=%.1fms bays=%.1fms barriers=%.1fms "
+            "rivers=%.1fms deltas=%.1fms lakes=%.1fms beaches=%.1fms "
+            "contours=%.1fms clip=%.1fms) "
+            "geographic_setting=%s features=%d",
+            tx, ty, total_ms, *timing_values, cfg.geographic_setting, len(features),
         )
 
         return TileTerrainData(
