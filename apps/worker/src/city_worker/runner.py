@@ -1,6 +1,7 @@
 """Job runner - polls and executes jobs from the database."""
 
 import asyncio
+import json
 import logging
 import signal
 import time
@@ -15,6 +16,31 @@ from city_worker.database import get_session
 from city_worker.models import JobStatus, JobType
 
 logger = logging.getLogger(__name__)
+
+
+class _NumpySafeEncoder(json.JSONEncoder):
+    """JSON encoder that converts numpy types to native Python types.
+
+    asyncpg cannot serialize numpy scalars (np.float64, np.int64, etc.)
+    into JSONB columns. This encoder handles the conversion transparently
+    when used with json.dumps().
+    """
+
+    def default(self, obj: Any) -> Any:
+        try:
+            import numpy as np
+        except ImportError:
+            return super().default(obj)
+
+        if isinstance(obj, np.integer):
+            return int(obj)
+        if isinstance(obj, np.floating):
+            return float(obj)
+        if isinstance(obj, np.ndarray):
+            return obj.tolist()
+        if isinstance(obj, np.bool_):
+            return bool(obj)
+        return super().default(obj)
 
 
 class JobRunner:
@@ -462,10 +488,17 @@ class JobRunner:
                         trace_id, tile_data.tx, tile_data.ty, fc_count,
                     )
 
+                    # CITY-612: Serialize dicts to JSON strings for JSONB columns.
+                    # Use _NumpySafeEncoder to convert any numpy scalars (np.float64,
+                    # np.int64, etc.) that Shapely/numpy leave in the geometry
+                    # coordinates and properties.
+                    terrain_json = json.dumps(terrain_dict, cls=_NumpySafeEncoder)
+                    features_json = json.dumps(features_dict, cls=_NumpySafeEncoder)
+
                     await session.execute(
                         text("""
                             INSERT INTO tiles (id, world_id, tx, ty, terrain_data, features, terrain_status, version)
-                            VALUES (gen_random_uuid(), :world_id, :tx, :ty, :terrain_data, :features, 'ready', 1)
+                            VALUES (gen_random_uuid(), :world_id, :tx, :ty, :terrain_data::jsonb, :features::jsonb, 'ready', 1)
                             ON CONFLICT (world_id, tx, ty)
                             DO UPDATE SET
                                 terrain_data = EXCLUDED.terrain_data,
@@ -479,8 +512,8 @@ class JobRunner:
                             "world_id": world_id,
                             "tx": tile_data.tx,
                             "ty": tile_data.ty,
-                            "terrain_data": terrain_dict,
-                            "features": features_dict,
+                            "terrain_data": terrain_json,
+                            "features": features_json,
                         },
                     )
 
@@ -676,8 +709,6 @@ class JobRunner:
         Extracts coastline, lake, bay, and lagoon features from terrain data
         so the growth simulator can avoid expanding districts into water.
         """
-        import json
-
         session = await get_session()
         try:
             result = await session.execute(
