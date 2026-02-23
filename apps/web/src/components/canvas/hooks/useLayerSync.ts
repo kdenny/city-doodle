@@ -152,7 +152,7 @@ interface UseLayerSyncParams {
   transitLineDrawingContext: TransitLineDrawingContextSlice | null;
   snapEngine: SnapEngine;
   showMockFeatures: boolean;
-  tiles: Array<{ features?: unknown; tx: number; ty: number }> | undefined;
+  tiles: Array<{ features?: unknown; tx: number; ty: number; terrain_status?: string }> | undefined;
 }
 
 export function useLayerSync(params: UseLayerSyncParams) {
@@ -203,8 +203,11 @@ export function useLayerSync(params: UseLayerSyncParams) {
   // CITY-588: Update terrain when tile data loads from API (after canvas init)
   useEffect(() => {
     if (!isReady || !terrainLayerRef.current || !tiles) return;
+    // CITY-610: Align tile filter with useCanvasInit — check terrain_status as primary signal
     const tilesWithFeatures = tiles.filter(
-      (t) => t.features && typeof t.features === "object" && "type" in (t.features as Record<string, unknown>)
+      (t) =>
+        t.terrain_status === "ready" ||
+        (t.features && typeof t.features === "object" && "type" in (t.features as Record<string, unknown>))
     );
     if (tilesWithFeatures.length === 0) return;
 
@@ -215,7 +218,18 @@ export function useLayerSync(params: UseLayerSyncParams) {
         ty: t.ty,
       }))
     );
-    if (terrainData.water.length > 0 || terrainData.coastlines.length > 0 || terrainData.rivers.length > 0) {
+    // CITY-609: Check all terrain feature types, not just water/coastlines/rivers
+    const hasAnyTerrain =
+      terrainData.water.length > 0 ||
+      terrainData.coastlines.length > 0 ||
+      terrainData.rivers.length > 0 ||
+      terrainData.contours.length > 0 ||
+      terrainData.beaches.length > 0 ||
+      terrainData.barrierIslands.length > 0 ||
+      terrainData.tidalFlats.length > 0 ||
+      terrainData.duneRidges.length > 0 ||
+      terrainData.inlets.length > 0;
+    if (hasAnyTerrain) {
       // CITY-573: Log when real terrain replaces mock terrain
       console.info(
         '[Terrain] Real terrain replacing mock terrain from %d API tiles',
