@@ -20,6 +20,7 @@ import type {
   RailStationLayer,
   SubwayStationLayer,
   RoadEndpointLayer,
+  DistrictEditLayer,
   TransitLineDrawingLayer,
   WalkabilityOverlayLayer,
   LayerVisibility,
@@ -132,6 +133,7 @@ interface UseLayerSyncParams {
   railStationLayerRef: MutableRefObject<RailStationLayer | null>;
   subwayStationLayerRef: MutableRefObject<SubwayStationLayer | null>;
   roadEndpointLayerRef: MutableRefObject<RoadEndpointLayer | null>;
+  districtEditLayerRef: MutableRefObject<DistrictEditLayer | null>;
   walkabilityOverlayLayerRef: MutableRefObject<WalkabilityOverlayLayer | null>;
   transitLineDrawingLayerRef: MutableRefObject<TransitLineDrawingLayer | null>;
   gridContainerRef: MutableRefObject<Container | null>;
@@ -164,6 +166,7 @@ export function useLayerSync(params: UseLayerSyncParams) {
     railStationLayerRef,
     subwayStationLayerRef,
     roadEndpointLayerRef,
+    districtEditLayerRef,
     walkabilityOverlayLayerRef,
     transitLineDrawingLayerRef,
     gridContainerRef,
@@ -319,6 +322,19 @@ export function useLayerSync(params: UseLayerSyncParams) {
       roadEndpointLayerRef.current.setSelectedRoad(null);
     }
   }, [isReady, selectionContext?.selection, featuresContext?.features.roads]);
+
+  // CITY-561: Update district edit layer when selection changes
+  useEffect(() => {
+    if (!isReady || !districtEditLayerRef.current) return;
+
+    const selection = selectionContext?.selection;
+    if (selection?.type === "district") {
+      const district = featuresContext?.features.districts.find((d) => d.id === selection.id);
+      districtEditLayerRef.current.setSelectedDistrict(district || null);
+    } else {
+      districtEditLayerRef.current.setSelectedDistrict(null);
+    }
+  }, [isReady, selectionContext?.selection, featuresContext?.features.districts]);
 
   // Update snap engine with district perimeters (CITY-147)
   // CITY-231: Debounce by 100ms so rapid district additions don't cause N rebuilds

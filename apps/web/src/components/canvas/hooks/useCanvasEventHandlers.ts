@@ -15,6 +15,7 @@ import type {
   RailStationLayer,
   SubwayStationLayer,
   RoadEndpointLayer,
+  DistrictEditLayer,
   FeaturesLayer,
   DrawingLayer,
   SeedsLayer,
@@ -119,9 +120,11 @@ export interface EventStateRef {
   } | null;
   featuresContext: {
     features: {
+      districts: Array<{ id: string; polygon: { points: Array<{ x: number; y: number }> } }>;
       roads: Array<{ id: string; line: { points: Array<{ x: number; y: number }> } }>;
     };
     updateRoad: (id: string, updates: { line: { points: Array<{ x: number; y: number }> } }) => void;
+    updateDistrict: (id: string, updates: { polygon: { points: Array<{ x: number; y: number }> } }) => void;
   } | null;
   onFeatureSelect: ((feature: SelectedFeature | null) => void) | undefined;
   isEditingAllowed: boolean;
@@ -170,6 +173,7 @@ interface UseCanvasEventHandlersParams {
   eventStateRef: MutableRefObject<EventStateRef>;
   // Layer refs needed for hit testing
   roadEndpointLayerRef: MutableRefObject<RoadEndpointLayer | null>;
+  districtEditLayerRef: MutableRefObject<DistrictEditLayer | null>;
   railStationLayerRef: MutableRefObject<RailStationLayer | null>;
   subwayStationLayerRef: MutableRefObject<SubwayStationLayer | null>;
   featuresLayerRef: MutableRefObject<FeaturesLayer | null>;
@@ -192,6 +196,7 @@ export function useCanvasEventHandlers({
   viewportRef,
   eventStateRef,
   roadEndpointLayerRef,
+  districtEditLayerRef,
   railStationLayerRef,
   subwayStationLayerRef,
   featuresLayerRef,
@@ -216,6 +221,12 @@ export function useCanvasEventHandlers({
       stationId: string;
       stationType: "rail" | "subway";
       originalPosition: { x: number; y: number };
+    } | null = null;
+
+    // CITY-561: District vertex drag state
+    let districtVertexDrag: {
+      districtId: string;
+      vertexIndex: number;
     } | null = null;
 
     // Track Shift key state for freehand drawing toggle (via global keyboard events)
@@ -268,6 +279,25 @@ export function useCanvasEventHandlers({
             endpointHit.endpointIndex,
             endpointHit.position
           );
+          return;
+        }
+      }
+
+      // CITY-561: Check for district vertex hit (drag to reshape)
+      if (districtEditLayerRef.current) {
+        const worldPos = viewport.toWorld(event.global.x, event.global.y);
+        const vertexHit = districtEditLayerRef.current.hitTestVertex(worldPos.x, worldPos.y);
+        if (vertexHit) {
+          viewport.plugins.pause("drag");
+          districtVertexDrag = {
+            districtId: vertexHit.district.id,
+            vertexIndex: vertexHit.vertexIndex,
+          };
+          districtEditLayerRef.current.setDragPreview({
+            districtId: vertexHit.district.id,
+            vertexIndex: vertexHit.vertexIndex,
+            currentPosition: vertexHit.position,
+          });
           return;
         }
       }
@@ -348,6 +378,16 @@ export function useCanvasEventHandlers({
         return;
       }
 
+      // CITY-561: Handle district vertex drag movement
+      if (districtVertexDrag && districtEditLayerRef.current) {
+        districtEditLayerRef.current.setDragPreview({
+          districtId: districtVertexDrag.districtId,
+          vertexIndex: districtVertexDrag.vertexIndex,
+          currentPosition: { x: worldPos.x, y: worldPos.y },
+        });
+        return;
+      }
+
       // CITY-302: Handle station drag movement
       if (stationDrag) {
         const sdx = worldPos.x - stationDrag.originalPosition.x;
@@ -371,6 +411,19 @@ export function useCanvasEventHandlers({
           // CITY-567: Check midpoint hover
           const midpointHit = roadEndpointLayerRef.current.midpointHitTest(worldPos.x, worldPos.y);
           roadEndpointLayerRef.current.setHoveredMidpoint(midpointHit ? midpointHit.segmentIndex : -1);
+        }
+      }
+
+      // CITY-561: Update hover state on district edit layer
+      if (districtEditLayerRef.current && !districtVertexDrag) {
+        const vertexHit = districtEditLayerRef.current.hitTestVertex(worldPos.x, worldPos.y);
+        if (vertexHit) {
+          districtEditLayerRef.current.setHoveredVertex(vertexHit.vertexIndex);
+          districtEditLayerRef.current.setHoveredMidpoint(null);
+        } else {
+          districtEditLayerRef.current.setHoveredVertex(null);
+          const midpointHit = districtEditLayerRef.current.hitTestMidpoint(worldPos.x, worldPos.y);
+          districtEditLayerRef.current.setHoveredMidpoint(midpointHit ? midpointHit.segmentIndex : null);
         }
       }
 
@@ -521,6 +574,28 @@ export function useCanvasEventHandlers({
           }
         }
         viewport.plugins.resume("drag");
+        return;
+      }
+
+      // CITY-561: Handle district vertex drag completion
+      if (districtVertexDrag && s.featuresContext && districtEditLayerRef.current) {
+        const worldPos = viewport.toWorld(event.global.x, event.global.y);
+        districtEditLayerRef.current.setDragPreview(null);
+        viewport.plugins.resume("drag");
+
+        if (isDragging) {
+          const district = s.featuresContext.features.districts.find(
+            (d) => d.id === districtVertexDrag!.districtId
+          );
+          if (district) {
+            const newPoints = [...district.polygon.points];
+            newPoints[districtVertexDrag.vertexIndex] = { x: worldPos.x, y: worldPos.y };
+            s.featuresContext.updateDistrict(districtVertexDrag.districtId, {
+              polygon: { points: newPoints },
+            });
+          }
+        }
+        districtVertexDrag = null;
         return;
       }
 
@@ -694,6 +769,24 @@ export function useCanvasEventHandlers({
         }
       }
 
+      // CITY-561: Handle district midpoint click to insert a new vertex
+      if (s.isEditingAllowed && districtEditLayerRef.current && s.featuresContext) {
+        const midpointHit = districtEditLayerRef.current.hitTestMidpoint(worldPos.x, worldPos.y);
+        if (midpointHit) {
+          const district = s.featuresContext.features.districts.find(
+            (d) => d.id === midpointHit.district.id
+          );
+          if (district) {
+            const newPoints = [...district.polygon.points];
+            newPoints.splice(midpointHit.segmentIndex + 1, 0, midpointHit.position);
+            s.featuresContext.updateDistrict(midpointHit.district.id, {
+              polygon: { points: newPoints },
+            });
+          }
+          return;
+        }
+      }
+
       // Handle feature selection (default mode - always allowed)
       s.setHoveredStationTooltip(null);
       if (s.onFeatureSelect) {
@@ -753,6 +846,17 @@ export function useCanvasEventHandlers({
           subwayStationLayerRef.current.setStationOffset(stationDrag.stationId, 0, 0);
         }
         stationDrag = null;
+        viewport.plugins.resume("drag");
+        return;
+      }
+
+      // CITY-561: Cancel district vertex drag
+      if (districtVertexDrag && event.key === "Escape") {
+        event.preventDefault();
+        if (districtEditLayerRef.current) {
+          districtEditLayerRef.current.setDragPreview(null);
+        }
+        districtVertexDrag = null;
         viewport.plugins.resume("drag");
         return;
       }

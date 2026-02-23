@@ -19,6 +19,7 @@ import {
   RailStationLayer,
   SubwayStationLayer,
   RoadEndpointLayer,
+  DistrictEditLayer,
   TransitLineDrawingLayer,
   WalkabilityOverlayLayer,
   DEFAULT_LAYER_VISIBILITY,
@@ -100,6 +101,7 @@ export const MapCanvas = forwardRef<MapCanvasHandle, MapCanvasProps>(
   const railStationLayerRef = useRef<RailStationLayer | null>(null);
   const subwayStationLayerRef = useRef<SubwayStationLayer | null>(null);
   const roadEndpointLayerRef = useRef<RoadEndpointLayer | null>(null);
+  const districtEditLayerRef = useRef<DistrictEditLayer | null>(null);
   const walkabilityOverlayLayerRef = useRef<WalkabilityOverlayLayer | null>(null);
   const transitLineDrawingLayerRef = useRef<TransitLineDrawingLayer | null>(null);
   const gridContainerRef = useRef<Container | null>(null);
@@ -212,7 +214,7 @@ export const MapCanvas = forwardRef<MapCanvasHandle, MapCanvasProps>(
     endpointDragContext,
     transitLineDrawingContext,
     transitContext,
-    featuresContext: featuresState && featuresDispatch ? { features: featuresState.features, updateRoad: featuresDispatch.updateRoad } : null,
+    featuresContext: featuresState && featuresDispatch ? { features: featuresState.features, updateRoad: featuresDispatch.updateRoad, updateDistrict: featuresDispatch.updateDistrict } : null,
     onFeatureSelect,
     isEditingAllowed,
     viewMode,
@@ -227,7 +229,7 @@ export const MapCanvas = forwardRef<MapCanvasHandle, MapCanvasProps>(
     endpointDragContext,
     transitLineDrawingContext,
     transitContext,
-    featuresContext: featuresState && featuresDispatch ? { features: featuresState.features, updateRoad: featuresDispatch.updateRoad } : null,
+    featuresContext: featuresState && featuresDispatch ? { features: featuresState.features, updateRoad: featuresDispatch.updateRoad, updateDistrict: featuresDispatch.updateDistrict } : null,
     onFeatureSelect,
     isEditingAllowed,
     viewMode,
@@ -308,6 +310,7 @@ export const MapCanvas = forwardRef<MapCanvasHandle, MapCanvasProps>(
     railStationLayerRef,
     subwayStationLayerRef,
     roadEndpointLayerRef,
+    districtEditLayerRef,
     walkabilityOverlayLayerRef,
     transitLineDrawingLayerRef,
     gridContainerRef,
@@ -343,6 +346,7 @@ export const MapCanvas = forwardRef<MapCanvasHandle, MapCanvasProps>(
     railStationLayerRef,
     subwayStationLayerRef,
     roadEndpointLayerRef,
+    districtEditLayerRef,
     walkabilityOverlayLayerRef,
     transitLineDrawingLayerRef,
     gridContainerRef,
@@ -370,6 +374,7 @@ export const MapCanvas = forwardRef<MapCanvasHandle, MapCanvasProps>(
     viewportRef,
     eventStateRef,
     roadEndpointLayerRef,
+    districtEditLayerRef,
     railStationLayerRef,
     subwayStationLayerRef,
     featuresLayerRef,
