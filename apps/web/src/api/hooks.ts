@@ -230,7 +230,10 @@ export function useCreateWorld(
   const queryClient = useQueryClient();
   return useMutation({
     mutationFn: (data: WorldCreate) => api.worlds.create(data),
-    onSuccess: () => {
+    onSuccess: (world) => {
+      // Seed the individual world cache so navigating to /worlds/:id
+      // doesn't need to wait for a GET that may race against the commit.
+      queryClient.setQueryData(queryKeys.world(world.id), world);
       queryClient.invalidateQueries({ queryKey: queryKeys.worlds });
     },
     ...options,
