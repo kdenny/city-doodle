@@ -20,9 +20,9 @@ import {
   DistrictEditLayer,
   TransitLineDrawingLayer,
   WalkabilityOverlayLayer,
-  generateMockTerrain,
   generateMockFeatures,
   generateMockLabels,
+  emptyTerrainData,
   type LayerVisibility,
 } from "../layers";
 import type { GeographicSetting } from "../../../api/types";
@@ -137,13 +137,15 @@ export function useCanvasInit({
             "type" in (t.features as Record<string, unknown>))
       ) ?? [];
 
+      // CITY-595: Use empty terrain instead of mock when no features are available.
+      // The canvas will show a loading skeleton overlay while terrain generates.
       const terrainData = tilesWithFeatures.length > 0
         ? composeTileFeatures(tilesWithFeatures.map((t) => ({
             features: t.features as unknown,
             tx: t.tx,
             ty: t.ty,
           })))
-        : generateMockTerrain(WORLD_SIZE, seed, geographicSetting);
+        : emptyTerrainData();
 
       // CITY-587: Structured terrain source logging with tile/feature counts
       if (tilesWithFeatures.length > 0) {
@@ -161,8 +163,8 @@ export function useCanvasInit({
           }
         );
       } else {
-        console.warn(
-          '[Terrain] Falling back to mock terrain generation (no valid tile features found)',
+        console.info(
+          '[Terrain] No terrain features available yet, showing empty terrain with loading overlay',
           { seed, geographicSetting: geographicSetting ?? 'default', tilesProvided: !!tiles, tileCount: tiles?.length ?? 0 }
         );
       }
