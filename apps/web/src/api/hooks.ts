@@ -287,8 +287,9 @@ function tileHasTerrainFeatures(tile: Tile): boolean {
   );
 }
 
-/** CITY-585/590: Max number of poll cycles before giving up (60 * 3s = 3 minutes) */
-const MAX_TERRAIN_POLL_COUNT = 60;
+/** CITY-585/590/614: Max number of poll cycles before giving up (200 * 3s = 10 minutes).
+ * Coastal/bay terrain generation can take 5-7 minutes on shared-CPU workers. */
+const MAX_TERRAIN_POLL_COUNT = 200;
 
 export function useWorldTiles(
   worldId: string,
