@@ -1243,7 +1243,7 @@ export function FeaturesProvider({
         }
       }
 
-      // CITY-617: Build spatial index once for water feature lookups
+      // CITY-617/619: Build spatial index once for water feature lookups
       const waterSpatialIndex = new WaterSpatialIndex();
       waterSpatialIndex.build(waterFeatures);
 
@@ -1658,7 +1658,7 @@ export function FeaturesProvider({
         }
       }
 
-      // CITY-617: Build spatial index once for water feature lookups
+      // CITY-617/619: Build spatial index once for water feature lookups
       const waterSpatialIndex = new WaterSpatialIndex();
       waterSpatialIndex.build(waterFeatures);
 

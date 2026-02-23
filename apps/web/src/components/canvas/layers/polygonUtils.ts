@@ -206,10 +206,11 @@ export function polygonArea(points: Point[]): number {
   return area / 2;
 }
 
+
 /**
  * Check if a district polygon overlaps with any water features.
  *
- * CITY-617: When a {@link WaterSpatialIndex} is provided, only nearby water
+ * CITY-617/619: When a {@link WaterSpatialIndex} is provided, only nearby water
  * features are tested instead of the full list, reducing O(n*m) to O(n*k)
  * where k is the number of nearby features.
  */
@@ -220,7 +221,7 @@ export function overlapsWater(
 ): boolean {
   const districtBounds = getPolygonBounds(districtPoints);
 
-  // CITY-617: Use spatial index to narrow candidates when available
+  // CITY-617/619: Use spatial index to narrow candidates when available
   const candidates = spatialIndex
     ? spatialIndex.queryBounds(districtBounds.minX, districtBounds.minY, districtBounds.maxX, districtBounds.maxY)
     : waterFeatures;
@@ -228,7 +229,7 @@ export function overlapsWater(
   for (const water of candidates) {
     const waterBounds = getPolygonBounds(water.polygon.points);
 
-    // Quick bounds check
+    // Quick bounds check (still needed — spatial index cells are coarse)
     if (!boundsOverlap(districtBounds, waterBounds)) {
       continue;
     }
@@ -380,7 +381,7 @@ function lineLineIntersection(
  * 1. Find points inside land (not in any water)
  * 2. Reconstruct polygon from valid segments
  *
- * CITY-617: When a {@link WaterSpatialIndex} is provided, only nearby water
+ * CITY-617/619: When a {@link WaterSpatialIndex} is provided, only nearby water
  * features are tested instead of the full list.
  */
 export function clipDistrictToLand(
@@ -392,7 +393,7 @@ export function clipDistrictToLand(
     return districtPoints;
   }
 
-  // CITY-617: Use spatial index to narrow candidates when available
+  // CITY-617/619: Use spatial index to narrow candidates when available
   let candidates: WaterFeature[];
   if (spatialIndex) {
     const bounds = getPolygonBounds(districtPoints);
@@ -410,10 +411,10 @@ export function clipDistrictToLand(
 
   for (const water of candidates) {
     const waterBounds = getPolygonBounds(water.polygon.points);
-    const districtBounds = getPolygonBounds(result);
+    const resultBounds = getPolygonBounds(result);
 
     // Skip if no overlap
-    if (!boundsOverlap(districtBounds, waterBounds)) {
+    if (!boundsOverlap(resultBounds, waterBounds)) {
       continue;
     }
 
@@ -849,7 +850,7 @@ export function findDistrictAtPoint(
  * @param districtPoints - The district polygon to clip
  * @param waterFeatures - Water features to clip against
  * @param districtType - Type of district for minimum size rules
- * @param spatialIndex - Optional spatial index for faster water feature lookups
+ * @param spatialIndex - Optional spatial index for faster water feature lookups (CITY-617/619)
  * @returns ClipResult with clipped polygon and validation info
  */
 export function clipAndValidateDistrict(
