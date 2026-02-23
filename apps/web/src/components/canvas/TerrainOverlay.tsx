@@ -22,21 +22,21 @@ export type TerrainOverlayStatus = "loading" | "ready" | "failed" | null;
  * - If no tiles exist yet, show loading.
  */
 export function deriveTerrainOverlayStatus(
-  tiles: Array<{ terrain_status?: string; terrain_error?: string | null }> | undefined
+  tiles: Array<{ id: string; terrain_status?: string; terrain_error?: string | null }> | undefined
 ): { status: TerrainOverlayStatus; errorMessage: string | null; failedTileId: string | null } {
   if (!tiles || tiles.length === 0) {
     return { status: "loading", errorMessage: null, failedTileId: null };
   }
 
   // Check for any failed tile
-  const failedTile = (tiles as Array<{ terrain_status?: string; terrain_error?: string | null; id?: string }>).find(
+  const failedTile = tiles.find(
     (t) => t.terrain_status === "failed"
   );
   if (failedTile) {
     return {
       status: "failed",
       errorMessage: failedTile.terrain_error || "Terrain generation failed",
-      failedTileId: failedTile.id ?? null,
+      failedTileId: failedTile.id,
     };
   }
 
@@ -183,26 +183,3 @@ export function TerrainErrorOverlay({
   );
 }
 
-// ============================================================================
-// Fade-in wrapper for terrain content
-// ============================================================================
-
-interface TerrainFadeInProps {
-  show: boolean;
-  children: React.ReactNode;
-}
-
-/**
- * Wrapper that applies a CSS opacity transition when terrain data arrives.
- * The canvas container fades from transparent to opaque.
- */
-export function TerrainFadeIn({ show, children }: TerrainFadeInProps) {
-  return (
-    <div
-      className="w-full h-full transition-opacity duration-500 ease-in-out"
-      style={{ opacity: show ? 1 : 0 }}
-    >
-      {children}
-    </div>
-  );
-}
