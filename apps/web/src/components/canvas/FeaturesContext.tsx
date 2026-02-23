@@ -69,6 +69,7 @@ import {
   clipPolygonToWorldBounds,
   pointInPolygon,
   riverFeatureToWaterFeature,
+  WaterSpatialIndex,
   type ClipResult,
 } from "./layers/polygonUtils";
 import { generateInterDistrictRoads, generateCrossBoundaryConnections, generateStationAccessRoad } from "./layers/interDistrictRoads";
@@ -1237,10 +1238,15 @@ export function FeaturesProvider({
         }
       }
 
+      // CITY-617: Build spatial index once for water feature lookups
+      const waterSpatialIndex = new WaterSpatialIndex();
+      waterSpatialIndex.build(waterFeatures);
+
       const clipResult = clipAndValidateDistrict(
         generated.district.polygon.points,
         waterFeatures,
-        generated.district.type
+        generated.district.type,
+        waterSpatialIndex
       );
 
       // If district is completely in water, reject placement
@@ -1645,10 +1651,15 @@ export function FeaturesProvider({
         }
       }
 
+      // CITY-617: Build spatial index once for water feature lookups
+      const waterSpatialIndex = new WaterSpatialIndex();
+      waterSpatialIndex.build(waterFeatures);
+
       return clipAndValidateDistrict(
         generated.district.polygon.points,
         waterFeatures,
-        generated.district.type
+        generated.district.type,
+        waterSpatialIndex
       );
     },
     [world, terrainContext]
