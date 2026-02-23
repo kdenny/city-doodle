@@ -5,6 +5,7 @@ from datetime import UTC, datetime
 from uuid import UUID
 
 from sqlalchemy import and_, select, update
+from sqlalchemy.dialects.postgresql import insert as pg_insert
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from city_api.models import Tile as TileModel
@@ -110,12 +111,29 @@ async def update_tile(db: AsyncSession, tile_id: UUID, tile_update: TileUpdate) 
 async def get_or_create_tile(db: AsyncSession, world_id: UUID, tx: int, ty: int) -> tuple[Tile, bool]:
     """Get a tile by coordinates, creating it if it doesn't exist.
 
+    Uses an atomic INSERT ... ON CONFLICT DO NOTHING to avoid race conditions
+    when concurrent requests try to create the same tile simultaneously.
+
     Returns a tuple of (tile, created) where created is True if a new tile was made.
     """
-    tile = await get_tile_by_coords(db, world_id, tx, ty)
+    stmt = (
+        pg_insert(TileModel)
+        .values(world_id=world_id, tx=tx, ty=ty, terrain_data={}, features={})
+        .on_conflict_do_nothing(index_elements=["world_id", "tx", "ty"])
+        .returning(TileModel)
+    )
+    result = await db.execute(stmt)
+    tile = result.scalar_one_or_none()
+
     if tile is not None:
-        return tile, False
-    return await create_tile(db, TileCreate(world_id=world_id, tx=tx, ty=ty)), True
+        # INSERT succeeded — new row was created
+        await db.commit()
+        return _to_schema(tile), True
+
+    # Row already existed (conflict), fetch it
+    await db.rollback()
+    existing = await get_tile_by_coords(db, world_id, tx, ty)
+    return existing, False  # type: ignore[return-value]
 
 
 def _to_schema(tile: TileModel) -> Tile:
