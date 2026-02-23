@@ -1,6 +1,6 @@
 {
   "$schema": "./config.schema.json",
-  "version": "1.0.0",
+  "version": 2,
   "boilerplate": {
     "issues_url": "https://github.com/kdenny/vibe-code-boilerplate/issues"
   },
@@ -31,9 +31,23 @@
     "auto_cleanup": true
   },
   "labels": {
-    "type": ["Bug", "Feature", "Chore", "Refactor"],
-    "area": ["Frontend", "Backend", "Infra", "Docs", "Tests"],
-    "special": ["HUMAN ‼️", "Blocked"]
+    "type": [
+      "Bug",
+      "Feature",
+      "Chore",
+      "Refactor"
+    ],
+    "area": [
+      "Frontend",
+      "Backend",
+      "Infra",
+      "Docs",
+      "Tests"
+    ],
+    "special": [
+      "HUMAN \u203c\ufe0f",
+      "Blocked"
+    ]
   },
   "security": {
     "secret_scanner": "gitleaks",

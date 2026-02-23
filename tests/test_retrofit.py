@@ -14,7 +14,7 @@ from lib.vibe.retrofit.analyzer import (
     RetrofitAnalyzer,
     RetrofitPlan,
 )
-from lib.vibe.retrofit.applier import ApplyResult, RetrofitApplier
+from lib.vibe.retrofit.applier import RetrofitApplier
 from lib.vibe.retrofit.detector import DetectionResult, ProjectDetector, ProjectProfile
 
 
@@ -73,9 +73,7 @@ class TestProjectDetector:
         """Test detecting main branch from origin/HEAD."""
         detector = ProjectDetector(temp_project)
         with patch("subprocess.run") as mock_run:
-            mock_run.return_value = MagicMock(
-                returncode=0, stdout="refs/remotes/origin/main\n"
-            )
+            mock_run.return_value = MagicMock(returncode=0, stdout="refs/remotes/origin/main\n")
             result = detector.detect_main_branch()
             assert result.detected is True
             assert result.value == "main"
@@ -506,7 +504,7 @@ class TestRetrofitApplier:
 
         template_path = temp_project / ".github" / "PULL_REQUEST_TEMPLATE.md"
         assert template_path.exists()
-        assert "## Testing" in template_path.read_text()
+        assert "Risk Assessment" in template_path.read_text()
 
     def test_apply_pr_template_already_exists(self, temp_project: Path) -> None:
         """Test PR template not overwritten if exists."""

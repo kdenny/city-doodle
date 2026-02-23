@@ -3,8 +3,8 @@
 from unittest.mock import MagicMock, patch
 
 import pytest
+import requests
 
-from lib.vibe.trackers.base import TrackerBase
 from lib.vibe.trackers.linear import LINEAR_API_URL, LinearTracker
 
 
@@ -66,7 +66,9 @@ class TestLinearTrackerAuthenticate:
     def test_authenticate_failure_exception(self) -> None:
         tracker = LinearTracker()
 
-        with patch.object(tracker, "_execute_query", side_effect=Exception("API error")):
+        with patch.object(
+            tracker, "_execute_query", side_effect=requests.RequestException("API error")
+        ):
             result = tracker.authenticate(api_key="test-error-key")  # noqa: S106
 
         assert result is False
@@ -129,7 +131,7 @@ class TestLinearTrackerGetTicket:
             "description": "Description here",
             "state": {"id": "state1", "name": "Todo"},
             "team": {"id": "team123"},
-            "labels": {"nodes": [{"name": "Bug"}, {"name": "Frontend"}]},
+            "labels": {"nodes": [{"name": "Bug"}, {"name": "High Risk"}]},
             "url": "https://linear.app/test/issue/TEST-1",
         }
         mock_response = {"data": {"issue": mock_issue}}
@@ -142,7 +144,7 @@ class TestLinearTrackerGetTicket:
         assert ticket.title == "Test Issue"
         assert ticket.description == "Description here"
         assert ticket.status == "Todo"
-        assert ticket.labels == ["Bug", "Frontend"]
+        assert ticket.labels == ["Bug", "High Risk"]
         assert ticket.url == "https://linear.app/test/issue/TEST-1"
 
     def test_get_ticket_not_found(self) -> None:
@@ -157,7 +159,9 @@ class TestLinearTrackerGetTicket:
     def test_get_ticket_exception(self) -> None:
         tracker = LinearTracker(api_key="test-fake-key")
 
-        with patch.object(tracker, "_execute_query", side_effect=Exception("API error")):
+        with patch.object(
+            tracker, "_execute_query", side_effect=requests.RequestException("API error")
+        ):
             ticket = tracker.get_ticket("TEST-1")
 
         assert ticket is None
@@ -188,7 +192,14 @@ class TestLinearTrackerListTickets:
                 "url": "https://linear.app/test/issue/TEST-2",
             },
         ]
-        mock_response = {"data": {"issues": {"nodes": mock_issues}}}
+        mock_response = {
+            "data": {
+                "issues": {
+                    "nodes": mock_issues,
+                    "pageInfo": {"hasNextPage": False, "endCursor": None},
+                }
+            }
+        }
 
         with patch.object(tracker, "_execute_query", return_value=mock_response):
             tickets = tracker.list_tickets()
@@ -200,7 +211,14 @@ class TestLinearTrackerListTickets:
 
     def test_list_tickets_with_status_filter(self) -> None:
         tracker = LinearTracker(api_key="test-fake-key")
-        mock_response = {"data": {"issues": {"nodes": []}}}
+        mock_response = {
+            "data": {
+                "issues": {
+                    "nodes": [],
+                    "pageInfo": {"hasNextPage": False, "endCursor": None},
+                }
+            }
+        }
 
         with patch.object(tracker, "_execute_query", return_value=mock_response) as mock_query:
             tracker.list_tickets(status="Todo")
@@ -211,7 +229,14 @@ class TestLinearTrackerListTickets:
 
     def test_list_tickets_with_label_filter(self) -> None:
         tracker = LinearTracker(api_key="test-fake-key")
-        mock_response = {"data": {"issues": {"nodes": []}}}
+        mock_response = {
+            "data": {
+                "issues": {
+                    "nodes": [],
+                    "pageInfo": {"hasNextPage": False, "endCursor": None},
+                }
+            }
+        }
 
         with patch.object(tracker, "_execute_query", return_value=mock_response) as mock_query:
             tracker.list_tickets(labels=["Bug", "Feature"])
@@ -222,7 +247,14 @@ class TestLinearTrackerListTickets:
 
     def test_list_tickets_with_team_filter(self) -> None:
         tracker = LinearTracker(api_key="test-fake-key", team_id="team_abc")
-        mock_response = {"data": {"issues": {"nodes": []}}}
+        mock_response = {
+            "data": {
+                "issues": {
+                    "nodes": [],
+                    "pageInfo": {"hasNextPage": False, "endCursor": None},
+                }
+            }
+        }
 
         with patch.object(tracker, "_execute_query", return_value=mock_response) as mock_query:
             tracker.list_tickets()
@@ -233,7 +265,14 @@ class TestLinearTrackerListTickets:
 
     def test_list_tickets_with_limit(self) -> None:
         tracker = LinearTracker(api_key="test-fake-key")
-        mock_response = {"data": {"issues": {"nodes": []}}}
+        mock_response = {
+            "data": {
+                "issues": {
+                    "nodes": [],
+                    "pageInfo": {"hasNextPage": False, "endCursor": None},
+                }
+            }
+        }
 
         with patch.object(tracker, "_execute_query", return_value=mock_response) as mock_query:
             tracker.list_tickets(limit=10)
@@ -242,10 +281,124 @@ class TestLinearTrackerListTickets:
         variables = call_args[0][1]
         assert variables["first"] == 10
 
+    def test_list_tickets_paginates_multiple_pages(self) -> None:
+        tracker = LinearTracker(api_key="test-fake-key")
+        page1_response = {
+            "data": {
+                "issues": {
+                    "nodes": [
+                        {
+                            "id": "uuid-1",
+                            "identifier": "TEST-1",
+                            "title": "Issue 1",
+                            "description": "",
+                            "state": {"name": "Todo"},
+                            "labels": {"nodes": []},
+                            "url": "",
+                        },
+                    ],
+                    "pageInfo": {"hasNextPage": True, "endCursor": "cursor-1"},
+                }
+            }
+        }
+        page2_response = {
+            "data": {
+                "issues": {
+                    "nodes": [
+                        {
+                            "id": "uuid-2",
+                            "identifier": "TEST-2",
+                            "title": "Issue 2",
+                            "description": "",
+                            "state": {"name": "Todo"},
+                            "labels": {"nodes": []},
+                            "url": "",
+                        },
+                    ],
+                    "pageInfo": {"hasNextPage": False, "endCursor": None},
+                }
+            }
+        }
+
+        with patch.object(
+            tracker, "_execute_query", side_effect=[page1_response, page2_response]
+        ) as mock_query:
+            tickets = tracker.list_tickets(limit=100)
+
+        assert len(tickets) == 2
+        assert tickets[0].id == "TEST-1"
+        assert tickets[1].id == "TEST-2"
+        # Verify second call includes cursor
+        second_call_vars = mock_query.call_args_list[1][0][1]
+        assert second_call_vars["after"] == "cursor-1"
+
+    def test_list_tickets_stops_at_limit(self) -> None:
+        tracker = LinearTracker(api_key="test-fake-key")
+        page1_response = {
+            "data": {
+                "issues": {
+                    "nodes": [
+                        {
+                            "id": f"uuid-{i}",
+                            "identifier": f"TEST-{i}",
+                            "title": f"Issue {i}",
+                            "description": "",
+                            "state": {"name": "Todo"},
+                            "labels": {"nodes": []},
+                            "url": "",
+                        }
+                        for i in range(3)
+                    ],
+                    "pageInfo": {"hasNextPage": True, "endCursor": "cursor-1"},
+                }
+            }
+        }
+
+        with patch.object(tracker, "_execute_query", return_value=page1_response) as mock_query:
+            tickets = tracker.list_tickets(limit=2)
+
+        assert len(tickets) == 2
+        # Should only make one API call since we got enough results
+        assert mock_query.call_count == 1
+
+    def test_list_tickets_exception_returns_partial(self) -> None:
+        tracker = LinearTracker(api_key="test-fake-key")
+        page1_response = {
+            "data": {
+                "issues": {
+                    "nodes": [
+                        {
+                            "id": "uuid-1",
+                            "identifier": "TEST-1",
+                            "title": "Issue 1",
+                            "description": "",
+                            "state": {"name": "Todo"},
+                            "labels": {"nodes": []},
+                            "url": "",
+                        },
+                    ],
+                    "pageInfo": {"hasNextPage": True, "endCursor": "cursor-1"},
+                }
+            }
+        }
+
+        with patch.object(
+            tracker,
+            "_execute_query",
+            side_effect=[page1_response, requests.RequestException("API error")],
+        ):
+            tickets = tracker.list_tickets(limit=100)
+
+        # Should return the tickets from page 1
+        assert len(tickets) == 1
+        assert tickets[0].id == "TEST-1"
+
     def test_list_tickets_exception_returns_empty(self) -> None:
         tracker = LinearTracker(api_key="test-fake-key")
 
-        with patch.object(tracker, "_execute_query", side_effect=Exception("API error")):
+        with patch.object(
+            tracker, "_execute_query", side_effect=requests.RequestException("API error")
+        ):
             tickets = tracker.list_tickets()
 
         assert tickets == []
@@ -309,7 +462,17 @@ class TestLinearTrackerUpdateTicket:
 
     def test_update_ticket_title(self) -> None:
         tracker = LinearTracker(api_key="test-fake-key")
-        mock_issue = {
+        mock_current_issue = {
+            "id": "uuid-1",
+            "identifier": "TEST-1",
+            "title": "Old Title",
+            "description": "Desc",
+            "state": {"name": "Todo"},
+            "team": {"id": "team_abc"},
+            "labels": {"nodes": []},
+            "url": "https://linear.app/test/issue/TEST-1",
+        }
+        mock_updated_issue = {
             "id": "uuid-1",
             "identifier": "TEST-1",
             "title": "Updated Title",
@@ -318,10 +481,12 @@ class TestLinearTrackerUpdateTicket:
             "labels": {"nodes": []},
             "url": "https://linear.app/test/issue/TEST-1",
         }
-        mock_response = {"data": {"issueUpdate": {"success": True, "issue": mock_issue}}}
+        mock_response = {"data": {"issueUpdate": {"success": True, "issue": mock_updated_issue}}}
 
-        with patch.object(tracker, "_execute_query", return_value=mock_response):
-            ticket = tracker.update_ticket("TEST-1", title="Updated Title")
+        with patch.object(tracker, "get_ticket") as mock_get:
+            mock_get.return_value = tracker._parse_issue(mock_current_issue)
+            with patch.object(tracker, "_execute_query", return_value=mock_response):
+                ticket = tracker.update_ticket("TEST-1", title="Updated Title")
 
         assert ticket.title == "Updated Title"
 
@@ -408,11 +573,89 @@ class TestLinearTrackerUpdateTicket:
 
     def test_update_ticket_failure(self) -> None:
         tracker = LinearTracker(api_key="test-fake-key")
+        mock_current_issue = {
+            "id": "uuid-1",
+            "identifier": "TEST-1",
+            "title": "Title",
+            "description": "Desc",
+            "state": {"name": "Todo"},
+            "team": {"id": "team_abc"},
+            "labels": {"nodes": []},
+            "url": "https://linear.app/test/issue/TEST-1",
+        }
         mock_response = {"data": {"issueUpdate": {"success": False, "issue": None}}}
 
-        with patch.object(tracker, "_execute_query", return_value=mock_response):
-            with pytest.raises(RuntimeError, match="Failed to update ticket"):
+        with patch.object(tracker, "get_ticket") as mock_get:
+            mock_get.return_value = tracker._parse_issue(mock_current_issue)
+            with patch.object(tracker, "_execute_query", return_value=mock_response):
+                with pytest.raises(RuntimeError, match="Failed to update ticket"):
+                    tracker.update_ticket("TEST-1", title="New Title")
+
+    def test_update_ticket_labels(self) -> None:
+        """update_ticket with labels resolves identifier to UUID."""
+        tracker = LinearTracker(api_key="test-fake-key")
+        mock_current_issue = {
+            "id": "uuid-1",
+            "identifier": "TEST-1",
+            "title": "Title",
+            "description": "Desc",
+            "state": {"name": "Todo"},
+            "team": {"id": "team_abc"},
+            "labels": {"nodes": []},
+            "url": "https://linear.app/test/issue/TEST-1",
+        }
+        mock_updated_issue = {
+            "id": "uuid-1",
+            "identifier": "TEST-1",
+            "title": "Title",
+            "description": "Desc",
+            "state": {"name": "Todo"},
+            "labels": {"nodes": [{"name": "Backend"}]},
+            "url": "https://linear.app/test/issue/TEST-1",
+        }
+        mock_response = {"data": {"issueUpdate": {"success": True, "issue": mock_updated_issue}}}
+
+        with patch.object(tracker, "get_ticket") as mock_get:
+            mock_get.return_value = tracker._parse_issue(mock_current_issue)
+            with patch.object(tracker, "_get_or_create_label_ids", return_value=["label-id-1"]):
+                with patch.object(tracker, "_execute_query", return_value=mock_response):
+                    ticket = tracker.update_ticket("TEST-1", labels=["Backend"])
+
+        assert "Backend" in ticket.labels
+
+    def test_update_ticket_uses_uuid_not_identifier(self) -> None:
+        """The issueUpdate mutation must receive the UUID, not the identifier."""
+        tracker = LinearTracker(api_key="test-fake-key")
+        mock_current_issue = {
+            "id": "uuid-1",
+            "identifier": "TEST-1",
+            "title": "Title",
+            "description": "Desc",
+            "state": {"name": "Todo"},
+            "team": {"id": "team_abc"},
+            "labels": {"nodes": []},
+            "url": "https://linear.app/test/issue/TEST-1",
+        }
+        mock_updated_issue = {
+            "id": "uuid-1",
+            "identifier": "TEST-1",
+            "title": "New Title",
+            "description": "Desc",
+            "state": {"name": "Todo"},
+            "labels": {"nodes": []},
+            "url": "https://linear.app/test/issue/TEST-1",
+        }
+        mock_response = {"data": {"issueUpdate": {"success": True, "issue": mock_updated_issue}}}
+
+        with patch.object(tracker, "get_ticket") as mock_get:
+            mock_get.return_value = tracker._parse_issue(mock_current_issue)
+            with patch.object(tracker, "_execute_query", return_value=mock_response) as mock_exec:
                 tracker.update_ticket("TEST-1", title="New Title")
+
+        # The mutation should use the UUID ("uuid-1"), not the identifier ("TEST-1")
+        call_args = mock_exec.call_args
+        variables = call_args[0][1]  # second positional arg is variables
+        assert variables["id"] == "uuid-1"
 
 
 class TestLinearTrackerCommentTicket:
@@ -551,10 +794,142 @@ class TestLinearTrackerGetLabelIds:
     def test_get_label_ids_exception(self) -> None:
         tracker = LinearTracker(api_key="test-fake-key")
 
-        with patch.object(tracker, "_execute_query", side_effect=Exception("API error")):
+        # Clear cache to avoid stale data from prior tests
+        from lib.vibe.utils.cache import get_cache
+
+        get_cache().invalidate("linear_labels_team_abc")
+
+        with patch.object(
+            tracker, "_execute_query", side_effect=requests.RequestException("API error")
+        ):
             label_ids = tracker._get_label_ids("team_abc", ["Bug"])
 
         assert label_ids == []
+
+
+class TestLinearTrackerGetLabelIdsCaseInsensitive:
+    """Tests for case-insensitive label matching in _get_label_ids."""
+
+    def test_get_label_ids_case_insensitive_match(self) -> None:
+        """Label 'Backend' in input matches 'backend' in Linear."""
+        tracker = LinearTracker(api_key="test-fake-key")
+        mock_labels = [
+            {"id": "label-1", "name": "backend"},
+            {"id": "label-2", "name": "Frontend"},
+        ]
+        mock_response = {"data": {"team": {"labels": {"nodes": mock_labels}}}}
+
+        with patch.object(tracker, "_execute_query", return_value=mock_response):
+            label_ids = tracker._get_label_ids("team_abc", ["Backend"])
+
+        assert label_ids == ["label-1"]
+
+    def test_get_label_ids_uppercase_input(self) -> None:
+        """Label 'DATABASE' in input matches 'database' in Linear."""
+        tracker = LinearTracker(api_key="test-fake-key")
+        mock_labels = [{"id": "label-1", "name": "database"}]
+        mock_response = {"data": {"team": {"labels": {"nodes": mock_labels}}}}
+
+        with patch.object(tracker, "_execute_query", return_value=mock_response):
+            label_ids = tracker._get_label_ids("team_abc", ["DATABASE"])
+
+        assert label_ids == ["label-1"]
+
+    def test_get_label_ids_mixed_case_multiple(self) -> None:
+        """Multiple labels with different casings all resolve correctly."""
+        tracker = LinearTracker(api_key="test-fake-key")
+        mock_labels = [
+            {"id": "label-1", "name": "Bug"},
+            {"id": "label-2", "name": "high risk"},
+            {"id": "label-3", "name": "BACKEND"},
+        ]
+        mock_response = {"data": {"team": {"labels": {"nodes": mock_labels}}}}
+
+        with patch.object(tracker, "_execute_query", return_value=mock_response):
+            label_ids = tracker._get_label_ids("team_abc", ["bug", "High Risk", "backend"])
+
+        assert label_ids == ["label-1", "label-2", "label-3"]
+
+    def test_get_label_ids_case_insensitive_from_cache(self) -> None:
+        """Cached labels also use case-insensitive matching."""
+        tracker = LinearTracker(api_key="test-fake-key")
+        cached_data = [
+            {"name": "backend", "id": "label-1"},
+            {"name": "Frontend", "id": "label-2"},
+        ]
+
+        with patch("lib.vibe.trackers.linear.get_cache") as mock_get_cache:
+            mock_cache = MagicMock()
+            mock_cache.get.return_value = cached_data
+            mock_get_cache.return_value = mock_cache
+
+            label_ids = tracker._get_label_ids("team_cached", ["BACKEND", "frontend"])
+
+        assert label_ids == ["label-1", "label-2"]
+
+
+class TestLinearTrackerGetOrCreateLabelIdsCaseInsensitive:
+    """Tests for case-insensitive label matching in _get_or_create_label_ids."""
+
+    def test_get_or_create_skips_creation_for_case_mismatch(self) -> None:
+        """If 'backend' exists in Linear, passing 'Backend' should match it, not create a new one."""
+        tracker = LinearTracker(api_key="test-fake-key")
+        mock_labels = [
+            {"id": "label-1", "name": "backend"},
+            {"id": "label-2", "name": "Feature"},
+        ]
+        mock_response = {"data": {"team": {"labels": {"nodes": mock_labels}}}}
+
+        with patch.object(tracker, "_execute_query", return_value=mock_response):
+            with patch.object(tracker, "_create_label") as mock_create:
+                label_ids = tracker._get_or_create_label_ids("team_abc", ["Backend", "Feature"])
+
+        mock_create.assert_not_called()
+        assert label_ids == ["label-1", "label-2"]
+
+    def test_get_or_create_creates_genuinely_new_label(self) -> None:
+        """A label that truly doesn't exist (even case-insensitively) should be created."""
+        tracker = LinearTracker(api_key="test-fake-key")
+        mock_labels = [{"id": "label-1", "name": "Bug"}]
+        mock_response = {"data": {"team": {"labels": {"nodes": mock_labels}}}}
+
+        with patch.object(tracker, "_execute_query", return_value=mock_response):
+            with patch.object(tracker, "_create_label", return_value="new-label-id") as mock_create:
+                label_ids = tracker._get_or_create_label_ids("team_abc", ["Bug", "NewLabel"])
+
+        mock_create.assert_called_once_with("team_abc", "NewLabel")
+        assert label_ids == ["label-1", "new-label-id"]
+
+    def test_get_or_create_warns_on_failed_creation(self) -> None:
+        """A warning is logged when label creation fails."""
+        tracker = LinearTracker(api_key="test-fake-key")
+        mock_labels = [{"id": "label-1", "name": "Bug"}]
+        mock_response = {"data": {"team": {"labels": {"nodes": mock_labels}}}}
+        with patch.object(tracker, "_execute_query", return_value=mock_response):
+            with patch.object(tracker, "_create_label", return_value=None):
+                with patch("lib.vibe.trackers.linear.logger") as mock_logger:
+                    label_ids = tracker._get_or_create_label_ids("team_abc", ["Bug", "FailLabel"])
+
+        assert label_ids == ["label-1"]
+        # Should have warned about the failed creation and the count mismatch
+        assert mock_logger.warning.call_count >= 1
+
+    def test_get_or_create_warns_on_api_error(self) -> None:
+        """A warning is logged when the API call fails."""
+        tracker = LinearTracker(api_key="test-fake-key")
+
+        # Make _get_label_ids return empty (simulating cache miss + failure)
+        with patch.object(tracker, "_get_label_ids", return_value=[]):
+            with patch.object(
+                tracker,
+                "_execute_query",
+                side_effect=requests.RequestException("API error"),
+            ):
+                with patch("lib.vibe.trackers.linear.logger") as mock_logger:
+                    label_ids = tracker._get_or_create_label_ids("team_abc", ["Bug"])
+
+        assert label_ids == []
+        mock_logger.warning.assert_called_once_with("Failed to resolve labels due to API error")
 
 
 class TestLinearTrackerListLabels:
@@ -580,16 +955,18 @@ class TestLinearTrackerListLabels:
         mock_response = {"data": {"issueLabels": {"nodes": []}}}
 
         with patch.object(tracker, "_execute_query", return_value=mock_response) as mock_query:
-            result = tracker.list_labels()
+            tracker.list_labels()
 
-        # list_labels now queries all workspace labels (no variables needed)
-        mock_query.assert_called_once()
-        assert result == []
+        # Should pass None for variables when no team_id
+        call_args = mock_query.call_args
+        assert call_args[0][1] is None
 
     def test_list_labels_exception(self) -> None:
         tracker = LinearTracker(api_key="test-fake-key")
 
-        with patch.object(tracker, "_execute_query", side_effect=Exception("API error")):
+        with patch.object(
+            tracker, "_execute_query", side_effect=requests.RequestException("API error")
+        ):
             labels = tracker.list_labels()
 
         assert labels == []
@@ -615,6 +992,12 @@ class TestLinearTrackerGetWorkflowStateId:
 
     def test_get_workflow_state_id_case_insensitive(self) -> None:
         tracker = LinearTracker(api_key="test-fake-key")
+
+        # Clear cache to avoid stale data from prior tests
+        from lib.vibe.utils.cache import get_cache
+
+        get_cache().invalidate("linear_states_team_abc")
+
         mock_states = [{"id": "state-1", "name": "In Progress"}]
         mock_response = {"data": {"team": {"states": {"nodes": mock_states}}}}
 
@@ -636,7 +1019,14 @@ class TestLinearTrackerGetWorkflowStateId:
     def test_get_workflow_state_id_exception(self) -> None:
         tracker = LinearTracker(api_key="test-fake-key")
 
-        with patch.object(tracker, "_execute_query", side_effect=Exception("API error")):
+        # Clear cache to avoid stale data from prior tests
+        from lib.vibe.utils.cache import get_cache
+
+        get_cache().invalidate("linear_states_team_abc")
+
+        with patch.object(
+            tracker, "_execute_query", side_effect=requests.RequestException("API error")
+        ):
             state_id = tracker._get_workflow_state_id("team_abc", "Done")
 
         assert state_id is None
@@ -653,7 +1043,7 @@ class TestLinearTrackerParseIssue:
             "title": "Test Issue",
             "description": "Test description",
             "state": {"name": "In Progress"},
-            "labels": {"nodes": [{"name": "Bug"}, {"name": "Frontend"}]},
+            "labels": {"nodes": [{"name": "Bug"}, {"name": "High Risk"}]},
             "url": "https://linear.app/test/issue/TEST-1",
         }
 
@@ -663,7 +1053,7 @@ class TestLinearTrackerParseIssue:
         assert ticket.title == "Test Issue"
         assert ticket.description == "Test description"
         assert ticket.status == "In Progress"
-        assert ticket.labels == ["Bug", "Frontend"]
+        assert ticket.labels == ["Bug", "High Risk"]
         assert ticket.url == "https://linear.app/test/issue/TEST-1"
         assert ticket.raw == issue
 
@@ -730,301 +1120,97 @@ class TestLinearTrackerParseIssue:
         assert ticket.labels == []
 
 
-class TestLinearTrackerBlockingRelationships:
-    """Tests for blocking relationship methods."""
+class TestLinearTrackerSetParent:
+    """Tests for set_parent method."""
 
-    def test_resolve_issue_id_success(self) -> None:
-        tracker = LinearTracker(api_key="test-key", team_id="team-1")
-        mock_response = {
-            "data": {
-                "issue": {
-                    "id": "uuid-123",
-                    "identifier": "TEST-1",
-                    "title": "Test",
-                    "description": "",
-                    "state": {"name": "Todo"},
-                    "labels": {"nodes": []},
-                    "url": "",
-                }
-            }
+    def test_set_parent_success(self) -> None:
+        tracker = LinearTracker(api_key="test-fake-key", team_id="team_abc")
+        mock_child = {
+            "id": "uuid-child",
+            "identifier": "TEST-101",
+            "title": "Child",
+            "description": "",
+            "state": {"name": "Todo"},
+            "labels": {"nodes": []},
+            "url": "https://linear.app/test/issue/TEST-101",
+        }
+        mock_parent = {
+            "id": "uuid-parent",
+            "identifier": "TEST-100",
+            "title": "Parent",
+            "description": "",
+            "state": {"name": "Todo"},
+            "labels": {"nodes": []},
+            "url": "https://linear.app/test/issue/TEST-100",
+        }
+        mock_update_response = {"data": {"issueUpdate": {"success": True}}}
+
+        call_count = {"n": 0}
+
+        def mock_execute(query, variables=None):
+            call_count["n"] += 1
+            if call_count["n"] == 1:
+                # get_ticket for child
+                return {"data": {"issue": mock_child}}
+            elif call_count["n"] == 2:
+                # get_ticket for parent
+                return {"data": {"issue": mock_parent}}
+            else:
+                # issueUpdate
+                return mock_update_response
+
+        with patch.object(tracker, "_execute_query", side_effect=mock_execute):
+            tracker.set_parent("TEST-101", "TEST-100")
+        # Should complete without error
+
+    def test_set_parent_child_not_found(self) -> None:
+        tracker = LinearTracker(api_key="test-fake-key", team_id="team_abc")
+
+        with patch.object(tracker, "_execute_query", return_value={"data": {"issue": None}}):
+            with pytest.raises(RuntimeError, match="Ticket not found: TEST-999"):
+                tracker.set_parent("TEST-999", "TEST-100")
+
+    def test_set_parent_parent_not_found(self) -> None:
+        tracker = LinearTracker(api_key="test-fake-key", team_id="team_abc")
+        mock_child = {
+            "id": "uuid-child",
+            "identifier": "TEST-101",
+            "title": "Child",
+            "description": "",
+            "state": {"name": "Todo"},
+            "labels": {"nodes": []},
+            "url": "",
         }
 
-        with patch.object(tracker, "_execute_query", return_value=mock_response):
-            result = tracker._resolve_issue_id("TEST-1")
+        call_count = {"n": 0}
 
-        assert result == "uuid-123"
+        def mock_execute(query, variables=None):
+            call_count["n"] += 1
+            if call_count["n"] == 1:
+                return {"data": {"issue": mock_child}}
+            else:
+                return {"data": {"issue": None}}
 
-    def test_resolve_issue_id_not_found(self) -> None:
-        tracker = LinearTracker(api_key="test-key", team_id="team-1")
-        mock_response = {"data": {"issue": None}}
-
-        with patch.object(tracker, "_execute_query", return_value=mock_response):
-            result = tracker._resolve_issue_id("NONEXISTENT-1")
-
-        assert result is None
-
-    def test_add_blocking_success(self) -> None:
-        tracker = LinearTracker(api_key="test-key", team_id="team-1")
-
-        # Mock issue resolution
-        def mock_get_ticket(ticket_id: str):
-            from lib.vibe.trackers.base import Ticket
-
-            return Ticket(
-                id=ticket_id,
-                title="Test",
-                description="",
-                status="Todo",
-                labels=[],
-                url="",
-                raw={"id": f"uuid-{ticket_id}"},
-            )
-
-        mock_create_response = {
-            "data": {
-                "issueRelationCreate": {
-                    "success": True,
-                    "issueRelation": {"id": "rel-1", "type": "blocks"},
-                }
-            }
-        }
-
-        with (
-            patch.object(tracker, "get_ticket", side_effect=mock_get_ticket),
-            patch.object(tracker, "_execute_query", return_value=mock_create_response),
-        ):
-            result = tracker.add_blocking("TEST-1", "TEST-2")
-
-        assert result is True
-
-    def test_add_blocking_ticket_not_found(self) -> None:
-        tracker = LinearTracker(api_key="test-key", team_id="team-1")
-
-        with patch.object(tracker, "get_ticket", return_value=None):
-            with pytest.raises(RuntimeError, match="Could not resolve ticket IDs"):
-                tracker.add_blocking("NONEXISTENT-1", "TEST-2")
-
-    def test_get_blocking_relationships_success(self) -> None:
-        tracker = LinearTracker(api_key="test-key", team_id="team-1")
-        mock_response = {
-            "data": {
-                "issue": {
-                    "relations": {
-                        "nodes": [
-                            {
-                                "type": "blocks",
-                                "relatedIssue": {"identifier": "TEST-2", "title": "Blocked"},
-                            }
-                        ]
-                    },
-                    "inverseRelations": {
-                        "nodes": [
-                            {
-                                "type": "blocks",
-                                "issue": {"identifier": "TEST-0", "title": "Blocker"},
-                            }
-                        ]
-                    },
-                }
-            }
-        }
-
-        with patch.object(tracker, "_execute_query", return_value=mock_response):
-            result = tracker.get_blocking_relationships("TEST-1")
-
-        assert result["blocks"] == ["TEST-2"]
-        assert result["blocked_by"] == ["TEST-0"]
-
-    def test_get_blocking_relationships_empty(self) -> None:
-        tracker = LinearTracker(api_key="test-key", team_id="team-1")
-        mock_response = {
-            "data": {
-                "issue": {
-                    "relations": {"nodes": []},
-                    "inverseRelations": {"nodes": []},
-                }
-            }
-        }
-
-        with patch.object(tracker, "_execute_query", return_value=mock_response):
-            result = tracker.get_blocking_relationships("TEST-1")
-
-        assert result["blocks"] == []
-        assert result["blocked_by"] == []
+        with patch.object(tracker, "_execute_query", side_effect=mock_execute):
+            with pytest.raises(RuntimeError, match="Parent ticket not found: TEST-999"):
+                tracker.set_parent("TEST-101", "TEST-999")
 
 
-class TestLinearTrackerProjects:
-    """Tests for project methods."""
+class TestLinearTrackerAddRelation:
+    """Tests for add_relation method."""
 
-    def test_list_projects_success(self) -> None:
-        tracker = LinearTracker(api_key="test-key", team_id="team-1")
-        mock_response = {
-            "data": {
-                "projects": {
-                    "nodes": [
-                        {
-                            "id": "proj-1",
-                            "name": "Project Alpha",
-                            "description": "First project",
-                            "state": "started",
-                            "url": "https://linear.app/test/project/alpha",
-                        },
-                        {
-                            "id": "proj-2",
-                            "name": "Project Beta",
-                            "description": "Second project",
-                            "state": "planned",
-                            "url": "https://linear.app/test/project/beta",
-                        },
-                    ]
-                }
-            }
-        }
+    def test_add_relation_delegates_to_create_relation(self) -> None:
+        tracker = LinearTracker(api_key="test-fake-key", team_id="team_abc")
 
-        with patch.object(tracker, "_execute_query", return_value=mock_response):
-            result = tracker.list_projects()
+        with patch.object(tracker, "create_relation") as mock_create_relation:
+            tracker.add_relation("TEST-1", "TEST-2", "related")
 
-        assert len(result) == 2
-        assert result[0]["name"] == "Project Alpha"
-        assert result[1]["name"] == "Project Beta"
+        mock_create_relation.assert_called_once_with("TEST-1", "TEST-2", "related")
 
-    def test_list_projects_empty(self) -> None:
-        tracker = LinearTracker(api_key="test-key", team_id="team-1")
-        mock_response = {"data": {"projects": {"nodes": []}}}
+    def test_add_relation_blocks(self) -> None:
+        tracker = LinearTracker(api_key="test-fake-key", team_id="team_abc")
 
-        with patch.object(tracker, "_execute_query", return_value=mock_response):
-            result = tracker.list_projects()
+        with patch.object(tracker, "create_relation") as mock_create_relation:
+            tracker.add_relation("TEST-1", "TEST-2", "blocks")
 
-        assert result == []
-
-    def test_get_project_id_found(self) -> None:
-        tracker = LinearTracker(api_key="test-key", team_id="team-1")
-
-        with patch.object(
-            tracker,
-            "list_projects",
-            return_value=[
-                {"id": "proj-1", "name": "Project Alpha"},
-                {"id": "proj-2", "name": "Project Beta"},
-            ],
-        ):
-            result = tracker._get_project_id("Project Beta")
-
-        assert result == "proj-2"
-
-    def test_get_project_id_case_insensitive(self) -> None:
-        tracker = LinearTracker(api_key="test-key", team_id="team-1")
-
-        with patch.object(
-            tracker,
-            "list_projects",
-            return_value=[{"id": "proj-1", "name": "Project Alpha"}],
-        ):
-            result = tracker._get_project_id("project alpha")
-
-        assert result == "proj-1"
-
-    def test_get_project_id_not_found(self) -> None:
-        tracker = LinearTracker(api_key="test-key", team_id="team-1")
-
-        with patch.object(
-            tracker,
-            "list_projects",
-            return_value=[{"id": "proj-1", "name": "Project Alpha"}],
-        ):
-            result = tracker._get_project_id("Nonexistent")
-
-        assert result is None
-
-    def test_set_project_success(self) -> None:
-        tracker = LinearTracker(api_key="test-key", team_id="team-1")
-
-        def mock_get_ticket(ticket_id: str):
-            from lib.vibe.trackers.base import Ticket
-
-            return Ticket(
-                id=ticket_id,
-                title="Test",
-                description="",
-                status="Todo",
-                labels=[],
-                url="",
-                raw={"id": "uuid-123"},
-            )
-
-        mock_response = {"data": {"issueUpdate": {"success": True}}}
-
-        with (
-            patch.object(tracker, "get_ticket", side_effect=mock_get_ticket),
-            patch.object(tracker, "_execute_query", return_value=mock_response),
-        ):
-            result = tracker.set_project("TEST-1", "proj-1")
-
-        assert result is True
-
-    def test_set_project_ticket_not_found(self) -> None:
-        tracker = LinearTracker(api_key="test-key", team_id="team-1")
-
-        with patch.object(tracker, "get_ticket", return_value=None):
-            with pytest.raises(RuntimeError, match="Could not resolve ticket ID"):
-                tracker.set_project("NONEXISTENT-1", "proj-1")
-
-
-class TestNormalizeLabels:
-    """Tests for TrackerBase._normalize_labels."""
-
-    def test_already_individual_labels(self) -> None:
-        result = TrackerBase._normalize_labels(["Bug", "Frontend", "Backend"])
-        assert result == ["Bug", "Frontend", "Backend"]
-
-    def test_comma_separated_single_string(self) -> None:
-        result = TrackerBase._normalize_labels(["Bug,Frontend,Backend"])
-        assert result == ["Bug", "Frontend", "Backend"]
-
-    def test_mixed_individual_and_comma_separated(self) -> None:
-        result = TrackerBase._normalize_labels(["Bug,Frontend", "v1"])
-        assert result == ["Bug", "Frontend", "v1"]
-
-    def test_extra_whitespace_trimmed(self) -> None:
-        result = TrackerBase._normalize_labels(["Bug , Frontend , Backend"])
-        assert result == ["Bug", "Frontend", "Backend"]
-
-    def test_empty_parts_skipped(self) -> None:
-        result = TrackerBase._normalize_labels(["Bug,,Frontend", ""])
-        assert result == ["Bug", "Frontend"]
-
-    def test_empty_list(self) -> None:
-        result = TrackerBase._normalize_labels([])
-        assert result == []
-
-
-class TestLinearGetOrCreateLabelIdsNormalization:
-    """Tests that _get_or_create_label_ids splits comma-separated labels."""
-
-    def test_comma_separated_labels_are_split(self) -> None:
-        tracker = LinearTracker(api_key="test-fake-key")
-        mock_labels = [
-            {"id": "label-1", "name": "Bug"},
-            {"id": "label-2", "name": "Frontend"},
-            {"id": "label-3", "name": "Backend"},
-        ]
-        mock_response = {"data": {"team": {"labels": {"nodes": mock_labels}}}}
-
-        with patch.object(tracker, "_execute_query", return_value=mock_response):
-            ids = tracker._get_or_create_label_ids("team_abc", ["Bug,Frontend,Backend"])
-
-        assert ids == ["label-1", "label-2", "label-3"]
-
-    def test_comma_separated_creates_missing_labels(self) -> None:
-        tracker = LinearTracker(api_key="test-fake-key")
-        mock_labels = [{"id": "label-1", "name": "Bug"}]
-        mock_response = {"data": {"team": {"labels": {"nodes": mock_labels}}}}
-
-        with (
-            patch.object(tracker, "_execute_query", return_value=mock_response),
-            patch.object(tracker, "_create_label", return_value="new-label-id") as mock_create,
-        ):
-            ids = tracker._get_or_create_label_ids("team_abc", ["Bug,NewLabel"])
-
-        assert ids == ["label-1", "new-label-id"]
-        mock_create.assert_called_once_with("team_abc", "NewLabel")
+        mock_create_relation.assert_called_once_with("TEST-1", "TEST-2", "blocks")

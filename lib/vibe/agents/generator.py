@@ -7,6 +7,128 @@ from pathlib import Path
 
 from lib.vibe.agents.spec import AssistantFormat, InstructionSpec
 
+# Placeholder patterns that indicate a generated/template file
+_PLACEHOLDER_PATTERNS = [
+    "(your project name)",
+    "# DO NOT EDIT DIRECTLY - regenerate with:",
+    "# Generated:",
+    "# Source: agent_instructions/",
+]
+
+
+def _is_generated_file(content: str) -> bool:
+    """Check if file content appears to be generated (not customized)."""
+    return any(pattern in content for pattern in _PLACEHOLDER_PATTERNS)
+
+
+def _has_project_content(file_path: Path) -> bool:
+    """Check if file exists and has project-specific (non-template) content."""
+    if not file_path.exists():
+        return False
+
+    try:
+        content = file_path.read_text()
+        # If it's empty or has placeholder patterns, it's not project-specific
+        if not content.strip():
+            return False
+        return not _is_generated_file(content)
+    except OSError:
+        return False
+
+
+def _render_labels_section(labels: dict[str, list[str]]) -> list[str]:
+    """Render the Available Labels section from config labels.
+
+    Returns a list of lines (without trailing newline) for embedding into
+    the generated output.
+    """
+    lines: list[str] = []
+    lines.append("## Available Labels")
+    lines.append("")
+    lines.append(
+        "These labels are configured in `.vibe/config.json`. Apply them when creating tickets."
+    )
+    lines.append("")
+
+    category_titles = {
+        "type": "Type (exactly one required)",
+        "risk": "Risk (exactly one required)",
+        "area": "Area (at least one required)",
+        "special": "Special (as needed)",
+    }
+
+    for category in ("type", "risk", "area", "special"):
+        values = labels.get(category, [])
+        if values:
+            title = category_titles.get(category, category.title())
+            lines.append(f"**{title}:** {', '.join(values)}")
+            lines.append("")
+
+    return lines
+
+
+def _render_ticket_discipline_section() -> list[str]:
+    """Render the Ticket Discipline section with enforcement rules.
+
+    Returns a list of lines for embedding into generated output.
+    """
+    lines: list[str] = []
+    lines.append("## Ticket Discipline")
+    lines.append("")
+    lines.append("Follow these rules for every ticket and PR:")
+    lines.append("")
+    lines.append("### Labels Are Required")
+    lines.append("")
+    lines.append("Every ticket **must** have labels when created:")
+    lines.append("")
+    lines.append("- **Type** (exactly one): Bug, Feature, Chore, or Refactor")
+    lines.append("- **Area** (at least one): Frontend, Backend, Infra, or Docs")
+    lines.append("- **Risk** (exactly one): Low Risk, Medium Risk, or High Risk")
+    lines.append("")
+    lines.append("```bash")
+    lines.append(
+        'bin/ticket create "Fix login bug" '
+        '--description "Login returns 500 on special chars." '
+        '--label Bug --label Frontend --label "Low Risk"'
+    )
+    lines.append("```")
+    lines.append("")
+    lines.append("### Parent/Child Relationships")
+    lines.append("")
+    lines.append("When creating sub-tasks, set the parent ticket:")
+    lines.append("")
+    lines.append("```bash")
+    lines.append(
+        'bin/ticket create "Add signup form" '
+        '--description "React signup component." '
+        "--label Feature --label Frontend --parent PROJ-100"
+    )
+    lines.append("```")
+    lines.append("")
+    lines.append("### Blocking Relationships")
+    lines.append("")
+    lines.append(
+        "When one ticket must be completed before another can start, "
+        "link them with a blocking relationship. "
+        "The prerequisite ticket blocks the dependent ticket:"
+    )
+    lines.append("")
+    lines.append("```bash")
+    lines.append("bin/ticket link PROJ-101 --blocks PROJ-102")
+    lines.append("```")
+    lines.append("")
+    lines.append("### Every PR Needs a Ticket")
+    lines.append("")
+    lines.append(
+        "Every pull request **must** reference a ticket. Include the ticket ID in the PR title:"
+    )
+    lines.append("")
+    lines.append("```bash")
+    lines.append('bin/vibe pr --title "PROJ-123: Add user authentication"')
+    lines.append("```")
+    lines.append("")
+    return lines
+
 
 class InstructionGenerator:
     """Generates assistant-specific instruction files from a common spec."""
@@ -27,11 +149,20 @@ class InstructionGenerator:
         return generators[format]()
 
     def generate_all(
-        self, output_dir: Path, formats: list[AssistantFormat] | None = None
+        self,
+        output_dir: Path,
+        formats: list[AssistantFormat] | None = None,
+        force: bool = False,
     ) -> dict[str, Path]:
         """Generate all instruction files to the specified directory.
 
-        Returns a dict mapping format name to output path.
+        Args:
+            output_dir: Directory to write files to
+            formats: List of formats to generate (default: CLAUDE, CURSOR, COPILOT)
+            force: If True, overwrite files even if they have project-specific content
+
+        Returns:
+            Dict mapping format name to output path (only for files that were written)
         """
         if formats is None:
             formats = [
@@ -40,10 +171,27 @@ class InstructionGenerator:
                 AssistantFormat.COPILOT,
             ]
 
-        results = {}
+        results: dict[str, Path] = {}
+        skipped: dict[str, Path | str] = {}
+
         for format in formats:
-            content = self.generate(format)
             output_path = output_dir / format.output_path
+
+            # Check if path is a directory (shouldn't be, but handle gracefully)
+            if output_path.exists() and output_path.is_dir():
+                # For .cursor/rules being a directory, use .cursorrules instead
+                if format == AssistantFormat.CURSOR:
+                    output_path = output_dir / ".cursorrules"
+                else:
+                    skipped[format.value] = f"{output_path} is a directory"
+                    continue
+
+            # Skip files with project-specific content unless --force
+            if not force and _has_project_content(output_path):
+                skipped[format.value] = output_path
+                continue
+
+            content = self.generate(format)
 
             # Create parent directories if needed
             output_path.parent.mkdir(parents=True, exist_ok=True)
@@ -51,7 +199,15 @@ class InstructionGenerator:
             output_path.write_text(content)
             results[format.value] = output_path
 
+        # Store skipped info for caller to report
+        self._skipped = skipped
+
         return results
+
+    @property
+    def skipped_files(self) -> dict[str, Path | str]:
+        """Return files that were skipped due to project-specific content."""
+        return getattr(self, "_skipped", {})
 
     def _header(self, format_name: str) -> str:
         """Generate file header with timestamp."""
@@ -98,30 +254,42 @@ class InstructionGenerator:
             lines.append("---")
             lines.append("")
 
+        # Available Labels (from config)
+        if self.spec.labels:
+            lines.extend(_render_labels_section(self.spec.labels))
+            lines.append("---")
+            lines.append("")
+
+        # Ticket Discipline
+        if self.spec.labels or self.spec.core_rules:
+            lines.extend(_render_ticket_discipline_section())
+            lines.append("---")
+            lines.append("")
+
         # Commands
         if self.spec.commands:
             lines.append("## Available Commands")
             lines.append("")
             lines.append("| Command | Description |")
             lines.append("|---------|-------------|")
-            for cmd in self.spec.commands:
-                lines.append(f"| `{cmd.usage or cmd.name}` | {cmd.description} |")
+            for cmd_spec in self.spec.commands:
+                lines.append(f"| `{cmd_spec.usage or cmd_spec.name}` | {cmd_spec.description} |")
             lines.append("")
 
             # Detailed command reference
             lines.append("### Command Details")
             lines.append("")
-            for cmd in self.spec.commands:
-                lines.append(f"#### {cmd.name}")
+            for cmd_spec in self.spec.commands:
+                lines.append(f"#### {cmd_spec.name}")
                 lines.append("")
-                lines.append(cmd.description)
-                if cmd.usage:
+                lines.append(cmd_spec.description)
+                if cmd_spec.usage:
                     lines.append("")
-                    lines.append(f"**Usage:** `{cmd.usage}`")
-                if cmd.examples:
+                    lines.append(f"**Usage:** `{cmd_spec.usage}`")
+                if cmd_spec.examples:
                     lines.append("")
                     lines.append("**Examples:**")
-                    for ex in cmd.examples:
+                    for ex in cmd_spec.examples:
                         lines.append("```bash")
                         lines.append(ex)
                         lines.append("```")
@@ -143,8 +311,8 @@ class InstructionGenerator:
                     if step.commands:
                         lines.append("")
                         lines.append("```bash")
-                        for cmd in step.commands:
-                            lines.append(cmd)
+                        for step_cmd in step.commands:
+                            lines.append(step_cmd)
                         lines.append("```")
                     lines.append("")
             lines.append("---")
@@ -207,6 +375,25 @@ class InstructionGenerator:
                 lines.append(f"{rule}")
             lines.append("")
 
+        # Available Labels (from config)
+        if self.spec.labels:
+            lines.append("# Available Labels")
+            for category in ("type", "risk", "area", "special"):
+                values = self.spec.labels.get(category, [])
+                if values:
+                    lines.append(f"# {category.title()}: {', '.join(values)}")
+            lines.append("")
+
+        # Ticket Discipline (concise for Cursor)
+        if self.spec.labels or self.spec.core_rules:
+            lines.append("# Ticket Discipline")
+            lines.append(
+                "Every ticket must have type and area labels. "
+                "Every PR title must include the ticket ID. "
+                "Use --parent for sub-tasks and bin/ticket link for blocking."
+            )
+            lines.append("")
+
         # Anti-patterns
         if self.spec.anti_patterns:
             lines.append("# Avoid")
@@ -219,8 +406,8 @@ class InstructionGenerator:
         if self.spec.commands:
             lines.append("# Available Commands")
             lines.append("")
-            for cmd in self.spec.commands:
-                lines.append(f"# {cmd.name}: {cmd.usage or cmd.description}")
+            for cmd_spec in self.spec.commands:
+                lines.append(f"# {cmd_spec.name}: {cmd_spec.usage or cmd_spec.description}")
             lines.append("")
 
         # Workflows - condensed
@@ -230,8 +417,8 @@ class InstructionGenerator:
                 lines.append(f"# {workflow_name}:")
                 for step in steps:
                     if step.commands:
-                        for cmd in step.commands:
-                            lines.append(f"#   {cmd}")
+                        for step_cmd in step.commands:
+                            lines.append(f"#   {step_cmd}")
             lines.append("")
 
         return "\n".join(lines)
@@ -274,6 +461,14 @@ class InstructionGenerator:
                 lines.append(f"- {rule}")
             lines.append("")
 
+        # Available Labels (from config)
+        if self.spec.labels:
+            lines.extend(_render_labels_section(self.spec.labels))
+
+        # Ticket Discipline
+        if self.spec.labels or self.spec.core_rules:
+            lines.extend(_render_ticket_discipline_section())
+
         # What to avoid
         if self.spec.anti_patterns:
             lines.append("## Patterns to Avoid")
@@ -296,11 +491,11 @@ class InstructionGenerator:
             lines.append("")
             lines.append("Use these commands for common operations:")
             lines.append("")
-            for cmd in self.spec.commands:
-                if cmd.usage:
-                    lines.append(f"- `{cmd.usage}` - {cmd.description}")
+            for cmd_spec in self.spec.commands:
+                if cmd_spec.usage:
+                    lines.append(f"- `{cmd_spec.usage}` - {cmd_spec.description}")
                 else:
-                    lines.append(f"- **{cmd.name}**: {cmd.description}")
+                    lines.append(f"- **{cmd_spec.name}**: {cmd_spec.description}")
             lines.append("")
 
         return "\n".join(lines)
@@ -349,6 +544,14 @@ class InstructionGenerator:
                 lines.append(f"{i}. {rule}")
             lines.append("")
 
+        # Available Labels (from config)
+        if self.spec.labels:
+            lines.extend(_render_labels_section(self.spec.labels))
+
+        # Ticket Discipline
+        if self.spec.labels or self.spec.core_rules:
+            lines.extend(_render_ticket_discipline_section())
+
         # Commands
         if self.spec.commands:
             lines.append("## Commands")
@@ -356,11 +559,11 @@ class InstructionGenerator:
             lines.append("Use these commands:")
             lines.append("")
             lines.append("```")
-            for cmd in self.spec.commands:
-                if cmd.usage:
-                    lines.append(f"{cmd.usage}  # {cmd.description}")
+            for cmd_spec in self.spec.commands:
+                if cmd_spec.usage:
+                    lines.append(f"{cmd_spec.usage}  # {cmd_spec.description}")
                 else:
-                    lines.append(f"{cmd.name}: {cmd.description}")
+                    lines.append(f"{cmd_spec.name}: {cmd_spec.description}")
             lines.append("```")
             lines.append("")
 
@@ -377,8 +580,8 @@ class InstructionGenerator:
                         lines.append(f"   {step.description}")
                     if step.commands:
                         lines.append("   ```")
-                        for cmd in step.commands:
-                            lines.append(f"   {cmd}")
+                        for step_cmd in step.commands:
+                            lines.append(f"   {step_cmd}")
                         lines.append("   ```")
                 lines.append("")
 
