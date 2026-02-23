@@ -296,10 +296,7 @@ export function useWorldTiles(
 
   const query = useQuery({
     queryKey: queryKeys.worldTiles(worldId),
-    queryFn: () => {
-      pollCountRef.current += 1;
-      return api.tiles.list(worldId);
-    },
+    queryFn: () => api.tiles.list(worldId),
     enabled: !!worldId,
     // CITY-583/585/590: Poll every 3s while tiles are pending/generating.
     // Stops polling when all tiles are ready, any tile failed, or max polls reached.
