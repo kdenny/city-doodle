@@ -422,25 +422,25 @@ class JobRunner:
             config = TerrainConfig(**config_kwargs)
             generator = TerrainGenerator(config)
 
-            t_pipeline_start = time.perf_counter()
+            t_pipeline_start = time.time()
 
             result = await loop.run_in_executor(
                 None, generator.generate_3x3, int(center_tx), int(center_ty)
             )
 
-            t_gen_end = time.perf_counter()
+            t_gen_end = time.time()
 
             # Save generated tiles to database
             await self._save_terrain_tiles(world_id, result, trace_id)
 
-            t_save_end = time.perf_counter()
+            t_save_end = time.time()
 
-            gen_ms = (t_gen_end - t_pipeline_start) * 1000
-            save_ms = (t_save_end - t_gen_end) * 1000
-            total_ms = (t_save_end - t_pipeline_start) * 1000
+            gen_s = t_gen_end - t_pipeline_start
+            save_s = t_save_end - t_gen_end
+            total_s = t_save_end - t_pipeline_start
             logger.info(
-                "[Terrain trace=%s] Full pipeline complete in %.1fms (generation=%.1fms save=%.1fms) world=%s",
-                trace_id, total_ms, gen_ms, save_ms, world_id,
+                "[Terrain trace=%s] Full pipeline complete in %.1fs (generation=%.1fs save=%.1fs) world=%s setting=%s",
+                trace_id, total_s, gen_s, save_s, world_id, geographic_setting,
             )
 
             # CITY-585: Mark all generated tiles as "ready"
