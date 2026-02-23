@@ -177,14 +177,6 @@ export const MapCanvas = forwardRef<MapCanvasHandle, MapCanvasProps>(
 
   // CITY-595: Derive terrain overlay status from tile data
   const terrainOverlay = useMemo(() => deriveTerrainOverlayStatus(tiles), [tiles]);
-  const [terrainHasLoaded, setTerrainHasLoaded] = useState(false);
-
-  // Track when terrain transitions to ready for the fade-in effect
-  useEffect(() => {
-    if (terrainOverlay.status === "ready" && !terrainHasLoaded) {
-      setTerrainHasLoaded(true);
-    }
-  }, [terrainOverlay.status, terrainHasLoaded]);
 
   // CITY-595: Regenerate terrain mutation for retry on failure
   const regenerateTerrain = useRegenerateTerrain();
