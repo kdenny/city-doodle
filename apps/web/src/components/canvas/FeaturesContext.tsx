@@ -80,6 +80,7 @@ import {
 import { generatePOIsForDistrict, generatePOIFootprint, generateCampusPaths } from "./layers/poiAutoGenerator";
 import { generateParkFeaturesForDistrict } from "./layers/parkGenerator";
 import { generateAirportFeaturesForDistrict } from "./layers/airportGenerator";
+import { computeDistrictCache, getDistrictCentroid } from "./layers/geometry";
 import { useTerrainOptional } from "./TerrainContext";
 import { useTransitOptional } from "./TransitContext";
 import { useToastOptional } from "../../contexts";
@@ -371,7 +372,8 @@ function fromApiDistrict(apiDistrict: ApiDistrict): District {
     );
   }
 
-  return {
+  // CITY-236: Pre-compute centroid and bounds cache on load
+  return computeDistrictCache({
     id: apiDistrict.id,
     type: fromApiDistrictType(apiDistrict.type) as District["type"],
     name: apiDistrict.name || `${apiDistrict.type} district`,
@@ -381,7 +383,7 @@ function fromApiDistrict(apiDistrict: ApiDistrict): District {
     personality: streetGrid?.personality as District["personality"] | undefined,
     ponds,
     fillColor: apiDistrict.fill_color ?? undefined,
-  };
+  });
 }
 
 /**
@@ -1032,11 +1034,10 @@ export function FeaturesProvider({
         const adjacentDistrictNames: string[] = [];
         const adjacentDistrictTypes: NearbyContext[] = [];
         for (const d of featuresRef.current.districts) {
-          // Use centroid distance as a rough proximity check
-          const cx = d.polygon.points.reduce((s, p) => s + p.x, 0) / d.polygon.points.length;
-          const cy = d.polygon.points.reduce((s, p) => s + p.y, 0) / d.polygon.points.length;
-          const dx = cx - position.x;
-          const dy = cy - position.y;
+          // CITY-236: Use cached centroid for proximity check
+          const c = getDistrictCentroid(d);
+          const dx = c.x - position.x;
+          const dy = c.y - position.y;
           const dist = Math.sqrt(dx * dx + dy * dy);
           if (dist < searchRadius) {
             adjacentDistrictNames.push(d.name);
@@ -1134,6 +1135,8 @@ export function FeaturesProvider({
         };
       }
       generated.district.polygon.points = clippedToWorld;
+      // CITY-236: Recompute cache after polygon change
+      computeDistrictCache(generated.district);
 
       // CITY-384: Clip against existing districts instead of rejecting overlap
       let adjacentDistrictIds: string[] = [];
@@ -1153,6 +1156,8 @@ export function FeaturesProvider({
 
         // Apply the clipped polygon
         generated.district.polygon.points = districtClipResult.clippedPolygon;
+        // CITY-236: Recompute cache after polygon change
+        computeDistrictCache(generated.district);
         adjacentDistrictIds = districtClipResult.adjacentDistrictIds;
 
         // Determine grid angle and origin from adjacent districts for continuity
@@ -1272,6 +1277,8 @@ export function FeaturesProvider({
       // Apply clipped polygon if water overlap occurred
       if (clipResult.overlapsWater) {
         generated.district.polygon.points = clipResult.clippedPolygon;
+        // CITY-236: Recompute cache after polygon change
+        computeDistrictCache(generated.district);
         // Regenerate the street grid for the clipped polygon (CITY-142)
         // Pass the existing gridAngle to preserve orientation
         // Include transit options for transit-oriented grids (CITY-168)
@@ -1667,6 +1674,8 @@ export function FeaturesProvider({
 
   const addDistrictWithGeometry = useCallback(
     (district: District, roads: Road[] = []) => {
+      // CITY-236: Ensure cache is populated
+      computeDistrictCache(district);
       updateFeatures((prev) => ({
         ...prev,
         districts: [...prev.districts, district],
@@ -2094,7 +2103,8 @@ export function FeaturesProvider({
           return {
             ...prev,
             districts: prev.districts.map((d) =>
-              d.id === id ? { ...d, ...updates, polygon: updates.polygon!, gridAngle: actualAngle } : d
+              // CITY-236: Recompute cache when polygon changes
+              d.id === id ? computeDistrictCache({ ...d, ...updates, polygon: updates.polygon!, gridAngle: actualAngle }) : d
             ),
             roads: [...otherRoads, ...newRoads, ...crossBoundaryRoadsPoly],
           };

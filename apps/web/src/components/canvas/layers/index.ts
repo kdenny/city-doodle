@@ -82,6 +82,7 @@ export type {
   LabelConfig,
   LabelLayerData,
   LabelType,
+  PolygonBounds,
 } from "./types";
 export { DEFAULT_LAYER_VISIBILITY, DEFAULT_DISTRICT_PERSONALITY } from "./types";
 export {

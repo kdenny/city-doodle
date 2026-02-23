@@ -182,6 +182,17 @@ export const DEFAULT_DENSITY_BY_TYPE: Record<DistrictType, number> = {
   airport: 2, // Sparse infrastructure
 };
 
+/**
+ * CITY-236: Cached bounding box for a polygon.
+ * Avoids recomputing bounds on every access.
+ */
+export interface PolygonBounds {
+  minX: number;
+  maxX: number;
+  minY: number;
+  maxY: number;
+}
+
 export interface District {
   id: string;
   type: DistrictType;
@@ -200,6 +211,16 @@ export interface District {
   ponds?: Polygon[];
   /** Custom fill color as hex string (e.g. "#ff0000"). Uses type default if not set. (CITY-408) */
   fillColor?: string;
+  /**
+   * CITY-236: Cached geometric centroid (average of vertices).
+   * Computed when polygon is created or changed; avoids redundant recalculation.
+   */
+  _cachedCentroid?: Point;
+  /**
+   * CITY-236: Cached axis-aligned bounding box.
+   * Computed when polygon is created or changed; avoids redundant recalculation.
+   */
+  _cachedBounds?: PolygonBounds;
 }
 
 // Road hierarchy classes

@@ -30,6 +30,7 @@
  */
 
 import type { District, DistrictType, Road, Point, RoadClass, WaterFeature } from "./types";
+import { getDistrictCentroid } from "./geometry";
 import { generateId } from "../../../utils/idGenerator";
 
 /**
@@ -479,12 +480,12 @@ export function generateInterDistrictRoads(
     }
   }
 
-  // Get centroid of new district
-  const newCentroid = getPolygonCentroid(newDistrict.polygon.points);
+  // CITY-236: Use cached centroids
+  const newCentroid = getDistrictCentroid(newDistrict);
 
   // Calculate distance and priority for each existing district
   const districtInfo = existingDistricts.map((district) => {
-    const centroid = getPolygonCentroid(district.polygon.points);
+    const centroid = getDistrictCentroid(district);
     const dist = distance(newCentroid, centroid);
     const priority = getConnectionPriority(district);
     return { district, centroid, distance: dist, priority };
@@ -779,8 +780,9 @@ export function areDistrictsConnected(
   district2: District,
   existingRoads: Road[]
 ): boolean {
-  const centroid1 = getPolygonCentroid(district1.polygon.points);
-  const centroid2 = getPolygonCentroid(district2.polygon.points);
+  // CITY-236: Use cached centroids
+  const centroid1 = getDistrictCentroid(district1);
+  const centroid2 = getDistrictCentroid(district2);
 
   // Check if any existing road connects the two district areas
   for (const road of existingRoads) {

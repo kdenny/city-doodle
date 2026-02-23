@@ -10,6 +10,7 @@
  */
 
 import type { Point, Road, District, POIType, WaterFeature } from "./types";
+import { getDistrictCentroid } from "./geometry";
 
 /**
  * Maximum distance in world units for a POI to be considered "adjacent" to an arterial.
@@ -203,23 +204,6 @@ export function findNearestArterial(
   return { road: nearestRoad, distance: minDist, nearestPoint };
 }
 
-/**
- * Calculate the centroid of a polygon.
- */
-function getPolygonCentroid(points: Point[]): Point {
-  if (points.length === 0) return { x: 0, y: 0 };
-
-  let sumX = 0;
-  let sumY = 0;
-  for (const point of points) {
-    sumX += point.x;
-    sumY += point.y;
-  }
-  return {
-    x: sumX / points.length,
-    y: sumY / points.length,
-  };
-}
 
 /**
  * District candidate for arterial connection.
@@ -246,7 +230,8 @@ export function findConnectionCandidates(
   const candidates: ConnectionCandidate[] = [];
 
   for (const district of existingDistricts) {
-    const centroid = getPolygonCentroid(district.polygon.points);
+    // CITY-236: Use cached centroid
+    const centroid = getDistrictCentroid(district);
     const dist = distance(position, centroid);
 
     if (dist <= MAX_CONNECTION_DISTANCE) {
@@ -368,7 +353,8 @@ export function generateArterialConnections(
     };
   }
 
-  const centroid = getPolygonCentroid(district.polygon.points);
+  // CITY-236: Use cached centroids
+  const centroid = getDistrictCentroid(district);
   const candidates = findConnectionCandidates(centroid, existingDistricts);
 
   if (candidates.length === 0) {
@@ -386,7 +372,7 @@ export function generateArterialConnections(
   for (const candidate of candidates) {
     // Find connection points on each district's boundary
     const fromPoint = findNearestPointOnPolygon(
-      getPolygonCentroid(candidate.district.polygon.points),
+      getDistrictCentroid(candidate.district),
       district.polygon.points
     );
     const toPoint = findNearestPointOnPolygon(
