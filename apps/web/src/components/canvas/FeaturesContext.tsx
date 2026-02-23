@@ -84,6 +84,30 @@ import { computeDistrictCache, getDistrictCentroid } from "./layers/geometry";
 import { useTerrainOptional } from "./TerrainContext";
 import { useTransitOptional } from "./TransitContext";
 import { useToastOptional } from "../../contexts";
+import {
+  DistrictsStateContext,
+  DistrictsDispatchContext,
+  type DistrictsStateValue,
+  type DistrictsDispatchValue,
+} from "./DistrictsContext";
+import {
+  RoadsStateContext,
+  RoadsDispatchContext,
+  type RoadsStateValue,
+  type RoadsDispatchValue,
+} from "./RoadsContext";
+import {
+  POIsStateContext,
+  POIsDispatchContext,
+  type POIsStateValue,
+  type POIsDispatchValue,
+} from "./POIsContext";
+import {
+  NeighborhoodsStateContext,
+  NeighborhoodsDispatchContext,
+  type NeighborhoodsStateValue,
+  type NeighborhoodsDispatchValue,
+} from "./NeighborhoodsContext";
 
 /** CITY-384: Distance from a point to a line segment. */
 function pointToSegmentDistance(p: Point, a: Point, b: Point): number {
@@ -101,7 +125,7 @@ function pointToSegmentDistance(p: Point, a: Point, b: Point): number {
 /**
  * Extended config that includes personality settings for the district.
  */
-interface AddDistrictConfig extends DistrictGenerationConfig {
+export interface AddDistrictConfig extends DistrictGenerationConfig {
   /** Personality settings to apply to the district */
   personality?: DistrictPersonality;
   /**
@@ -2651,11 +2675,95 @@ export function FeaturesProvider({
     ...dispatchValue,
   }), [stateValue, dispatchValue]);
 
+  // ---------------------------------------------------------------------------
+  // Granular context values (CITY-245) — each is memoized on its own slice of
+  // state so subscribers only re-render when the relevant data changes.
+  // ---------------------------------------------------------------------------
+
+  const districtsState: DistrictsStateValue = useMemo(() => ({
+    districts: features.districts,
+    cityLimits: features.cityLimits,
+    cities: apiCities,
+    isLoading,
+  }), [features.districts, features.cityLimits, apiCities, isLoading]);
+
+  const districtsDispatch: DistrictsDispatchValue = useMemo(() => ({
+    addDistrict,
+    previewDistrictPlacement,
+    addDistrictWithGeometry,
+    removeDistrict,
+    updateDistrict,
+    setCityLimits,
+    removeCityLimits,
+    regenerateDistrictGrids,
+  }), [
+    addDistrict,
+    previewDistrictPlacement,
+    addDistrictWithGeometry,
+    removeDistrict,
+    updateDistrict,
+    setCityLimits,
+    removeCityLimits,
+    regenerateDistrictGrids,
+  ]);
+
+  const roadsState: RoadsStateValue = useMemo(() => ({
+    roads: features.roads,
+    bridges: features.bridges,
+    interchanges: features.interchanges ?? [],
+    isLoading,
+  }), [features.roads, features.bridges, features.interchanges, isLoading]);
+
+  const roadsDispatch: RoadsDispatchValue = useMemo(() => ({
+    addRoads,
+    addInterchanges,
+    removeRoad,
+    updateRoad,
+  }), [addRoads, addInterchanges, removeRoad, updateRoad]);
+
+  const poisState: POIsStateValue = useMemo(() => ({
+    pois: features.pois,
+    isLoading,
+  }), [features.pois, isLoading]);
+
+  const poisDispatch: POIsDispatchValue = useMemo(() => ({
+    addPOI,
+    removePOI,
+    updatePOI,
+  }), [addPOI, removePOI, updatePOI]);
+
+  const neighborhoodsState: NeighborhoodsStateValue = useMemo(() => ({
+    neighborhoods: features.neighborhoods,
+    isLoading,
+  }), [features.neighborhoods, isLoading]);
+
+  const neighborhoodsDispatch: NeighborhoodsDispatchValue = useMemo(() => ({
+    addNeighborhood,
+    removeNeighborhood,
+    updateNeighborhood,
+  }), [addNeighborhood, removeNeighborhood, updateNeighborhood]);
+
   return (
     <FeaturesStateContext.Provider value={stateValue}>
       <FeaturesDispatchContext.Provider value={dispatchValue}>
         <FeaturesContext.Provider value={combinedValue}>
-          {children}
+          <DistrictsStateContext.Provider value={districtsState}>
+            <DistrictsDispatchContext.Provider value={districtsDispatch}>
+              <RoadsStateContext.Provider value={roadsState}>
+                <RoadsDispatchContext.Provider value={roadsDispatch}>
+                  <POIsStateContext.Provider value={poisState}>
+                    <POIsDispatchContext.Provider value={poisDispatch}>
+                      <NeighborhoodsStateContext.Provider value={neighborhoodsState}>
+                        <NeighborhoodsDispatchContext.Provider value={neighborhoodsDispatch}>
+                          {children}
+                        </NeighborhoodsDispatchContext.Provider>
+                      </NeighborhoodsStateContext.Provider>
+                    </POIsDispatchContext.Provider>
+                  </POIsStateContext.Provider>
+                </RoadsDispatchContext.Provider>
+              </RoadsStateContext.Provider>
+            </DistrictsDispatchContext.Provider>
+          </DistrictsStateContext.Provider>
         </FeaturesContext.Provider>
       </FeaturesDispatchContext.Provider>
     </FeaturesStateContext.Provider>

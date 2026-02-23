@@ -20,7 +20,7 @@ import {
 import { getParkSizeFromSeedId } from "../canvas/layers/parkGenerator";
 import { AIRPORT_SIZE_WORLD_UNITS } from "../canvas/layers/airportGenerator";
 import type { DistrictPersonality, Point } from "../canvas/layers/types";
-import { MapCanvasProvider, FeaturesProvider, useFeatures, useFeaturesDispatch, TerrainProvider, TransitProvider, useTransitOptional, useTransit, TransitLineDrawingProvider, useTransitLineDrawingOptional } from "../canvas";
+import { MapCanvasProvider, FeaturesProvider, useFeatures, useFeaturesDispatch, useDistrictsDispatch, TerrainProvider, TransitProvider, useTransitOptional, useTransit, TransitLineDrawingProvider, useTransitLineDrawingOptional } from "../canvas";
 import { useEndpointDragOptional } from "../canvas/EndpointDragContext";
 import { useDrawingOptional } from "../canvas/DrawingContext";
 import { useTerrainOptional } from "../canvas/TerrainContext";
@@ -218,7 +218,7 @@ function EditorShellContent({
  */
 function PlacementWithSeeds({ children }: { children: ReactNode }) {
   const { addSeed } = usePlacedSeeds();
-  const { addDistrict } = useFeaturesDispatch();
+  const { addDistrict } = useDistrictsDispatch();
   const transitContext = useTransitOptional();
   const toast = useToastOptional();
 

@@ -4,7 +4,7 @@
 
 import { useMemo } from "react";
 import type { District, Point } from "./layers";
-import { useFeaturesStateOptional } from "./FeaturesContext";
+import { useDistrictsStateOptional } from "./DistrictsContext";
 
 /**
  * Population density per square unit (in our coordinate system).
@@ -77,12 +77,12 @@ export interface PopulationStats {
  * Returns null if no features context is available.
  */
 export function usePopulationStats(): PopulationStats | null {
-  const featuresState = useFeaturesStateOptional();
+  const districtsState = useDistrictsStateOptional();
 
   return useMemo(() => {
-    if (!featuresState) return null;
+    if (!districtsState) return null;
 
-    const districts = featuresState.features.districts;
+    const districts = districtsState.districts;
     const populationByType: Record<string, number> = {};
     let totalPopulation = 0;
 
@@ -109,7 +109,7 @@ export function usePopulationStats(): PopulationStats | null {
       populationByType,
       districtCount: districts.length,
     };
-  }, [featuresState]);
+  }, [districtsState]);
 }
 
 /**

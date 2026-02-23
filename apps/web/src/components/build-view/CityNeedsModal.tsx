@@ -4,7 +4,7 @@
  */
 
 import { useMemo } from "react";
-import { useFeaturesStateOptional } from "../canvas";
+import { useDistrictsStateOptional } from "../canvas";
 import type { DistrictType } from "../canvas/layers/types";
 import type { CityNeeds, NeedLevel } from "./CityNeedsPanel";
 
@@ -46,8 +46,8 @@ const IDEAL_RATIOS = {
 };
 
 export function CityNeedsModal({ needs, onClose }: CityNeedsModalProps) {
-  const featuresState = useFeaturesStateOptional();
-  const districts = featuresState?.features.districts ?? [];
+  const districtsState = useDistrictsStateOptional();
+  const districts = districtsState?.districts ?? [];
 
   // Calculate district type counts
   const districtCounts = useMemo(() => {
