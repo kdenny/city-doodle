@@ -2046,6 +2046,84 @@ export function FeaturesProvider({
         }
       }
 
+      // CITY-561: When polygon changes, regenerate street grid for new shape
+      const polygonChanged = updates.polygon !== undefined;
+      if (polygonChanged) {
+        const updatedDistrictForPoly: District = {
+          ...currentDistrict,
+          ...updates,
+          polygon: updates.polygon!,
+        };
+        const { roads: newRoads, gridAngle: actualAngle } = regenerateStreetGridWithAngle(
+          updatedDistrictForPoly,
+          currentDistrict.gridAngle ?? 0,
+          currentDistrict.personality?.sprawl_compact ?? 0.5,
+          currentDistrict.personality?.era_year
+        );
+
+        // Regenerate cross-boundary connections
+        const currentFeaturesForPoly = featuresRef.current;
+        const otherDistrictsForPoly = currentFeaturesForPoly.districts.filter((d) => d.id !== id);
+        const otherRoadsForPolyCross = currentFeaturesForPoly.roads.filter(
+          (r) => r.districtId !== id && !r.id.includes(`-${id}-`)
+        );
+        const crossBoundaryRoadsPoly = generateCrossBoundaryConnections(
+          updatedDistrictForPoly,
+          newRoads,
+          otherDistrictsForPoly,
+          otherRoadsForPolyCross
+        );
+
+        updateFeatures((prev) => {
+          const otherRoads = prev.roads.filter(
+            (r) => r.districtId !== id && !r.id.includes(`-${id}-`)
+          );
+          return {
+            ...prev,
+            districts: prev.districts.map((d) =>
+              d.id === id ? { ...d, ...updates, polygon: updates.polygon!, gridAngle: actualAngle } : d
+            ),
+            roads: [...otherRoads, ...newRoads, ...crossBoundaryRoadsPoly],
+          };
+        });
+
+        // Persist to API
+        if (worldId && !pendingCreates.current.has(id)) {
+          const streetGridPayload: Record<string, unknown> = {
+            roads: newRoads.map((r) => ({
+              id: r.id,
+              name: r.name,
+              roadClass: r.roadClass,
+              districtId: r.districtId,
+              points: r.line.points.map((p) => ({ x: p.x, y: p.y })),
+            })),
+            gridAngle: actualAngle,
+            personality: currentDistrict.personality,
+          };
+          const apiGeometry = { type: "Polygon", points: updates.polygon!.points.map((p) => ({ x: p.x, y: p.y })) };
+          updateDistrictMutation.mutate(
+            { districtId: id, data: { geometry: apiGeometry, street_grid: streetGridPayload }, worldId },
+            {
+              onError: (error) => {
+                updateFeatures((prev) => ({
+                  ...prev,
+                  districts: prev.districts.map((d) =>
+                    d.id === id ? currentDistrict : d
+                  ),
+                  roads: prev.roads.filter((r) => !r.id.startsWith(id)),
+                }));
+                console.error("Failed to update district polygon:", error);
+                toast?.addToast(
+                  "Failed to update district shape. Please try again.",
+                  "error"
+                );
+              },
+            }
+          );
+        }
+        return;
+      }
+
       // Handle gridAngle changes by regenerating street grid
       if (updates.gridAngle !== undefined && updates.gridAngle !== currentDistrict.gridAngle) {
         const { roads: newRoads, gridAngle: actualAngle } = regenerateStreetGridWithAngle(

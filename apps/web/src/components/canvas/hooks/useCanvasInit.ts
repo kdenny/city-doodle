@@ -17,6 +17,7 @@ import {
   RailStationLayer,
   SubwayStationLayer,
   RoadEndpointLayer,
+  DistrictEditLayer,
   TransitLineDrawingLayer,
   WalkabilityOverlayLayer,
   generateMockTerrain,
@@ -40,6 +41,7 @@ export interface CanvasLayerRefs {
   railStationLayerRef: MutableRefObject<RailStationLayer | null>;
   subwayStationLayerRef: MutableRefObject<SubwayStationLayer | null>;
   roadEndpointLayerRef: MutableRefObject<RoadEndpointLayer | null>;
+  districtEditLayerRef: MutableRefObject<DistrictEditLayer | null>;
   walkabilityOverlayLayerRef: MutableRefObject<WalkabilityOverlayLayer | null>;
   transitLineDrawingLayerRef: MutableRefObject<TransitLineDrawingLayer | null>;
   gridContainerRef: MutableRefObject<Container | null>;
@@ -203,6 +205,10 @@ export function useCanvasInit({
       const roadEndpointLayer = new RoadEndpointLayer();
       viewport.addChild(roadEndpointLayer.getContainer());
 
+      // CITY-561: District vertex edit handles
+      const districtEditLayer = new DistrictEditLayer();
+      viewport.addChild(districtEditLayer.getContainer());
+
       const seedsLayer = new SeedsLayer();
       viewport.addChild(seedsLayer.getContainer());
 
@@ -250,6 +256,7 @@ export function useCanvasInit({
         featuresLayer.destroy();
         labelLayer.destroy();
         roadEndpointLayer.destroy();
+        districtEditLayer.destroy();
         seedsLayer.destroy();
         railStationLayer.destroy();
         walkabilityOverlayLayer.destroy();
@@ -267,6 +274,7 @@ export function useCanvasInit({
       layerRefs.featuresLayerRef.current = featuresLayer;
       layerRefs.labelLayerRef.current = labelLayer;
       layerRefs.roadEndpointLayerRef.current = roadEndpointLayer;
+      layerRefs.districtEditLayerRef.current = districtEditLayer;
       layerRefs.seedsLayerRef.current = seedsLayer;
       layerRefs.railStationLayerRef.current = railStationLayer;
       layerRefs.walkabilityOverlayLayerRef.current = walkabilityOverlayLayer;
@@ -310,6 +318,7 @@ export function useCanvasInit({
       if (layerRefs.featuresLayerRef.current) { layerRefs.featuresLayerRef.current.destroy(); layerRefs.featuresLayerRef.current = null; }
       if (layerRefs.labelLayerRef.current) { layerRefs.labelLayerRef.current.destroy(); layerRefs.labelLayerRef.current = null; }
       if (layerRefs.roadEndpointLayerRef.current) { layerRefs.roadEndpointLayerRef.current.destroy(); layerRefs.roadEndpointLayerRef.current = null; }
+      if (layerRefs.districtEditLayerRef.current) { layerRefs.districtEditLayerRef.current.destroy(); layerRefs.districtEditLayerRef.current = null; }
       if (layerRefs.seedsLayerRef.current) { layerRefs.seedsLayerRef.current.destroy(); layerRefs.seedsLayerRef.current = null; }
       if (layerRefs.railStationLayerRef.current) { layerRefs.railStationLayerRef.current.destroy(); layerRefs.railStationLayerRef.current = null; }
       if (layerRefs.walkabilityOverlayLayerRef.current) { layerRefs.walkabilityOverlayLayerRef.current.destroy(); layerRefs.walkabilityOverlayLayerRef.current = null; }
