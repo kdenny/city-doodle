@@ -55,7 +55,6 @@ import type { DistrictType } from "./layers/types";
 import { applyWaterfrontTypes } from "./layers/waterfrontDetection";
 import {
   generateDistrictGeometry,
-  regenerateStreetGridForClippedDistrict,
   seedIdToDistrictType,
   type DistrictGenerationConfig,
   type GeneratedDistrict,
@@ -612,6 +611,10 @@ export function FeaturesProvider({
   const featuresRef = useRef(features);
   featuresRef.current = features;
 
+  // CITY-235: Mutex to prevent concurrent addDistrict calls from producing
+  // overlapping districts due to stale featuresRef reads between awaits.
+  const addDistrictLockRef = useRef(false);
+
   // Get terrain context for water collision detection
   const terrainContext = useTerrainOptional();
 
@@ -727,6 +730,8 @@ export function FeaturesProvider({
     // CITY-488: Set guard immediately to prevent duplicate runs if effect re-fires
     initialLoadDone.current = true;
 
+    // CITY-235: Async IIFE to allow worker calls for legacy district backfilling
+    (async () => {
     // --- Districts + street grid roads ---
     const loadedDistricts = apiDistricts.map(fromApiDistrict);
     const streetGridRoads = apiDistricts.flatMap(roadsFromApiStreetGrid);
@@ -746,29 +751,28 @@ export function FeaturesProvider({
       centroid.x /= polygon.length;
       centroid.y /= polygon.length;
 
-      const gridResult = regenerateStreetGridForClippedDistrict(
-        polygon,
-        apiDistrict.id,
+      // CITY-235: Run grid generation in Web Worker to avoid blocking main thread
+      const gridResult = await runInWorker("regenerateGrid", {
+        type: "regenerateGrid",
+        clippedPolygon: polygon,
+        districtId: apiDistrict.id,
         districtType,
-        centroid,
-        0.5, // default sprawlCompact
-        undefined, // gridAngle
-        undefined, // transitOptions
-        undefined, // adjacentGridOrigin
-        undefined // eraYear — legacy districts default to 2024
-      );
-      backfilledRoads.push(...gridResult.roads);
+        position: centroid,
+        sprawlCompact: 0.5, // default
+        // gridAngle, transitOptions, adjacentGridOrigin, eraYear all undefined for legacy
+      });
+      backfilledRoads.push(...gridResult.result.roads);
 
       // Persist the regenerated street_grid so we don't repeat this on every load
       const streetGridPayload = {
-        roads: gridResult.roads.map((r) => ({
+        roads: gridResult.result.roads.map((r) => ({
           id: r.id,
           name: r.name,
           roadClass: r.roadClass,
           districtId: r.districtId,
           points: r.line.points.map((p) => ({ x: p.x, y: p.y })),
         })),
-        gridAngle: gridResult.gridAngle,
+        gridAngle: gridResult.result.gridAngle,
       };
       updateDistrictMutation.mutate(
         { districtId: apiDistrict.id, data: { street_grid: streetGridPayload }, worldId },
@@ -837,6 +841,7 @@ export function FeaturesProvider({
     };
 
     setIsInitialized(true);
+    })(); // end CITY-235 async IIFE
   }, [worldId, apiDistricts, apiNeighborhoods, apiCityLimits, apiPOIs, apiRoadNetwork]);
 
   // Post-init individual update effects for live editing (React Query refetches).
@@ -1022,6 +1027,14 @@ export function FeaturesProvider({
       seedId: string,
       config?: AddDistrictConfig
     ): Promise<AddDistrictResult> => {
+      // CITY-235: Prevent concurrent placements — async awaits between worker calls
+      // allow interleaving, which can produce overlapping districts.
+      if (addDistrictLockRef.current) {
+        return { generated: null, wasClipped: false, error: "Placement already in progress" };
+      }
+      addDistrictLockRef.current = true;
+
+      try {
       // Extract personality from config; fall back to world settings, then hardcoded defaults
       const personality = config?.personality ?? worldSettingsToPersonality(world?.settings);
 
@@ -1630,6 +1643,9 @@ export function FeaturesProvider({
         wasClipped: clipResult.overlapsWater,
         clipResult: clipResult.overlapsWater ? clipResult : undefined,
       };
+      } finally {
+        addDistrictLockRef.current = false;
+      }
     },
     [worldId, world, updateFeatures, createDistrictMutation, createPOIsBulkMutation, createRoadNodesBulkMutation, createRoadEdgesBulkMutation, terrainContext, transitContext, toast]
   );

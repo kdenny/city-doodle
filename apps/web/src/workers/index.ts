@@ -68,6 +68,9 @@ const pendingRequests = new Map<number, {
 /** Whether we should fall back to main-thread execution */
 let useFallback = false;
 
+/** CITY-235: Request timeout in ms. If a worker request takes longer, reject and fall back. */
+const WORKER_REQUEST_TIMEOUT_MS = 30_000;
+
 /**
  * Get or create the shared worker instance.
  * Returns null if Web Workers are not available.
@@ -146,7 +149,19 @@ function sendToWorker(request: WorkerRequest): Promise<WorkerResponse> {
 
   return new Promise<WorkerResponse>((resolve, reject) => {
     const id = ++messageId;
-    pendingRequests.set(id, { resolve, reject });
+
+    // CITY-235: Timeout guard — if the worker hangs, reject and fall back to main thread
+    const timer = setTimeout(() => {
+      if (pendingRequests.has(id)) {
+        pendingRequests.delete(id);
+        reject(new Error(`Worker timeout after ${WORKER_REQUEST_TIMEOUT_MS}ms for ${request.type}`));
+      }
+    }, WORKER_REQUEST_TIMEOUT_MS);
+
+    pendingRequests.set(id, {
+      resolve: (response) => { clearTimeout(timer); resolve(response); },
+      reject: (error) => { clearTimeout(timer); reject(error); },
+    });
 
     const message: WorkerRequestMessage = { id, request };
     w.postMessage(message);
@@ -359,5 +374,9 @@ export function isWorkerActive(): boolean {
 // ---------------------------------------------------------------------------
 
 if (import.meta.hot) {
-  import.meta.hot.dispose(() => terminateWorker());
+  import.meta.hot.dispose(() => {
+    terminateWorker();
+    // CITY-235: Reset fallback flag so the new module instance tries the worker again
+    useFallback = false;
+  });
 }
