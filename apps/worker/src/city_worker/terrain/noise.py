@@ -64,6 +64,11 @@ def generate_heightfield(
 ) -> NDArray[np.float64]:
     """Generate a heightfield for a single tile.
 
+    Uses vectorized noise2array for each octave instead of per-pixel
+    Python loops. The opensimplex noise2array accepts 1-D x and y
+    coordinate arrays and returns a 2-D grid (shape [len(y), len(x)]),
+    matching the previous [i, j] = [row, col] indexing exactly.
+
     Args:
         seed: World seed for deterministic generation
         tx, ty: Tile coordinates
@@ -77,31 +82,32 @@ def generate_heightfield(
     Returns:
         2D numpy array of heights normalized to [0, 1]
     """
-    noise = SeededNoise(seed)
-    heightfield = np.zeros((resolution, resolution), dtype=np.float64)
+    simplex = OpenSimplex(seed=seed)
 
-    # Calculate world coordinates for each sample
+    # Build 1-D coordinate arrays in world space.
+    # x varies along columns (j), y varies along rows (i).
     x_offset = tx * tile_size
     y_offset = ty * tile_size
     step = tile_size / resolution
 
-    for i in range(resolution):
-        for j in range(resolution):
-            world_x = x_offset + j * step
-            world_y = y_offset + i * step
+    xs = x_offset + np.arange(resolution, dtype=np.float64) * step
+    ys = y_offset + np.arange(resolution, dtype=np.float64) * step
 
-            # Generate noise value
-            value = noise.octave_noise_2d(
-                world_x,
-                world_y,
-                octaves=octaves,
-                persistence=persistence,
-                lacunarity=lacunarity,
-                scale=scale,
-            )
+    # Accumulate fBm octaves using vectorized noise2array.
+    total = np.zeros((resolution, resolution), dtype=np.float64)
+    amplitude = 1.0
+    frequency = scale
+    max_amplitude = 0.0
 
-            # Normalize from [-1, 1] to [0, 1]
-            heightfield[i, j] = (value + 1.0) / 2.0
+    for _ in range(octaves):
+        # noise2array(x_scaled, y_scaled) returns shape (len(y), len(x))
+        total += amplitude * simplex.noise2array(xs * frequency, ys * frequency)
+        max_amplitude += amplitude
+        amplitude *= persistence
+        frequency *= lacunarity
+
+    # Normalize from [-1, 1] to [0, 1]
+    heightfield = (total / max_amplitude + 1.0) / 2.0
 
     return heightfield
 
@@ -116,7 +122,16 @@ def apply_erosion(
 ) -> NDArray[np.float64]:
     """Apply simple hydraulic erosion to a heightfield.
 
-    This simulates raindrops carrying sediment downhill.
+    This simulates raindrops carrying sediment downhill.  The outer loop
+    over rain drops is inherently sequential (each drop modifies the
+    heightfield for subsequent drops), but the inner loop is optimised
+    by using a flat (1-D) view of the array for fast scalar access and
+    direct offset arithmetic for neighbour lookups instead of Python
+    for-loops or numpy fancy indexing.
+
+    Starting positions are pre-generated in a single vectorized RNG
+    call, preserving the original interleaved (x, y, x, y, ...) draw
+    order so the result is deterministically identical.
 
     Args:
         heightfield: 2D height array
@@ -133,9 +148,24 @@ def apply_erosion(
     h, w = result.shape
     rng = np.random.default_rng(seed)
 
-    for _ in range(iterations * w):
-        # Random starting position
-        x, y = rng.integers(1, w - 1), rng.integers(1, h - 1)
+    num_drops = iterations * w
+
+    # Pre-generate all starting positions in interleaved order to
+    # match the original per-drop RNG consumption (x, y, x, y, ...).
+    starts_interleaved = rng.integers(1, max(w, h) - 1, size=num_drops * 2)
+    start_x = starts_interleaved[0::2]
+    start_y = starts_interleaved[1::2]
+
+    evap_factor = 1.0 - evaporation
+
+    # Work on a flat (1-D) view for faster scalar element access.
+    # Neighbour offsets in the flat layout: left (-1), right (+1),
+    # up (-w), down (+w).
+    flat = result.ravel()
+
+    for drop_idx in range(num_drops):
+        x = int(start_x[drop_idx])
+        y = int(start_y[drop_idx])
         water = rain_amount
         sediment = 0.0
 
@@ -143,19 +173,32 @@ def apply_erosion(
             if x <= 0 or x >= w - 1 or y <= 0 or y >= h - 1:
                 break
 
-            # Find steepest descent
-            current_height = result[y, x]
-            min_height = current_height
-            dx, dy = 0, 0
+            idx = y * w + x
+            current_height = flat[idx]
 
-            for nx, ny in [(x - 1, y), (x + 1, y), (x, y - 1), (x, y + 1)]:
-                if result[ny, nx] < min_height:
-                    min_height = result[ny, nx]
-                    dx, dy = nx - x, ny - y
+            # Direct neighbour access via flat offsets — avoids
+            # numpy fancy indexing overhead on tiny (4-element) arrays.
+            h_left = flat[idx - 1]
+            h_right = flat[idx + 1]
+            h_up = flat[idx - w]
+            h_down = flat[idx + w]
 
-            if dx == 0 and dy == 0:
-                # Deposit sediment in flat area
-                result[y, x] += sediment
+            # Find steepest descent among 4 neighbours
+            min_height = h_left
+            dx, dy = -1, 0
+            if h_right < min_height:
+                min_height = h_right
+                dx, dy = 1, 0
+            if h_up < min_height:
+                min_height = h_up
+                dx, dy = 0, -1
+            if h_down < min_height:
+                min_height = h_down
+                dx, dy = 0, 1
+
+            if min_height >= current_height:
+                # Flat area — deposit sediment
+                flat[idx] += sediment
                 break
 
             # Calculate erosion/deposition
@@ -163,19 +206,17 @@ def apply_erosion(
             capacity = height_diff * water * sediment_capacity
 
             if sediment > capacity:
-                # Deposit excess sediment
                 deposit = (sediment - capacity) * 0.3
-                result[y, x] += deposit
+                flat[idx] += deposit
                 sediment -= deposit
             else:
-                # Erode and pick up sediment
                 erosion = min((capacity - sediment) * 0.3, height_diff * 0.5)
-                result[y, x] -= erosion
+                flat[idx] -= erosion
                 sediment += erosion
 
             # Move to lower cell
             x, y = x + dx, y + dy
-            water *= 1.0 - evaporation
+            water *= evap_factor
 
             if water < 0.001:
                 break

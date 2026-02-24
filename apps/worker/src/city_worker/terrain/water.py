@@ -5,7 +5,7 @@ from typing import Any
 
 import numpy as np
 from numpy.typing import NDArray
-from scipy.ndimage import binary_dilation
+from scipy.ndimage import binary_dilation, label
 from shapely import concave_hull
 from shapely.errors import GEOSException, TopologicalError
 from shapely.geometry import LineString, MultiPoint, MultiPolygon, Polygon
@@ -103,19 +103,22 @@ def extract_coastlines(
     # Create binary land/water mask
     land_mask = heightfield >= water_level
 
-    # Find land cells and convert to polygons
-    land_polygons = []
-    visited = np.zeros_like(land_mask, dtype=bool)
+    # Find connected land regions using scipy connected-component
+    # labeling (CITY-625). This replaces the Python nested for-loop
+    # + flood fill with a single vectorized C call.
+    # 4-connectivity structuring element (matching original flood fill).
+    struct_4conn = np.array([[0, 1, 0], [1, 1, 1], [0, 1, 0]], dtype=np.int32)
+    labeled, num_labels = label(land_mask, structure=struct_4conn)
 
-    for i in range(h):
-        for j in range(w):
-            if land_mask[i, j] and not visited[i, j]:
-                # Flood fill to find connected land region
-                region_cells = _flood_fill(land_mask, visited, i, j)
-                if len(region_cells) >= 4:  # Minimum size for a polygon
-                    poly = _cells_to_polygon(region_cells, tile_x, tile_y, tile_size, cell_size, w)
-                    if poly is not None and poly.is_valid:
-                        land_polygons.append(poly)
+    land_polygons = []
+    for lbl in range(1, num_labels + 1):
+        region_mask = labeled == lbl
+        region_size = int(region_mask.sum())
+        if region_size >= 4:  # Minimum size for a polygon
+            region_cells = list(zip(*np.where(region_mask)))
+            poly = _cells_to_polygon(region_cells, tile_x, tile_y, tile_size, cell_size, w)
+            if poly is not None and poly.is_valid:
+                land_polygons.append(poly)
 
     if not land_polygons:
         return []
@@ -291,35 +294,65 @@ def calculate_flow_accumulation(
 ) -> NDArray[np.float64]:
     """Calculate flow accumulation for river detection.
 
-    Uses D8 flow direction algorithm.
+    Uses the D8 flow direction algorithm.  The flow direction for every
+    cell is pre-computed with vectorized numpy operations (comparing
+    all 8 neighbours simultaneously via padded arrays), then flow is
+    accumulated in a single pass from highest to lowest cell using the
+    pre-computed direction map.
+
+    CITY-625: Vectorized neighbour comparison replaces per-cell Python
+    for-loop over 8 directions.
     """
     h, w = heightfield.shape
     flow = np.ones((h, w), dtype=np.float64)
 
-    # Direction offsets (D8)
-    directions = [(-1, -1), (-1, 0), (-1, 1), (0, -1), (0, 1), (1, -1), (1, 0), (1, 1)]
+    # D8 direction offsets
+    di_offsets = np.array([-1, -1, -1, 0, 0, 1, 1, 1])
+    dj_offsets = np.array([-1, 0, 1, -1, 1, -1, 0, 1])
 
-    # Sort cells by height (highest first)
-    indices = np.argsort(heightfield.ravel())[::-1]
+    # Pad heightfield with +inf so border cells have no valid
+    # lower neighbour beyond the edge.
+    padded = np.pad(heightfield, 1, mode="constant", constant_values=np.inf)
 
-    for idx in indices:
-        i, j = idx // w, idx % w
-        current_height = heightfield[i, j]
+    # Build a (8, h, w) array of neighbour heights using shifted slices.
+    neighbours = np.empty((8, h, w), dtype=np.float64)
+    for k in range(8):
+        ri = 1 + di_offsets[k]  # row offset in padded array
+        ci = 1 + dj_offsets[k]  # col offset in padded array
+        neighbours[k] = padded[ri : ri + h, ci : ci + w]
 
-        # Find lowest neighbor
-        min_height = current_height
-        min_ni, min_nj = -1, -1
+    # For each cell, find the direction of the lowest neighbour.
+    min_neighbour_idx = np.argmin(neighbours, axis=0)         # (h, w)
+    min_neighbour_val = np.take_along_axis(
+        neighbours, min_neighbour_idx[np.newaxis], axis=0
+    )[0]  # (h, w)
 
-        for di, dj in directions:
-            ni, nj = i + di, j + dj
-            if 0 <= ni < h and 0 <= nj < w:
-                if heightfield[ni, nj] < min_height:
-                    min_height = heightfield[ni, nj]
-                    min_ni, min_nj = ni, nj
+    # Flat destination index for each cell (-1 = no outflow).
+    dest_flat = np.full(h * w, -1, dtype=np.intp)
 
-        # Transfer flow to lowest neighbor
-        if min_ni >= 0:
-            flow[min_ni, min_nj] += flow[i, j]
+    # Vectorized destination computation for cells that flow downhill.
+    rows, cols = np.mgrid[0:h, 0:w]
+    flows_downhill = min_neighbour_val < heightfield
+
+    src_rows = rows[flows_downhill]
+    src_cols = cols[flows_downhill]
+    best_dir = min_neighbour_idx[flows_downhill]
+    dest_r = src_rows + di_offsets[best_dir]
+    dest_c = src_cols + dj_offsets[best_dir]
+    dest_flat_downhill = dest_r * w + dest_c
+
+    # Map back to flat source indices.
+    src_flat_downhill = src_rows * w + src_cols
+    dest_flat[src_flat_downhill] = dest_flat_downhill
+
+    # Sort all cells from highest to lowest (the sequential pass).
+    order = np.argsort(heightfield.ravel())[::-1]
+
+    flow_flat = flow.ravel()
+    for idx in order:
+        d = dest_flat[idx]
+        if d >= 0:
+            flow_flat[d] += flow_flat[idx]
 
     return flow
 
@@ -968,161 +1001,165 @@ def extract_beaches(
     lake_beach_perimeter: dict[int, float] = {}
     lake_perimeter_cap = 0.20  # Max 20% of lake perimeter covered by beaches
 
-    # Find connected beach regions and split into discrete segments
-    visited = np.zeros_like(beach_mask, dtype=bool)
+    # CITY-625: Use scipy connected-component labeling instead of
+    # Python nested for-loop + flood fill.
+    struct_4conn = np.array([[0, 1, 0], [1, 1, 1], [0, 1, 0]], dtype=np.int32)
+    beach_labeled, num_beach_labels = label(beach_mask, structure=struct_4conn)
+
     features = []
     region_idx = 0
 
-    for i in range(h):
-        for j in range(w):
-            if beach_mask[i, j] and not visited[i, j]:
-                region_cells = _flood_fill(beach_mask, visited, i, j)
+    for lbl in range(1, num_beach_labels + 1):
+        region_mask = beach_labeled == lbl
+        region_size = int(region_mask.sum())
 
-                if len(region_cells) < min_length:
+        if region_size < min_length:
+            continue
+
+        region_cells = list(zip(*np.where(region_mask)))
+
+        # Split large regions into discrete beach segments
+        segments = _split_beach_region(
+            region_cells,
+            max_segment_cells=max_segment_cells,
+            gap_cells=gap_cells,
+            min_segment_cells=min_length,
+            seed=seed + region_idx,
+        )
+        region_idx += 1
+
+        for segment_cells in segments:
+            # Include adjacent water cells so the beach polygon
+            # extends to the actual water edge (CITY-520).
+            segment_set = set(segment_cells)
+            water_fringe: list[tuple[int, int]] = []
+            for ci, cj in segment_cells:
+                for di in [-1, 0, 1]:
+                    for dj in [-1, 0, 1]:
+                        if di == 0 and dj == 0:
+                            continue
+                        ni, nj = ci + di, cj + dj
+                        if (
+                            0 <= ni < h
+                            and 0 <= nj < w
+                            and water_mask[ni, nj]
+                            and (ni, nj) not in segment_set
+                        ):
+                            water_fringe.append((ni, nj))
+                            segment_set.add((ni, nj))
+
+            extended_cells = list(segment_cells) + water_fringe
+
+            poly = _cells_to_polygon(
+                extended_cells, tile_x, tile_y, tile_size, cell_size, w
+            )
+            if poly is not None and poly.is_valid:
+                # CITY-546: Skip beaches that overlap a river buffer
+                if river_buffers:
+                    skip = False
+                    for rbuf in river_buffers:
+                        try:
+                            overlap = poly.intersection(rbuf).area
+                            if overlap > poly.area * 0.3:
+                                skip = True
+                                break
+                        except (GEOSException, TopologicalError) as e:
+                            logger.warning("Beach-river intersection check failed: %s", e)
+                    if skip:
+                        continue
+
+                # Skip beaches that are mostly inside a lagoon (CITY-525)
+                if lagoon_polygons:
+                    skip = False
+                    for lagoon in lagoon_polygons:
+                        try:
+                            overlap = poly.intersection(lagoon).area
+                            if overlap > poly.area * 0.5:
+                                skip = True
+                                break
+                        except (GEOSException, TopologicalError) as e:
+                            logger.warning("Beach-lagoon intersection check failed: %s", e)
+                    if skip:
+                        continue
+
+                # CITY-548: Skip beaches inside bays to keep
+                # harbors open to water
+                if bay_polygons:
+                    skip = False
+                    for bay in bay_polygons:
+                        try:
+                            overlap = poly.intersection(bay).area
+                            if overlap > poly.area * 0.4:
+                                skip = True
+                                break
+                        except (GEOSException, TopologicalError) as e:
+                            logger.warning("Beach-bay intersection check failed: %s", e)
+                    if skip:
+                        continue
+
+                # CITY-547: Skip lake beaches at river junctions and
+                # cap lake beach coverage to ~20% of lake perimeter.
+                beach_type = "ocean"
+                matched_lake_idx: int | None = None
+                if lake_polygons:
+                    for li, lake in enumerate(lake_polygons):
+                        try:
+                            overlap = poly.intersection(lake).area
+                            if overlap > poly.area * 0.3:
+                                beach_type = "lake"
+                                matched_lake_idx = li
+                                # Skip lake beach if it's near a river
+                                if river_buffers:
+                                    for rbuf in river_buffers:
+                                        try:
+                                            if poly.distance(rbuf) < cell_size * 4:
+                                                beach_type = "river"
+                                                break
+                                        except (GEOSException, TopologicalError) as e:
+                                            logger.warning("Lake beach-river distance check failed: %s", e)
+                                break
+                        except (GEOSException, TopologicalError) as e:
+                            logger.warning("Beach-lake intersection check failed: %s", e)
+                if beach_type == "river":
                     continue
 
-                # Split large regions into discrete beach segments
-                segments = _split_beach_region(
-                    region_cells,
-                    max_segment_cells=max_segment_cells,
-                    gap_cells=gap_cells,
-                    min_segment_cells=min_length,
-                    seed=seed + region_idx,
-                )
-                region_idx += 1
+                # Cap lake beach coverage (CITY-547)
+                if beach_type == "lake" and matched_lake_idx is not None:
+                    lake_perim = lake_polygons[matched_lake_idx].length
+                    used = lake_beach_perimeter.get(matched_lake_idx, 0.0)
+                    if lake_perim > 0 and used >= lake_perim * lake_perimeter_cap:
+                        continue
+                    # Per-segment arc cap: no single beach segment may
+                    # exceed 10% of the lake perimeter (CITY-547).
+                    segment_cap = lake_perim * 0.10
+                    seg_len = poly.length
+                    if seg_len > segment_cap:
+                        continue
+                    # Also check that adding this segment wouldn't
+                    # exceed the overall 20% budget.
+                    if lake_perim > 0 and used + seg_len > lake_perim * lake_perimeter_cap:
+                        continue
+                    # Track how much perimeter this beach consumes
+                    lake_beach_perimeter[matched_lake_idx] = used + seg_len
 
-                for segment_cells in segments:
-                    # Include adjacent water cells so the beach polygon
-                    # extends to the actual water edge (CITY-520).
-                    segment_set = set(segment_cells)
-                    water_fringe: list[tuple[int, int]] = []
-                    for ci, cj in segment_cells:
-                        for di in [-1, 0, 1]:
-                            for dj in [-1, 0, 1]:
-                                if di == 0 and dj == 0:
-                                    continue
-                                ni, nj = ci + di, cj + dj
-                                if (
-                                    0 <= ni < h
-                                    and 0 <= nj < w
-                                    and water_mask[ni, nj]
-                                    and (ni, nj) not in segment_set
-                                ):
-                                    water_fringe.append((ni, nj))
-                                    segment_set.add((ni, nj))
+                area = len(segment_cells) * cell_size * cell_size
+                perimeter = poly.length
+                avg_width = 2 * area / perimeter if perimeter > 0 else cell_size
 
-                    extended_cells = list(segment_cells) + water_fringe
-
-                    poly = _cells_to_polygon(
-                        extended_cells, tile_x, tile_y, tile_size, cell_size, w
+                features.append(
+                    TerrainFeature(
+                        type="beach",
+                        geometry={
+                            "type": "Polygon",
+                            "coordinates": [list(poly.exterior.coords)],
+                        },
+                        properties={
+                            "area": poly.area,
+                            "width": avg_width,
+                            "beach_type": beach_type,
+                        },
                     )
-                    if poly is not None and poly.is_valid:
-                        # CITY-546: Skip beaches that overlap a river buffer
-                        if river_buffers:
-                            skip = False
-                            for rbuf in river_buffers:
-                                try:
-                                    overlap = poly.intersection(rbuf).area
-                                    if overlap > poly.area * 0.3:
-                                        skip = True
-                                        break
-                                except (GEOSException, TopologicalError) as e:
-                                    logger.warning("Beach-river intersection check failed: %s", e)
-                            if skip:
-                                continue
-
-                        # Skip beaches that are mostly inside a lagoon (CITY-525)
-                        if lagoon_polygons:
-                            skip = False
-                            for lagoon in lagoon_polygons:
-                                try:
-                                    overlap = poly.intersection(lagoon).area
-                                    if overlap > poly.area * 0.5:
-                                        skip = True
-                                        break
-                                except (GEOSException, TopologicalError) as e:
-                                    logger.warning("Beach-lagoon intersection check failed: %s", e)
-                            if skip:
-                                continue
-
-                        # CITY-548: Skip beaches inside bays to keep
-                        # harbors open to water
-                        if bay_polygons:
-                            skip = False
-                            for bay in bay_polygons:
-                                try:
-                                    overlap = poly.intersection(bay).area
-                                    if overlap > poly.area * 0.4:
-                                        skip = True
-                                        break
-                                except (GEOSException, TopologicalError) as e:
-                                    logger.warning("Beach-bay intersection check failed: %s", e)
-                            if skip:
-                                continue
-
-                        # CITY-547: Skip lake beaches at river junctions and
-                        # cap lake beach coverage to ~20% of lake perimeter.
-                        beach_type = "ocean"
-                        matched_lake_idx: int | None = None
-                        if lake_polygons:
-                            for li, lake in enumerate(lake_polygons):
-                                try:
-                                    overlap = poly.intersection(lake).area
-                                    if overlap > poly.area * 0.3:
-                                        beach_type = "lake"
-                                        matched_lake_idx = li
-                                        # Skip lake beach if it's near a river
-                                        if river_buffers:
-                                            for rbuf in river_buffers:
-                                                try:
-                                                    if poly.distance(rbuf) < cell_size * 4:
-                                                        beach_type = "river"
-                                                        break
-                                                except (GEOSException, TopologicalError) as e:
-                                                    logger.warning("Lake beach-river distance check failed: %s", e)
-                                        break
-                                except (GEOSException, TopologicalError) as e:
-                                    logger.warning("Beach-lake intersection check failed: %s", e)
-                        if beach_type == "river":
-                            continue
-
-                        # Cap lake beach coverage (CITY-547)
-                        if beach_type == "lake" and matched_lake_idx is not None:
-                            lake_perim = lake_polygons[matched_lake_idx].length
-                            used = lake_beach_perimeter.get(matched_lake_idx, 0.0)
-                            if lake_perim > 0 and used >= lake_perim * lake_perimeter_cap:
-                                continue
-                            # Per-segment arc cap: no single beach segment may
-                            # exceed 10% of the lake perimeter (CITY-547).
-                            segment_cap = lake_perim * 0.10
-                            seg_len = poly.length
-                            if seg_len > segment_cap:
-                                continue
-                            # Also check that adding this segment wouldn't
-                            # exceed the overall 20% budget.
-                            if lake_perim > 0 and used + seg_len > lake_perim * lake_perimeter_cap:
-                                continue
-                            # Track how much perimeter this beach consumes
-                            lake_beach_perimeter[matched_lake_idx] = used + seg_len
-
-                        area = len(segment_cells) * cell_size * cell_size
-                        perimeter = poly.length
-                        avg_width = 2 * area / perimeter if perimeter > 0 else cell_size
-
-                        features.append(
-                            TerrainFeature(
-                                type="beach",
-                                geometry={
-                                    "type": "Polygon",
-                                    "coordinates": [list(poly.exterior.coords)],
-                                },
-                                properties={
-                                    "area": poly.area,
-                                    "width": avg_width,
-                                    "beach_type": beach_type,
-                                },
-                            )
-                        )
+                )
 
     return features
 
@@ -1158,23 +1195,26 @@ def _classify_lake_type(
     else:
         elongation = 1.0
 
-    # Calculate average depth (how far below water level)
-    depths = []
-    for ci, cj in region_cells:
-        depths.append(water_level - heightfield[ci, cj])
-    avg_depth = float(np.mean(depths)) if depths else 0.0
-    max_depth = float(np.max(depths)) if depths else 0.0
-
-    # Calculate surrounding terrain elevation (rim height)
+    # Calculate average depth (how far below water level) — vectorized
+    # CITY-625: extract all region heights at once via fancy indexing.
     h, w = heightfield.shape
-    rim_heights = []
-    for ci, cj in region_cells:
-        for di, dj in [(-1, 0), (1, 0), (0, -1), (0, 1)]:
-            ni, nj = ci + di, cj + dj
-            if 0 <= ni < h and 0 <= nj < w:
-                if heightfield[ni, nj] >= water_level:
-                    rim_heights.append(heightfield[ni, nj])
-    avg_rim_height = float(np.mean(rim_heights)) if rim_heights else water_level
+    rc = np.array(region_cells)  # shape (N, 2)
+    region_heights = heightfield[rc[:, 0], rc[:, 1]]
+    depths = water_level - region_heights
+    avg_depth = float(depths.mean())
+    max_depth = float(depths.max())
+
+    # Calculate surrounding terrain elevation (rim height) — vectorized.
+    # Build a boolean mask for the region, dilate it by 1 cell
+    # (4-connectivity), then the rim is the dilated area minus the
+    # region itself that is above water_level.
+    region_mask = np.zeros((h, w), dtype=bool)
+    region_mask[rc[:, 0], rc[:, 1]] = True
+    struct_4conn = np.array([[0, 1, 0], [1, 1, 1], [0, 1, 0]], dtype=np.int32)
+    dilated = binary_dilation(region_mask, structure=struct_4conn)
+    rim_mask = dilated & ~region_mask & (heightfield >= water_level)
+    rim_values = heightfield[rim_mask]
+    avg_rim_height = float(rim_values.mean()) if rim_values.size > 0 else water_level
     rim_elevation = avg_rim_height - water_level
 
     # Size thresholds in world units (approximate)
@@ -1270,57 +1310,59 @@ def extract_lakes(
     # Find cells below water level
     water_mask = heightfield < water_level
 
-    # Find connected water regions
-    visited = np.zeros_like(water_mask, dtype=bool)
+    # CITY-625: Use scipy connected-component labeling instead of
+    # Python nested for-loop + flood fill.
+    struct_4conn = np.array([[0, 1, 0], [1, 1, 1], [0, 1, 0]], dtype=np.int32)
+    labeled, num_labels = label(water_mask, structure=struct_4conn)
+
     features = []
 
-    for i in range(h):
-        for j in range(w):
-            if water_mask[i, j] and not visited[i, j]:
-                # Flood fill to find connected water region
-                region_cells = _flood_fill(water_mask, visited, i, j)
+    for lbl in range(1, num_labels + 1):
+        region_mask = labeled == lbl
+        region_size = int(region_mask.sum())
 
-                if len(region_cells) >= min_area_cells:
-                    # Check if this is landlocked (surrounded by land)
-                    is_landlocked = True
-                    for ci, cj in region_cells:
-                        if ci == 0 or ci == h - 1 or cj == 0 or cj == w - 1:
-                            is_landlocked = False
-                            break
+        if region_size < min_area_cells:
+            continue
 
-                    if not is_landlocked:
-                        continue
+        # Check if this region touches the tile edge (not landlocked)
+        if (
+            region_mask[0, :].any()
+            or region_mask[-1, :].any()
+            or region_mask[:, 0].any()
+            or region_mask[:, -1].any()
+        ):
+            continue
 
-                    # Filter shallow noise depressions (CITY-529)
-                    avg_depth = float(np.mean([
-                        water_level - heightfield[ci, cj]
-                        for ci, cj in region_cells
-                    ]))
-                    if avg_depth < effective_min_depth:
-                        continue
+        # Filter shallow noise depressions (CITY-529)
+        # Vectorized: extract heights for the entire region at once
+        avg_depth = float(np.mean(water_level - heightfield[region_mask]))
+        if avg_depth < effective_min_depth:
+            continue
 
-                    poly = _cells_to_polygon(
-                        region_cells, tile_x, tile_y, tile_size, cell_size, w
-                    )
-                    if poly is not None and poly.is_valid:
-                        lake_type, properties = _classify_lake_type(
-                            poly,
-                            region_cells,
-                            heightfield,
-                            water_level,
-                            cell_size,
-                        )
+        region_cells = list(zip(*np.where(region_mask)))
 
-                        features.append(
-                            TerrainFeature(
-                                type="lake",
-                                geometry={
-                                    "type": "Polygon",
-                                    "coordinates": [list(poly.exterior.coords)],
-                                },
-                                properties=properties,
-                            )
-                        )
+        poly = _cells_to_polygon(
+            region_cells, tile_x, tile_y, tile_size, cell_size, w
+        )
+        if poly is not None and poly.is_valid:
+            lake_type, properties = _classify_lake_type(
+                poly,
+                region_cells,
+                heightfield,
+                water_level,
+                cell_size,
+            )
+
+            features.append(
+                TerrainFeature(
+                    type="lake",
+                    geometry={
+                        "type": "Polygon",
+                        "coordinates": [list(poly.exterior.coords)],
+                    },
+                    properties=properties,
+                )
+            )
 
     # CITY-490: Cap lake count per tile. Sort by area descending and
     # keep only the largest lakes to avoid unrealistically dense lake

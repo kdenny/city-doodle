@@ -397,119 +397,144 @@ class TerrainGenerator:
     ) -> list[TerrainFeature]:
         """Generate contour lines at specified height levels.
 
-        Uses a simple marching squares approach.
+        CITY-625: Vectorized marching squares.  The case index for every
+        cell is computed with numpy boolean operations in one pass, then
+        only cells with interesting cases (not 0 or 15) are processed.
+        Edge interpolation is also vectorized across all active cells at
+        once, eliminating the inner Python double-loop entirely.
         """
         cfg = self.config
         h, w = heightfield.shape
         cell_size = cfg.tile_size / w
         features = []
 
-        # CITY-514: Cap segments per level and early-exit to avoid iterating
-        # the full grid when only the first N segments are kept.
+        # CITY-514: Cap segments per level.
         max_segments_per_level = 100
 
-        for level in levels:
-            # Find cells that cross this contour level
-            contour_segments: list[list[tuple[float, float]]] = []
+        # Pre-compute corner value arrays (each shifted view of the grid)
+        v00 = heightfield[:-1, :-1]  # top-left
+        v10 = heightfield[1:, :-1]   # bottom-left
+        v01 = heightfield[:-1, 1:]   # top-right
+        v11 = heightfield[1:, 1:]    # bottom-right
 
-            for i in range(h - 1):
-                if len(contour_segments) >= max_segments_per_level:
-                    break
-                for j in range(w - 1):
-                    # Get corner values
-                    v00 = heightfield[i, j]
-                    v10 = heightfield[i + 1, j]
-                    v01 = heightfield[i, j + 1]
-                    v11 = heightfield[i + 1, j + 1]
+        # World-coordinate origins for each cell
+        js = np.arange(w - 1, dtype=np.float64)
+        is_ = np.arange(h - 1, dtype=np.float64)
+        x0_all = tx * cfg.tile_size + js[np.newaxis, :] * cell_size  # (1, w-1)
+        y0_all = ty * cfg.tile_size + is_[:, np.newaxis] * cell_size  # (h-1, 1)
 
-                    # Determine which corners are above the level
-                    case = 0
-                    if v00 >= level:
-                        case |= 1
-                    if v10 >= level:
-                        case |= 2
-                    if v01 >= level:
-                        case |= 4
-                    if v11 >= level:
-                        case |= 8
-
-                    # Skip if all above or all below
-                    if case == 0 or case == 15:
-                        continue
-
-                    # Calculate edge intersections
-                    x0 = tx * cfg.tile_size + j * cell_size
-                    y0 = ty * cfg.tile_size + i * cell_size
-
-                    segments = self._marching_squares_segments(
-                        case, v00, v10, v01, v11, level, x0, y0, cell_size
-                    )
-                    contour_segments.extend(segments)
-                    if len(contour_segments) >= max_segments_per_level:
-                        break
-
-            # Simplify segments (just use raw segments for now)
-            if contour_segments:
-                # Group nearby segments into lines (simple approach)
-                for seg in contour_segments[:max_segments_per_level]:
-                    features.append(
-                        TerrainFeature(
-                            type="contour",
-                            geometry={
-                                "type": "LineString",
-                                "coordinates": seg,
-                            },
-                            properties={"elevation": level},
-                        )
-                    )
-
-        return features
-
-    def _marching_squares_segments(
-        self,
-        case: int,
-        v00: float,
-        v10: float,
-        v01: float,
-        v11: float,
-        level: float,
-        x0: float,
-        y0: float,
-        cell_size: float,
-    ) -> list[list[tuple[float, float]]]:
-        """Generate line segments for a marching squares cell."""
-
-        def lerp_edge(v1: float, v2: float) -> float:
-            """Linear interpolation to find crossing point."""
-            if abs(v2 - v1) < 1e-10:
-                return 0.5
-            return (level - v1) / (v2 - v1)
-
-        # Edge midpoints
-        top = (x0 + lerp_edge(v00, v01) * cell_size, y0)
-        bottom = (x0 + lerp_edge(v10, v11) * cell_size, y0 + cell_size)
-        left = (x0, y0 + lerp_edge(v00, v10) * cell_size)
-        right = (x0 + cell_size, y0 + lerp_edge(v01, v11) * cell_size)
-
-        # Marching squares lookup table (simplified)
-        segments_map: dict[int, list[list[tuple[float, float]]]] = {
-            1: [[left, top]],
-            2: [[top, right]],
-            3: [[left, right]],
-            4: [[right, bottom]],
-            5: [[left, top], [right, bottom]],
-            6: [[top, bottom]],
-            7: [[left, bottom]],
-            8: [[bottom, left]],
-            9: [[top, bottom]],
-            10: [[top, right], [bottom, left]],
-            11: [[right, bottom]],
-            12: [[top, right]],
-            13: [[top, right]],
-            14: [[left, top]],
+        # Marching-squares segment lookup.  Each case maps to a list of
+        # segment templates.  A segment template is a pair of edge
+        # identifiers: 0=top, 1=bottom, 2=left, 3=right.
+        _seg_table: dict[int, list[tuple[int, int]]] = {
+            1: [(2, 0)],          # left-top
+            2: [(0, 3)],          # top-right
+            3: [(2, 3)],          # left-right
+            4: [(3, 1)],          # right-bottom
+            5: [(2, 0), (3, 1)],  # left-top, right-bottom
+            6: [(0, 1)],          # top-bottom
+            7: [(2, 1)],          # left-bottom
+            8: [(1, 2)],          # bottom-left
+            9: [(0, 1)],          # top-bottom
+            10: [(0, 3), (1, 2)], # top-right, bottom-left
+            11: [(3, 1)],         # right-bottom
+            12: [(0, 3)],         # top-right
+            13: [(0, 3)],         # top-right
+            14: [(2, 0)],         # left-top
         }
 
-        return segments_map.get(case, [])
+        def _safe_lerp(va: np.ndarray, vb: np.ndarray, lev: float) -> np.ndarray:
+            """Vectorized linear interpolation for edge crossing."""
+            diff = vb - va
+            safe = np.where(np.abs(diff) < 1e-10, 1.0, diff)
+            return np.where(np.abs(diff) < 1e-10, 0.5, (lev - va) / safe)
+
+        for level in levels:
+            # Compute case index for all cells at once
+            case = np.zeros((h - 1, w - 1), dtype=np.int32)
+            case += (v00 >= level).astype(np.int32)
+            case += (v10 >= level).astype(np.int32) * 2
+            case += (v01 >= level).astype(np.int32) * 4
+            case += (v11 >= level).astype(np.int32) * 8
+
+            # Mask of cells with contour crossings (case not 0 or 15)
+            active = (case != 0) & (case != 15)
+            active_indices = np.argwhere(active)  # (N, 2) with [i, j]
+
+            if active_indices.size == 0:
+                continue
+
+            # Cap to max_segments_per_level cells (each cell produces
+            # at most 2 segments, but capping input cells is simpler and
+            # preserves the existing behaviour of taking the first N).
+            if len(active_indices) > max_segments_per_level:
+                active_indices = active_indices[:max_segments_per_level]
+
+            ai = active_indices[:, 0]
+            aj = active_indices[:, 1]
+
+            # Extract corner values for active cells
+            av00 = v00[ai, aj]
+            av10 = v10[ai, aj]
+            av01 = v01[ai, aj]
+            av11 = v11[ai, aj]
+            ax0 = x0_all[0, aj]
+            ay0 = y0_all[ai, 0]
+
+            # Compute all four edge crossing points (vectorized)
+            t_top = _safe_lerp(av00, av01, level)       # top edge
+            t_bottom = _safe_lerp(av10, av11, level)     # bottom edge
+            t_left = _safe_lerp(av00, av10, level)       # left edge
+            t_right = _safe_lerp(av01, av11, level)      # right edge
+
+            # Edge point coordinates: (x, y) for each of the 4 edges
+            # 0=top, 1=bottom, 2=left, 3=right
+            edge_x = np.stack([
+                ax0 + t_top * cell_size,                 # top
+                ax0 + t_bottom * cell_size,              # bottom
+                ax0 + np.zeros_like(t_left),             # left (x = x0)
+                ax0 + np.full_like(t_right, cell_size),  # right (x = x0 + cell_size)
+            ])  # (4, N)
+            edge_y = np.stack([
+                ay0 + np.zeros_like(t_top),              # top (y = y0)
+                ay0 + np.full_like(t_bottom, cell_size), # bottom (y = y0 + cell_size)
+                ay0 + t_left * cell_size,                # left
+                ay0 + t_right * cell_size,               # right
+            ])  # (4, N)
+
+            # Emit segments
+            cases = case[ai, aj]
+            contour_segments: list[list[tuple[float, float]]] = []
+
+            for k in range(len(ai)):
+                c = int(cases[k])
+                seg_templates = _seg_table.get(c)
+                if seg_templates is None:
+                    continue
+                for e1, e2 in seg_templates:
+                    seg = [
+                        (float(edge_x[e1, k]), float(edge_y[e1, k])),
+                        (float(edge_x[e2, k]), float(edge_y[e2, k])),
+                    ]
+                    contour_segments.append(seg)
+                    if len(contour_segments) >= max_segments_per_level:
+                        break
+                if len(contour_segments) >= max_segments_per_level:
+                    break
+
+            for seg in contour_segments[:max_segments_per_level]:
+                features.append(
+                    TerrainFeature(
+                        type="contour",
+                        geometry={
+                            "type": "LineString",
+                            "coordinates": seg,
+                        },
+                        properties={"elevation": level},
+                    )
+                )
+
+        return features
 
 
 def generate_terrain_3x3(
