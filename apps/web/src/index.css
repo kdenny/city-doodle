@@ -81,3 +81,26 @@
   animation: fade-in 0.4s ease-out forwards;
   opacity: 0;
 }
+
+/* CITY-595: Terrain loading shimmer animation */
+@keyframes terrain-shimmer {
+  0% {
+    background-position: -200% 0;
+  }
+  100% {
+    background-position: 200% 0;
+  }
+}
+
+.terrain-shimmer {
+  background: linear-gradient(
+    90deg,
+    transparent 0%,
+    rgba(156, 163, 175, 0.15) 20%,
+    rgba(156, 163, 175, 0.3) 50%,
+    rgba(156, 163, 175, 0.15) 80%,
+    transparent 100%
+  );
+  background-size: 200% 100%;
+  animation: terrain-shimmer 2s ease-in-out infinite;
+}

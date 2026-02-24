@@ -17,7 +17,7 @@ import {
   milesToWorldUnits,
   worldUnitsToMiles,
 } from "../../../utils/worldConstants";
-import { getPolygonBounds, getPolygonCentroid, pointInPolygon } from "./geometry";
+import { getPolygonBounds, pointInPolygon, computeDistrictCache, getDistrictBounds, getDistrictCentroid } from "./geometry";
 import { polygonArea } from "./polygonUtils";
 import { SeededRandom, generateStreetGrid, type TransitGridOptions } from "./streetGrid";
 import polygonClipping from "polygon-clipping";
@@ -373,6 +373,8 @@ export function generateDistrictGeometry(
     polygon: { points: polygonPoints },
     isHistoric,
   };
+  // CITY-236: Pre-compute centroid and bounds cache
+  computeDistrictCache(district);
 
   // Generate street grid within the district
   // Parks and airports don't have street grids
@@ -429,7 +431,8 @@ export function wouldOverlap(
   const newBounds = getPolygonBounds(newPolygon);
 
   for (const existing of existingDistricts) {
-    const existingBounds = getPolygonBounds(existing.polygon.points);
+    // CITY-236: Use cached bounds when available
+    const existingBounds = getDistrictBounds(existing);
 
     // Quick bounds check
     if (
@@ -499,7 +502,8 @@ export function clipDistrictAgainstExisting(
   const newBounds = getPolygonBounds(newPolygon);
 
   for (const existing of existingDistricts) {
-    const existingBounds = getPolygonBounds(existing.polygon.points);
+    // CITY-236: Use cached bounds when available
+    const existingBounds = getDistrictBounds(existing);
 
     // Quick AABB check
     if (
@@ -701,8 +705,8 @@ export function regenerateStreetGridWithAngle(
     return { roads: [], gridAngle: newGridAngle };
   }
 
-  // Get centroid for position-based seed
-  const centroid = getPolygonCentroid(polygonPoints);
+  // CITY-236: Use cached centroid when available
+  const centroid = getDistrictCentroid(district);
   const seed = Math.floor(centroid.x * 1000 + centroid.y * 7919);
   const rng = new SeededRandom(seed);
 

@@ -1,45 +1,22 @@
-import { Routes, Route, Link, useParams, Navigate } from 'react-router-dom'
-import { MapCanvas } from './components/canvas'
-import { EditorShell } from './components/shell'
+import { lazy, Suspense } from 'react'
+import { Routes, Route, Link, Navigate } from 'react-router-dom'
 import { ProtectedRoute } from './components/ProtectedRoute'
-import { LoginPage, RegisterPage, WorldsPage } from './pages'
 import { CityLoader } from './components/ui'
-import { useWorld } from './api'
 
-function WorldEditor() {
-  const { worldId } = useParams<{ worldId: string }>()
-  const { data: world, isLoading, error } = useWorld(worldId || '', {
-    enabled: !!worldId,
-    retry: 2,
-    retryDelay: 1000,
-  })
-
-  if (!worldId) {
-    return <div className="p-8 text-red-600" data-testid="error">World ID not found</div>
-  }
-
-  if (isLoading) {
-    return <CityLoader variant="page" />
-  }
-
-  if (error || !world) {
-    return (
-      <div className="p-8" data-testid="error">
-        <h1 className="text-2xl font-bold text-red-600">World not found</h1>
-        <p className="mt-2 text-gray-600">The world you're looking for doesn't exist or has been deleted.</p>
-        <Link to="/" className="mt-4 inline-block text-blue-600 hover:underline">
-          Back to My Worlds
-        </Link>
-      </div>
-    )
-  }
-
-  return (
-    <EditorShell worldId={worldId}>
-      <MapCanvas className="absolute inset-0" showMockFeatures={false} seed={world.seed} geographicSetting={world.settings?.geographic_setting} worldId={worldId} />
-    </EditorShell>
-  )
-}
+// Route-level code splitting: each page is loaded on demand so that
+// login/register never pull in PixiJS, MapCanvas, or EditorShell.
+const LoginPage = lazy(() =>
+  import('./pages/LoginPage').then((m) => ({ default: m.LoginPage }))
+)
+const RegisterPage = lazy(() =>
+  import('./pages/RegisterPage').then((m) => ({ default: m.RegisterPage }))
+)
+const WorldsPage = lazy(() =>
+  import('./pages/WorldsPage').then((m) => ({ default: m.WorldsPage }))
+)
+const WorldEditorPage = lazy(() =>
+  import('./pages/WorldEditorPage').then((m) => ({ default: m.WorldEditorPage }))
+)
 
 function About() {
   return (
@@ -59,27 +36,29 @@ function About() {
 
 export function App() {
   return (
-    <Routes>
-      <Route
-        path="/"
-        element={
-          <ProtectedRoute>
-            <WorldsPage />
-          </ProtectedRoute>
-        }
-      />
-      <Route path="/login" element={<LoginPage />} />
-      <Route path="/register" element={<RegisterPage />} />
-      <Route path="/worlds" element={<Navigate to="/" replace />} />
-      <Route
-        path="/worlds/:worldId"
-        element={
-          <ProtectedRoute>
-            <WorldEditor />
-          </ProtectedRoute>
-        }
-      />
-      <Route path="/about" element={<About />} />
-    </Routes>
+    <Suspense fallback={<CityLoader variant="page" />}>
+      <Routes>
+        <Route
+          path="/"
+          element={
+            <ProtectedRoute>
+              <WorldsPage />
+            </ProtectedRoute>
+          }
+        />
+        <Route path="/login" element={<LoginPage />} />
+        <Route path="/register" element={<RegisterPage />} />
+        <Route path="/worlds" element={<Navigate to="/" replace />} />
+        <Route
+          path="/worlds/:worldId"
+          element={
+            <ProtectedRoute>
+              <WorldEditorPage />
+            </ProtectedRoute>
+          }
+        />
+        <Route path="/about" element={<About />} />
+      </Routes>
+    </Suspense>
   )
 }

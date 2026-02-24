@@ -55,6 +55,14 @@ class TerrainGenerator:
 
         t_start = time.perf_counter()
 
+        # Phase names used for aggregated timing summary
+        phase_names = [
+            "heightfield", "mask", "erosion", "flow", "coastlines",
+            "bays", "barriers", "rivers", "deltas", "lakes", "beaches",
+            "contours", "clip",
+        ]
+        phase_totals = {name: 0.0 for name in phase_names}
+
         # Generate all 9 tiles
         tiles: dict[tuple[int, int], TileTerrainData] = {}
         center_data: TileTerrainData | None = None
@@ -64,7 +72,9 @@ class TerrainGenerator:
                 tx = center_tx + dx
                 ty = center_ty + dy
 
-                tile_data = self._generate_tile(tx, ty)
+                tile_data, tile_timings = self._generate_tile(tx, ty)
+                for name in phase_names:
+                    phase_totals[name] += tile_timings.get(name, 0.0)
 
                 if dx == 0 and dy == 0:
                     center_data = tile_data
@@ -74,17 +84,23 @@ class TerrainGenerator:
         assert center_data is not None
 
         total_features = sum(len(t.features) for t in [center_data, *tiles.values()])
-        total_ms = (time.perf_counter() - t_start) * 1000
+        total_s = time.perf_counter() - t_start
 
+        # CITY-594: Log aggregated per-phase timing summary with geographic_setting
+        timing_parts = " ".join(f"{name}={phase_totals[name]:.1f}s" for name in phase_names)
         logger.info(
-            "[Terrain] 3x3 generation complete in %.1fms (9 tiles, %d features)",
-            total_ms, total_features,
+            "[Terrain] Generated 3x3 in %.1fs (%s) setting=%s features=%d",
+            total_s, timing_parts, self.config.geographic_setting, total_features,
         )
 
         return TerrainResult(center=center_data, neighbors=tiles)
 
-    def _generate_tile(self, tx: int, ty: int) -> TileTerrainData:
-        """Generate terrain for a single tile."""
+    def _generate_tile(self, tx: int, ty: int) -> tuple[TileTerrainData, dict[str, float]]:
+        """Generate terrain for a single tile.
+
+        Returns:
+            Tuple of (tile data, phase timings dict in seconds).
+        """
         cfg = self.config
 
         t0 = time.perf_counter()
@@ -341,38 +357,36 @@ class TerrainGenerator:
 
         t_clip = time.perf_counter()
 
-        # Log per-phase timing summary (CITY-591)
-        # Note: execution order is barriers -> rivers -> lakes -> beaches,
-        # but log labels match the ticket spec order.
-        timing_values = (
-            (t_heightfield - t0) * 1000,
-            (t_mask - t_heightfield) * 1000,
-            (t_erosion - t_mask) * 1000,
-            (t_flow - t_erosion) * 1000,
-            (t_coastlines - t_flow) * 1000,
-            (t_bays - t_coastlines) * 1000,
-            (t_barriers - t_bays) * 1000,
-            (t_beaches - t_lakes) * 1000,
-            (t_rivers - t_barriers) * 1000,
-            (t_deltas - t_rivers) * 1000,
-            (t_lakes - t_deltas) * 1000,
-            (t_contours - t_beaches) * 1000,
-            (t_clip - t_contours) * 1000,
-        )
-        total_ms = (t_clip - t0) * 1000
+        # Per-phase timing in seconds (CITY-591, CITY-594)
+        timings = {
+            "heightfield": t_heightfield - t0,
+            "mask": t_mask - t_heightfield,
+            "erosion": t_erosion - t_mask,
+            "flow": t_flow - t_erosion,
+            "coastlines": t_coastlines - t_flow,
+            "bays": t_bays - t_coastlines,
+            "barriers": t_barriers - t_bays,
+            "rivers": t_rivers - t_barriers,
+            "deltas": t_deltas - t_rivers,
+            "lakes": t_lakes - t_deltas,
+            "beaches": t_beaches - t_lakes,
+            "contours": t_contours - t_beaches,
+            "clip": t_clip - t_contours,
+        }
+        total_s = t_clip - t0
+        timing_parts = " ".join(f"{k}={v:.1f}s" for k, v in timings.items())
         logger.info(
-            "[Terrain] Tile (%d, %d) phase timings: heightfield=%.1fms mask=%.1fms erosion=%.1fms "
-            "flow=%.1fms coastlines=%.1fms bays=%.1fms barriers=%.1fms beaches=%.1fms "
-            "rivers=%.1fms deltas=%.1fms lakes=%.1fms contours=%.1fms clip=%.1fms total=%.1fms features=%d",
-            tx, ty, *timing_values, total_ms, len(features),
+            "[Terrain] Tile (%d, %d) in %.1fs (%s) features=%d",
+            tx, ty, total_s, timing_parts, len(features),
         )
 
-        return TileTerrainData(
+        tile_data = TileTerrainData(
             tx=tx,
             ty=ty,
             heightfield=heightfield.tolist(),
             features=features,
         )
+        return tile_data, timings
 
     def _generate_contours(
         self,

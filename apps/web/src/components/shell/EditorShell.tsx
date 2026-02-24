@@ -1,4 +1,4 @@
-import { ReactNode, useCallback, useEffect, useMemo, useRef, useState, type KeyboardEvent as ReactKeyboardEvent } from "react";
+import { lazy, ReactNode, Suspense, useCallback, useEffect, useMemo, useRef, useState, type KeyboardEvent as ReactKeyboardEvent } from "react";
 import { useToastOptional } from "../../contexts";
 import { useWorld, useDeleteTransitLineSegment, useWorldCities, useCreateCity } from "../../api";
 import type { City, CityClassification } from "../../api/types";
@@ -20,7 +20,7 @@ import {
 import { getParkSizeFromSeedId } from "../canvas/layers/parkGenerator";
 import { AIRPORT_SIZE_WORLD_UNITS } from "../canvas/layers/airportGenerator";
 import type { DistrictPersonality, Point } from "../canvas/layers/types";
-import { MapCanvasProvider, FeaturesProvider, useFeatures, useFeaturesDispatch, TerrainProvider, TransitProvider, useTransitOptional, useTransit, TransitLineDrawingProvider, useTransitLineDrawingOptional } from "../canvas";
+import { MapCanvasProvider, FeaturesProvider, useFeatures, useFeaturesDispatch, useDistrictsDispatch, TerrainProvider, TransitProvider, useTransitOptional, useTransit, TransitLineDrawingProvider, useTransitLineDrawingOptional } from "../canvas";
 import { useEndpointDragOptional } from "../canvas/EndpointDragContext";
 import { useDrawingOptional } from "../canvas/DrawingContext";
 import { useTerrainOptional } from "../canvas/TerrainContext";
@@ -42,15 +42,27 @@ import { generateId } from "../../utils/idGenerator";
 import polygonClipping from "polygon-clipping";
 import { CityCreateDialog } from "../build-view/CityCreateDialog";
 import { generateRoadName } from "../canvas/utils/roadNaming";
-import { ExportView } from "../export-view";
-import { TimelapseView } from "../timelapse-view";
-import { DensityView } from "../density-view";
-import { TransitView } from "../transit-view";
+import { CityLoader } from "../ui/CityLoader";
 import {
   BuildView,
   SelectionProvider,
   type SelectedFeature,
 } from "../build-view";
+
+// CITY-243: Lazy load specialized views that aren't shown by default.
+// BuildView is kept as an eager import since it's the default view.
+const ExportView = lazy(() =>
+  import("../export-view/ExportView").then((m) => ({ default: m.ExportView }))
+);
+const TimelapseView = lazy(() =>
+  import("../timelapse-view/TimelapseView").then((m) => ({ default: m.TimelapseView }))
+);
+const DensityView = lazy(() =>
+  import("../density-view/DensityView").then((m) => ({ default: m.DensityView }))
+);
+const TransitView = lazy(() =>
+  import("../transit-view/TransitView").then((m) => ({ default: m.TransitView }))
+);
 import { StationDeleteWarningModal } from "../build-view/StationDeleteWarningModal";
 
 interface EditorShellProps {
@@ -59,6 +71,13 @@ interface EditorShellProps {
   initialZoom?: number;
   onZoomChange?: (zoom: number) => void;
 }
+
+// CITY-243: Loading fallback for lazy-loaded views
+const viewLoadingFallback = (
+  <div className="h-full w-full flex items-center justify-center">
+    <CityLoader variant="inline" message="Loading view..." />
+  </div>
+);
 
 // Helper to render the appropriate view wrapper based on viewMode
 function ViewWrapper({
@@ -72,13 +91,29 @@ function ViewWrapper({
 }) {
   switch (viewMode) {
     case "export":
-      return <ExportView>{children}</ExportView>;
+      return (
+        <Suspense fallback={viewLoadingFallback}>
+          <ExportView>{children}</ExportView>
+        </Suspense>
+      );
     case "timelapse":
-      return <TimelapseView worldId={worldId}>{children}</TimelapseView>;
+      return (
+        <Suspense fallback={viewLoadingFallback}>
+          <TimelapseView worldId={worldId}>{children}</TimelapseView>
+        </Suspense>
+      );
     case "density":
-      return <DensityView>{children}</DensityView>;
+      return (
+        <Suspense fallback={viewLoadingFallback}>
+          <DensityView>{children}</DensityView>
+        </Suspense>
+      );
     case "transit":
-      return <TransitView>{children}</TransitView>;
+      return (
+        <Suspense fallback={viewLoadingFallback}>
+          <TransitView>{children}</TransitView>
+        </Suspense>
+      );
     case "build":
     default:
       return <BuildView>{children}</BuildView>;
@@ -183,7 +218,7 @@ function EditorShellContent({
  */
 function PlacementWithSeeds({ children }: { children: ReactNode }) {
   const { addSeed } = usePlacedSeeds();
-  const { addDistrict } = useFeaturesDispatch();
+  const { addDistrict } = useDistrictsDispatch();
   const transitContext = useTransitOptional();
   const toast = useToastOptional();
 
