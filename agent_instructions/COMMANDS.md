@@ -42,34 +42,27 @@ Get details for a specific ticket.
 - `bin/ticket get PROJ-123`
 
 ### ticket create
-Create a new ticket. **A description is REQUIRED** — never create a ticket without one.
-**Usage**: `bin/ticket create "<title>" --description "<description>"`
+Create a new ticket. **A description is REQUIRED** — never create a ticket without one. **Labels are REQUIRED** — always include at least one type label and one area label. Use --parent to set a parent ticket for sub-tasks.
+**Usage**: `bin/ticket create "<title>" --description "<description>" --label "<type>" --label "<area>"`
 **Examples:**
-- `bin/ticket create "Add user authentication" --description "Add OAuth2 login flow with Google and GitHub providers. Store sessions in Redis."`
-- `bin/ticket create "Fix login bug" --description "Login form submits but returns 500 when password contains special characters. Root cause: unescaped input in auth query." --label Bug --label Backend`
+- `bin/ticket create "Add user authentication" --description "Add OAuth2 login flow with Google and GitHub providers." --label Feature --label Backend`
+- `bin/ticket create "Fix login bug" --description "Login form returns 500 when password contains special chars." --label Bug --label "High Risk" --label Frontend`
+- `bin/ticket create "Add signup form" --description "Create the signup form component." --label Feature --label Frontend --parent PROJ-100`
 
 ### ticket link
-Create or remove blocking relationships between tickets.
-**Usage**: `bin/ticket link <blocker-id> <blocked-id>`
-**Direction**: The first ticket (blocker) must be done before the second (blocked) can start.
+Link two tickets with a blocking relationship. The prerequisite ticket blocks the dependent ticket.
+**Usage**: `bin/ticket link <blocker-id> --blocks <dependent-id>`
 **Examples:**
-- `bin/ticket link PROJ-100 PROJ-101` - PROJ-100 blocks PROJ-101
-- `bin/ticket link PROJ-100 PROJ-101 --remove` - Remove the relationship
-
-### ticket relations
-Show blocking relationships for a ticket.
-**Usage**: `bin/ticket relations <ticket-id>`
-**Examples:**
-- `bin/ticket relations PROJ-123`
+- `bin/ticket link PROJ-101 --blocks PROJ-102`
 
 ## Pull Requests
 
 ### pr
-Create a pull request for the current branch.
+Create a pull request for the current branch. PR titles must include the ticket reference.
 **Usage**: `bin/vibe pr`
 **Examples:**
 - `bin/vibe pr`
-- `bin/vibe pr --title "Add feature X"`
+- `bin/vibe pr --title "PROJ-123: Add feature X"`
 - `bin/vibe pr --web`
 
 ## Design

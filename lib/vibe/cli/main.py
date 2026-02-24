@@ -1,12 +1,16 @@
 """Main CLI entry point for vibe commands."""
 
 import os
+import re
+import subprocess as _subprocess
 import sys
 from pathlib import Path
 
 import click
+import requests
 
 from lib.vibe.cli.figma import figma
+from lib.vibe.cli.secrets import main as secrets_group
 from lib.vibe.doctor import print_results, run_doctor
 from lib.vibe.wizards.setup import run_individual_wizard, run_setup
 
@@ -66,8 +70,10 @@ def do(ticket_id: str) -> None:
 
     from lib.vibe.config import load_config
     from lib.vibe.git.branches import format_branch_name, get_main_branch
-    from lib.vibe.git.worktrees import create_worktree
+    from lib.vibe.git.worktrees import create_worktree, get_primary_repo_root
+    from lib.vibe.state import record_ticket_branch
     from lib.vibe.trackers.linear import LinearTracker
+    from lib.vibe.ui.components import Spinner
 
     config = load_config()
     tracker_type = config.get("tracker", {}).get("type")
@@ -76,7 +82,8 @@ def do(ticket_id: str) -> None:
     title = None
     if tracker_type == "linear":
         tracker = LinearTracker()
-        ticket = tracker.get_ticket(ticket_id)
+        with Spinner(f"Fetching ticket {ticket_id}"):
+            ticket = tracker.get_ticket(ticket_id)
         if ticket:
             title = ticket.title
             click.echo(f"Found ticket: {ticket.title}")
@@ -102,148 +109,437 @@ def do(ticket_id: str) -> None:
         worktree = create_worktree(branch_name, base_branch=origin_main)
         click.echo(f"Worktree created at: {worktree.path}")
         click.echo(f"\nTo start working:\n  cd {worktree.path}")
-    except Exception as e:
+
+        # Record ticket-to-branch mapping for duplicate PR detection
+        repo_root = get_primary_repo_root()
+        record_ticket_branch(
+            ticket_id, branch_name, worktree_path=worktree.path, base_path=repo_root
+        )
+    except (subprocess.CalledProcessError, OSError, RuntimeError) as e:
         click.echo(f"Failed to create worktree: {e}", err=True)
         sys.exit(1)
 
 
-def _extract_ticket_id(branch: str) -> str | None:
-    """Extract a ticket ID (e.g. CITY-123) from a branch name."""
-    import re
+@main.command()
+@click.option("--dry-run", is_flag=True, help="Show what would be removed without removing")
+@click.option("--force", is_flag=True, help="Skip confirmation prompt")
+def cleanup(dry_run: bool, force: bool) -> None:
+    """Clean up worktrees for branches that have been merged.
 
-    match = re.match(r"([A-Z]+-\d+)", branch)
-    return match.group(1) if match else None
-
-
-def _build_pr_body(branch: str, main_branch: str) -> str | None:
-    """Build a filled-in PR body from ticket info and git history.
-
-    Returns None if no useful content could be generated.
+    Detects worktrees whose PRs have been merged and removes them along
+    with their local branches. Runs `bin/vibe doctor` afterward to sync state.
     """
-    import re
+    import json as _json
     import subprocess
 
-    from lib.vibe.config import load_config
+    # Get list of worktrees
+    result = subprocess.run(
+        ["git", "worktree", "list", "--porcelain"],
+        capture_output=True,
+        text=True,
+    )
+    if result.returncode != 0:
+        click.echo("Failed to list worktrees.", err=True)
+        sys.exit(1)
 
-    ticket_id = _extract_ticket_id(branch)
-    ticket_title = ""
-    ticket_description = ""
-    ticket_url = ""
+    # Parse worktrees
+    main_worktree = str(Path.cwd().resolve())
+    worktrees: list[dict[str, str]] = []
+    current_wt: dict[str, str] = {}
 
-    # Try to fetch ticket info
-    if ticket_id:
+    for line in result.stdout.split("\n"):
+        if line.startswith("worktree "):
+            if current_wt:
+                worktrees.append(current_wt)
+            current_wt = {"path": line.split(" ", 1)[1]}
+        elif line.startswith("branch "):
+            current_wt["branch"] = line.split(" ", 1)[1].replace("refs/heads/", "")
+        elif line == "":
+            if current_wt:
+                worktrees.append(current_wt)
+            current_wt = {}
+    if current_wt:
+        worktrees.append(current_wt)
+
+    # Filter out main worktree
+    feature_worktrees = [
+        wt
+        for wt in worktrees
+        if wt.get("path") and str(Path(wt["path"]).resolve()) != main_worktree
+    ]
+
+    if not feature_worktrees:
+        click.echo("No feature worktrees found. Nothing to clean up.")
+        return
+
+    # Check each worktree for merged status
+    merged: list[dict[str, object]] = []
+    active: list[dict[str, str]] = []
+
+    for wt in feature_worktrees:
+        branch = wt.get("branch", "")
+        if not branch:
+            continue
+
+        # Check if branch has a merged PR
         try:
-            config = load_config()
-            tracker_type = config.get("tracker", {}).get("type")
-            if tracker_type == "linear":
-                from lib.vibe.trackers.linear import LinearTracker
-
-                tracker = LinearTracker()
-                ticket = tracker.get_ticket(ticket_id)
-                if ticket:
-                    ticket_title = ticket.title
-                    ticket_description = ticket.description or ""
-                    ticket_url = ticket.url
-        except Exception:
+            pr_result = subprocess.run(
+                [
+                    "gh",
+                    "pr",
+                    "list",
+                    "--head",
+                    branch,
+                    "--state",
+                    "merged",
+                    "--json",
+                    "number,title",
+                    "--limit",
+                    "1",
+                ],
+                capture_output=True,
+                text=True,
+                timeout=15,
+            )
+            if pr_result.returncode == 0 and pr_result.stdout.strip() not in ("", "[]"):
+                prs = _json.loads(pr_result.stdout)
+                if prs:
+                    merged_wt: dict[str, object] = {
+                        **wt,
+                        "pr_number": prs[0].get("number"),
+                        "pr_title": prs[0].get("title", ""),
+                    }
+                    merged.append(merged_wt)
+                    continue
+        except (subprocess.TimeoutExpired, FileNotFoundError):
             pass
 
-    # Determine best base ref (origin/main is more accurate in worktrees)
-    base_ref = main_branch
-    try:
-        subprocess.run(
-            ["git", "rev-parse", "--verify", f"origin/{main_branch}"],
-            capture_output=True,
-            check=True,
-        )
-        base_ref = f"origin/{main_branch}"
-    except Exception:
-        pass
+        # Check if branch was deleted on remote
+        try:
+            remote_check = subprocess.run(
+                ["git", "ls-remote", "--heads", "origin", branch],
+                capture_output=True,
+                text=True,
+                timeout=10,
+            )
+            if remote_check.returncode == 0 and not remote_check.stdout.strip():
+                # Branch deleted on remote - likely merged
+                merged_wt = {
+                    **wt,
+                    "pr_number": None,
+                    "pr_title": "(branch deleted on remote)",
+                }
+                merged.append(merged_wt)
+                continue
+        except (subprocess.TimeoutExpired, FileNotFoundError):
+            pass
 
-    # Get commit messages
-    commits: list[str] = []
+        active.append(wt)
+
+    # Report findings
+    if merged:
+        click.echo(f"\nMerged (safe to remove): {len(merged)}")
+        for mwt in merged:
+            pr_info = f" (PR #{mwt.get('pr_number')})" if mwt.get("pr_number") else ""
+            click.echo(f"  {mwt.get('branch', 'unknown')}{pr_info} — {mwt['path']}")
+
+    if active:
+        click.echo(f"\nStill active: {len(active)}")
+        for awt in active:
+            click.echo(f"  {awt.get('branch', 'unknown')} — {awt['path']}")
+
+    if not merged:
+        click.echo("\nNo merged worktrees found. Nothing to clean up.")
+        return
+
+    if dry_run:
+        click.echo(f"\nDry run: would remove {len(merged)} worktree(s).")
+        return
+
+    # Confirm
+    if not force:
+        if not click.confirm(f"\nRemove {len(merged)} merged worktree(s)?", default=True):
+            click.echo("Cancelled.")
+            return
+
+    # Remove merged worktrees
+    removed = 0
+    for mwt in merged:
+        branch = str(mwt.get("branch", ""))
+        path = mwt.get("path", "")
+
+        # Check for uncommitted changes
+        try:
+            status_result = subprocess.run(
+                ["git", "-C", str(path), "status", "--porcelain"],
+                capture_output=True,
+                text=True,
+            )
+            if status_result.stdout.strip():
+                click.echo(f"  Skipping {branch} (has uncommitted changes)")
+                continue
+        except subprocess.CalledProcessError:
+            pass
+
+        # Remove worktree
+        try:
+            subprocess.run(
+                ["git", "worktree", "remove", str(path)],
+                check=True,
+                capture_output=True,
+                text=True,
+            )
+            click.echo(f"  Removed worktree: {path}")
+        except subprocess.CalledProcessError as e:
+            click.echo(f"  Failed to remove worktree {path}: {e.stderr}", err=True)
+            continue
+
+        # Delete local branch
+        try:
+            subprocess.run(
+                ["git", "branch", "-d", str(branch)],
+                check=True,
+                capture_output=True,
+                text=True,
+            )
+            click.echo(f"  Deleted branch: {branch}")
+        except subprocess.CalledProcessError:
+            # Try force delete if branch wasn't fully merged according to git
+            try:
+                subprocess.run(
+                    ["git", "branch", "-D", str(branch)],
+                    check=True,
+                    capture_output=True,
+                    text=True,
+                )
+                click.echo(f"  Deleted branch: {branch} (force)")
+            except subprocess.CalledProcessError as e:
+                click.echo(f"  Could not delete branch {branch}: {e.stderr}", err=True)
+
+        removed += 1
+
+    click.echo(f"\nCleaned up {removed} worktree(s).")
+
+    # Run doctor to sync state
+    click.echo("\nRunning doctor to sync state...")
+    doctor_results = run_doctor()
+    # Just show a summary, not full results
+    passed = sum(1 for r in doctor_results if r.status.value == "\u2713")
+    click.echo(f"Doctor: {passed}/{len(doctor_results)} checks passed.")
+
+
+def _get_first_commit_headline(main_branch: str = "main") -> str | None:
+    """Get the first commit message headline on this branch (relative to origin/<main_branch>)."""
     try:
-        result = subprocess.run(
-            ["git", "log", f"{base_ref}..HEAD", "--oneline", "--no-decorate"],
+        result = _subprocess.run(
+            ["git", "log", f"origin/{main_branch}..HEAD", "--format=%s", "--reverse"],
             capture_output=True,
             text=True,
             check=True,
         )
-        commits = [line.strip() for line in result.stdout.strip().splitlines() if line.strip()]
-    except Exception:
+        lines = result.stdout.strip().splitlines()
+        if lines:
+            return lines[0].strip()
+    except _subprocess.CalledProcessError:
         pass
+    return None
 
-    # Get changed files
-    changed_files: list[str] = []
-    try:
-        result = subprocess.run(
-            ["git", "diff", f"{base_ref}...HEAD", "--name-only"],
-            capture_output=True,
-            text=True,
-            check=True,
-        )
-        changed_files = [
-            line.strip() for line in result.stdout.strip().splitlines() if line.strip()
-        ]
-    except Exception:
-        pass
 
-    if not commits and not ticket_title:
-        return None
+def _derive_pr_title(branch: str, config: dict) -> str:
+    """Derive a meaningful PR title from branch name, tracker, or commit history.
 
-    # Build summary
-    parts: list[str] = ["## Summary\n"]
-    if ticket_title:
-        parts.append(ticket_title)
+    Priority order:
+    1. Extract ticket ID from branch → fetch title from tracker → "TICKET-ID: Title"
+    2. No ticket ID but valid branch → first commit headline on branch
+    3. worktree-agent-* branch → warn and use first commit headline
+    4. Raw branch name as absolute last resort
+    """
+    main_branch = config.get("branching", {}).get("main_branch", "main")
+
+    # Cache the first-commit headline so we only shell out once
+    headline = _get_first_commit_headline(main_branch)
+
+    # Step 1: Try to extract a ticket ID from the branch name
+    ticket_match = re.search(r"([A-Z]+-\d+)", branch)
+    ticket_id = ticket_match.group(1) if ticket_match else None
+
+    # Step 2: If we have a ticket ID, try to fetch the title from the tracker
     if ticket_id:
-        if ticket_url:
-            parts.append(f"\nCloses [{ticket_id}]({ticket_url})")
-        else:
-            parts.append(f"\nCloses {ticket_id}")
+        tracker_type = config.get("tracker", {}).get("type")
+        if tracker_type:
+            try:
+                if tracker_type == "linear":
+                    from lib.vibe.trackers.linear import LinearTracker
 
-    # Build changes section from commits
-    parts.append("\n## Changes\n")
-    if commits:
-        for commit in commits:
-            # Strip leading hash from oneline format
-            msg = re.sub(r"^[0-9a-f]+ ", "", commit)
-            parts.append(f"- {msg}")
-    else:
-        parts.append("- (no commits yet)")
+                    linear_tracker = LinearTracker()
+                    ticket = linear_tracker.get_ticket(ticket_id)
+                    if ticket and ticket.title:
+                        return f"{ticket_id}: {ticket.title}"
+                elif tracker_type == "shortcut":
+                    from lib.vibe.trackers.shortcut import ShortcutTracker
 
-    # Build files changed section
-    if changed_files:
-        parts.append("\n## Files Changed\n")
-        for f in changed_files:
-            parts.append(f"- `{f}`")
+                    shortcut_tracker = ShortcutTracker()
+                    ticket = shortcut_tracker.get_ticket(ticket_id)
+                    if ticket and ticket.title:
+                        return f"{ticket_id}: {ticket.title}"
+            except (requests.RequestException, RuntimeError):
+                # Tracker API failed; fall through to commit-based title
+                pass
 
-    # Build test plan from ticket acceptance criteria
-    parts.append("\n## Test plan\n")
-    if ticket_description:
-        # Extract acceptance criteria lines (lines starting with - [ ] )
-        criteria = [
-            line.strip()
-            for line in ticket_description.splitlines()
-            if line.strip().startswith("- [ ]")
-        ]
-        if criteria:
-            for c in criteria:
-                parts.append(c)
-        else:
-            parts.append("- [ ] Verify changes work as expected")
-    else:
-        parts.append("- [ ] Verify changes work as expected")
+        # Tracker not configured or API failed — use ticket ID + first commit
+        if headline:
+            return f"{ticket_id}: {headline}"
+        # Last resort with ticket ID
+        return ticket_id
 
-    return "\n".join(parts)
+    # Step 3: Handle worktree-agent-* branches (no meaningful ticket ID)
+    if re.match(r"^worktree-agent-", branch):
+        click.echo(
+            "Warning: branch name looks auto-generated (worktree-agent-*). "
+            "Using first commit message as PR title.",
+            err=True,
+        )
+        if headline:
+            return headline
+
+    # Step 4: No ticket ID — try first commit headline for any branch
+    if headline:
+        return headline
+
+    # Step 5: Absolute last resort — raw branch name
+    return branch
+
+
+def _extract_ticket_id(branch: str) -> str | None:
+    """Extract a ticket ID (e.g. PROJ-123) from a branch name."""
+    ticket_match = re.search(r"([A-Z]+-\d+)", branch)
+    return ticket_match.group(1) if ticket_match else None
+
+
+def _check_existing_prs_for_ticket(ticket_id: str) -> list[dict[str, object]]:
+    """Query GitHub for open or recently-merged PRs referencing *ticket_id*.
+
+    Returns a list of dicts with ``number``, ``title``, ``state``, and ``url`` keys.
+    An empty list means no matching PRs were found (or ``gh`` is unavailable).
+    """
+    import json as _json
+
+    try:
+        result = _subprocess.run(
+            [
+                "gh",
+                "pr",
+                "list",
+                "--search",
+                ticket_id,
+                "--state",
+                "all",
+                "--json",
+                "number,title,state,url",
+                "--limit",
+                "20",
+            ],
+            capture_output=True,
+            text=True,
+            timeout=15,
+        )
+        if result.returncode == 0 and result.stdout.strip():
+            prs: list[dict[str, object]] = _json.loads(result.stdout)
+            # Filter to only PRs whose title actually contains the ticket ID
+            return [
+                pr_item
+                for pr_item in prs
+                if ticket_id.upper() in str(pr_item.get("title", "")).upper()
+            ]
+    except (FileNotFoundError, _subprocess.TimeoutExpired, _json.JSONDecodeError):
+        pass
+    return []
+
+
+def _check_local_state_for_ticket_conflicts(
+    ticket_id: str, current_branch: str
+) -> list[dict[str, str]]:
+    """Check .vibe/local_state.json for other branches associated with *ticket_id*.
+
+    Returns recorded branches that match the ticket but differ from *current_branch*.
+    """
+    from lib.vibe.state import get_branches_for_ticket
+
+    recorded = get_branches_for_ticket(ticket_id)
+    return [
+        entry for entry in recorded if entry.get("branch") and entry["branch"] != current_branch
+    ]
+
+
+def _warn_duplicate_prs(ticket_id: str, branch: str, *, skip_confirmation: bool = False) -> bool:
+    """Run duplicate-PR checks and warn the user.
+
+    Returns ``True`` if it is safe to proceed (no duplicates found, or user
+    confirmed).  Returns ``False`` if the user chose to abort.
+    """
+    should_abort = False
+
+    # Check 1: Existing GitHub PRs for this ticket
+    existing_prs = _check_existing_prs_for_ticket(ticket_id)
+    if existing_prs:
+        merged_prs = [p for p in existing_prs if p.get("state") == "MERGED"]
+        open_prs = [p for p in existing_prs if p.get("state") == "OPEN"]
+
+        if merged_prs:
+            click.echo(
+                f"\n** WARNING: Found {len(merged_prs)} MERGED PR(s) for ticket "
+                f"{ticket_id}. This may be duplicate work. **",
+                err=True,
+            )
+            for p in merged_prs:
+                click.echo(
+                    f"  - PR #{p.get('number')}: {p.get('title')} ({p.get('url')})",
+                    err=True,
+                )
+            should_abort = True
+
+        if open_prs:
+            click.echo(
+                f"\nWarning: Found {len(open_prs)} OPEN PR(s) for ticket {ticket_id}:",
+                err=True,
+            )
+            for p in open_prs:
+                click.echo(
+                    f"  - PR #{p.get('number')}: {p.get('title')} ({p.get('url')})",
+                    err=True,
+                )
+            should_abort = True
+
+    # Check 2: Local state — other branches for the same ticket
+    conflicts = _check_local_state_for_ticket_conflicts(ticket_id, branch)
+    if conflicts:
+        click.echo(
+            f"\nWarning: Another branch is already recorded for ticket {ticket_id}:",
+            err=True,
+        )
+        for c in conflicts:
+            click.echo(
+                f"  - Branch: {c.get('branch')} (worktree: {c.get('worktree_path', 'unknown')})",
+                err=True,
+            )
+        should_abort = True
+
+    if should_abort and not skip_confirmation:
+        if not click.confirm("\nA PR may already exist for this ticket. Create a new PR anyway?"):
+            return False
+
+    return True
 
 
 @main.command()
-@click.option("--title", "-t", help="PR title (default: ticket title or branch name)")
-@click.option("--body", "-b", help="PR body (default: auto-generated from ticket + commits)")
+@click.option("--title", "-t", help="PR title (default: branch name or branch + first commit line)")
+@click.option("--body", "-b", help="PR body (default: use template)")
 @click.option("--web", is_flag=True, help="Open PR form in the browser")
 def pr(title: str | None, body: str | None, web: bool) -> None:
     """Open a pull request for the current branch (run from your worktree when done)."""
     import subprocess
 
+    from lib.vibe.config import load_config
     from lib.vibe.git.branches import current_branch, get_main_branch
 
     main_branch = get_main_branch()
@@ -254,52 +550,95 @@ def pr(title: str | None, body: str | None, web: bool) -> None:
         )
         sys.exit(1)
 
-    # Build PR title
-    if not title:
-        ticket_id = _extract_ticket_id(branch)
-        if ticket_id:
-            try:
-                from lib.vibe.config import load_config
-                from lib.vibe.trackers.linear import LinearTracker
+    config = load_config()
 
-                config = load_config()
-                if config.get("tracker", {}).get("type") == "linear":
-                    tracker = LinearTracker()
-                    ticket = tracker.get_ticket(ticket_id)
-                    if ticket and ticket.title:
-                        title = f"{ticket_id}: {ticket.title}"
-            except Exception:
-                pass
-        if not title:
-            title = branch
+    # Check for duplicate PRs before creating a new one
+    ticket_id = _extract_ticket_id(branch)
+    if ticket_id:
+        if not _warn_duplicate_prs(ticket_id, branch):
+            click.echo("PR creation cancelled.")
+            sys.exit(0)
 
-    # Build PR body
-    if not body:
-        generated_body = _build_pr_body(branch, main_branch)
-        if not generated_body:
-            # Last resort: use template if it exists
-            template = Path(".github/PULL_REQUEST_TEMPLATE.md")
-            if template.exists():
-                generated_body = template.read_text()
-        body = generated_body
-
-    args = ["gh", "pr", "create", "--title", title]
+    args = ["gh", "pr", "create"]
+    if title:
+        args.extend(["--title", title])
+    else:
+        derived_title = _derive_pr_title(branch, config)
+        args.extend(["--title", derived_title])
     if body:
         args.extend(["--body", body])
+    else:
+        # Use PR template if it exists
+        template = Path(".github/PULL_REQUEST_TEMPLATE.md")
+        if template.exists():
+            args.extend(["--body-file", str(template)])
     if web:
         args.append("--web")
 
     try:
-        subprocess.run(args, check=True)
+        result = subprocess.run(args, check=True, capture_output=True, text=True)
+        pr_url = result.stdout.strip()
         click.echo("PR created.")
+        if pr_url:
+            click.echo(pr_url)
+
+        # Best-effort: auto-link PR to the tracker ticket
+        _autolink_pr_to_ticket(branch, pr_url, config)
     except subprocess.CalledProcessError as e:
         click.echo(f"Failed to create PR: {e}", err=True)
+        if e.stderr:
+            click.echo(e.stderr, err=True)
         click.echo("Run: gh pr create")
         sys.exit(1)
     except FileNotFoundError:
         click.echo("gh CLI not found. Install it: https://cli.github.com/")
         click.echo("Then run: gh pr create")
         sys.exit(1)
+
+
+def _autolink_pr_to_ticket(branch: str, pr_url: str, config: dict) -> None:
+    """Best-effort: add a comment on the tracker ticket linking to the PR.
+
+    Extracts the ticket ID from the branch name, then posts a comment with
+    the PR URL if a tracker is configured. Failures are logged but never
+    prevent the PR from being created.
+    """
+    if not pr_url:
+        return
+
+    ticket_match = re.search(r"([A-Z]+-\d+)", branch)
+    if not ticket_match:
+        return
+
+    ticket_id = ticket_match.group(1)
+    tracker_type = config.get("tracker", {}).get("type")
+    if not tracker_type:
+        return
+
+    try:
+        from lib.vibe.trackers.base import TrackerBase
+
+        tracker: TrackerBase | None = None
+        if tracker_type == "linear":
+            from lib.vibe.trackers.linear import LinearTracker
+
+            tracker = LinearTracker(
+                team_id=config.get("tracker", {}).get("config", {}).get("team_id")
+            )
+        elif tracker_type == "shortcut":
+            from lib.vibe.trackers.shortcut import ShortcutTracker
+
+            tracker = ShortcutTracker()
+
+        if tracker is None:
+            return
+
+        comment_body = f"PR opened: {pr_url}"
+        tracker.comment_ticket(ticket_id, comment_body)
+        click.echo(f"Linked PR to ticket {ticket_id}.")
+    except Exception:  # noqa: BLE001
+        # Best-effort — never fail the PR creation because of a tracker issue
+        click.echo(f"Note: Could not auto-link PR to ticket {ticket_id}.", err=True)
 
 
 # NOTE: These URLs point to the vibe-code-boilerplate repository itself, NOT the user's
@@ -324,7 +663,7 @@ def boilerplate_issue(title: str | None, body: str | None, print_only: bool) -> 
         config = load_config()
         base = (config.get("boilerplate") or {}).get("issues_url") or BOILERPLATE_ISSUES_URL
         new_issue = base.rstrip("/").replace("/issues", "") + "/issues/new"
-    except Exception:
+    except (OSError, KeyError, RuntimeError):
         new_issue = BOILERPLATE_NEW_ISSUE_URL
 
     params = []
@@ -351,59 +690,21 @@ def boilerplate_issue(title: str | None, body: str | None, print_only: bool) -> 
         webbrowser.open(new_issue)
         click.echo("Opened boilerplate repo new-issue page in your browser.")
         click.echo("If it did not open, use: " + new_issue)
-    except Exception:
+    except OSError:
         click.echo("Could not open browser. File an issue manually at:")
         click.echo(new_issue)
 
 
-@main.group()
-def secrets() -> None:
-    """Manage secrets and environment variables."""
-    pass
-
-
-@secrets.command("list")
-@click.option("--provider", "-p", help="Filter by provider (github, vercel, fly)")
-def secrets_list(provider: str | None) -> None:
-    """List configured secrets."""
-    from lib.vibe.config import load_config
-
-    config = load_config()
-    providers = config.get("secrets", {}).get("providers", [])
-
-    if not providers:
-        click.echo("No secret providers configured.")
-        click.echo("Run 'bin/vibe setup' to configure providers.")
-        return
-
-    click.echo(f"Configured providers: {', '.join(providers)}")
-
-    if provider and provider not in providers:
-        click.echo(f"Provider '{provider}' not configured.")
-        return
-
-    # TODO: Implement listing from each provider
-    click.echo("\nSecret listing not yet fully implemented.")
-
-
-@secrets.command("sync")
-@click.argument("env_file", default=".env.local")
-@click.option("--provider", "-p", required=True, help="Target provider")
-@click.option("--environment", "-e", default="repository", help="Target environment")
-def secrets_sync(env_file: str, provider: str, environment: str) -> None:
-    """Sync secrets from a local env file to a provider."""
-    click.echo(f"Syncing {env_file} to {provider}/{environment}...")
-    click.echo("Secret syncing not yet fully implemented.")
+# Register secrets commands from lib.vibe.cli.secrets
+main.add_command(secrets_group, "secrets")
 
 
 @main.command("init-actions")
 @click.option("--linear", is_flag=True, help="Include Linear integration workflows")
-@click.option("--linear-api-key", envvar="LINEAR_API_KEY", help="LINEAR_API_KEY to set as secret")
 @click.option("--dry-run", is_flag=True, help="Preview changes without applying")
 @click.option("--all", "include_all", is_flag=True, help="Include all available workflows")
-def init_actions(
-    linear: bool, linear_api_key: str | None, dry_run: bool, include_all: bool
-) -> None:
+@click.option("--interactive", "-i", is_flag=True, help="Interactive mode for workflow selection")
+def init_actions(linear: bool, dry_run: bool, include_all: bool, interactive: bool) -> None:
     """Initialize GitHub Actions workflows, secrets, and labels.
 
     Sets up:
@@ -411,13 +712,51 @@ def init_actions(
     - Required labels (risk levels, types)
     - Optionally: Linear integration workflows and secrets
 
+    LINEAR_API_KEY is read from the environment variable, not a CLI flag.
+    Set it before running: export LINEAR_API_KEY=lin_api_...
+
     Examples:
 
         bin/vibe init-actions                    # Core workflows only
         bin/vibe init-actions --linear           # Include Linear workflows
+        bin/vibe init-actions --interactive      # Interactive workflow selection
         bin/vibe init-actions --dry-run          # Preview what would be done
     """
     from lib.vibe.github_actions import init_github_actions
+    from lib.vibe.ui.components import MultiSelect
+
+    linear_api_key = os.environ.get("LINEAR_API_KEY")
+
+    # Interactive mode
+    if interactive:
+        click.echo("\n" + "=" * 50)
+        click.echo("  Initialize GitHub Actions")
+        click.echo("=" * 50)
+        click.echo()
+
+        workflow_select = MultiSelect(
+            title="Select workflows to install:",
+            options=[
+                ("Core Workflows", "PR policy, security, lint, tests (recommended)", True),
+                ("Linear Integration", "Sync PR status with Linear tickets", False),
+                ("Shortcut Integration", "Sync PR status with Shortcut stories", False),
+            ],
+        )
+        selected = workflow_select.show()
+
+        if not selected:
+            click.echo("No workflows selected. Cancelled.")
+            return
+
+        # Update flags based on selection
+        if 2 in selected:
+            linear = True
+            if not linear_api_key:
+                click.echo()
+                click.echo("Linear integration requires LINEAR_API_KEY.")
+                click.echo("Set it as an environment variable: export LINEAR_API_KEY=lin_api_...")
+                if click.confirm("Enter LINEAR_API_KEY now?", default=True):
+                    linear_api_key = click.prompt("LINEAR_API_KEY", hide_input=True)
 
     if dry_run:
         click.echo("Dry run - showing what would be done:\n")
@@ -519,11 +858,13 @@ def retrofit(
     """Apply boilerplate to an existing project (guided adoption)."""
     import json
 
+    from lib.vibe.config import load_config
     from lib.vibe.retrofit.analyzer import ActionType, RetrofitAnalyzer
     from lib.vibe.retrofit.applier import RetrofitApplier
     from lib.vibe.retrofit.detector import ProjectDetector
     from lib.vibe.tools import require_interactive
-    from lib.vibe.ui.components import MultiSelect
+    from lib.vibe.ui.components import MultiSelect, WhatNextFlow
+    from lib.vibe.wizards.setup import run_individual_wizard
 
     # Check for interactive terminal if we'll need user input
     if not auto and not analyze_only and not json_output:
@@ -712,9 +1053,21 @@ def retrofit(
     click.echo("  3. Review .vibe/config.json and adjust settings as needed")
     click.echo("  4. Update CLAUDE.md with your project's context")
 
+    # Show WhatNextFlow for natural wizard chaining
+    config = load_config()
+    what_next = WhatNextFlow("env", config)  # Use "env" as retrofit touches env/config
+    next_wizard = what_next.show()
+    if next_wizard:
+        run_individual_wizard(next_wizard, show_what_next=True)
+
 
 @main.command("generate-agent-instructions")
 @click.option("--dry-run", is_flag=True, help="Show what would be generated without writing files")
+@click.option(
+    "--force",
+    is_flag=True,
+    help="Overwrite files even if they have project-specific content",
+)
 @click.option(
     "--format",
     "-f",
@@ -723,6 +1076,9 @@ def retrofit(
     type=click.Choice(["claude", "cursor", "copilot", "all"]),
     default=["all"],
     help="Which formats to generate (default: all)",
+)
+@click.option(
+    "--interactive", "-i", is_flag=True, help="Interactive mode - select formats with MultiSelect"
 )
 @click.option(
     "--source-dir",
@@ -740,7 +1096,9 @@ def retrofit(
 )
 def generate_agent_instructions(
     dry_run: bool,
+    force: bool,
     formats: tuple[str, ...],
+    interactive: bool,
     source_dir: Path,
     output_dir: Path,
 ) -> None:
@@ -755,6 +1113,7 @@ def generate_agent_instructions(
     """
     from lib.vibe.agents.generator import InstructionGenerator
     from lib.vibe.agents.spec import AssistantFormat, InstructionSpec
+    from lib.vibe.ui.components import MultiSelect
 
     source_path = Path(source_dir)
     if not source_path.exists():
@@ -769,18 +1128,54 @@ def generate_agent_instructions(
         "copilot": AssistantFormat.COPILOT,
     }
 
-    if "all" in formats:
+    if interactive:
+        # Interactive format selection
+        click.echo("\n" + "=" * 50)
+        click.echo("  Generate Agent Instructions")
+        click.echo("=" * 50)
+        click.echo()
+
+        multi_select = MultiSelect(
+            title="Select formats to generate:",
+            options=[
+                ("CLAUDE.md", "Claude Code instructions", True),
+                (".cursor/rules", "Cursor IDE instructions", True),
+                (".github/copilot-instructions.md", "GitHub Copilot instructions", False),
+            ],
+        )
+        selected_indices = multi_select.show()
+
+        if not selected_indices:
+            click.echo("No formats selected. Cancelled.")
+            return
+
+        index_to_format = {
+            1: AssistantFormat.CLAUDE,
+            2: AssistantFormat.CURSOR,
+            3: AssistantFormat.COPILOT,
+        }
+        selected_formats = [index_to_format[i] for i in selected_indices]
+    elif "all" in formats:
         selected_formats = list(format_map.values())
     else:
         selected_formats = [format_map[f] for f in formats if f in format_map]
 
+    # Load label categories from .vibe/config.json (if available)
+    from lib.vibe.config import load_config
+
+    config = load_config(output_dir if output_dir != Path(".") else None)
+    config_labels: dict[str, list[str]] = config.get("labels", {})
+
     # Load spec from source files
     click.echo(f"Loading instruction spec from {source_path}/...")
-    spec = InstructionSpec.from_files(source_path)
+    spec = InstructionSpec.from_files(source_path, config_labels=config_labels)
 
     click.echo(f"  - Loaded {len(spec.core_rules)} core rules")
     click.echo(f"  - Loaded {len(spec.commands)} commands")
     click.echo(f"  - Loaded {len(spec.workflows)} workflows")
+    if spec.labels:
+        label_count = sum(len(v) for v in spec.labels.values())
+        click.echo(f"  - Loaded {label_count} labels from config")
 
     # Generate files
     generator = InstructionGenerator(spec)
@@ -797,18 +1192,71 @@ def generate_agent_instructions(
     click.echo()
     click.secho("Generating instruction files...", fg="cyan")
 
-    results = generator.generate_all(output_path, selected_formats)
+    results = generator.generate_all(output_path, selected_formats, force=force)
 
     for format_name, file_path in results.items():
         click.echo(f"  {click.style('✓', fg='green')} {file_path}")
 
-    click.echo()
-    click.secho("Done! Generated files are ready.", fg="green")
+    # Report skipped files
+    skipped = generator.skipped_files
+    if skipped:
+        click.echo()
+        click.secho("Skipped (files have project-specific content):", fg="yellow")
+        for format_name, path_or_msg in skipped.items():
+            click.echo(f"  {click.style('○', fg='yellow')} {path_or_msg}")
+        click.echo()
+        click.echo("Use --force to overwrite these files.")
+
+    if results:
+        click.echo()
+        click.secho("Done! Generated files are ready.", fg="green")
+    elif skipped:
+        click.echo()
+        click.secho("No files generated (all skipped).", fg="yellow")
+
     click.echo()
     click.echo("Next steps:")
     click.echo("  1. Review the generated files")
     click.echo("  2. Customize agent_instructions/ for your project")
     click.echo("  3. Re-run this command after changes to sync files")
+
+
+@main.group()
+def cache() -> None:
+    """Manage the API response cache."""
+    pass
+
+
+@cache.command("clear")
+@click.option("--key", "-k", help="Clear specific cache key")
+def cache_clear(key: str | None) -> None:
+    """Clear cached API responses."""
+    from lib.vibe.utils.cache import get_cache
+
+    c = get_cache()
+    count = c.invalidate(key)
+    click.echo(f"Cleared {count} cache entries.")
+
+
+@cache.command("status")
+def cache_status() -> None:
+    """Show cache status."""
+    from lib.vibe.utils.cache import get_cache
+
+    c = get_cache()
+    entries = c.status()
+    if not entries:
+        click.echo("Cache is empty.")
+        return
+    click.echo(f"\nCached entries ({len(entries)}):")
+    for entry in entries:
+        if "error" in entry:
+            click.echo(f"  {entry['key']}: {entry['error']}")
+        else:
+            age = entry["age_seconds"]
+            remaining = entry["remaining_seconds"]
+            status = "expired" if entry["expired"] else f"{remaining}s remaining"
+            click.echo(f"  {entry['key']}: cached {age}s ago ({status})")
 
 
 # Register figma command group

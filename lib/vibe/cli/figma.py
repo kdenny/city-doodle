@@ -4,6 +4,7 @@ from __future__ import annotations
 
 import sys
 from pathlib import Path
+from typing import Any
 
 import click
 
@@ -51,7 +52,7 @@ def analyze_cmd(project_path: str, output_json: bool, figma_context: bool) -> No
 
     try:
         analysis = analyzer.analyze()
-    except Exception as e:
+    except (OSError, ValueError) as e:
         click.secho(f"Error analyzing project: {e}", fg="red", err=True)
         sys.exit(1)
 
@@ -392,6 +393,7 @@ def tickets_cmd(figma_link: str, description: str, project_path: str, dry_run: b
         click.echo()
         click.secho(f"Ticket {i}: {ticket['title']}", fg="green", bold=True)
         click.echo(f"  Type: {ticket['type']}")
+        click.echo(f"  Risk: {ticket['risk']}")
         click.echo(f"  Area: {ticket['area']}")
         if ticket.get("blocked_by"):
             click.echo(f"  Blocked by: Ticket {ticket['blocked_by']}")
@@ -411,15 +413,16 @@ def tickets_cmd(figma_link: str, description: str, project_path: str, dry_run: b
             click.echo("Cancelled")
 
 
-def _generate_tickets(figma_link: str, description: str, analysis) -> list[dict]:
+def _generate_tickets(figma_link: str, description: str, analysis) -> list[dict[str, Any]]:
     """Generate ticket specifications from design description."""
-    tickets = []
+    tickets: list[dict[str, Any]] = []
 
     # Ticket 1: Layout/Structure
     tickets.append(
         {
             "title": f"Implement layout structure for {description}",
             "type": "Feature",
+            "risk": "Low Risk",
             "area": "Frontend",
             "description": f"""## Summary
 Implement the layout structure as shown in the Figma design.
@@ -444,6 +447,7 @@ Implement the layout structure as shown in the Figma design.
         {
             "title": f"Create UI components for {description}",
             "type": "Feature",
+            "risk": "Low Risk",
             "area": "Frontend",
             "blocked_by": 1,
             "description": f"""## Summary
@@ -473,6 +477,7 @@ These components already exist and should be reused:
         {
             "title": f"Integrate {description} feature",
             "type": "Feature",
+            "risk": "Medium Risk",
             "area": "Frontend",
             "blocked_by": 2,
             "description": f"""## Summary
@@ -499,11 +504,11 @@ Integrate the components into a complete feature.
     return tickets
 
 
-def _create_tickets(tickets: list[dict]) -> None:
+def _create_tickets(tickets: list[dict[str, Any]]) -> None:
     """Create tickets using the ticket CLI."""
     import subprocess
 
-    created_ids = {}
+    created_ids: dict[int, str] = {}
 
     for i, ticket in enumerate(tickets, 1):
         cmd = [
@@ -512,6 +517,8 @@ def _create_tickets(tickets: list[dict]) -> None:
             ticket["title"],
             "--label",
             ticket["type"],
+            "--label",
+            ticket["risk"],
             "--label",
             ticket["area"],
         ]
@@ -528,5 +535,5 @@ def _create_tickets(tickets: list[dict]) -> None:
                 created_ids[i] = str(i)
             else:
                 click.secho(f"✗ Failed to create ticket {i}: {result.stderr}", fg="red")
-        except Exception as e:
+        except (subprocess.CalledProcessError, OSError) as e:
             click.secho(f"✗ Error creating ticket {i}: {e}", fg="red")
