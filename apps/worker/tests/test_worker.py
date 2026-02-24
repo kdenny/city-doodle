@@ -1,13 +1,13 @@
 """Tests for worker module."""
 
 import asyncio
-from unittest.mock import AsyncMock, patch
+from unittest.mock import AsyncMock, MagicMock, patch
 from uuid import uuid4
 
 import pytest
 from city_worker.config import Settings
 from city_worker.models import JobStatus, JobType
-from city_worker.runner import JobRunner
+from city_worker.runner import JobRunner, _make_asyncpg_dsn
 
 
 def test_job_status_values():
@@ -471,6 +471,115 @@ def test_compute_retry_delay_progression():
     expected = [30, 60, 120, 240, 300]
     for i, exp in enumerate(expected):
         assert JobRunner._compute_retry_delay(i) == exp
+
+
+# ============================================================================
+# LISTEN/NOTIFY Tests (CITY-605)
+# ============================================================================
+
+
+def test_make_asyncpg_dsn_strips_driver():
+    """Test _make_asyncpg_dsn converts SQLAlchemy URL to asyncpg DSN."""
+    url = "postgresql+asyncpg://user:pass@host:5432/db"
+    assert _make_asyncpg_dsn(url) == "postgresql://user:pass@host:5432/db"
+
+
+def test_make_asyncpg_dsn_converts_sslmode():
+    """Test _make_asyncpg_dsn converts sslmode to ssl."""
+    url = "postgresql+asyncpg://host/db?sslmode=require"
+    assert _make_asyncpg_dsn(url) == "postgresql://host/db?ssl=require"
+
+
+def test_make_asyncpg_dsn_full():
+    """Test _make_asyncpg_dsn handles both driver and sslmode."""
+    url = "postgresql+asyncpg://user:pass@host:5432/db?sslmode=require"
+    assert _make_asyncpg_dsn(url) == "postgresql://user:pass@host:5432/db?ssl=require"
+
+
+def test_make_asyncpg_dsn_no_changes_needed():
+    """Test _make_asyncpg_dsn passes through plain postgres URLs."""
+    url = "postgresql://host/db"
+    assert _make_asyncpg_dsn(url) == "postgresql://host/db"
+
+
+def test_settings_listen_timeout_default():
+    """Test Settings has listen_timeout_seconds with correct default."""
+    s = Settings()
+    assert s.listen_timeout_seconds == 60.0
+
+
+def test_settings_listen_timeout_custom():
+    """Test Settings accepts custom listen_timeout_seconds."""
+    s = Settings(listen_timeout_seconds=30.0)
+    assert s.listen_timeout_seconds == 30.0
+
+
+def test_job_runner_has_listen_fields():
+    """Test JobRunner initializes with LISTEN/NOTIFY fields."""
+    runner = JobRunner()
+    assert runner._listen_conn is None
+    assert isinstance(runner._notify_event, asyncio.Event)
+    assert not runner._notify_event.is_set()
+
+
+def test_on_notify_sets_event():
+    """Test _on_notify callback sets the notify event."""
+    runner = JobRunner()
+    assert not runner._notify_event.is_set()
+
+    # Simulate a notification callback
+    runner._on_notify(MagicMock(), 12345, "new_job", "")
+
+    assert runner._notify_event.is_set()
+
+
+def test_shutdown_sets_notify_event():
+    """Test _handle_shutdown sets the notify event to wake the loop."""
+    runner = JobRunner()
+    assert not runner._notify_event.is_set()
+
+    runner._handle_shutdown()
+
+    assert runner._shutdown is True
+    assert runner._notify_event.is_set()
+
+
+@pytest.mark.asyncio
+async def test_poll_and_execute_returns_false_when_no_jobs():
+    """Test _poll_and_execute returns False when no jobs are available."""
+    runner = JobRunner()
+    with patch.object(runner, "_claim_job", new_callable=AsyncMock, return_value=None):
+        result = await runner._poll_and_execute()
+        assert result is False
+
+
+@pytest.mark.asyncio
+async def test_poll_and_execute_returns_true_when_job_claimed():
+    """Test _poll_and_execute returns True when a job is claimed."""
+    runner = JobRunner()
+    job_id = uuid4()
+
+    with (
+        patch.object(
+            runner, "_claim_job", new_callable=AsyncMock,
+            return_value=(job_id, "export_png", {}),
+        ),
+        patch.object(runner, "_execute_job", new_callable=AsyncMock),
+    ):
+        result = await runner._poll_and_execute()
+        assert result is True
+
+
+@pytest.mark.asyncio
+async def test_poll_and_execute_returns_false_at_capacity():
+    """Test _poll_and_execute returns False when at max capacity."""
+    runner = JobRunner()
+    from city_worker.config import settings
+    for _ in range(settings.max_concurrent_jobs):
+        runner._active_jobs.add(uuid4())
+
+    result = await runner._poll_and_execute()
+    assert result is False
 
 
 # ============================================================================

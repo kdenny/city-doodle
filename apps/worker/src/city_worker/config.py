@@ -14,6 +14,10 @@ class Settings(BaseSettings):
     max_concurrent_jobs: int = 2
     job_timeout_seconds: int = 300
 
+    # LISTEN/NOTIFY configuration
+    # Fallback poll interval when using LISTEN/NOTIFY (safety-net only).
+    listen_timeout_seconds: float = 60.0
+
     # Logging
     log_level: str = "info"
 
