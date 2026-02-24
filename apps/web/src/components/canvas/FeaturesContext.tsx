@@ -759,6 +759,7 @@ export function FeaturesProvider({
 
     // CITY-235: Async IIFE to allow worker calls for legacy district backfilling
     (async () => {
+    try {
     // --- Districts + street grid roads ---
     const loadedDistricts = apiDistricts.map(fromApiDistrict);
     const streetGridRoads = apiDistricts.flatMap(roadsFromApiStreetGrid);
@@ -868,6 +869,12 @@ export function FeaturesProvider({
     };
 
     setIsInitialized(true);
+    } catch (err) {
+      console.error("CITY-235: Initial load failed, initializing with available data:", err);
+      // Still mark as initialized so the app isn't permanently stuck on a loading spinner.
+      // Districts without backfilled grids will simply render without streets.
+      setIsInitialized(true);
+    }
     })(); // end CITY-235 async IIFE
   }, [worldId, apiDistricts, apiNeighborhoods, apiCityLimits, apiPOIs, apiRoadNetwork]);
 
@@ -1036,16 +1043,26 @@ export function FeaturesProvider({
     return () => { cancelled = true; clearTimeout(timer); };
   }, [features.roads, terrainContext?.terrainData]);
 
-  // Helper to update features and notify
+  // Notify external listener when features change (via useEffect, not inside the state updater,
+  // because React state updaters must be pure — they may be called multiple times in StrictMode).
+  const onFeaturesChangeRef = useRef(onFeaturesChange);
+  onFeaturesChangeRef.current = onFeaturesChange;
+  const isFirstRender = useRef(true);
+  useEffect(() => {
+    // Skip the initial mount — only notify on subsequent changes
+    if (isFirstRender.current) {
+      isFirstRender.current = false;
+      return;
+    }
+    onFeaturesChangeRef.current?.(features);
+  }, [features]);
+
+  // Helper to update features
   const updateFeatures = useCallback(
     (updater: (prev: FeaturesData) => FeaturesData) => {
-      setFeaturesState((prev) => {
-        const next = updater(prev);
-        onFeaturesChange?.(next);
-        return next;
-      });
+      setFeaturesState(updater);
     },
-    [onFeaturesChange]
+    []
   );
 
   const addDistrict = useCallback(
@@ -2340,55 +2357,47 @@ export function FeaturesProvider({
       if (districts.length === 0) return;
 
       try {
-      // 1. Regenerate grid for each district with the shared angle (parallel via Web Worker)
+      // 1. Regenerate grid for each district with the shared angle.
+      // Process sequentially: the worker is single-threaded, so parallel requests
+      // just queue up and later ones risk hitting the 30s timeout.
       const allNewRoads: Road[] = [];
       const districtUpdates: Array<{ id: string; gridAngle: number }> = [];
 
-      const gridResults = await Promise.all(
-        districts.map((district) =>
-          runInWorker("regenerateGridAngle", {
-            type: "regenerateGridAngle",
-            district,
-            newGridAngle: gridAngle,
-            sprawlCompact: district.personality?.sprawl_compact ?? 0.5,
-            eraYear: district.personality?.era_year,
-          })
-        )
-      );
-
-      for (let i = 0; i < districts.length; i++) {
-        const { roads: newRoads, gridAngle: actualAngle } = gridResults[i].result;
+      for (const district of districts) {
+        const gridResult = await runInWorker("regenerateGridAngle", {
+          type: "regenerateGridAngle",
+          district,
+          newGridAngle: gridAngle,
+          sprawlCompact: district.personality?.sprawl_compact ?? 0.5,
+          eraYear: district.personality?.era_year,
+        });
+        const { roads: newRoads, gridAngle: actualAngle } = gridResult.result;
         allNewRoads.push(...newRoads);
-        districtUpdates.push({ id: districts[i].id, gridAngle: actualAngle });
+        districtUpdates.push({ id: district.id, gridAngle: actualAngle });
       }
 
       // 2. Regenerate cross-boundary connections between all affected pairs
       const affectedIds = new Set(districtIds);
       const allCrossBoundaryRoads: Road[] = [];
 
-      const crossResults = await Promise.all(
-        districts.map((district) => {
-          const districtRoads = allNewRoads.filter((r) => r.districtId === district.id);
-          const otherDistricts = currentFeatures.districts.filter((d) => d.id !== district.id);
-          const otherRoads = [
-            // Include regenerated roads from other selected districts
-            ...allNewRoads.filter((r) => r.districtId !== district.id),
-            // Include existing roads from non-selected districts
-            ...currentFeatures.roads.filter(
-              (r) => !affectedIds.has(r.districtId ?? "") && !districtIds.some((id) => r.id.includes(`-${id}-`))
-            ),
-          ];
-          return runInWorker("crossBoundary", {
-            type: "crossBoundary",
-            newDistrict: district,
-            newDistrictRoads: districtRoads,
-            existingDistricts: otherDistricts,
-            existingRoads: otherRoads,
-          });
-        })
-      );
-
-      for (const crossResult of crossResults) {
+      for (const district of districts) {
+        const districtRoads = allNewRoads.filter((r) => r.districtId === district.id);
+        const otherDistricts = currentFeatures.districts.filter((d) => d.id !== district.id);
+        const otherRoads = [
+          // Include regenerated roads from other selected districts
+          ...allNewRoads.filter((r) => r.districtId !== district.id),
+          // Include existing roads from non-selected districts
+          ...currentFeatures.roads.filter(
+            (r) => !affectedIds.has(r.districtId ?? "") && !districtIds.some((id) => r.id.includes(`-${id}-`))
+          ),
+        ];
+        const crossResult = await runInWorker("crossBoundary", {
+          type: "crossBoundary",
+          newDistrict: district,
+          newDistrictRoads: districtRoads,
+          existingDistricts: otherDistricts,
+          existingRoads: otherRoads,
+        });
         allCrossBoundaryRoads.push(...crossResult.result);
       }
 

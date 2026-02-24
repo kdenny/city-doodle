@@ -150,10 +150,25 @@ function sendToWorker(request: WorkerRequest): Promise<WorkerResponse> {
   return new Promise<WorkerResponse>((resolve, reject) => {
     const id = ++messageId;
 
-    // CITY-235: Timeout guard — if the worker hangs, reject and fall back to main thread
+    // CITY-235: Timeout guard — if the worker hangs, reject, terminate, and fall back
     const timer = setTimeout(() => {
       if (pendingRequests.has(id)) {
         pendingRequests.delete(id);
+        console.warn(
+          `CITY-235: Worker timed out after ${WORKER_REQUEST_TIMEOUT_MS}ms for ${request.type}, switching to main-thread fallback`
+        );
+        // Terminate the stuck worker and switch to fallback so future requests
+        // don't also queue behind the hung computation.
+        if (worker) {
+          worker.terminate();
+          worker = null;
+        }
+        useFallback = true;
+        // Reject remaining pending requests so they can retry via the .catch fallback path
+        for (const [pendingId, pending] of pendingRequests) {
+          pending.reject(new Error("Worker terminated after timeout"));
+          pendingRequests.delete(pendingId);
+        }
         reject(new Error(`Worker timeout after ${WORKER_REQUEST_TIMEOUT_MS}ms for ${request.type}`));
       }
     }, WORKER_REQUEST_TIMEOUT_MS);
@@ -354,6 +369,7 @@ export function terminateWorker(): void {
     worker.terminate();
     worker = null;
   }
+  useFallback = true;
   // Reject any pending requests
   for (const [id, pending] of pendingRequests) {
     pending.reject(new Error("Worker terminated"));
@@ -362,10 +378,11 @@ export function terminateWorker(): void {
 }
 
 /**
- * Check if the worker is currently active (not in fallback mode).
+ * Check if Web Worker computation is available (not in fallback mode).
+ * Returns true if we can use a worker (one exists or can be created).
  */
-export function isWorkerActive(): boolean {
-  return !useFallback && (worker !== null || typeof Worker !== "undefined");
+export function isWorkerAvailable(): boolean {
+  return !useFallback && typeof Worker !== "undefined";
 }
 
 // ---------------------------------------------------------------------------

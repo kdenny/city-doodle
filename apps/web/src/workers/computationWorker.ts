@@ -166,3 +166,10 @@ self.onmessage = (event: MessageEvent<WorkerRequestMessage>) => {
   const result = handleRequest(event.data);
   self.postMessage(result);
 };
+
+// Handle deserialization failures (structured cloning errors on incoming messages).
+// The main thread's promise will time out since we have no request ID to respond to,
+// but at least the error is logged for debugging.
+self.onmessageerror = (event: MessageEvent) => {
+  console.error("CITY-235: Worker received undeserializable message", event);
+};

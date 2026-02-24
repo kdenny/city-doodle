@@ -44,14 +44,14 @@ export interface DistrictsDispatchValue {
   addDistrictWithGeometry: (district: District, roads?: import("./layers").Road[]) => void;
   /** Remove a district by ID */
   removeDistrict: (id: string) => void;
-  /** Update a district */
-  updateDistrict: (id: string, updates: Partial<Omit<District, "id">>) => void;
+  /** Update a district. Async: some updates (type, gridAngle) run in a Web Worker. */
+  updateDistrict: (id: string, updates: Partial<Omit<District, "id">>) => Promise<void>;
   /** Set the city limits boundary */
   setCityLimits: (cityLimits: CityLimits) => void;
   /** Remove the city limits boundary */
   removeCityLimits: () => void;
-  /** Regenerate street grids for multiple districts with a shared angle */
-  regenerateDistrictGrids: (districtIds: string[], gridAngle: number) => void;
+  /** Regenerate street grids for multiple districts with a shared angle. Async: runs in Web Worker. */
+  regenerateDistrictGrids: (districtIds: string[], gridAngle: number) => Promise<void>;
 }
 
 /** Combined districts context value. */
