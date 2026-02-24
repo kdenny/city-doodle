@@ -19,7 +19,6 @@ export type { PlacedSeedData, PreviewSeedData } from "./SeedsLayer";
 export type { RailStationData, TrackSegmentData, RailStationPreviewData } from "./RailStationLayer";
 export type { SubwayStationData, SubwayStationPreviewData, SubwayTunnelData } from "./SubwayStationLayer";
 export type { TransitLineDrawingState } from "./TransitLineDrawingLayer";
-export { generateMockTerrain } from "./mockTerrain";
 export { transformTileFeatures, emptyTerrainData, composeTileFeatures } from "./terrainTransformer";
 export {
   generateDistrictGeometry,

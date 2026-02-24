@@ -13,10 +13,67 @@ import { LayerControls } from "./LayerControls";
 import { TerrainLayer } from "./layers/TerrainLayer";
 import { FeaturesLayer } from "./layers/FeaturesLayer";
 import { LabelLayer } from "./layers/LabelLayer";
-import { generateMockTerrain } from "./layers/mockTerrain";
 import { generateMockFeatures, generateMockLabels } from "./layers";
+import type { TerrainData } from "./layers";
 import type { LayerVisibility } from "./layers";
 import { useState } from "react";
+
+/** Minimal inline terrain fixture for integration tests. */
+const minimalTerrain: TerrainData = {
+  water: [
+    {
+      id: "water-1",
+      type: "lake",
+      polygon: {
+        points: [
+          { x: 0, y: 0 },
+          { x: 100, y: 0 },
+          { x: 100, y: 100 },
+        ],
+      },
+    },
+  ],
+  beaches: [],
+  coastlines: [
+    {
+      id: "coast-1",
+      line: {
+        points: [
+          { x: 0, y: 50 },
+          { x: 100, y: 50 },
+        ],
+      },
+    },
+  ],
+  rivers: [
+    {
+      id: "river-1",
+      line: {
+        points: [
+          { x: 50, y: 0 },
+          { x: 50, y: 100 },
+        ],
+      },
+      width: 5,
+    },
+  ],
+  contours: [
+    {
+      id: "contour-1",
+      elevation: 100,
+      line: {
+        points: [
+          { x: 0, y: 25 },
+          { x: 100, y: 25 },
+        ],
+      },
+    },
+  ],
+  barrierIslands: [],
+  tidalFlats: [],
+  duneRidges: [],
+  inlets: [],
+};
 
 const allVisibleLayers: LayerVisibility = {
   water: true,
@@ -153,7 +210,7 @@ describe("TerrainLayer visibility integration", () => {
 
   beforeEach(() => {
     layer = new TerrainLayer();
-    layer.setData(generateMockTerrain(768, 42));
+    layer.setData(minimalTerrain);
   });
 
   afterEach(() => {
@@ -290,7 +347,7 @@ describe("Full layer toggle flow", () => {
     const labelLayer = new LabelLayer();
 
     // Set data
-    terrainLayer.setData(generateMockTerrain(768, 42));
+    terrainLayer.setData(minimalTerrain);
     featuresLayer.setData(generateMockFeatures(768, 42));
     labelLayer.setData(generateMockLabels(768, 42));
 
@@ -365,7 +422,7 @@ describe("Full layer toggle flow", () => {
     const featuresLayer = new FeaturesLayer();
     const labelLayer = new LabelLayer();
 
-    terrainLayer.setData(generateMockTerrain(768, 42));
+    terrainLayer.setData(minimalTerrain);
     featuresLayer.setData(generateMockFeatures(768, 42));
     labelLayer.setData(generateMockLabels(768, 42));
 
@@ -404,7 +461,7 @@ describe("Edge cases", () => {
     }).not.toThrow();
 
     // Now set data
-    terrainLayer.setData(generateMockTerrain(768, 42));
+    terrainLayer.setData(minimalTerrain);
     featuresLayer.setData(generateMockFeatures(768, 42));
     labelLayer.setData(generateMockLabels(768, 42));
 
@@ -457,7 +514,7 @@ describe("Edge cases", () => {
 
   it("handles partial visibility updates", () => {
     const terrainLayer = new TerrainLayer();
-    terrainLayer.setData(generateMockTerrain(768, 42));
+    terrainLayer.setData(minimalTerrain);
 
     // Multiple partial updates
     terrainLayer.setVisibility({ ...allVisibleLayers, water: false });
