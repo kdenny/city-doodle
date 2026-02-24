@@ -1218,7 +1218,7 @@ def _classify_lake_type(
     rim_elevation = avg_rim_height - water_level
 
     # Size thresholds in world units (approximate)
-    # cell_size is ~628m for default 128 resolution, 80km tile
+    # cell_size is 2.0px for default 128 resolution, 256px tile
     pond_threshold = 50 * cell_size * cell_size  # ~50 cells worth
     small_lake_threshold = 200 * cell_size * cell_size
     large_lake_threshold = 1000 * cell_size * cell_size

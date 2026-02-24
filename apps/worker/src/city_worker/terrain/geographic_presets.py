@@ -26,15 +26,16 @@ GEOGRAPHIC_PRESETS: dict[str, dict[str, Any]] = {
     # Protected natural harbor with prominent bay.  Lower concavity
     # threshold so bays form more easily; slightly higher water
     # creates more coastline for the bay to carve into.
+    # CITY-624: Area thresholds scaled from meter-space to pixel-space.
     "bay_harbor": {
         "water_level": 0.38,
         "beach_enabled": True,
         "beach_height_band": 0.02,
         "bay_enabled": True,
         "bay_min_concavity_angle": 25.0,
-        "bay_min_area": 400.0,
+        "bay_min_area": 0.004,  # was 400.0 in meter-space
         "bay_max_depth_ratio": 5.0,
-        "bay_harbor_min_area": 80000.0,
+        "bay_harbor_min_area": 0.81,  # was 80000.0 in meter-space
         "bay_erosion_strength": 1.2,
         "barrier_islands_enabled": False,
     },
@@ -42,13 +43,14 @@ GEOGRAPHIC_PRESETS: dict[str, dict[str, Any]] = {
     # City built along a major river.  Lower water level exposes
     # more land, but rivers form more readily with a lower flow
     # threshold and longer minimum length.
+    # CITY-624: height_scale compensated from 0.0012 to pixel-space.
     "river_valley": {
         "water_level": 0.28,
         "min_river_length": 6,
         "beach_enabled": False,
         "bay_enabled": False,
         "barrier_islands_enabled": False,
-        "height_scale": 0.0012,
+        "height_scale": 0.3772,  # was 0.0012 in meter-space
         "coastline_smoothing": 2,
     },
     # ── Lakefront ───────────────────────────────────────────────
@@ -68,13 +70,14 @@ GEOGRAPHIC_PRESETS: dict[str, dict[str, Any]] = {
     # No coastline.  Very low water level so almost all terrain is
     # above water.  Water features (rivers/lakes) are suppressed
     # because water_level < WATER_LEVEL_SUPPRESS_THRESHOLD (CITY-551).
+    # CITY-624: height_scale compensated from 0.0008 to pixel-space.
     "inland": {
         "water_level": 0.15,
         "beach_enabled": False,
         "bay_enabled": False,
         "barrier_islands_enabled": False,
         "min_river_length": 12,
-        "height_scale": 0.0008,
+        "height_scale": 0.2515,  # was 0.0008 in meter-space
     },
     # ── Island ──────────────────────────────────────────────────
     # City on an island surrounded by water.  Higher water level
@@ -107,9 +110,10 @@ GEOGRAPHIC_PRESETS: dict[str, dict[str, Any]] = {
     # River delta / wetlands.  Low-lying terrain with many river
     # channels.  Water level is moderate but the land is very flat
     # (smaller height scale) so rivers spread out.
+    # CITY-624: height_scale compensated from 0.0006 to pixel-space.
     "delta": {
         "water_level": 0.33,
-        "height_scale": 0.0006,
+        "height_scale": 0.1886,  # was 0.0006 in meter-space
         "height_persistence": 0.45,
         "min_river_length": 4,
         "beach_enabled": True,
@@ -137,16 +141,17 @@ def get_preset_overrides(geographic_setting: str) -> dict[str, Any]:
 # Each key maps to (min_value, max_value, jitter_fraction).
 # jitter_fraction is the ± proportion of the base value that the seed
 # can shift. E.g. 0.15 means the final value can be base ± 15%.
+# CITY-624: height_scale and bay_min_area ranges compensated to pixel-space.
 _VARIATION_RANGES: dict[str, tuple[float, float, float]] = {
     "water_level": (0.05, 0.65, 0.12),
-    "height_scale": (0.0003, 0.002, 0.20),
+    "height_scale": (0.0943, 0.6287, 0.20),  # was (0.0003, 0.002)
     "height_persistence": (0.35, 0.60, 0.10),
     "height_lacunarity": (1.8, 2.3, 0.08),
     "coastline_smoothing": (1, 6, 0.30),
     "beach_height_band": (0.01, 0.04, 0.15),
     "beach_slope_max": (0.06, 0.18, 0.15),
     "bay_min_concavity_angle": (20.0, 60.0, 0.15),
-    "bay_min_area": (300.0, 2000.0, 0.20),
+    "bay_min_area": (0.003, 0.02, 0.20),  # was (300.0, 2000.0)
     "min_river_length": (3, 15, 0.25),
 }
 

@@ -27,15 +27,16 @@ class BayConfig:
     # Minimum coastline concavity angle (degrees) to be considered a bay
     min_concavity_angle: float = 45.0
 
-    # Minimum bay area in world units squared
-    min_area: float = 1000.0
+    # CITY-624: Area thresholds in pixel-space world units squared.
+    # Scaled from meter-space by (256/80467.2)^2 ≈ 1.012e-5.
+    min_area: float = 0.01
 
     # Maximum depth ratio (bay depth / entrance width)
     max_depth_ratio: float = 3.0
 
-    # Size thresholds for bay classification
-    cove_max_area: float = 50000.0  # Small cove
-    harbor_min_area: float = 200000.0  # Large harbor
+    # Size thresholds for bay classification (pixel-space)
+    cove_max_area: float = 0.506  # Small cove
+    harbor_min_area: float = 2.025  # Large harbor
 
     # River mouth bay bonus (how much river flow increases bay likelihood)
     river_mouth_factor: float = 2.0
@@ -537,7 +538,8 @@ def extract_bays(
 
     # Minimum entrance width for harbor-classified bays (world units).
     # Bays with large area but narrow entrances are unrealistic harbors.
-    harbor_min_entrance_width = 30.0
+    # CITY-624: Scaled from 30.0 meters to pixel-space (30 * 256/80467.2).
+    harbor_min_entrance_width = 0.0954
 
     for candidate in candidates:
         # Skip bays that are too shallow (low depth ratio)

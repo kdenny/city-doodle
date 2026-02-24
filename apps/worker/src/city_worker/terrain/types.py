@@ -43,8 +43,10 @@ class TerrainConfig:
     # Geographic setting (world type) — drives mask-based terrain shaping
     geographic_setting: str = "coastal"
 
-    # Tile size in world units (50 miles = 80467.2 meters)
-    tile_size: float = 80467.2
+    # Tile size in pixel-space units (matches frontend TILE_SIZE = 256px).
+    # CITY-624: Changed from 80467.2 meters to 256.0 pixels so the backend
+    # outputs coordinates directly in the frontend's pixel coordinate system.
+    tile_size: float = 256.0
 
     # Resolution: number of height samples per tile edge
     resolution: int = 128
@@ -53,7 +55,10 @@ class TerrainConfig:
     height_octaves: int = 6
     height_persistence: float = 0.5
     height_lacunarity: float = 2.0
-    height_scale: float = 0.001  # Larger = more zoomed out features
+    # CITY-624: Compensated from 0.001 to preserve terrain character.
+    # Old: 0.001 * 80467.2 = ~80.5 noise units per tile.
+    # New: 0.3143 * 256 = ~80.5 noise units per tile (same appearance).
+    height_scale: float = 0.3143
 
     # Water level threshold (0-1, normalized height below which is water)
     water_level: float = 0.35
@@ -81,10 +86,12 @@ class TerrainConfig:
     # Bay parameters
     bay_enabled: bool = True  # Whether to generate bays
     bay_min_concavity_angle: float = 45.0  # Minimum angle (degrees) for bay detection
-    bay_min_area: float = 1000.0  # Minimum bay area in world units squared
+    # CITY-624: Area thresholds scaled from meter-space to pixel-space.
+    # Factor: (256/80467.2)^2 ≈ 1.012e-5
+    bay_min_area: float = 0.01  # Minimum bay area in world units squared
     bay_max_depth_ratio: float = 3.0  # Maximum bay depth / entrance width ratio
-    bay_cove_max_area: float = 50000.0  # Max area for "cove" classification
-    bay_harbor_min_area: float = 200000.0  # Min area for "harbor" classification
+    bay_cove_max_area: float = 0.506  # Max area for "cove" classification
+    bay_harbor_min_area: float = 2.025  # Min area for "harbor" classification
     bay_river_mouth_factor: float = 2.0  # River flow multiplier for bay likelihood
     bay_erosion_strength: float = 0.5  # How aggressively to erode bay depth (0-1)
 
