@@ -68,7 +68,8 @@ export function BuildView({
   const districtsDispatch = useDistrictsDispatchOptional();
   const handleRegenerateGrids = useCallback(
     (districtIds: string[], gridAngle: number) => {
-      districtsDispatch?.regenerateDistrictGrids?.(districtIds, gridAngle);
+      districtsDispatch?.regenerateDistrictGrids?.(districtIds, gridAngle)
+        ?.catch((err: unknown) => console.error("CITY-235: Failed to regenerate district grids:", err));
     },
     [districtsDispatch]
   );

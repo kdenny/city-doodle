@@ -124,7 +124,7 @@ export interface EventStateRef {
       roads: Array<{ id: string; line: { points: Array<{ x: number; y: number }> } }>;
     };
     updateRoad: (id: string, updates: { line: { points: Array<{ x: number; y: number }> } }) => void;
-    updateDistrict: (id: string, updates: { polygon: { points: Array<{ x: number; y: number }> } }) => void;
+    updateDistrict: (id: string, updates: { polygon: { points: Array<{ x: number; y: number }> } }) => Promise<void>;
   } | null;
   onFeatureSelect: ((feature: SelectedFeature | null) => void) | undefined;
   /** CITY-385: Shift+click to toggle district multi-selection */
@@ -594,7 +594,7 @@ export function useCanvasEventHandlers({
             newPoints[districtVertexDrag.vertexIndex] = { x: worldPos.x, y: worldPos.y };
             s.featuresContext.updateDistrict(districtVertexDrag.districtId, {
               polygon: { points: newPoints },
-            });
+            }).catch((err) => console.error("CITY-235: Failed to update district after vertex drag:", err));
           }
         }
         districtVertexDrag = null;
@@ -783,7 +783,7 @@ export function useCanvasEventHandlers({
             newPoints.splice(midpointHit.segmentIndex + 1, 0, midpointHit.position);
             s.featuresContext.updateDistrict(midpointHit.district.id, {
               polygon: { points: newPoints },
-            });
+            }).catch((err) => console.error("CITY-235: Failed to update district after midpoint insert:", err));
           }
           return;
         }

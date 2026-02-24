@@ -28,12 +28,12 @@ export interface DistrictsStateValue {
 
 /** District mutation methods. */
 export interface DistrictsDispatchValue {
-  /** Add a district at a position (generates geometry automatically) */
+  /** Add a district at a position (generates geometry automatically). Async: heavy computation runs in a Web Worker. */
   addDistrict: (
     position: { x: number; y: number },
     seedId: string,
     config?: AddDistrictConfig
-  ) => AddDistrictResult;
+  ) => Promise<AddDistrictResult>;
   /** Preview district placement to check for water clipping */
   previewDistrictPlacement: (
     position: { x: number; y: number },
@@ -44,14 +44,14 @@ export interface DistrictsDispatchValue {
   addDistrictWithGeometry: (district: District, roads?: import("./layers").Road[]) => void;
   /** Remove a district by ID */
   removeDistrict: (id: string) => void;
-  /** Update a district */
-  updateDistrict: (id: string, updates: Partial<Omit<District, "id">>) => void;
+  /** Update a district. Async: some updates (type, gridAngle) run in a Web Worker. */
+  updateDistrict: (id: string, updates: Partial<Omit<District, "id">>) => Promise<void>;
   /** Set the city limits boundary */
   setCityLimits: (cityLimits: CityLimits) => void;
   /** Remove the city limits boundary */
   removeCityLimits: () => void;
-  /** Regenerate street grids for multiple districts with a shared angle */
-  regenerateDistrictGrids: (districtIds: string[], gridAngle: number) => void;
+  /** Regenerate street grids for multiple districts with a shared angle. Async: runs in Web Worker. */
+  regenerateDistrictGrids: (districtIds: string[], gridAngle: number) => Promise<void>;
 }
 
 /** Combined districts context value. */
