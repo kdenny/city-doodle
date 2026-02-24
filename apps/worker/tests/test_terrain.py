@@ -1838,10 +1838,10 @@ class TestGeographicMasks:
         """MaskContext should expose all expected fields."""
         from city_worker.terrain.geographic_masks import MaskContext
 
-        ctx = MaskContext(tx=3, ty=-2, tile_size=80467.2, resolution=128, seed=12345)
+        ctx = MaskContext(tx=3, ty=-2, tile_size=256.0, resolution=128, seed=12345)
         assert ctx.tx == 3
         assert ctx.ty == -2
-        assert ctx.tile_size == 80467.2
+        assert ctx.tile_size == 256.0
         assert ctx.resolution == 128
         assert ctx.seed == 12345
 

@@ -60,19 +60,19 @@ def generate_heightfield(
     octaves: int = 6,
     persistence: float = 0.5,
     lacunarity: float = 2.0,
-    scale: float = 0.001,
+    scale: float = 0.3143,
 ) -> NDArray[np.float64]:
     """Generate a heightfield for a single tile.
 
     Args:
         seed: World seed for deterministic generation
         tx, ty: Tile coordinates
-        tile_size: Size of tile in world units
+        tile_size: Size of tile in pixel-space world units
         resolution: Number of samples per edge
         octaves: Noise octaves
         persistence: Amplitude decay
         lacunarity: Frequency growth
-        scale: Base frequency scale
+        scale: Base frequency scale (CITY-624: 0.3143 for pixel-space tile_size=256)
 
     Returns:
         2D numpy array of heights normalized to [0, 1]
