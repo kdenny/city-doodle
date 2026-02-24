@@ -37,6 +37,11 @@
       "Chore",
       "Refactor"
     ],
+    "risk": [
+      "Low Risk",
+      "Medium Risk",
+      "High Risk"
+    ],
     "area": [
       "Frontend",
       "Backend",
