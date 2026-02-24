@@ -49,6 +49,7 @@ class Job(Base):
     )
     params: Mapped[dict] = mapped_column(JSONVariant, nullable=False, default=dict)
     result: Mapped[dict | None] = mapped_column(JSONVariant, nullable=True)
+    progress: Mapped[dict | None] = mapped_column(JSONVariant, nullable=True)
     error: Mapped[str | None] = mapped_column(Text, nullable=True)
     retry_count: Mapped[int] = mapped_column(Integer, nullable=False, default=0, server_default="0")
     max_retries: Mapped[int] = mapped_column(Integer, nullable=False, default=3, server_default="3")

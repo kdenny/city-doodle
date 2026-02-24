@@ -406,7 +406,7 @@ class JobRunner:
         error: str | None = None
 
         try:
-            result = await self._run_job_handler(job_type, params)
+            result = await self._run_job_handler(job_id, job_type, params)
             status = JobStatus.COMPLETED
             logger.info("Job %s completed successfully", job_id)
         except Exception as e:
@@ -424,7 +424,7 @@ class JobRunner:
 
         await self._update_job_status(job_id, status, result, error)
 
-    async def _run_job_handler(self, job_type: str, params: dict) -> dict[str, Any]:
+    async def _run_job_handler(self, job_id: UUID, job_type: str, params: dict) -> dict[str, Any]:
         """Run the appropriate handler for a job type.
 
         Returns result dict on success, raises on failure.
@@ -441,7 +441,7 @@ class JobRunner:
         if handler is None:
             raise ValueError(f"Unknown job type: {job_type}")
 
-        return await handler(params)
+        return await handler(job_id, params)
 
     async def _update_job_status(
         self,
@@ -470,6 +470,32 @@ class JobRunner:
                         "now": datetime.now(UTC),
                         "job_id": job_id,
                     },
+                )
+        finally:
+            await session.close()
+
+    async def _update_job_progress(
+        self,
+        job_id: UUID,
+        completed: int,
+        total: int,
+    ) -> None:
+        """Update job progress in database.
+
+        Stores a JSON object like {"completed": 3, "total": 9} in the
+        progress column so the frontend can render a progress bar.
+        """
+        progress = json.dumps({"completed": completed, "total": total})
+        session = await get_session()
+        try:
+            async with session.begin():
+                await session.execute(
+                    text("""
+                        UPDATE jobs
+                        SET progress = CAST(:progress AS jsonb)
+                        WHERE id = :job_id
+                    """),
+                    {"progress": progress, "job_id": job_id},
                 )
         finally:
             await session.close()
@@ -596,7 +622,7 @@ class JobRunner:
         finally:
             await session.close()
 
-    async def _handle_terrain_generation(self, params: dict) -> dict[str, Any]:
+    async def _handle_terrain_generation(self, job_id: UUID, params: dict) -> dict[str, Any]:
         """Handle terrain generation job.
 
         Generates terrain for a 3x3 tile neighborhood and saves to database.
@@ -630,6 +656,9 @@ class JobRunner:
         # CITY-585: Mark center tile as "generating"
         await self._update_tile_terrain_status(world_id, int(center_tx), int(center_ty), "generating")
 
+        # CITY-626: Report initial progress (0/9)
+        await self._update_job_progress(job_id, 0, 9)
+
         try:
             # Extract world settings if provided (from WorldSettings schema)
             world_settings = params.get("world_settings", {})
@@ -660,8 +689,8 @@ class JobRunner:
 
             t_gen_end = time.perf_counter()
 
-            # Save generated tiles to database
-            await self._save_terrain_tiles(world_id, result, trace_id)
+            # Save generated tiles to database, reporting progress per tile
+            await self._save_terrain_tiles(world_id, result, trace_id, job_id=job_id)
 
             t_save_end = time.perf_counter()
 
@@ -697,17 +726,29 @@ class JobRunner:
                 logger.exception("[Terrain] Failed to update terrain_status to 'failed'")
             raise
 
-    async def _save_terrain_tiles(self, world_id: UUID, result: Any, trace_id: str = "unknown") -> None:
-        """Save generated terrain tiles to the database."""
+    async def _save_terrain_tiles(
+        self,
+        world_id: UUID,
+        result: Any,
+        trace_id: str = "unknown",
+        job_id: UUID | None = None,
+    ) -> None:
+        """Save generated terrain tiles to the database.
+
+        When job_id is provided, updates the job's progress column after
+        each tile is saved so the frontend can show a progress bar.
+        """
         from city_worker.terrain import TerrainResult
 
         result: TerrainResult = result
+        all_tiles = result.all_tiles()
+        total = len(all_tiles)
         session = await get_session()
 
         try:
             async with session.begin():
                 # CITY-513: Use UPSERT instead of N+1 SELECT+INSERT/UPDATE per tile
-                for tile_data in result.all_tiles():
+                for idx, tile_data in enumerate(all_tiles):
                     terrain_dict = tile_data.to_dict()
                     features_dict = tile_data.features_to_geojson()
 
@@ -749,12 +790,17 @@ class JobRunner:
 
                 logger.info(
                     "[Terrain trace=%s] Saved %d terrain tiles for world %s",
-                    trace_id, len(result.all_tiles()), world_id,
+                    trace_id, total, world_id,
                 )
+
+            # CITY-626: Report progress after the transaction commits
+            # so the frontend sees a consistent state.
+            if job_id is not None:
+                await self._update_job_progress(job_id, total, total)
         finally:
             await session.close()
 
-    async def _handle_city_growth(self, params: dict) -> dict[str, Any]:
+    async def _handle_city_growth(self, job_id: UUID, params: dict) -> dict[str, Any]:
         """Handle city growth simulation job.
 
         Simulates city growth over 1/5/10 year steps:
@@ -1118,7 +1164,7 @@ class JobRunner:
         finally:
             await session.close()
 
-    async def _handle_export_png(self, params: dict) -> dict[str, Any]:
+    async def _handle_export_png(self, job_id: UUID, params: dict) -> dict[str, Any]:
         """Handle PNG export job.
 
         Placeholder - will be implemented later.
@@ -1127,7 +1173,7 @@ class JobRunner:
         await asyncio.sleep(0.1)
         return {"status": "exported", "message": "PNG export not yet implemented"}
 
-    async def _handle_export_gif(self, params: dict) -> dict[str, Any]:
+    async def _handle_export_gif(self, job_id: UUID, params: dict) -> dict[str, Any]:
         """Handle GIF export job.
 
         Placeholder - will be implemented later.

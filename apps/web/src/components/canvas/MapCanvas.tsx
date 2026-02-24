@@ -52,7 +52,7 @@ import type { SelectedFeature } from "../build-view/SelectionContext";
 import { useEditLockOptional } from "../shell/EditLockContext";
 import { useViewModeOptional } from "../shell/ViewModeContext";
 import type { GeographicSetting } from "../../api/types";
-import { useWorldTiles, useRegenerateTerrain } from "../../api/hooks";
+import { useWorldTiles, useRegenerateTerrain, useTerrainJobProgress } from "../../api/hooks";
 import { useCanvasInit, type CanvasLayerRefs } from "./hooks/useCanvasInit";
 import { useViewportSync } from "./hooks/useViewportSync";
 import { useLayerSync } from "./hooks/useLayerSync";
@@ -177,6 +177,12 @@ export const MapCanvas = forwardRef<MapCanvasHandle, MapCanvasProps>(
 
   // CITY-595: Derive terrain overlay status from tile data
   const terrainOverlay = useMemo(() => deriveTerrainOverlayStatus(tiles), [tiles]);
+
+  // CITY-626: Poll the terrain generation job for progress data
+  const { progress: terrainProgress } = useTerrainJobProgress(
+    tiles,
+    terrainOverlay.status === "loading",
+  );
 
   // CITY-595: Regenerate terrain mutation for retry on failure
   const regenerateTerrain = useRegenerateTerrain();
@@ -473,9 +479,9 @@ export const MapCanvas = forwardRef<MapCanvasHandle, MapCanvasProps>(
           onChange={handleVisibilityChange}
         />
       )}
-      {/* CITY-595: Terrain loading skeleton overlay */}
+      {/* CITY-595/626: Terrain loading overlay with progress bar */}
       {isReady && terrainOverlay.status === "loading" && (
-        <TerrainLoadingOverlay visible />
+        <TerrainLoadingOverlay visible progress={terrainProgress} />
       )}
       {/* CITY-595: Terrain error overlay with retry */}
       {isReady && terrainOverlay.status === "failed" && (
