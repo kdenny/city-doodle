@@ -25,6 +25,7 @@ import {
   DistrictUpdate,
   Job,
   JobCreate,
+  JobProgress,
   Neighborhood,
   NeighborhoodBulkCreate,
   NeighborhoodCreate,
@@ -554,6 +555,45 @@ export function useJobPolling(jobId: string | null) {
     result: job?.result ?? null,
     error: job?.error ?? null,
     isPolling: !!jobId && !!job && job.status !== "completed" && job.status !== "failed",
+  };
+}
+
+/**
+ * CITY-626: Poll the terrain generation job for a world's center tile
+ * to get incremental progress data ({completed, total}).
+ *
+ * Finds the most recent terrain_generation job for the center tile (tx=0, ty=0)
+ * and polls it every 2s while it's running.
+ */
+export function useTerrainJobProgress(
+  tiles: Tile[] | undefined,
+  isTerrainLoading: boolean,
+) {
+  // Find the center tile (tx=0, ty=0) to look up its terrain job
+  const centerTile = tiles?.find((t) => t.tx === 0 && t.ty === 0);
+  const centerTileId = centerTile?.id;
+
+  // Fetch jobs for the center tile while terrain is loading
+  const { data: tileJobs } = useQuery({
+    queryKey: queryKeys.jobs(centerTileId ? { tileId: centerTileId } : undefined),
+    queryFn: () => api.jobs.list({ tileId: centerTileId!, limit: 5 }),
+    enabled: !!centerTileId && isTerrainLoading,
+    refetchInterval: isTerrainLoading ? 2000 : false,
+  });
+
+  // Find the most recent terrain_generation job
+  const terrainJob = tileJobs?.find((j) => j.type === "terrain_generation") ?? null;
+
+  const progress: JobProgress | null = terrainJob?.progress ?? null;
+
+  return {
+    terrainJob,
+    progress,
+    isActive:
+      !!terrainJob &&
+      terrainJob.status !== "completed" &&
+      terrainJob.status !== "failed" &&
+      terrainJob.status !== "cancelled",
   };
 }
 

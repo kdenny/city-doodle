@@ -55,6 +55,7 @@ class Job(BaseModel):
     tile_id: UUID | None = None
     params: dict[str, Any] = Field(default_factory=dict)
     result: dict[str, Any] | None = None
+    progress: dict[str, Any] | None = None
     error: str | None = None
     retry_count: int = 0
     max_retries: int = 3

@@ -1,11 +1,13 @@
 /**
- * CITY-595: Terrain loading skeleton and error overlays.
+ * CITY-595/626: Terrain loading skeleton, progress overlay, and error overlays.
  *
  * Displayed on top of the canvas while terrain is generating (pending/generating)
- * or when terrain generation has failed.
+ * or when terrain generation has failed. CITY-626 added a progress bar showing
+ * tile completion count during terrain generation.
  */
 
-import { useState, useEffect } from "react";
+import { useState, useEffect, useRef } from "react";
+import type { JobProgress } from "../../api/types";
 
 // ============================================================================
 // Terrain Status Derivation
@@ -64,14 +66,43 @@ export function deriveTerrainOverlayStatus(
 
 interface TerrainLoadingOverlayProps {
   visible: boolean;
+  /** CITY-626: Optional progress data from the terrain generation job */
+  progress?: JobProgress | null;
 }
 
 /**
- * Shimmer/skeleton overlay displayed while terrain is generating.
- * Uses a gradient animation to convey a "scanning the landscape" feel.
+ * Estimate remaining time based on elapsed time and tiles completed.
+ * Returns a human-readable string like "~12s remaining" or null if
+ * not enough data to estimate.
  */
-export function TerrainLoadingOverlay({ visible }: TerrainLoadingOverlayProps) {
+function useEstimatedTimeRemaining(
+  progress: JobProgress | null | undefined,
+  startTime: number | null,
+): string | null {
+  if (!progress || !startTime || progress.completed === 0) return null;
+
+  const elapsed = (Date.now() - startTime) / 1000;
+  const perTile = elapsed / progress.completed;
+  const remaining = perTile * (progress.total - progress.completed);
+
+  if (remaining < 1) return null;
+  if (remaining < 60) return `~${Math.ceil(remaining)}s remaining`;
+  const minutes = Math.floor(remaining / 60);
+  const seconds = Math.ceil(remaining % 60);
+  return `~${minutes}m ${seconds}s remaining`;
+}
+
+/**
+ * CITY-595/626: Overlay displayed while terrain is generating.
+ *
+ * When progress data is available (CITY-626), shows a progress bar with
+ * tile completion count and estimated time remaining. Otherwise falls back
+ * to the original shimmer animation with a simple spinner.
+ */
+export function TerrainLoadingOverlay({ visible, progress }: TerrainLoadingOverlayProps) {
   const [dots, setDots] = useState("");
+  // Track when progress first becomes non-null for time estimation
+  const startTimeRef = useRef<number | null>(null);
 
   useEffect(() => {
     if (!visible) return;
@@ -81,20 +112,75 @@ export function TerrainLoadingOverlay({ visible }: TerrainLoadingOverlayProps) {
     return () => clearInterval(interval);
   }, [visible]);
 
+  // Record start time when progress first appears
+  useEffect(() => {
+    if (progress && progress.completed === 0 && startTimeRef.current === null) {
+      startTimeRef.current = Date.now();
+    }
+    // Reset when overlay is hidden
+    if (!visible) {
+      startTimeRef.current = null;
+    }
+  }, [progress, visible]);
+
+  const timeEstimate = useEstimatedTimeRemaining(progress, startTimeRef.current);
+
   if (!visible) return null;
 
-  return (
-    <div className="absolute inset-0 pointer-events-none z-10 flex items-center justify-center">
-      {/* Shimmer overlay */}
-      <div className="absolute inset-0 terrain-shimmer opacity-30" />
+  const hasProgress = progress && progress.total > 0;
+  const pct = hasProgress ? Math.round((progress.completed / progress.total) * 100) : 0;
 
-      {/* Status indicator */}
-      <div className="relative bg-white/90 backdrop-blur-sm rounded-lg px-5 py-3 shadow-md border border-gray-200 pointer-events-auto">
-        <div className="flex items-center gap-3">
-          <div className="w-5 h-5 border-2 border-gray-300 border-t-gray-600 rounded-full animate-spin" />
-          <span className="text-sm text-gray-600 font-medium">
-            Generating terrain<span className="inline-block w-4 text-left">{dots}</span>
-          </span>
+  return (
+    <div className="absolute inset-0 pointer-events-none z-10 flex items-center justify-center transition-opacity duration-500">
+      {/* Semi-transparent backdrop */}
+      <div className="absolute inset-0 bg-black/30" />
+
+      {/* Progress card */}
+      <div className="relative bg-white/95 backdrop-blur-sm rounded-xl px-6 py-5 shadow-lg border border-gray-200 pointer-events-auto min-w-[280px] max-w-sm">
+        <div className="flex flex-col items-center gap-3">
+          {/* Header with spinner */}
+          <div className="flex items-center gap-3">
+            <div className="w-5 h-5 border-2 border-gray-300 border-t-gray-600 rounded-full animate-spin" />
+            <span className="text-sm text-gray-700 font-semibold">
+              Generating terrain{!hasProgress && <span className="inline-block w-4 text-left">{dots}</span>}
+            </span>
+          </div>
+
+          {hasProgress ? (
+            <>
+              {/* Progress bar */}
+              <div className="w-full">
+                <div className="w-full h-2 bg-gray-200 rounded-full overflow-hidden">
+                  <div
+                    className="h-full bg-gray-600 rounded-full transition-all duration-700 ease-out"
+                    style={{ width: `${pct}%` }}
+                  />
+                </div>
+              </div>
+
+              {/* Tile count */}
+              <span className="text-xs text-gray-500 font-medium">
+                {progress.completed}/{progress.total} tiles complete
+              </span>
+
+              {/* Time estimate */}
+              {timeEstimate && (
+                <span className="text-xs text-gray-400">
+                  {timeEstimate}
+                </span>
+              )}
+            </>
+          ) : (
+            /* Fallback shimmer animation when no progress data yet */
+            <div className="w-full">
+              <div className="w-full h-2 bg-gray-200 rounded-full overflow-hidden">
+                <div className="h-full w-1/3 bg-gray-400/50 rounded-full animate-pulse" />
+              </div>
+              <p className="text-xs text-gray-400 text-center mt-2">
+                Waiting for worker{dots}
+              </p>
+            </div>
+          )}
         </div>
       </div>
     </div>
@@ -182,4 +268,3 @@ export function TerrainErrorOverlay({
     </div>
   );
 }
-

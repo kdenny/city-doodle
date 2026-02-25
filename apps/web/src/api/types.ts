@@ -261,6 +261,12 @@ export interface JobCreate {
   params?: Record<string, unknown>;
 }
 
+/** CITY-626: Progress data for long-running jobs (e.g. terrain generation) */
+export interface JobProgress {
+  completed: number;
+  total: number;
+}
+
 export interface Job {
   id: UUID;
   user_id: UUID;
@@ -269,6 +275,8 @@ export interface Job {
   tile_id?: UUID;
   params: Record<string, unknown>;
   result?: Record<string, unknown>;
+  /** CITY-626: Incremental progress for long-running jobs */
+  progress?: JobProgress | null;
   error?: string;
   created_at: DateTime;
   started_at?: DateTime;

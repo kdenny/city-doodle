@@ -139,6 +139,7 @@ def _to_schema(job: JobModel) -> Job:
         tile_id=job.tile_id,
         params=job.params,
         result=job.result,
+        progress=job.progress,
         error=job.error,
         created_at=_ensure_utc(job.created_at),
         # Map claimed_at to started_at for schema compatibility
