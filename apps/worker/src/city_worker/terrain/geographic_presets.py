@@ -27,15 +27,17 @@ GEOGRAPHIC_PRESETS: dict[str, dict[str, Any]] = {
     # threshold so bays form more easily; slightly higher water
     # creates more coastline for the bay to carve into.
     # CITY-624: Area thresholds scaled from meter-space to pixel-space.
+    # CITY-631: Raised bay area thresholds — post-CITY-624 values were
+    # sub-pixel and produced hundreds of tiny water fragments.
     "bay_harbor": {
         "water_level": 0.38,
         "beach_enabled": True,
         "beach_height_band": 0.02,
         "bay_enabled": True,
         "bay_min_concavity_angle": 25.0,
-        "bay_min_area": 0.004,  # was 400.0 in meter-space
+        "bay_min_area": 100.0,  # ~10x10 px minimum bay area
         "bay_max_depth_ratio": 5.0,
-        "bay_harbor_min_area": 0.81,  # was 80000.0 in meter-space
+        "bay_harbor_min_area": 2500.0,  # ~50x50 px minimum harbor area
         "bay_erosion_strength": 1.2,
         "barrier_islands_enabled": False,
     },
@@ -151,7 +153,7 @@ _VARIATION_RANGES: dict[str, tuple[float, float, float]] = {
     "beach_height_band": (0.01, 0.04, 0.15),
     "beach_slope_max": (0.06, 0.18, 0.15),
     "bay_min_concavity_angle": (20.0, 60.0, 0.15),
-    "bay_min_area": (0.003, 0.02, 0.20),  # was (300.0, 2000.0)
+    "bay_min_area": (50.0, 500.0, 0.20),  # CITY-631: raised from sub-pixel values
     "min_river_length": (3, 15, 0.25),
 }
 

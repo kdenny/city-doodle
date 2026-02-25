@@ -114,7 +114,7 @@ def extract_coastlines(
     for lbl in range(1, num_labels + 1):
         region_mask = labeled == lbl
         region_size = int(region_mask.sum())
-        if region_size >= 4:  # Minimum size for a polygon
+        if region_size >= 20:  # CITY-631: raised from 4 to filter tiny fragments
             region_cells = list(zip(*np.where(region_mask)))
             poly = _cells_to_polygon(region_cells, tile_x, tile_y, tile_size, cell_size, w)
             if poly is not None and poly.is_valid:
@@ -135,13 +135,20 @@ def extract_coastlines(
     if fractal_amplitude > 0 and fractal_seed is not None:
         smoothed = _apply_fractal_to_geometry(smoothed, fractal_amplitude, fractal_seed)
 
+    # CITY-631: Filter out tiny polygon fragments after merge/simplify.
+    # Minimum area = (cell_size * 4)^2 = ~64 sq px at default scale.
+    # This removes noise artifacts while preserving legitimate water features.
+    min_area = (cell_size * 4) ** 2
+
     # Convert to features
     features = []
     if isinstance(smoothed, Polygon):
-        features.append(_polygon_to_feature(smoothed, "coastline"))
+        if smoothed.area >= min_area:
+            features.append(_polygon_to_feature(smoothed, "coastline"))
     elif isinstance(smoothed, MultiPolygon):
         for poly in smoothed.geoms:
-            features.append(_polygon_to_feature(poly, "coastline"))
+            if poly.area >= min_area:
+                features.append(_polygon_to_feature(poly, "coastline"))
 
     return features
 
@@ -1054,6 +1061,10 @@ def extract_beaches(
                 extended_cells, tile_x, tile_y, tile_size, cell_size, w
             )
             if poly is not None and poly.is_valid:
+                # CITY-631: Skip tiny beach polygon fragments
+                if poly.area < (cell_size * 4) ** 2:
+                    continue
+
                 # CITY-546: Skip beaches that overlap a river buffer
                 if river_buffers:
                     skip = False
@@ -1345,6 +1356,10 @@ def extract_lakes(
             region_cells, tile_x, tile_y, tile_size, cell_size, w
         )
         if poly is not None and poly.is_valid:
+            # CITY-631: Skip tiny lake polygon fragments
+            if poly.area < (cell_size * 4) ** 2:
+                continue
+
             lake_type, properties = _classify_lake_type(
                 poly,
                 region_cells,

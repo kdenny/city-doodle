@@ -87,11 +87,12 @@ class TerrainConfig:
     bay_enabled: bool = True  # Whether to generate bays
     bay_min_concavity_angle: float = 45.0  # Minimum angle (degrees) for bay detection
     # CITY-624: Area thresholds scaled from meter-space to pixel-space.
-    # Factor: (256/80467.2)^2 ≈ 1.012e-5
-    bay_min_area: float = 0.01  # Minimum bay area in world units squared
+    # CITY-631: Raised to meaningful pixel-space values — the CITY-624
+    # scaling produced sub-pixel thresholds that allowed tiny fragments.
+    bay_min_area: float = 100.0  # Minimum bay area (~10x10 px)
     bay_max_depth_ratio: float = 3.0  # Maximum bay depth / entrance width ratio
-    bay_cove_max_area: float = 0.506  # Max area for "cove" classification
-    bay_harbor_min_area: float = 2.025  # Min area for "harbor" classification
+    bay_cove_max_area: float = 2500.0  # Max area for "cove" classification (~50x50 px)
+    bay_harbor_min_area: float = 2500.0  # Min area for "harbor" classification (~50x50 px)
     bay_river_mouth_factor: float = 2.0  # River flow multiplier for bay likelihood
     bay_erosion_strength: float = 0.5  # How aggressively to erode bay depth (0-1)
 
