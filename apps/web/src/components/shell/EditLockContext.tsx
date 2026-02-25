@@ -62,7 +62,7 @@ export function EditLockProvider({ children, worldId }: EditLockProviderProps) {
   useEffect(() => {
     if (!worldId) return;
     createTile.mutate(
-      { world_id: worldId, tx: 0, ty: 0 },
+      { world_id: worldId, tx: 1, ty: 1 },
       {
         onSuccess: (tile) => {
           setSentinelTileId(tile.id);
