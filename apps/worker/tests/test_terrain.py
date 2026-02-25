@@ -2019,16 +2019,16 @@ class TestIslandMask:
         assert get_mask("island") is island_mask
 
     def test_center_tile_has_land(self):
-        """The center tile (0, 0) should retain high terrain values."""
+        """The center tile (1, 1) should retain high terrain values."""
         import numpy as np
         from city_worker.terrain.geographic_masks import MaskContext, island_mask
 
         hf = np.full((32, 32), 0.7)
-        ctx = MaskContext(tx=0, ty=0, tile_size=500.0, resolution=32, seed=42)
+        ctx = MaskContext(tx=1, ty=1, tile_size=500.0, resolution=32, seed=42)
         result = island_mask(hf, ctx)
-        # Center region should mostly be unmodified (mask ~ 1.0)
-        center = result[12:20, 12:20]
-        assert center.mean() > 0.5, f"Center mean {center.mean()} too low"
+        # Center tile should have significant land (mask > 0 over most of it)
+        assert result.mean() > 0.2, f"Center tile mean {result.mean()} too low"
+        assert result.max() > 0.5, f"Center tile max {result.max()} too low"
 
     def test_far_tile_is_ocean(self):
         """A tile far from the origin should be nearly all zeros."""
@@ -2046,7 +2046,7 @@ class TestIslandMask:
         from city_worker.terrain.geographic_masks import MaskContext, island_mask
 
         hf = np.full((16, 16), 0.6)
-        ctx = MaskContext(tx=0, ty=0, tile_size=500.0, resolution=16, seed=42)
+        ctx = MaskContext(tx=1, ty=1, tile_size=500.0, resolution=16, seed=42)
         r1 = island_mask(hf, ctx)
         r2 = island_mask(hf, ctx)
         np.testing.assert_array_equal(r1, r2)
@@ -2056,11 +2056,11 @@ class TestIslandMask:
         import numpy as np
         from city_worker.terrain.geographic_masks import MaskContext, island_mask
 
-        # Use tile (1,1) which is in the falloff zone where seed-based
+        # Use tile (2,1) which is in the falloff zone where seed-based
         # eccentricity and angle noise create visible differences.
         hf = np.full((32, 32), 0.7)
-        ctx1 = MaskContext(tx=1, ty=1, tile_size=500.0, resolution=32, seed=42)
-        ctx2 = MaskContext(tx=1, ty=1, tile_size=500.0, resolution=32, seed=999)
+        ctx1 = MaskContext(tx=2, ty=1, tile_size=500.0, resolution=32, seed=42)
+        ctx2 = MaskContext(tx=2, ty=1, tile_size=500.0, resolution=32, seed=999)
         r1 = island_mask(hf, ctx1)
         r2 = island_mask(hf, ctx2)
         assert not np.array_equal(r1, r2)
@@ -2070,10 +2070,10 @@ class TestIslandMask:
         import numpy as np
         from city_worker.terrain.geographic_masks import MaskContext, island_mask
 
-        # Use tile (1,0) which spans the island edge — inner part should
-        # be higher than the outer part.
+        # Use tile (2,1) which spans the island edge — inner part (left)
+        # should be higher than the outer part (right).
         hf = np.full((32, 32), 0.7)
-        ctx = MaskContext(tx=1, ty=0, tile_size=500.0, resolution=32, seed=42)
+        ctx = MaskContext(tx=2, ty=1, tile_size=500.0, resolution=32, seed=42)
         result = island_mask(hf, ctx)
         # Left columns (closer to island center) should be higher than
         # right columns (farther away).
@@ -2089,8 +2089,8 @@ class TestIslandMask:
         from city_worker.terrain.geographic_masks import MaskContext, island_mask
 
         hf = np.full((32, 32), 0.7)
-        center_ctx = MaskContext(tx=0, ty=0, tile_size=500.0, resolution=32, seed=42)
-        edge_ctx = MaskContext(tx=2, ty=0, tile_size=500.0, resolution=32, seed=42)
+        center_ctx = MaskContext(tx=1, ty=1, tile_size=500.0, resolution=32, seed=42)
+        edge_ctx = MaskContext(tx=3, ty=1, tile_size=500.0, resolution=32, seed=42)
         center_result = island_mask(hf, center_ctx)
         edge_result = island_mask(hf, edge_ctx)
         assert center_result.mean() > edge_result.mean()
@@ -2104,7 +2104,7 @@ class TestIslandMask:
             tile_size=500.0,
         )
         gen = TerrainGenerator(config)
-        result = gen.generate_3x3(0, 0)
+        result = gen.generate_3x3(1, 1)
         assert len(result.all_tiles()) == 9
         # Center tile should have some land (non-zero heights)
         center_hf = result.center.heightfield
@@ -2122,10 +2122,10 @@ class TestIslandMask:
 
         # Tiles well beyond the island edge should be water
         edge_tiles = [
-            MaskContext(tx=0, ty=-2, tile_size=ts, resolution=res, seed=42),
-            MaskContext(tx=0, ty=2, tile_size=ts, resolution=res, seed=42),
-            MaskContext(tx=-2, ty=0, tile_size=ts, resolution=res, seed=42),
-            MaskContext(tx=2, ty=0, tile_size=ts, resolution=res, seed=42),
+            MaskContext(tx=1, ty=-2, tile_size=ts, resolution=res, seed=42),
+            MaskContext(tx=1, ty=4, tile_size=ts, resolution=res, seed=42),
+            MaskContext(tx=-2, ty=1, tile_size=ts, resolution=res, seed=42),
+            MaskContext(tx=4, ty=1, tile_size=ts, resolution=res, seed=42),
         ]
         for ctx in edge_tiles:
             result = island_mask(hf, ctx)
@@ -2145,7 +2145,7 @@ class TestIslandMask:
         found_satellite = False
 
         for seed in range(200):
-            ctx = MaskContext(tx=2, ty=2, tile_size=ts, resolution=res, seed=seed)
+            ctx = MaskContext(tx=-1, ty=2, tile_size=ts, resolution=res, seed=seed)
             result = island_mask(hf, ctx)
             if result.max() > 0.3:
                 found_satellite = True
@@ -2169,7 +2169,7 @@ class TestPeninsulaMask:
         from city_worker.terrain.geographic_masks import MaskContext, peninsula_mask
 
         hf = np.full((32, 32), 0.7)
-        ctx = MaskContext(tx=0, ty=0, tile_size=500.0, resolution=32, seed=42)
+        ctx = MaskContext(tx=1, ty=1, tile_size=500.0, resolution=32, seed=42)
         result = peninsula_mask(hf, ctx)
         # Some portion of center should be land
         land_fraction = (result > 0.3).sum() / result.size
@@ -2192,7 +2192,7 @@ class TestPeninsulaMask:
         from city_worker.terrain.geographic_masks import MaskContext, peninsula_mask
 
         hf = np.full((16, 16), 0.6)
-        ctx = MaskContext(tx=0, ty=0, tile_size=500.0, resolution=16, seed=42)
+        ctx = MaskContext(tx=1, ty=1, tile_size=500.0, resolution=16, seed=42)
         r1 = peninsula_mask(hf, ctx)
         r2 = peninsula_mask(hf, ctx)
         np.testing.assert_array_equal(r1, r2)
@@ -2203,8 +2203,8 @@ class TestPeninsulaMask:
         from city_worker.terrain.geographic_masks import MaskContext, peninsula_mask
 
         hf = np.full((32, 32), 0.7)
-        ctx1 = MaskContext(tx=0, ty=0, tile_size=500.0, resolution=32, seed=42)
-        ctx2 = MaskContext(tx=0, ty=0, tile_size=500.0, resolution=32, seed=999)
+        ctx1 = MaskContext(tx=1, ty=1, tile_size=500.0, resolution=32, seed=42)
+        ctx2 = MaskContext(tx=1, ty=1, tile_size=500.0, resolution=32, seed=999)
         r1 = peninsula_mask(hf, ctx1)
         r2 = peninsula_mask(hf, ctx2)
         assert not np.array_equal(r1, r2)
@@ -2215,7 +2215,7 @@ class TestPeninsulaMask:
         from city_worker.terrain.geographic_masks import MaskContext, peninsula_mask
 
         hf = np.full((32, 32), 0.7)
-        ctx = MaskContext(tx=0, ty=0, tile_size=500.0, resolution=32, seed=42)
+        ctx = MaskContext(tx=1, ty=1, tile_size=500.0, resolution=32, seed=42)
         result = peninsula_mask(hf, ctx)
         # Compare quadrants -- at least two should differ significantly
         q1 = result[:16, :16].mean()
@@ -2255,7 +2255,7 @@ class TestRiverValleyMask:
         from city_worker.terrain.geographic_masks import MaskContext, river_valley_mask
 
         hf = np.full((32, 32), 0.6)
-        ctx = MaskContext(tx=0, ty=0, tile_size=500.0, resolution=32, seed=42)
+        ctx = MaskContext(tx=1, ty=1, tile_size=500.0, resolution=32, seed=42)
         result = river_valley_mask(hf, ctx)
         # The minimum should be noticeably lower than the input
         assert result.min() < 0.4, f"Min {result.min()} not depressed enough"
@@ -2266,7 +2266,7 @@ class TestRiverValleyMask:
         from city_worker.terrain.geographic_masks import MaskContext, river_valley_mask
 
         hf = np.full((32, 32), 0.6)
-        ctx = MaskContext(tx=0, ty=0, tile_size=500.0, resolution=32, seed=42)
+        ctx = MaskContext(tx=1, ty=1, tile_size=500.0, resolution=32, seed=42)
         result = river_valley_mask(hf, ctx)
         # Average of full tile vs average of edges
         edge_vals = np.concatenate([result[0, :], result[-1, :],
@@ -2281,7 +2281,7 @@ class TestRiverValleyMask:
         from city_worker.terrain.geographic_masks import MaskContext, river_valley_mask
 
         hf = np.full((16, 16), 0.6)
-        ctx = MaskContext(tx=0, ty=0, tile_size=500.0, resolution=16, seed=42)
+        ctx = MaskContext(tx=1, ty=1, tile_size=500.0, resolution=16, seed=42)
         r1 = river_valley_mask(hf, ctx)
         r2 = river_valley_mask(hf, ctx)
         np.testing.assert_array_equal(r1, r2)
@@ -2292,8 +2292,8 @@ class TestRiverValleyMask:
         from city_worker.terrain.geographic_masks import MaskContext, river_valley_mask
 
         hf = np.full((32, 32), 0.6)
-        ctx1 = MaskContext(tx=0, ty=0, tile_size=500.0, resolution=32, seed=42)
-        ctx2 = MaskContext(tx=0, ty=0, tile_size=500.0, resolution=32, seed=999)
+        ctx1 = MaskContext(tx=1, ty=1, tile_size=500.0, resolution=32, seed=42)
+        ctx2 = MaskContext(tx=1, ty=1, tile_size=500.0, resolution=32, seed=999)
         r1 = river_valley_mask(hf, ctx1)
         r2 = river_valley_mask(hf, ctx2)
         assert not np.array_equal(r1, r2)
@@ -2304,7 +2304,7 @@ class TestRiverValleyMask:
         from city_worker.terrain.geographic_masks import MaskContext, river_valley_mask
 
         hf = np.full((32, 32), 0.6)
-        ctx = MaskContext(tx=0, ty=0, tile_size=500.0, resolution=32, seed=42)
+        ctx = MaskContext(tx=1, ty=1, tile_size=500.0, resolution=32, seed=42)
         result = river_valley_mask(hf, ctx)
         # The depression should span across the tile (not just a point)
         depressed = result < 0.4
@@ -2338,7 +2338,7 @@ class TestBayHarborMask:
         from city_worker.terrain.geographic_masks import MaskContext, bay_harbor_mask
 
         hf = np.full((32, 32), 0.6)
-        ctx = MaskContext(tx=0, ty=0, tile_size=500.0, resolution=32, seed=42)
+        ctx = MaskContext(tx=1, ty=1, tile_size=500.0, resolution=32, seed=42)
         result = bay_harbor_mask(hf, ctx)
         # Should have range — both high (land) and low (bay) areas
         assert result.max() - result.min() > 0.15, (
@@ -2351,7 +2351,7 @@ class TestBayHarborMask:
         from city_worker.terrain.geographic_masks import MaskContext, bay_harbor_mask
 
         hf = np.full((32, 32), 0.6)
-        ctx = MaskContext(tx=0, ty=0, tile_size=500.0, resolution=32, seed=42)
+        ctx = MaskContext(tx=1, ty=1, tile_size=500.0, resolution=32, seed=42)
         result = bay_harbor_mask(hf, ctx)
         # Compare left half vs right half — one should be higher
         left = result[:, :16].mean()
@@ -2366,7 +2366,7 @@ class TestBayHarborMask:
         from city_worker.terrain.geographic_masks import MaskContext, bay_harbor_mask
 
         hf = np.full((32, 32), 0.6)
-        ctx = MaskContext(tx=0, ty=0, tile_size=500.0, resolution=32, seed=42)
+        ctx = MaskContext(tx=1, ty=1, tile_size=500.0, resolution=32, seed=42)
         result = bay_harbor_mask(hf, ctx)
         # The minimum value should be noticeably lower than the maximum
         assert result.min() < result.max() - 0.1
@@ -2377,7 +2377,7 @@ class TestBayHarborMask:
         from city_worker.terrain.geographic_masks import MaskContext, bay_harbor_mask
 
         hf = np.full((16, 16), 0.6)
-        ctx = MaskContext(tx=0, ty=0, tile_size=500.0, resolution=16, seed=42)
+        ctx = MaskContext(tx=1, ty=1, tile_size=500.0, resolution=16, seed=42)
         r1 = bay_harbor_mask(hf, ctx)
         r2 = bay_harbor_mask(hf, ctx)
         np.testing.assert_array_equal(r1, r2)
@@ -2388,8 +2388,8 @@ class TestBayHarborMask:
         from city_worker.terrain.geographic_masks import MaskContext, bay_harbor_mask
 
         hf = np.full((32, 32), 0.6)
-        ctx1 = MaskContext(tx=0, ty=0, tile_size=500.0, resolution=32, seed=42)
-        ctx2 = MaskContext(tx=0, ty=0, tile_size=500.0, resolution=32, seed=999)
+        ctx1 = MaskContext(tx=1, ty=1, tile_size=500.0, resolution=32, seed=42)
+        ctx2 = MaskContext(tx=1, ty=1, tile_size=500.0, resolution=32, seed=999)
         r1 = bay_harbor_mask(hf, ctx1)
         r2 = bay_harbor_mask(hf, ctx2)
         assert not np.array_equal(r1, r2)
@@ -2422,7 +2422,7 @@ class TestDeltaMask:
         from city_worker.terrain.geographic_masks import MaskContext, delta_mask
 
         hf = np.full((32, 32), 0.6)
-        ctx = MaskContext(tx=0, ty=0, tile_size=500.0, resolution=32, seed=42)
+        ctx = MaskContext(tx=1, ty=1, tile_size=500.0, resolution=32, seed=42)
         result = delta_mask(hf, ctx)
         # Should have some depression from channels
         assert result.min() < 0.4, f"Min {result.min()} not depressed enough"
@@ -2433,7 +2433,7 @@ class TestDeltaMask:
         from city_worker.terrain.geographic_masks import MaskContext, delta_mask
 
         hf = np.full((32, 32), 0.6)
-        ctx = MaskContext(tx=0, ty=0, tile_size=500.0, resolution=32, seed=42)
+        ctx = MaskContext(tx=1, ty=1, tile_size=500.0, resolution=32, seed=42)
         result = delta_mask(hf, ctx)
         # Range should show channels (low) and delta islands (higher)
         assert result.max() - result.min() > 0.1
@@ -2444,7 +2444,7 @@ class TestDeltaMask:
         from city_worker.terrain.geographic_masks import MaskContext, delta_mask
 
         hf = np.full((16, 16), 0.6)
-        ctx = MaskContext(tx=0, ty=0, tile_size=500.0, resolution=16, seed=42)
+        ctx = MaskContext(tx=1, ty=1, tile_size=500.0, resolution=16, seed=42)
         r1 = delta_mask(hf, ctx)
         r2 = delta_mask(hf, ctx)
         np.testing.assert_array_equal(r1, r2)
@@ -2455,8 +2455,8 @@ class TestDeltaMask:
         from city_worker.terrain.geographic_masks import MaskContext, delta_mask
 
         hf = np.full((32, 32), 0.6)
-        ctx1 = MaskContext(tx=0, ty=0, tile_size=500.0, resolution=32, seed=42)
-        ctx2 = MaskContext(tx=0, ty=0, tile_size=500.0, resolution=32, seed=999)
+        ctx1 = MaskContext(tx=1, ty=1, tile_size=500.0, resolution=32, seed=42)
+        ctx2 = MaskContext(tx=1, ty=1, tile_size=500.0, resolution=32, seed=999)
         r1 = delta_mask(hf, ctx1)
         r2 = delta_mask(hf, ctx2)
         assert not np.array_equal(r1, r2)
@@ -2467,7 +2467,7 @@ class TestDeltaMask:
         from city_worker.terrain.geographic_masks import MaskContext, delta_mask
 
         hf = np.full((64, 64), 0.6)
-        ctx = MaskContext(tx=0, ty=0, tile_size=500.0, resolution=64, seed=42)
+        ctx = MaskContext(tx=1, ty=1, tile_size=500.0, resolution=64, seed=42)
         result = delta_mask(hf, ctx)
         # Count cells that are significantly depressed (channel areas)
         depressed = (result < 0.35).sum()

@@ -643,8 +643,8 @@ class JobRunner:
         # Validate required params
         world_id = params.get("world_id")
         world_seed = params.get("world_seed")
-        center_tx = params.get("center_tx", 0)
-        center_ty = params.get("center_ty", 0)
+        center_tx = params.get("center_tx", 1)
+        center_ty = params.get("center_ty", 1)
 
         if world_id is None:
             raise ValueError("world_id is required")

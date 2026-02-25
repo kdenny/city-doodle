@@ -70,8 +70,8 @@ class MaskContext:
     """Context passed to geographic mask functions.
 
     Attributes:
-        tx: Tile x coordinate (0 = world center column).
-        ty: Tile y coordinate (0 = world center row).
+        tx: Tile x coordinate (1 = world center column).
+        ty: Tile y coordinate (1 = world center row).
         tile_size: Tile size in world units.
         resolution: Number of height samples per tile edge.
         seed: World seed for deterministic randomness.
@@ -125,7 +125,7 @@ def island_mask(
     """Radial falloff mask for island worlds (CITY-387, CITY-545).
 
     Multiplies the heightfield by a smooth radial falloff centered on
-    the world origin (middle of tile 0, 0).  The falloff edge is
+    the world origin (middle of tile 1, 1).  The falloff edge is
     perturbed by angle-dependent noise for an organic coastline, and
     the island shape is slightly elliptical based on the seed.
 
@@ -137,9 +137,9 @@ def island_mask(
     res = ctx.resolution
     ts = ctx.tile_size
 
-    # Island center: middle of tile (0, 0)
-    cx = ts * 0.5
-    cy = ts * 0.5
+    # Island center: middle of tile (1, 1) — center of the 3x3 world
+    cx = ts * 1.5
+    cy = ts * 1.5
 
     # Base radius and transition band — sized relative to 3*ts world
     base_radius = ts * 1.3
@@ -212,9 +212,9 @@ def peninsula_mask(
     res = ctx.resolution
     ts = ctx.tile_size
 
-    # World center (middle of tile 0,0)
-    cx = ts * 0.5
-    cy = ts * 0.5
+    # World center (middle of tile 1,1)
+    cx = ts * 1.5
+    cy = ts * 1.5
 
     # Seed-based direction the peninsula points toward
     direction = _seeded_hash(ctx.seed, 10) * 2.0 * math.pi
@@ -287,9 +287,9 @@ def river_valley_mask(
     res = ctx.resolution
     ts = ctx.tile_size
 
-    # World center
-    cx = ts * 0.5
-    cy = ts * 0.5
+    # World center (middle of tile 1,1)
+    cx = ts * 1.5
+    cy = ts * 1.5
 
     # Seed-based river direction (0 to pi -- half circle is sufficient)
     direction = _seeded_hash(ctx.seed, 20) * math.pi
@@ -360,7 +360,7 @@ def bay_harbor_mask(
     """
     res = ctx.resolution
     ts = ctx.tile_size
-    cx, cy = ts * 0.5, ts * 0.5
+    cx, cy = ts * 1.5, ts * 1.5
 
     # Seed-based ocean direction
     ocean_dir = _seeded_hash(ctx.seed, 30) * 2.0 * math.pi
@@ -429,7 +429,7 @@ def coastal_mask(
     """
     res = ctx.resolution
     ts = ctx.tile_size
-    cx, cy = ts * 0.5, ts * 0.5
+    cx, cy = ts * 1.5, ts * 1.5
 
     # Seed-based ocean direction (one of 4 cardinal-ish directions
     # with some randomness so it isn't always perfectly axis-aligned)
@@ -492,7 +492,7 @@ def lakefront_mask(
     """
     res = ctx.resolution
     ts = ctx.tile_size
-    cx, cy = ts * 0.5, ts * 0.5
+    cx, cy = ts * 1.5, ts * 1.5
 
     # Seed-based lake direction: which edge the lake is on.
     # Pick one of 4 cardinal-ish directions with some randomness.
@@ -565,7 +565,7 @@ def delta_mask(
     """
     res = ctx.resolution
     ts = ctx.tile_size
-    cx, cy = ts * 0.5, ts * 0.5
+    cx, cy = ts * 1.5, ts * 1.5
 
     # Ocean direction
     ocean_dir = _seeded_hash(ctx.seed, 40) * 2.0 * math.pi
