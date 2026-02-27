@@ -77,10 +77,12 @@ def extract_coastlines(
     fractal_amplitude: float | None = None,
     fractal_seed: int | None = None,
 ) -> list[TerrainFeature]:
-    """Extract coastline polygons from heightfield.
+    """Extract coastline polygons (water regions) from heightfield.
 
-    Uses concave hull to preserve bays/inlets (CITY-322) and optionally
-    applies fractal midpoint displacement for natural irregularity.
+    Emits polygons representing connected water bodies so that the frontend
+    can render them as blue/water fill.  Uses concave hull to preserve
+    bays/inlets (CITY-322) and optionally applies fractal midpoint
+    displacement for natural irregularity.
 
     Args:
         heightfield: 2D height array normalized to [0, 1]
@@ -92,7 +94,7 @@ def extract_coastlines(
         fractal_seed: Seed for deterministic fractal noise
 
     Returns:
-        List of coastline polygon features
+        List of coastline polygon features (each polygon is a water body)
     """
     h, w = heightfield.shape
     cell_size = tile_size / w
@@ -100,17 +102,19 @@ def extract_coastlines(
     if fractal_amplitude is None:
         fractal_amplitude = cell_size * 0.8
 
-    # Create binary land/water mask
-    land_mask = heightfield >= water_level
+    # Create binary water mask — emit water polygons so the frontend
+    # (which renders coastline polygons as blue/water) paints them correctly
+    # for ALL presets (CITY-632).
+    water_mask = heightfield < water_level
 
-    # Find connected land regions using scipy connected-component
+    # Find connected water regions using scipy connected-component
     # labeling (CITY-625). This replaces the Python nested for-loop
     # + flood fill with a single vectorized C call.
     # 4-connectivity structuring element (matching original flood fill).
     struct_4conn = np.array([[0, 1, 0], [1, 1, 1], [0, 1, 0]], dtype=np.int32)
-    labeled, num_labels = label(land_mask, structure=struct_4conn)
+    labeled, num_labels = label(water_mask, structure=struct_4conn)
 
-    land_polygons = []
+    water_polygons = []
     for lbl in range(1, num_labels + 1):
         region_mask = labeled == lbl
         region_size = int(region_mask.sum())
@@ -118,13 +122,13 @@ def extract_coastlines(
             region_cells = list(zip(*np.where(region_mask)))
             poly = _cells_to_polygon(region_cells, tile_x, tile_y, tile_size, cell_size, w)
             if poly is not None and poly.is_valid:
-                land_polygons.append(poly)
+                water_polygons.append(poly)
 
-    if not land_polygons:
+    if not water_polygons:
         return []
 
     # Merge overlapping polygons and simplify
-    merged = unary_union(land_polygons)
+    merged = unary_union(water_polygons)
     if merged.is_empty:
         return []
 
